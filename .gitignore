@@ -2,4 +2,5 @@
 **/*.rs.bk
 /.idea
 /.cargo
-/Dockerfile.local
+Dockerfile.local
+Cargo.lock
