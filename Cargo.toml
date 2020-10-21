@@ -1,0 +1,22 @@
+[package]
+name = "relay"
+version = "0.1.0"
+edition = "2018"
+publish = false
+
+[lib]
+name = "relay_lib"
+path = "src/lib.rs"
+
+[[bin]]
+name = "relay"
+path = "src/main.rs"
+
+[dependencies]
+base64 = "*"
+config = { version = "*", default-features = false }
+env_logger = "*"
+failure = "*"
+futures = "0.3.1"
+log = "*"
+tokio = { version = "0.2", features = ["full"] }
