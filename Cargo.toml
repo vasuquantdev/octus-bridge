@@ -4,14 +4,11 @@ version = "0.1.0"
 edition = "2018"
 publish = false
 
-[lib]
-name = "relay_lib"
-path = "src/lib.rs"
+[workspace]
 
-[[bin]]
-name = "relay"
-path = "src/main.rs"
-
+members = [
+    "relay-eth"
+]
 [dependencies]
 base64 = "*"
 config = { version = "*", default-features = false }
