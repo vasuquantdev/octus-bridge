@@ -1,47 +1,89 @@
 use anyhow::Error;
+use futures::stream::Stream;
+use futures::StreamExt;
+use log::error;
 use log::info;
-use sha3::{Digest, Keccak256};
-use tokio::time::Duration;
+use num256::Uint256;
+use serde::{Deserialize, Serialize};
+
+use std::time::Duration;
+use tokio::spawn;
 use url::Url;
-use web3::api::{BaseFilter, FilterStream};
 use web3::transports::ws::WebSocket;
-use web3::types::{ FilterBuilder, Log, H256, Address};
+use web3::types::{Address, FilterBuilder, Log, H256};
 use web3::Web3;
-use std::str::FromStr;
 
 pub struct EthConfig {
     stream: Web3<WebSocket>,
 }
 
-pub trait Method{
-    fn get_function_hash(&self) -> Vec<u8>;
+///topics: `Keccak256("Method_Signature")`
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Serialize, Deserialize, Ord)]
+pub struct Event {
+    address: Address,
+    amount: Uint256,
+    tx_hash: H256,
+    topics: Vec<H256>,
 }
 
-
 impl EthConfig {
-    pub async fn new(infura_url: Url) -> Self {
-        let connection = WebSocket::new(infura_url.as_str())
+    fn log_to_event(log: Log) -> Result<Event, Error> {
+        let num = Uint256::from_bytes_be(&log.data.0);
+        let hash = match log.transaction_hash {
+            Some(a) => a,
+            None => {
+                error!("No tx hash!");
+                return Err(Error::msg("No tx hash in log"));
+            }
+        };
+        Ok(Event {
+            address: log.address,
+            amount: num,
+            tx_hash: hash,
+            topics: log.topics,
+        })
+    }
+    pub async fn new(url: Url) -> Self {
+        let connection = WebSocket::new(url.as_str())
             .await
-            .expect("Failed connecting to infura");
-        info!("Connected to: {}", &infura_url);
-
+            .expect("Failed connecting to etherium node");
+        info!("Connected to: {}", &url);
         Self {
             stream: Web3::new(connection),
         }
     }
-    pub async fn subscribe(&self, address: Address, method: &dyn Method) -> Result<FilterStream<WebSocket, Log>, Error> {
-        //todo multisign
-        // let mut hasher = Keccak256::new();
-        // hasher.update(b"Transfer(address,address,uint256)");
-        // let topic_hash: H256 = H256::from_slice(hasher.finalize().as_slice());
-       let topic_hash: H256 = H256::from_slice(method.get_function_hash().as_slice());
+
+    pub async fn subscribe(
+        &self,
+        addresses: Vec<Address>,
+        topics: Vec<H256>,
+    ) -> Result<impl Stream<Item = Result<Event, Error>>, Error> {
         let filter = FilterBuilder::default()
-            .address(vec![address])
-            .topics(Some(vec![topic_hash]), None, None, None)
+            .address(addresses)
+            .topics(Some(topics), None, None, None)
             .build();
+
         let filter = self.stream.eth_filter().create_logs_filter(filter).await;
-        filter
-            .and_then(|x| Ok(x.stream(Duration::from_secs(1))))
-            .map_err(|e| e.into())
+        let mut stream = filter?.stream(Duration::from_secs(1));
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        spawn(async move {
+            while let Some(a) = stream.next().await {
+                match a {
+                    Err(e) => {
+                        if let Err(e) = tx.send(Err(e.into())) {
+                            error!("Error while transmitting value via channel: {}", e);
+                        }
+                    }
+                    Ok(a) => {
+                        let event = EthConfig::log_to_event(a);
+                        log::trace!("Received event: {:#?}", &event);
+                        if let Err(e) = tx.send(event) {
+                            error!("Error while transmitting value via channel: {}", e);
+                        }
+                    }
+                }
+            }
+        });
+        Ok(rx)
     }
 }
