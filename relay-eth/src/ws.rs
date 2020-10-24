@@ -20,10 +20,10 @@ pub struct EthConfig {
 ///topics: `Keccak256("Method_Signature")`
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Serialize, Deserialize, Ord)]
 pub struct Event {
-    address: Address,
-    amount: Uint256,
-    tx_hash: H256,
-    topics: Vec<H256>,
+    pub address: Address,
+    pub amount: Uint256,
+    pub tx_hash: H256,
+    pub topics: Vec<H256>,
 }
 
 impl EthConfig {
