@@ -7,3 +7,13 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+url = "2.1.1"
+web3 = { git = "https://github.com/tomusdrw/rust-web3", features = ["ws-tls-tokio"] }
+log = "0.4.11"
+tokio = { version = "0.2", features = ["full"] }
+env_logger = "0.8.1"
+sha3 = "0.9.1"
+anyhow = "1.0.33"
+futures = "0.3.6"
+num256 = "0.3.0"
+serde = {version = "1.0.117", features =["derive"] }
