@@ -1,11 +1,8 @@
 use anyhow::Error;
-use futures::stream::Stream;
-use futures::StreamExt;
-use log::error;
-use log::info;
+use futures::stream::{Stream, StreamExt};
+use log::{info,error};
 use num256::Uint256;
 use serde::{Deserialize, Serialize};
-
 use std::time::Duration;
 use tokio::spawn;
 use url::Url;

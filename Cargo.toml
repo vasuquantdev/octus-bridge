@@ -5,15 +5,24 @@ edition = "2018"
 publish = false
 
 [workspace]
-
 members = [
     "relay-eth"
 ]
 [dependencies]
+relay-eth = { path = "./relay-eth" }
+url = "2.1.1"
 base64 = "*"
-config = { version = "*", default-features = false }
+anyhow = "1.0.33"
+config = { version = "*", features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0.59"
+ed25519-dalek = { version = "1.0", features = ["serde"] }
+rand = "0.7.3"
+sha3 = "0.9.1"
+hex = "0.4.2"
+structopt = "0.3.20"
 env_logger = "*"
-failure = "*"
+#failure = "*"
 futures = "0.3.1"
 log = "*"
 tokio = { version = "0.2", features = ["full"] }
