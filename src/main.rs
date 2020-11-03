@@ -1,5 +1,6 @@
 use anyhow::Error;
 use relay::config::{read_config, parse_args, generate_config};
+
 #[tokio::main]
 async fn main() -> Result<(),Error> {
     env_logger::init();
