@@ -1,13 +1,13 @@
 use anyhow::Error;
-use ed25519_dalek::{Keypair,  Signature};
+use ed25519_dalek::{Keypair, Signature};
+use hex::encode;
 use rand::rngs::OsRng;
 use serde::export::fmt::Debug;
 use serde::export::Formatter;
 use serde_json::from_reader;
+use sha3::{Digest, Keccak256};
 use std::fs::{File, Permissions};
 use std::path::Path;
-use sha3::{Keccak256, Digest};
-use hex::encode;
 
 pub struct Signer {
     keys: Keypair,
@@ -37,8 +37,7 @@ impl Signer {
         }
     }
 
-    pub fn sign(&self, data: &[u8]) -> Signature
-    {
+    pub fn sign(&self, data: &[u8]) -> Signature {
         use ed25519_dalek::Signer;
         let mut eth_data: Vec<u8> = b"\x19Ethereum Signed Message:\n".to_vec();
         eth_data.extend_from_slice(data.len().to_string().as_bytes());
@@ -51,17 +50,17 @@ impl Signer {
     where
         T: AsRef<Path>,
     {
-        let mut file  = File::create(path)?;
+        let mut file = File::create(path)?;
         serde_json::to_writer(file, &self.keys)?;
         Ok(())
     }
 }
 
 #[cfg(test)]
-mod test{
-    use crate::key_managment::Signer;
+mod test {
+    use crate::key_management::Signer;
     #[test]
-    fn test_sign(){
+    fn test_sign() {
         let signer = Signer::from_file("./test/test.keys").unwrap();
         println!("{}", hex::encode(signer.keys.public.as_bytes()));
         dbg!(signer);

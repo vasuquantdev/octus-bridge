@@ -6,8 +6,10 @@ publish = false
 
 [workspace]
 members = [
-    "relay-eth"
+    "relay-eth",
+    "relay-ton"
 ]
+
 [dependencies]
 relay-eth = { path = "./relay-eth" }
 url = "2.1.1"

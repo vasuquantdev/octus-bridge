@@ -1,2 +1,2 @@
 pub mod config;
-pub mod key_managment;
+pub mod key_management;
