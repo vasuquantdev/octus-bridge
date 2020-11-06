@@ -20,9 +20,16 @@ ed25519-dalek = { version = "1.0", features = ["serde"] }
 rand = "0.7.3"
 sha3 = "0.9.1"
 hex = "0.4.2"
+warp = "0.2.5"
+#crypto stuff
+ring = "0.16.15"
+pem = "0.8"
+sodiumoxide = "0.2.6"
+secstr = "0.4.0"
+
 structopt = "0.3.20"
+log = "*"
 env_logger = "*"
 #failure = "*"
 futures = "0.3.1"
-log = "*"
 tokio = { version = "0.2", features = ["full"] }

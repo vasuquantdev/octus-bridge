@@ -7,7 +7,8 @@ use std::time::Duration;
 use tokio::spawn;
 use url::Url;
 use web3::transports::ws::WebSocket;
-use web3::types::{Address, FilterBuilder, Log, H256};
+pub use web3::types::{Address, H256};
+use web3::types::{FilterBuilder, Log};
 use web3::Web3;
 
 pub struct EthConfig {
