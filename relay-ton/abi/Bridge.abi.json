@@ -43,15 +43,16 @@
       ]
     },
     {
-      "name": "emitEventInstance",
-      "inputs": [
-      ],
-      "outputs": [
-      ]
-    },
-    {
       "name": "confirmEventInstance",
       "inputs": [
+        {
+          "name": "ethereumEventConfigurationID",
+          "type": "uint256"
+        },
+        {
+          "name": "ethereumEventData",
+          "type": "cell"
+        }
       ],
       "outputs": [
       ]

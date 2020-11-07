@@ -1,6 +1,13 @@
 use num_bigint::{BigInt, BigUint};
-use ton_block::{MsgAddressInt, MsgAddrStd};
+use ton_abi::Token;
+use ton_block::{MsgAddrStd, MsgAddressInt};
 use ton_types::{SliceData, UInt256};
+
+#[derive(Debug, Clone)]
+pub struct ContractConfig {
+    pub account: MsgAddressInt,
+    pub timeout_sec: u32,
+}
 
 #[derive(Debug, Clone)]
 pub struct AccountState {
@@ -14,9 +21,13 @@ pub struct AccountId {
     pub addr: UInt256,
 }
 
-impl From<AccountId> for MsgAddressInt {
+impl From<AccountId> for MsgAddrStd {
     fn from(id: AccountId) -> Self {
-        Self::AddrStd(MsgAddrStd::with_address(None, id.workchain, SliceData::new(id.addr.into())))
+        Self::with_address(
+            None,
+            id.workchain,
+            SliceData::new(id.addr.as_slice().to_vec()),
+        )
     }
 }
 
@@ -35,10 +46,22 @@ pub struct TransactionId {
 }
 
 #[derive(Debug, Clone)]
+pub struct ExternalMessageHeader {
+    pub time: u64,
+    pub expire: u32,
+}
+
+#[derive(Debug, Clone)]
 pub struct ExternalMessage {
     pub dest: MsgAddressInt,
     pub init: Option<SliceData>,
     pub body: Option<SliceData>,
-    pub expires_in: u32,
+    pub header: ExternalMessageHeader,
     pub run_local: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct ContractOutput {
+    pub transaction_id: TransactionId,
+    pub tokens: Vec<Token>,
 }

@@ -13,7 +13,7 @@ tokio = { version = "0.2", features = ["full"] }
 thiserror = "1.0"
 env_logger = "0.8.1"
 futures = "0.3.6"
-num-bigint = "0.3.1"
+num-bigint = "0.2.6" # fuck tonlabs
 serde = { version = "1.0.117", features = ["derive"] }
 serde_json = "1.0.59"
 
@@ -21,6 +21,4 @@ ton_abi = { git = "https://github.com/tonlabs/ton-labs-abi.git" }
 ton_types = { git = "https://github.com/tonlabs/ton-labs-types.git" }
 ton_block = { git = "https://github.com/tonlabs/ton-labs-block.git" }
 
-ton-client-rs = { git = 'https://github.com/tonlabs/ton-client-rs.git', tag = "0.26.0" }
-ton_client = { git = 'https://github.com/tonlabs/TON-SDK.git', tag = "0" }
 ton_sdk = { git = "https://github.com/tonlabs/TON-SDK.git", tag = "0" }
