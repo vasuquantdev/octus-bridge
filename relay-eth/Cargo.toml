@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 url = "2.1.1"
-web3 = { git = "https://github.com/tomusdrw/rust-web3", features = ["ws-tls-tokio"] }
+web3 = { git = "https://github.com/tomusdrw/rust-web3", features = ["ws-tls-tokio"] , rev="2c33873488cbf9a27bf38d665138b227521bf51a"}
 log = "0.4.11"
 tokio = { version = "0.2", features = ["full"] }
 env_logger = "0.8.1"
