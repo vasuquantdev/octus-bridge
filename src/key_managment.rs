@@ -11,26 +11,57 @@ use rand::prelude::*;
 use ring::{digest, pbkdf2};
 use secp256k1::{Message, PublicKey, SecretKey, Signature};
 use secstr::{SecStr, SecVec};
-use sha3::{Digest, Keccak256};
+
 use sodiumoxide::crypto::secretbox;
 use sodiumoxide::crypto::secretbox::{Key, Nonce};
 
+const CREDENTIAL_LEN: usize = digest::SHA256_OUTPUT_LEN;
+const N_ITER: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(100_000) }; //todo tune len
+
+#[derive(Eq, PartialEq, Debug)]
+pub struct KeyData {
+    eth: EthSigner,
+    ton: TonSigner,
+}
+
 #[derive(Eq, PartialEq)]
-pub struct Signer {
+struct EthSigner {
     pubkey: PublicKey,
     private_key: SecretKey,
 }
 
-impl Debug for Signer {
+#[derive(Eq, PartialEq, Clone)]
+struct TonSigner {
+    inner: Vec<u8>,
+}
+
+impl Debug for TonSigner {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "***SECRET***")
+    }
+}
+
+impl Debug for EthSigner {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self.pubkey)
     }
 }
 
-const CREDENTIAL_LEN: usize = digest::SHA256_OUTPUT_LEN;
-const N_ITER: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(100_000) }; //todo tune len
+impl EthSigner {
+    pub fn sign(&self, data: &[u8]) -> Result<Signature, Error> {
+        use sha3::{Digest, Keccak256};
 
-impl Signer {
+        let mut eth_data: Vec<u8> = b"\x19Ethereum Signed Message:\n".to_vec();
+        eth_data.extend_from_slice(data.len().to_string().as_bytes());
+        eth_data.extend_from_slice(&data);
+        let hash = Keccak256::digest(&eth_data);
+        let message = Message::from_slice(&*hash)?;
+        let secp = secp256k1::Secp256k1::new();
+        Ok(secp.sign(&message, &self.private_key))
+    }
+}
+
+impl KeyData {
     pub fn from_file<T>(path: T, password: SecStr) -> Result<Self, Error>
     where
         T: AsRef<Path>,
@@ -45,20 +76,31 @@ impl Signer {
                 map.insert(pem.tag, pem.contents);
                 map
             });
-        let nonce = Nonce::from_slice(pem_map.get("nonce").expect("No nonce in pem file"))
-            .expect("Bad nonce provided");
+        let eth_nonce = Nonce::from_slice(pem_map.get("eth_nonce").expect("No nonce in pem file"))
+            .expect("Bad nonce eth provided");
         let salt = pem_map.get("salt").expect("No salt in pem file").clone();
         let pubkey = PublicKey::from_slice(pem_map.get("pubkey").expect("No pubkey in map"))?;
         let encrypted_private_key = pem_map
             .get("encrypted_private_key")
-            .expect("No encrypted_keypair in pem file")
-            .clone();
+            .expect("No encrypted_keypair in pem file");
+        let encrypted_ton_data = pem_map
+            .get("encrypted_ton_data")
+            .expect("No encrypted_ton_data in pem file");
+        let ton_nonce =
+            Nonce::from_slice(pem_map.get("ton_nonce").expect("No ton_nonce in pem file"))
+                .expect("Bad nonce for ton provided");
+
         let sym_key = Self::key_from_password(password, &*salt);
         let private_key =
-            Self::private_key_from_encrypted(&*encrypted_private_key, &sym_key, &nonce);
+            Self::private_key_from_encrypted(&*encrypted_private_key, &sym_key, &eth_nonce);
+        let ton_data = secretbox::open(encrypted_ton_data, &ton_nonce, &sym_key)
+            .expect("Failed decrypting ton secret data");
         Ok(Self {
-            pubkey,
-            private_key,
+            eth: EthSigner {
+                pubkey,
+                private_key,
+            },
+            ton: TonSigner { inner: ton_data },
         })
     }
 
@@ -77,37 +119,31 @@ impl Signer {
 
     fn private_key_from_encrypted(encrypted_key: &[u8], key: &Key, nonce: &Nonce) -> SecretKey {
         SecretKey::from_slice(
-            &secretbox::open(encrypted_key, nonce, key).expect("Failed decrypting SecretKey"),
+            &secretbox::open(encrypted_key, nonce, key).expect("Failed decrypting eth SecretKey"),
         )
         .expect("Failed constructing SecretKey from decrypted data")
     }
 
-    pub fn sign(&self, data: &[u8]) -> Result<Signature, Error> {
-        let mut eth_data: Vec<u8> = b"\x19Ethereum Signed Message:\n".to_vec();
-        eth_data.extend_from_slice(data.len().to_string().as_bytes());
-        eth_data.extend_from_slice(&data);
-        let hash = Keccak256::digest(&eth_data);
-        let message = Message::from_slice(&*hash)?;
-        let secp = secp256k1::Secp256k1::new();
-        Ok(secp.sign(&message, &self.private_key))
-    }
-
-    pub fn init<T>(pem_file_path: T, password: SecStr) -> Result<Self, Error>
+    pub fn init<T>(pem_file_path: T, password: SecStr, ton_data: Vec<u8>) -> Result<Self, Error>
     //todo use Writer instead of Path?
     where
         T: AsRef<Path>,
     {
         sodiumoxide::init().expect("Failed initializing libsodium");
-        let nonce = secretbox::gen_nonce();
+        let eth_nonce = secretbox::gen_nonce();
         let mut rng = rand::rngs::OsRng::new().expect("OsRng fail");
         let mut salt = vec![0u8; CREDENTIAL_LEN];
         rng.fill(salt.as_mut_slice());
         let key = Self::key_from_password(password, &salt);
         let curve = secp256k1::Secp256k1::new();
         let (private, public) = curve.generate_keypair(&mut rng);
-        let encrypted_private_key = secretbox::seal(&private[..], &nonce, &key);
+        let encrypted_private_key = secretbox::seal(&private[..], &eth_nonce, &key);
         let pubkey = Vec::from(public.serialize());
-        let nonce_bytes = Vec::from(nonce.0);
+        let eth_nonce_bytes = Vec::from(eth_nonce.0);
+        let ton_nonce = secretbox::gen_nonce();
+        let ton_nonce_bytes = Vec::from(ton_nonce.0);
+        let encrypted_ton_data = secretbox::seal(&ton_data, &ton_nonce, &key);
+
         let pem_data = vec![
             Pem {
                 tag: "pubkey".into(),
@@ -122,17 +158,28 @@ impl Signer {
                 contents: encrypted_private_key,
             },
             Pem {
-                tag: "nonce".into(),
-                contents: nonce_bytes,
+                tag: "eth_nonce".into(),
+                contents: eth_nonce_bytes,
+            },
+            Pem {
+                tag: "ton_nonce".into(),
+                contents: ton_nonce_bytes,
+            },
+            Pem {
+                tag: "encrypted_ton_data".into(),
+                contents: encrypted_ton_data,
             },
         ];
+
         let serialized_self = pem::encode_many(&pem_data);
         let mut pem_file = File::create(pem_file_path)?;
         pem_file.write_all(serialized_self.as_bytes())?;
-
         Ok(Self {
-            pubkey: public,
-            private_key: private,
+            eth: EthSigner {
+                private_key: private,
+                pubkey: public,
+            },
+            ton: TonSigner { inner: ton_data },
         })
     }
 }
@@ -143,7 +190,7 @@ mod test {
     use ring::pbkdf2;
     use secstr::SecStr;
 
-    use crate::key_managment::{CREDENTIAL_LEN, Signer};
+    use crate::key_managment::{KeyData, CREDENTIAL_LEN};
 
     // #[test]
     // fn test_sign() {
@@ -158,8 +205,9 @@ mod test {
     fn test_init() {
         let password = SecStr::new("123".into());
         let path = "./test/test_init.key";
-        let signer = Signer::init(&path, password.clone()).unwrap();
-        let read_signer = Signer::from_file(&path, password).unwrap();
+        let signer =
+            KeyData::init(&path, password.clone(), "SOME_SUPA_SECRET_DATA".into()).unwrap();
+        let read_signer = KeyData::from_file(&path, password).unwrap();
         std::fs::remove_file(path).unwrap();
         assert_eq!(read_signer, signer);
     }
@@ -168,9 +216,9 @@ mod test {
     fn test_bad_password() {
         let password = SecStr::new("123".into());
         let path = "./test/test_bad.key";
-        Signer::init(&path, password.clone()).unwrap();
+        KeyData::init(&path, password.clone(), "SOME_SUPA_SECRET_DATA".into()).unwrap();
         let result =
-            std::panic::catch_unwind(|| Signer::from_file(&path, SecStr::new("lol".into())));
+            std::panic::catch_unwind(|| KeyData::from_file(&path, SecStr::new("lol".into())));
         std::fs::remove_file(path);
         assert!(result.is_err());
     }
