@@ -46,7 +46,7 @@ impl BridgeContract {
         .arg("ethereumAddress", ethereum_address)
         .arg("address", event_proxy_address)
         .build()?
-        .send(self.transport.as_ref())
+        .send(&self.contract, self.transport.as_ref())
         .await?;
 
         Ok(())
@@ -67,7 +67,7 @@ impl BridgeContract {
             ethereum_event_configuration_id,
         )
         .build()?
-        .send(self.transport.as_ref())
+        .send(&self.contract, self.transport.as_ref())
         .await?;
 
         Ok(())
@@ -89,7 +89,7 @@ impl BridgeContract {
             )
             .arg("ethereumEventData", ethereum_event_data)
             .build()?
-            .send(self.transport.as_ref())
+            .send(&self.contract, self.transport.as_ref())
             .await?;
 
         Ok(())
@@ -103,7 +103,9 @@ impl BridgeContract {
             &self.contract,
             "getEthereumEventsConfiguration",
         )?
-        .build()?;
+        .build()?
+        .send(&self.contract, self.transport.as_ref())
+        .await?;
 
         todo!()
     }

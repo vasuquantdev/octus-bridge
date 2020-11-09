@@ -12,7 +12,7 @@ pub struct ContractConfig {
 #[derive(Debug, Clone)]
 pub struct AccountState {
     pub balance: BigInt,
-    pub last_transaction: Option<TransactionIdShort>,
+    pub last_transaction: Option<u64>,
 }
 
 #[derive(Debug, Clone)]
