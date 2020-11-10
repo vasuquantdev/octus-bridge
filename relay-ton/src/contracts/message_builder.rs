@@ -5,7 +5,7 @@ use super::errors::*;
 use crate::models::*;
 use crate::prelude::*;
 use crate::transport::errors::{TransportError, TransportResult};
-use crate::transport::{Sendable, Transport};
+use crate::transport::Transport;
 
 impl From<ExternalMessageHeader> for HashMap<String, TokenValue> {
     fn from(header: ExternalMessageHeader) -> Self {
@@ -81,6 +81,13 @@ impl<'a> MessageBuilder<'a> {
             header: header.clone(),
             run_local: self.run_local,
         })
+    }
+
+    pub async fn send(self, transport: &dyn Transport) -> ContractResult<ContractOutput> {
+        let function = self.function;
+
+        let output = transport.send_message(function, self.build()?).await?;
+        Ok(output)
     }
 }
 

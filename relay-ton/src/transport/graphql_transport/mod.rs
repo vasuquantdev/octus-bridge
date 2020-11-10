@@ -1,9 +1,13 @@
 pub mod config;
 
+pub use config::ClientConfig;
+
 use num_traits::Num;
 use serde_json::Value;
 use ton_block::{ExternalInboundMessageHeader, Message, Serializable};
-use ton_sdk::{Block, BlockId, NodeClient, NodeClientConfig, OrderBy, SortDirection};
+use ton_sdk::{
+    AbiFunction, Block, BlockId, Contract, NodeClient, NodeClientConfig, OrderBy, SortDirection,
+};
 
 use self::config::*;
 use super::errors::*;
@@ -32,6 +36,15 @@ impl GraphQlTransport {
             config,
             node_client,
         })
+    }
+
+    async fn load_contract(&self, address: &MsgAddressInt) -> TransportResult<Contract> {
+        Contract::load(&self.node_client, address)
+            .await
+            .map_err(|e| TransportError::FailedToFetchAccountState {
+                reason: e.to_string(),
+            })?
+            .ok_or_else(|| TransportError::AccountNotFound)
     }
 
     async fn find_last_shard_block(&self, address: &MsgAddressInt) -> TransportResult<BlockId> {
@@ -227,10 +240,27 @@ impl GraphQlTransport {
 
     async fn wait_for_transaction(
         &self,
-        abi: &AbiContract,
+        abi: &AbiFunction,
+        expires_at: u32,
         shard_block_id: &str,
     ) -> TransportResult<ContractOutput> {
         todo!()
+    }
+
+    async fn run_local(
+        &self,
+        function: &AbiFunction,
+        address: &MsgAddressInt,
+        message: &Message,
+    ) -> TransportResult<ContractOutput> {
+        let contract = self.load_contract(address).await?;
+        let messages = contract.local_call_tvm(message.clone()).map_err(|e| {
+            TransportError::ExecutionError {
+                reason: e.to_string(),
+            }
+        })?;
+
+        process_out_messages(&messages, function)
     }
 }
 
@@ -245,7 +275,7 @@ impl Transport for GraphQlTransport {
             .query(
                 ACCOUNTS_TABLE_NAME,
                 &format!(r#"{{ "id": {{ "eq": "{}" }} }}"#, addr),
-                "id balance last_trans_lt",
+                ACCOUNT_FIELDS,
                 None,
                 Some(1),
                 None,
@@ -288,7 +318,7 @@ impl Transport for GraphQlTransport {
 
     async fn send_message(
         &self,
-        abi: &AbiContract,
+        abi: &AbiFunction,
         message: ExternalMessage,
     ) -> TransportResult<ContractOutput> {
         let mut message_header = ExternalInboundMessageHeader::default();
@@ -297,6 +327,10 @@ impl Transport for GraphQlTransport {
         let mut msg = Message::with_ext_in_header(message_header);
         if let Some(body) = message.body {
             msg.set_body(body);
+        }
+
+        if message.run_local {
+            return self.run_local(abi, &message.dest, &msg).await;
         }
 
         let cells = msg
@@ -317,7 +351,7 @@ impl Transport for GraphQlTransport {
                 reason: e.to_string(),
             })?;
 
-        self.wait_for_transaction(abi, &shard_block_id.to_string())
+        self.wait_for_transaction(abi, message.header.expire, &shard_block_id.to_string())
             .await
     }
 }
@@ -332,6 +366,50 @@ impl CheckSync for ton_types::Result<Value> {
             reason: e.to_string(),
         })
     }
+}
+
+fn process_out_messages(
+    messages: &Vec<ton_sdk::Message>,
+    abi_function: &AbiFunction,
+) -> TransportResult<ContractOutput> {
+    if messages.len() == 0 || !abi_function.has_output() {
+        return Ok(ContractOutput {
+            transaction_id: None,
+            tokens: Vec::new(),
+        });
+    }
+
+    for msg in messages {
+        if msg.msg_type() != ton_sdk::MessageType::ExternalOutbound {
+            continue;
+        }
+
+        let body = msg.body().ok_or_else(|| TransportError::ExecutionError {
+            reason: "output message has not body".to_string(),
+        })?;
+
+        if abi_function
+            .is_my_output_message(body.clone(), false)
+            .map_err(|e| TransportError::ExecutionError {
+                reason: e.to_string(),
+            })?
+        {
+            let tokens = abi_function.decode_output(body, false).map_err(|e| {
+                TransportError::ExecutionError {
+                    reason: e.to_string(),
+                }
+            })?;
+
+            return Ok(ContractOutput {
+                transaction_id: None,
+                tokens,
+            });
+        }
+    }
+
+    return Err(TransportError::ExecutionError {
+        reason: "no external output messages".to_owned(),
+    });
 }
 
 fn check_shard_match(shard_descr: Value, address: &MsgAddressInt) -> TransportResult<bool> {
@@ -362,25 +440,38 @@ const BLOCK_FIELDS: &str = r#"
     }
 "#;
 
+const ACCOUNT_FIELDS: &str = r#"
+    id
+    balance
+    last_trans_lt
+"#;
+
 const BLOCKS_TABLE_NAME: &str = "blocks";
 const ACCOUNTS_TABLE_NAME: &str = "accounts";
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
     use super::*;
 
     const LOCAL_SERVER_ADDR: &str = "http://127.0.0.1:80";
     const MAIN_SERVER_ADDR: &str = "https://main.ton.dev";
 
-    #[tokio::test]
-    async fn test_get_existing_account_state() {
-        let target_addr = MsgAddressInt::from_str(
+    fn elector_addr() -> MsgAddressInt {
+        MsgAddressInt::from_str(
             "-1:3333333333333333333333333333333333333333333333333333333333333333",
         )
-        .unwrap();
+        .unwrap()
+    }
 
+    fn bridge_addr() -> MsgAddressInt {
+        MsgAddressInt::from_str(
+            "0:7c6a933179824c23c3f684f28df909ed13cb371f7f22a118241237d7bec1a2de",
+        )
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_get_existing_account_state() {
         let transport = GraphQlTransport::new(ClientConfig {
             server_address: MAIN_SERVER_ADDR.to_owned(),
             ..Default::default()
@@ -388,17 +479,12 @@ mod tests {
         .await
         .unwrap();
 
-        let account_state = transport.get_account_state(&target_addr).await.unwrap();
-        println!("Last block: {:?}", account_state);
+        let account_state = transport.get_account_state(&elector_addr()).await.unwrap();
+        println!("Account state: {:?}", account_state);
     }
 
     #[tokio::test]
     async fn test_local_get_last_block() {
-        let target_addr = MsgAddressInt::from_str(
-            "0:f2ccbe13b97f4a453304ed9250c714ecda90b3a523751c216b44f9bc4547d367",
-        )
-        .unwrap();
-
         let transport = GraphQlTransport::new(ClientConfig {
             server_address: LOCAL_SERVER_ADDR.to_owned(),
             ..Default::default()
@@ -406,17 +492,15 @@ mod tests {
         .await
         .unwrap();
 
-        let last_shard_block = transport.find_last_shard_block(&target_addr).await.unwrap();
+        let last_shard_block = transport
+            .find_last_shard_block(&bridge_addr())
+            .await
+            .unwrap();
         println!("Last block: {}", last_shard_block);
     }
 
     #[tokio::test]
     async fn test_get_last_block() {
-        let target_addr = MsgAddressInt::from_str(
-            "-1:3333333333333333333333333333333333333333333333333333333333333333",
-        )
-        .unwrap();
-
         let transport = GraphQlTransport::new(ClientConfig {
             server_address: MAIN_SERVER_ADDR.to_owned(),
             ..Default::default()
@@ -424,9 +508,12 @@ mod tests {
         .await
         .unwrap();
 
-        let last_shard_block = transport.find_last_shard_block(&target_addr).await.unwrap();
+        let last_shard_block = transport
+            .find_last_shard_block(&elector_addr())
+            .await
+            .unwrap();
         let next_block = transport
-            .wait_next_block(&last_shard_block.to_string(), &target_addr, None)
+            .wait_next_block(&last_shard_block.to_string(), &elector_addr(), None)
             .await
             .unwrap();
 

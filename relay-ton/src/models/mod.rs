@@ -62,6 +62,6 @@ pub struct ExternalMessage {
 
 #[derive(Debug, Clone)]
 pub struct ContractOutput {
-    pub transaction_id: TransactionId,
+    pub transaction_id: Option<TransactionId>,
     pub tokens: Vec<Token>,
 }

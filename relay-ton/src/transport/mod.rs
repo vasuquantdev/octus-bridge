@@ -1,6 +1,8 @@
 pub mod errors;
 pub mod graphql_transport;
 
+pub use graphql_transport::GraphQlTransport;
+
 use self::errors::*;
 use crate::models::*;
 use crate::prelude::*;
@@ -14,27 +16,7 @@ pub trait Transport: Send + Sync + 'static {
 
     async fn send_message(
         &self,
-        abi: &AbiContract,
+        abi: &AbiFunction,
         message: ExternalMessage,
     ) -> TransportResult<ContractOutput>;
-}
-
-#[async_trait]
-pub trait Sendable {
-    async fn send(
-        self,
-        abi: &AbiContract,
-        transport: &dyn Transport,
-    ) -> TransportResult<ContractOutput>;
-}
-
-#[async_trait]
-impl Sendable for ExternalMessage {
-    async fn send(
-        self,
-        abi: &AbiContract,
-        transport: &dyn Transport,
-    ) -> TransportResult<ContractOutput> {
-        transport.send_message(abi, self).await
-    }
 }

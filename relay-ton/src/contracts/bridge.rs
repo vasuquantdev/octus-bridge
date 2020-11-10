@@ -15,15 +15,14 @@ pub struct BridgeContract {
 }
 
 impl BridgeContract {
-    pub fn new(transport: &Arc<dyn Transport>, addr: &AccountId) -> BridgeContract {
+    pub fn new(transport: &Arc<dyn Transport>, account: &MsgAddressInt) -> BridgeContract {
         let contract =
             Contract::load(Cursor::new(ABI)).expect("Failed to load bridge contract ABI");
-        let account = MsgAddressInt::AddrStd(addr.clone().into());
 
         Self {
             transport: transport.clone(),
             config: ContractConfig {
-                account,
+                account: account.clone(),
                 timeout_sec: 60,
             },
             contract,
@@ -45,8 +44,7 @@ impl BridgeContract {
         .arg("ethereumEventABI", ethereum_event_abi)
         .arg("ethereumAddress", ethereum_address)
         .arg("address", event_proxy_address)
-        .build()?
-        .send(&self.contract, self.transport.as_ref())
+        .send(self.transport.as_ref())
         .await?;
 
         Ok(())
@@ -66,8 +64,7 @@ impl BridgeContract {
             "ethereumEventConfigurationID",
             ethereum_event_configuration_id,
         )
-        .build()?
-        .send(&self.contract, self.transport.as_ref())
+        .send(self.transport.as_ref())
         .await?;
 
         Ok(())
@@ -88,8 +85,7 @@ impl BridgeContract {
                 ethereum_event_configuration_id,
             )
             .arg("ethereumEventData", ethereum_event_data)
-            .build()?
-            .send(&self.contract, self.transport.as_ref())
+            .send(self.transport.as_ref())
             .await?;
 
         Ok(())
@@ -103,14 +99,17 @@ impl BridgeContract {
             &self.contract,
             "getEthereumEventsConfiguration",
         )?
-        .build()?
-        .send(&self.contract, self.transport.as_ref())
+        .run_local()
+        .send(self.transport.as_ref())
         .await?;
 
-        todo!()
+        println!("{:?}", message);
+
+        Ok(Vec::new())
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct EthereumEventsConfiguration {
     pub ethereum_event_abi: String,
     pub ethereum_address: String,
@@ -120,3 +119,35 @@ pub struct EthereumEventsConfiguration {
 }
 
 const ABI: &str = include_str!("../../abi/Bridge.abi.json");
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::transport::graphql_transport::config::ClientConfig;
+    use crate::transport::GraphQlTransport;
+
+    const LOCAL_SERVER_ADDR: &str = "http://127.0.0.1:80";
+
+    fn bridge_addr() -> MsgAddressInt {
+        MsgAddressInt::from_str(
+            "0:7c6a933179824c23c3f684f28df909ed13cb371f7f22a118241237d7bec1a2de",
+        )
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn get_ethereum_events_configuration() {
+        let transport: Arc<dyn Transport> = Arc::new(
+            GraphQlTransport::new(ClientConfig {
+                server_address: LOCAL_SERVER_ADDR.to_owned(),
+                ..Default::default()
+            })
+            .await
+            .unwrap(),
+        );
+
+        let bridge = BridgeContract::new(&transport, &bridge_addr());
+        let config = bridge.get_ethereum_events_configuration().await.unwrap();
+        println!("Configs: {:#?}", config);
+    }
+}

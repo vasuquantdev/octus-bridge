@@ -14,6 +14,8 @@ pub enum TransportError {
     FailedToFetchBlock { reason: String },
     #[error("no latest blocks found")]
     NoBlocksFound,
+    #[error("failed to fetch account state. {reason}")]
+    FailedToFetchAccountState { reason: String },
     #[error("failed to parse account state. {reason}")]
     FailedToParseAccountState { reason: String },
     #[error("failed to send message. {reason}")]
@@ -22,8 +24,8 @@ pub enum TransportError {
     MessageUnreached,
     #[error("account was not found")]
     AccountNotFound,
-    #[error("contract execution error")]
-    ExecutionError,
+    #[error("contract execution error. {reason}")]
+    ExecutionError { reason: String },
 }
 
 pub type TransportResult<T> = Result<T, TransportError>;

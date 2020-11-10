@@ -7,5 +7,5 @@ pub use chrono::Utc;
 pub use num_bigint::{BigInt, BigUint};
 pub use serde::{Deserialize, Serialize};
 pub use ton_block::{MsgAddrStd, MsgAddressInt};
-pub use ton_sdk::AbiContract;
+pub use ton_sdk::{AbiContract, AbiFunction};
 pub use ton_types::{BuilderData, UInt256};
