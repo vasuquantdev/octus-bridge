@@ -17,11 +17,11 @@
       "inputs": [
         {
           "name": "ethereumEventABI",
-          "type": "bytes[]"
+          "type": "bytes"
         },
         {
           "name": "ethereumAddress",
-          "type": "bytes[]"
+          "type": "bytes"
         },
         {
           "name": "eventProxyAddress",
@@ -66,11 +66,11 @@
           "components": [
             {
               "name": "ethereumEventABI",
-              "type": "bytes[]"
+              "type": "bytes"
             },
             {
               "name": "ethereumAddress",
-              "type": "bytes[]"
+              "type": "bytes"
             },
             {
               "name": "eventProxyAddress",

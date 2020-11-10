@@ -1,4 +1,5 @@
 pub use std::collections::HashMap;
+pub use std::convert::{TryFrom, TryInto};
 pub use std::str::FromStr;
 pub use std::sync::Arc;
 

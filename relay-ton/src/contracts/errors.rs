@@ -8,6 +8,8 @@ pub enum ContractError {
     InvalidAbi,
     #[error("invalid contract function input")]
     InvalidInput,
+    #[error("invalid string")]
+    InvalidString,
     #[error("transport error")]
     TransportError(#[from] TransportError),
 }
