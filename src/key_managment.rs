@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt;
 use std::fmt::{Debug, Formatter};
 use std::fs::File;
 use std::io::{Read, Write};
@@ -6,11 +7,15 @@ use std::num::NonZeroU32;
 use std::path::Path;
 
 use anyhow::Error;
+use base64::{decode, encode};
 use pem::{parse_many, Pem};
 use rand::prelude::*;
 use ring::{digest, pbkdf2};
 use secp256k1::{Message, PublicKey, SecretKey, Signature};
 use secstr::{SecStr, SecVec};
+
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+// use hex::{FromHex, ToHex};
 
 use sodiumoxide::crypto::secretbox;
 use sodiumoxide::crypto::secretbox::{Key, Nonce};
@@ -36,21 +41,96 @@ struct TonSigner {
 }
 
 impl Debug for TonSigner {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "***SECRET***")
     }
 }
 
 impl Debug for EthSigner {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self.pubkey)
     }
+}
+
+#[derive(Serialize, Deserialize)]
+struct CryptoData {
+    #[serde(
+        serialize_with = "serialize_pubkey",
+        deserialize_with = "deserialize_pubkey"
+    )]
+    eth_pubkey: PublicKey,
+    #[serde(serialize_with = "buffer_to_hex", deserialize_with = "hex_to_buffer")]
+    salt: Vec<u8>,
+    #[serde(serialize_with = "buffer_to_hex", deserialize_with = "hex_to_buffer")]
+    encrypted_ton_data: Vec<u8>,
+    #[serde(serialize_with = "buffer_to_hex", deserialize_with = "hex_to_buffer")]
+    encrypted_private_key: Vec<u8>,
+    #[serde(
+        serialize_with = "serialize_nonce",
+        deserialize_with = "deserialize_nonce"
+    )]
+    eth_nonce: Nonce,
+    #[serde(
+        serialize_with = "serialize_nonce",
+        deserialize_with = "deserialize_nonce"
+    )]
+    ton_nonce: Nonce,
+}
+
+/// Serializes `buffer` to a lowercase hex string.
+pub fn buffer_to_hex<T, S>(buffer: &T, serializer: S) -> Result<S::Ok, S::Error>
+where
+    T: AsRef<[u8]> + ?Sized,
+    S: Serializer,
+{
+    serializer.serialize_str(&*encode(&buffer.as_ref()))
+}
+
+/// Deserializes a lowercase hex string to a `Vec<u8>`.
+pub fn hex_to_buffer<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Error;
+    String::deserialize(deserializer)
+        .and_then(|string| decode(string).map_err(|e| D::Error::custom(e.to_string())))
+}
+
+fn serialize_pubkey<S>(t: &PublicKey, ser: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    buffer_to_hex(&t.serialize(), ser)
+}
+
+fn serialize_nonce<S>(t: &Nonce, ser: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    buffer_to_hex(&t[..], ser)
+}
+
+fn deserialize_nonce<'de, D>(deser: D) -> Result<Nonce, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    hex_to_buffer(deser).and_then(|x| {
+        Nonce::from_slice(&*x).ok_or_else(|| serde::de::Error::custom("Failed deserializing nonce"))
+    })
+}
+
+fn deserialize_pubkey<'de, D>(deser: D) -> Result<PublicKey, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    hex_to_buffer(deser).and_then(|x| {
+        PublicKey::from_slice(&*x).map_err(|e| serde::de::Error::custom(e.to_string()))
+    })
 }
 
 impl EthSigner {
     pub fn sign(&self, data: &[u8]) -> Result<Signature, Error> {
         use sha3::{Digest, Keccak256};
-
         let mut eth_data: Vec<u8> = b"\x19Ethereum Signed Message:\n".to_vec();
         eth_data.extend_from_slice(data.len().to_string().as_bytes());
         eth_data.extend_from_slice(&data);
@@ -186,11 +266,11 @@ impl KeyData {
 
 #[cfg(test)]
 mod test {
-    use rand::Rng;
-    use ring::pbkdf2;
+    
+    
     use secstr::SecStr;
 
-    use crate::key_managment::{KeyData, CREDENTIAL_LEN};
+    use crate::key_managment::{KeyData};
 
     // #[test]
     // fn test_sign() {
@@ -219,7 +299,7 @@ mod test {
         KeyData::init(&path, password.clone(), "SOME_SUPA_SECRET_DATA".into()).unwrap();
         let result =
             std::panic::catch_unwind(|| KeyData::from_file(&path, SecStr::new("lol".into())));
-        std::fs::remove_file(path);
+        // std::fs::remove_file(path);
         assert!(result.is_err());
     }
 
