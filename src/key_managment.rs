@@ -1,24 +1,24 @@
-use std::collections::HashMap;
+
 use std::fmt;
 use std::fmt::{Debug, Formatter};
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{Write};
 use std::num::NonZeroU32;
 use std::path::Path;
 
 use anyhow::Error;
 use base64::{decode, encode};
-use pem::{parse_many, Pem};
+
 use rand::prelude::*;
 use ring::{digest, pbkdf2};
 use secp256k1::{Message, PublicKey, SecretKey, Signature};
 use secstr::{SecStr, SecVec};
-
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-// use hex::{FromHex, ToHex};
-
+use serde_json::{from_reader, to_writer_pretty};
 use sodiumoxide::crypto::secretbox;
 use sodiumoxide::crypto::secretbox::{Key, Nonce};
+
+// use hex::{FromHex, ToHex};
 
 const CREDENTIAL_LEN: usize = digest::SHA256_OUTPUT_LEN;
 const N_ITER: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(100_000) }; //todo tune len
@@ -146,38 +146,19 @@ impl KeyData {
     where
         T: AsRef<Path>,
     {
-        let mut file = File::open(&path)?;
-        let mut content = Vec::new();
-        file.read_to_end(&mut content)?;
-        let parsed = parse_many(&content);
-        let pem_map = parsed
-            .into_iter()
-            .fold(HashMap::new(), |mut map: HashMap<_, _>, pem| {
-                map.insert(pem.tag, pem.contents);
-                map
-            });
-        let eth_nonce = Nonce::from_slice(pem_map.get("eth_nonce").expect("No nonce in pem file"))
-            .expect("Bad nonce eth provided");
-        let salt = pem_map.get("salt").expect("No salt in pem file").clone();
-        let pubkey = PublicKey::from_slice(pem_map.get("pubkey").expect("No pubkey in map"))?;
-        let encrypted_private_key = pem_map
-            .get("encrypted_private_key")
-            .expect("No encrypted_keypair in pem file");
-        let encrypted_ton_data = pem_map
-            .get("encrypted_ton_data")
-            .expect("No encrypted_ton_data in pem file");
-        let ton_nonce =
-            Nonce::from_slice(pem_map.get("ton_nonce").expect("No ton_nonce in pem file"))
-                .expect("Bad nonce for ton provided");
-
-        let sym_key = Self::key_from_password(password, &*salt);
-        let private_key =
-            Self::private_key_from_encrypted(&*encrypted_private_key, &sym_key, &eth_nonce);
-        let ton_data = secretbox::open(encrypted_ton_data, &ton_nonce, &sym_key)
+        let  file = File::open(&path)?;
+        let conf: CryptoData = from_reader(&file)?;
+        let sym_key = Self::key_from_password(password, &*conf.salt);
+        let private_key = Self::private_key_from_encrypted(
+            &*conf.encrypted_private_key,
+            &sym_key,
+            &conf.eth_nonce,
+        );
+        let ton_data = secretbox::open(&*conf.encrypted_ton_data, &conf.ton_nonce, &sym_key)
             .expect("Failed decrypting ton secret data");
         Ok(Self {
             eth: EthSigner {
-                pubkey,
+                pubkey: conf.eth_pubkey,
                 private_key,
             },
             ton: TonSigner { inner: ton_data },
@@ -218,42 +199,19 @@ impl KeyData {
         let curve = secp256k1::Secp256k1::new();
         let (private, public) = curve.generate_keypair(&mut rng);
         let encrypted_private_key = secretbox::seal(&private[..], &eth_nonce, &key);
-        let pubkey = Vec::from(public.serialize());
-        let eth_nonce_bytes = Vec::from(eth_nonce.0);
         let ton_nonce = secretbox::gen_nonce();
-        let ton_nonce_bytes = Vec::from(ton_nonce.0);
         let encrypted_ton_data = secretbox::seal(&ton_data, &ton_nonce, &key);
+        let data = CryptoData {
+            eth_pubkey: public,
+            ton_nonce,
+            encrypted_ton_data,
+            salt,
+            eth_nonce,
+            encrypted_private_key,
+        };
 
-        let pem_data = vec![
-            Pem {
-                tag: "pubkey".into(),
-                contents: pubkey,
-            },
-            Pem {
-                tag: "salt".into(),
-                contents: salt,
-            },
-            Pem {
-                tag: "encrypted_private_key".into(),
-                contents: encrypted_private_key,
-            },
-            Pem {
-                tag: "eth_nonce".into(),
-                contents: eth_nonce_bytes,
-            },
-            Pem {
-                tag: "ton_nonce".into(),
-                contents: ton_nonce_bytes,
-            },
-            Pem {
-                tag: "encrypted_ton_data".into(),
-                contents: encrypted_ton_data,
-            },
-        ];
-
-        let serialized_self = pem::encode_many(&pem_data);
-        let mut pem_file = File::create(pem_file_path)?;
-        pem_file.write_all(serialized_self.as_bytes())?;
+        let crypto_config = File::create(pem_file_path)?;
+        to_writer_pretty(crypto_config, &data)?;
         Ok(Self {
             eth: EthSigner {
                 private_key: private,
@@ -266,11 +224,9 @@ impl KeyData {
 
 #[cfg(test)]
 mod test {
-    
-    
     use secstr::SecStr;
 
-    use crate::key_managment::{KeyData};
+    use crate::key_managment::KeyData;
 
     // #[test]
     // fn test_sign() {
@@ -299,7 +255,7 @@ mod test {
         KeyData::init(&path, password.clone(), "SOME_SUPA_SECRET_DATA".into()).unwrap();
         let result =
             std::panic::catch_unwind(|| KeyData::from_file(&path, SecStr::new("lol".into())));
-        // std::fs::remove_file(path);
+        std::fs::remove_file(path);
         assert!(result.is_err());
     }
 
