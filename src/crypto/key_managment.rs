@@ -21,7 +21,7 @@ use sodiumoxide::crypto::secretbox::{Key, Nonce};
 // use hex::{FromHex, ToHex};
 
 const CREDENTIAL_LEN: usize = digest::SHA256_OUTPUT_LEN;
-const N_ITER: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(100_000) }; //todo tune len
+const N_ITER: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(1_000_000) }; //todo tune len
 
 #[derive(Eq, PartialEq, Debug)]
 pub struct KeyData {
@@ -174,7 +174,6 @@ impl KeyData {
             password.unsecure(),
             &mut pbkdf2_hash.unsecure_mut(),
         );
-        dbg!(&pbkdf2_hash.unsecure());
         secretbox::Key::from_slice(&pbkdf2_hash.unsecure()).expect("Shouldn't panic")
     }
 
@@ -226,7 +225,7 @@ impl KeyData {
 mod test {
     use secstr::SecStr;
 
-    use crate::key_managment::KeyData;
+    use crate::crypto::key_managment::KeyData;
 
     // #[test]
     // fn test_sign() {
@@ -255,7 +254,7 @@ mod test {
         KeyData::init(&path, password.clone(), "SOME_SUPA_SECRET_DATA".into()).unwrap();
         let result =
             std::panic::catch_unwind(|| KeyData::from_file(&path, SecStr::new("lol".into())));
-        std::fs::remove_file(path);
+        std::fs::remove_file(path).unwrap();
         assert!(result.is_err());
     }
 

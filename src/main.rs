@@ -1,6 +1,6 @@
 use anyhow::Error;
 use relay::config::{read_config, parse_args, generate_config};
-use relay::{engine, key_managment::KeyData};
+use relay::{engine, crypto::key_managment::KeyData};
 use daemonize::Daemonize;
 use log::{error,info};
 use dialoguer::Password;
