@@ -1,14 +1,12 @@
-
 use std::fmt;
 use std::fmt::{Debug, Formatter};
 use std::fs::File;
-use std::io::{Write};
+use std::io::Write;
 use std::num::NonZeroU32;
 use std::path::Path;
 
 use anyhow::Error;
 use base64::{decode, encode};
-
 use rand::prelude::*;
 use ring::{digest, pbkdf2};
 use secp256k1::{Message, PublicKey, SecretKey, Signature};
@@ -17,6 +15,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{from_reader, to_writer_pretty};
 use sodiumoxide::crypto::secretbox;
 use sodiumoxide::crypto::secretbox::{Key, Nonce};
+use tiny_hderive::Error::Secp256k1;
 
 // use hex::{FromHex, ToHex};
 
@@ -146,7 +145,7 @@ impl KeyData {
     where
         T: AsRef<Path>,
     {
-        let  file = File::open(&path)?;
+        let file = File::open(&path)?;
         let conf: CryptoData = from_reader(&file)?;
         let sym_key = Self::key_from_password(password, &*conf.salt);
         let private_key = Self::private_key_from_encrypted(
@@ -184,7 +183,12 @@ impl KeyData {
         .expect("Failed constructing SecretKey from decrypted data")
     }
 
-    pub fn init<T>(pem_file_path: T, password: SecStr, ton_data: Vec<u8>) -> Result<Self, Error>
+    pub fn init<T>(
+        pem_file_path: T,
+        password: SecStr,
+        ton_data: Vec<u8>,
+        eth_private_key: SecretKey,
+    ) -> Result<Self, Error>
     //todo use Writer instead of Path?
     where
         T: AsRef<Path>,
@@ -196,8 +200,8 @@ impl KeyData {
         rng.fill(salt.as_mut_slice());
         let key = Self::key_from_password(password, &salt);
         let curve = secp256k1::Secp256k1::new();
-        let (private, public) = curve.generate_keypair(&mut rng);
-        let encrypted_private_key = secretbox::seal(&private[..], &eth_nonce, &key);
+        let public = PublicKey::from_secret_key(&curve, &eth_private_key);
+        let encrypted_private_key = secretbox::seal(&eth_private_key[..], &eth_nonce, &key);
         let ton_nonce = secretbox::gen_nonce();
         let encrypted_ton_data = secretbox::seal(&ton_data, &ton_nonce, &key);
         let data = CryptoData {
@@ -213,7 +217,7 @@ impl KeyData {
         to_writer_pretty(crypto_config, &data)?;
         Ok(Self {
             eth: EthSigner {
-                private_key: private,
+                private_key: eth_private_key,
                 pubkey: public,
             },
             ton: TonSigner { inner: ton_data },
@@ -223,6 +227,7 @@ impl KeyData {
 
 #[cfg(test)]
 mod test {
+    use secp256k1::SecretKey;
     use secstr::SecStr;
 
     use crate::crypto::key_managment::KeyData;
@@ -238,10 +243,20 @@ mod test {
     // }
     #[test]
     fn test_init() {
+        let private = SecretKey::from_slice(
+            &hex::decode("416ddb82736d0ddf80cc50eda0639a2dd9f104aef121fb9c8af647ad8944a8b1")
+                .unwrap(),
+        )
+        .unwrap();
         let password = SecStr::new("123".into());
         let path = "./test/test_init.key";
-        let signer =
-            KeyData::init(&path, password.clone(), "SOME_SUPA_SECRET_DATA".into()).unwrap();
+        let signer = KeyData::init(
+            &path,
+            password.clone(),
+            "SOME_SUPA_SECRET_DATA".into(),
+            private,
+        )
+        .unwrap();
         let read_signer = KeyData::from_file(&path, password).unwrap();
         std::fs::remove_file(path).unwrap();
         assert_eq!(read_signer, signer);
@@ -251,7 +266,18 @@ mod test {
     fn test_bad_password() {
         let password = SecStr::new("123".into());
         let path = "./test/test_bad.key";
-        KeyData::init(&path, password.clone(), "SOME_SUPA_SECRET_DATA".into()).unwrap();
+        let private = SecretKey::from_slice(
+            &hex::decode("416ddb82736d0ddf80cc50eda0639a2dd9f104aef121fb9c8af647ad8944a8b1")
+                .unwrap(),
+        )
+        .unwrap();
+        KeyData::init(
+            &path,
+            password.clone(),
+            "SOME_SUPA_SECRET_DATA".into(),
+            private,
+        )
+        .unwrap();
         let result =
             std::panic::catch_unwind(|| KeyData::from_file(&path, SecStr::new("lol".into())));
         std::fs::remove_file(path).unwrap();
