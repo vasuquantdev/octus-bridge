@@ -8,7 +8,7 @@ use tokio::spawn;
 use url::Url;
 use web3::transports::ws::WebSocket;
 pub use web3::types::{Address, H256};
-use web3::types::{FilterBuilder, Log};
+use web3::types::{FilterBuilder, Log, BlockNumber};
 use web3::Web3;
 
 pub struct EthConfig {
@@ -55,10 +55,12 @@ impl EthConfig {
         &self,
         addresses: Vec<Address>,
         topics: Vec<H256>,
+        height:BlockNumber
     ) -> Result<impl Stream<Item = Result<Event, Error>>, Error> {
         let filter = FilterBuilder::default()
             .address(addresses)
             .topics(Some(topics), None, None, None)
+            .from_block(height)
             .build();
 
         let filter = self.stream.eth_filter().create_logs_filter(filter).await;

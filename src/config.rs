@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use structopt::StructOpt;
-use url::Url;
+
 
 #[derive(Deserialize, Serialize, Clone, Debug, Default, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct Address(String);
@@ -33,8 +33,7 @@ impl Method {
 
 #[derive(Deserialize, Serialize, Clone, Debug, Default)]
 pub struct RelayConfig {
-    pub pub_key_location: PathBuf,
-    pub private_key_location: PathBuf,
+    pub pem_location: PathBuf,
     pub eth_node_address: String,
     pub contract_mapping: HashMap<Address, Method>,
 }
@@ -48,18 +47,20 @@ pub fn read_config(path: &str) -> Result<RelayConfig, Error> {
 
 #[derive(Deserialize, Serialize, Clone, Debug, StructOpt)]
 pub struct Arguments {
-    #[structopt(required_if("gen_config", "false"))]
-    pub config: Option<String>,
-    #[structopt(long("--gen_config"))]
-    pub gen_config: bool,
+    #[structopt(required_unless = "gen_config", short, required=true)]
+    pub config: String,
+    #[structopt(long, help="It will generate key pair for both ton and ehtherium signing. Provide pem filename.")]
+    pub gen_config: Option<PathBuf>,
 }
 
-pub fn generate_config<T>(path: T) -> Result<(), Error>
+pub fn generate_config<T>(path: T, pem_path: PathBuf) -> Result<(), Error>
 where
     T: AsRef<Path>,
 {
     let mut file = std::fs::File::create(path)?;
-    file.write_all(serde_json::to_vec_pretty(&RelayConfig::default())?.as_slice())?;
+    let mut  config = RelayConfig::default();
+    config = RelayConfig { pem_location: pem_path, ..config };
+    file.write_all(serde_json::to_vec_pretty(&config)?.as_slice())?;
     Ok(())
 }
 
