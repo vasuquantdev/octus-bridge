@@ -10,9 +10,12 @@ use structopt::StructOpt;
 
 
 #[derive(Deserialize, Serialize, Clone, Debug, Default, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct Address(String);
+pub struct EthAddress(String);
 
-impl Address {
+#[derive(Deserialize, Serialize, Clone, Debug, Default, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct TonAddress(String);
+
+impl EthAddress {
     pub fn to_eth_addr(&self) -> Result<EthAddr, Error> {
         let bytes = hex::decode(&self.0)?;
         let hash = sha3::Keccak256::digest(&*bytes);
@@ -35,7 +38,9 @@ impl Method {
 pub struct RelayConfig {
     pub pem_location: PathBuf,
     pub eth_node_address: String,
-    pub contract_mapping: HashMap<Address, Method>,
+    pub ton_contract_address: TonAddress,
+    pub storage_path: PathBuf
+    // pub contract_mapping: HashMap<Address, Method>,
 }
 
 pub fn read_config(path: &str) -> Result<RelayConfig, Error> {
@@ -47,10 +52,12 @@ pub fn read_config(path: &str) -> Result<RelayConfig, Error> {
 
 #[derive(Deserialize, Serialize, Clone, Debug, StructOpt)]
 pub struct Arguments {
-    #[structopt(required_unless = "gen_config", short, required=true)]
+    #[structopt(short, long,  default_value="config.json")]
     pub config: String,
-    #[structopt(long, help="It will generate key pair for both ton and ehtherium signing. Provide pem filename.")]
-    pub gen_config: Option<PathBuf>,
+    #[structopt(long, help="It will generate default config.")]
+    pub gen_config: bool,
+    #[structopt(long, short, requires_if("gen_config", "true"), help="Path for encrypted data storage")]
+    pub crypto_store_path: Option<PathBuf>
 }
 
 pub fn generate_config<T>(path: T, pem_path: PathBuf) -> Result<(), Error>
@@ -65,5 +72,5 @@ where
 }
 
 pub fn parse_args() -> Arguments {
-    Arguments::from_args()
+    dbg!(Arguments::from_args())
 }
