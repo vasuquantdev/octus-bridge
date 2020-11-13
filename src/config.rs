@@ -1,13 +1,14 @@
-use anyhow::Error;
-use config::{Config, File, FileFormat};
-use relay_eth::ws::{Address as EthAddr, H256};
-use serde::{Deserialize, Serialize};
-use sha3::Digest;
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+
+use anyhow::Error;
+use config::{Config, File, FileFormat};
+use serde::{Deserialize, Serialize};
+use sha3::Digest;
 use structopt::StructOpt;
 
+use relay_eth::ws::{Address as EthAddr, H256};
 
 #[derive(Deserialize, Serialize, Clone, Debug, Default, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct EthAddress(String);
@@ -39,7 +40,7 @@ pub struct RelayConfig {
     pub pem_location: PathBuf,
     pub eth_node_address: String,
     pub ton_contract_address: TonAddress,
-    pub storage_path: PathBuf
+    pub storage_path: PathBuf,
     // pub contract_mapping: HashMap<Address, Method>,
 }
 
@@ -52,12 +53,12 @@ pub fn read_config(path: &str) -> Result<RelayConfig, Error> {
 
 #[derive(Deserialize, Serialize, Clone, Debug, StructOpt)]
 pub struct Arguments {
-    #[structopt(short, long,  default_value="config.json")]
+    #[structopt(short, long, default_value = "config.json")]
     pub config: String,
-    #[structopt(long, help="It will generate default config.")]
+    #[structopt(long, help = "It will generate default config.")]
     pub gen_config: bool,
-    #[structopt(long, short, requires_if("gen_config", "true"), help="Path for encrypted data storage")]
-    pub crypto_store_path: Option<PathBuf>
+    #[structopt(long, short, requires_if("gen_config", "true"), help = "Path for encrypted data storage")]
+    pub crypto_store_path: Option<PathBuf>,
 }
 
 pub fn generate_config<T>(path: T, pem_path: PathBuf) -> Result<(), Error>
