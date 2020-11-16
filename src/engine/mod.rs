@@ -100,12 +100,18 @@ struct Password {
 
 async fn serve(config: RelayConfig, state: Arc<Mutex<State>>) {
     info!("Waiting for config data");
-    let json_data = warp::body::content_length_limit(1024 * 1024).and(warp::filters::body::json());
+
+    fn json_data<T>() -> impl Filter<Extract = (T,), Error = warp::Rejection> + Clone
+    where
+        for<'a> T: serde::Deserialize<'a> + Send,
+    {
+        warp::body::content_length_limit(1024 * 1024).and(warp::filters::body::json::<T>())
+    }
 
     let state = warp::any().map(move || (Arc::clone(&state), config.clone()));
 
     let password = warp::path!("unlock")
-        .and(json_data)
+        .and(json_data::<Password>())
         .and(state.clone())
         .and_then(
             |data: Password, (state, config): (Arc<Mutex<State>>, RelayConfig)| {
@@ -115,7 +121,7 @@ async fn serve(config: RelayConfig, state: Arc<Mutex<State>>) {
         .recover(PasswordError::handle_rejection);
 
     let init = warp::path!("init")
-        .and(json_data)
+        .and(json_data::<InitData>())
         .and(state.clone())
         .and_then(
             |data: InitData, (state, config): (Arc<Mutex<State>>, RelayConfig)| {
@@ -135,7 +141,7 @@ struct WaitForInitError(String, StatusCode);
 impl reject::Reject for WaitForInitError {}
 
 impl WaitForInitError {
-    async fn handle_rejection(err: Rejection) -> std::result::Result<impl Reply, Infallible> {
+    async fn handle_rejection(err: Rejection) -> std::result::Result<impl Reply, warp::Rejection> {
         return if let Some(WaitForInitError(a, b)) = err.find() {
             let err = create_error(a);
             Ok(with_status(err, *b))
@@ -144,7 +150,7 @@ impl WaitForInitError {
                 create_error("Internal Server Error"),
                 StatusCode::INTERNAL_SERVER_ERROR,
             ))
-        }
+        };
     }
 }
 
