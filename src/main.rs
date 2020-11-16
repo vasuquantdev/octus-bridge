@@ -1,9 +1,9 @@
 use anyhow::Error;
-use daemonize::Daemonize;
-use dialoguer::Password;
-use dialoguer::theme::ColorfulTheme;
-use log::{error, info};
-use secstr::SecStr;
+
+
+
+use log::{info};
+
 
 use relay::{crypto::key_managment::KeyData, engine, storage};
 use relay::config::{generate_config, parse_args, read_config};
@@ -27,7 +27,7 @@ fn main() -> Result<(), Error> {
     // match res {
     //     Ok(_) => {
     info!("Really started");
-    let err = executor.block_on(engine::run(config))?;
+    let _err = executor.block_on(engine::run(config))?;
 
 // },
     // Err(e)=>error!("Eror daemonizing app: {}",e)
