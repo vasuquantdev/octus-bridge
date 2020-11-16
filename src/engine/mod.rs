@@ -43,28 +43,6 @@ pub struct InitData {
     language: String,
 }
 
-// async fn serve(key_data: Option<KeyData>) {
-//     #[derive(Deserialize, Debug)]
-//     struct Password {
-//         password: String,
-//     }
-//     let json_data = warp::body::content_length_limit(1024 * 1024).and(warp::filters::body::json());
-//
-//     let init = warp::path!("init")
-//         .and(json_data)
-//         .map(|data: InitData| format!("{:?}", &data));
-//     // let password = warp::path("unlock")
-//     //     .and(json_data)
-//     //     .map(|data: Password|{
-//     //         let
-//     //     });
-//     // );
-//
-//     let routes = warp::post().and(init);
-//     let addr: SocketAddr = "127.0.0.1:12345".parse().unwrap();
-//     warp::serve(routes).run(addr).await;
-// }
-
 fn create_error<R>(reason: R) -> Json
 where
     R: AsRef<str>,
@@ -79,14 +57,14 @@ struct PasswordError(String, StatusCode);
 
 impl PasswordError {
     async fn handle_rejection(err: Rejection) -> std::result::Result<impl Reply, Infallible> {
-        if let Some(PasswordError(a, b)) = err.find() {
+        return if let Some(PasswordError(a, b)) = err.find() {
             let err = create_error(a);
-            return Ok(with_status(err, *b));
+            Ok(with_status(err, *b))
         } else {
-            return Ok(with_status(
+            Ok(with_status(
                 create_error("Internal Server Error"),
                 StatusCode::INTERNAL_SERVER_ERROR,
-            ));
+            ))
         }
     }
 }
@@ -240,6 +218,7 @@ pub async fn run(config: RelayConfig) -> Result<(), Error> {
     let state_manager = storage::StateManager::new(&config.storage_path)?;
     let crypto_data_metadata = std::fs::File::open(&config.pem_location);
     let mut state = Arc::new(Mutex::new(State::Sleeping));
+    tokio::spawn(serve(config.clone(), state.clone()));
     let file_size = match crypto_data_metadata {
         Err(e) => {
             warn!("Error opening file with encrypted config: {}", e);
@@ -249,7 +228,10 @@ pub async fn run(config: RelayConfig) -> Result<(), Error> {
     };
 
     if file_size == 0 {
-        serve(config, state).await;
+        let state = state.lock().await;
+        *state = State::InitDataWaiting;
+        drop(state);
+
     }
     // let crypto_config = KeyData::from_file(&config.pem_location)?;
 
