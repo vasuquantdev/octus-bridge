@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use anyhow::Error;
 use bip39::Language;
-use futures::{FutureExt, TryFutureExt};
+use futures::{AsyncReadExt, FutureExt, TryFutureExt};
 use log::error;
 use log::{info, warn};
 use secstr::SecStr;
@@ -26,7 +26,7 @@ use crate::crypto::key_managment::KeyData;
 use crate::crypto::recovery;
 use crate::storage;
 
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Debug, Eq, PartialEq)]
 enum State {
     Sleeping,
     InitDataWaiting,
@@ -101,61 +101,108 @@ struct Password {
 async fn serve(config: RelayConfig, state: Arc<Mutex<State>>) {
     info!("Waiting for config data");
     let json_data = warp::body::content_length_limit(1024 * 1024).and(warp::filters::body::json());
-    // let init = warp::path!("init")
-    //     .and(json_data)
-    //     .and_then(|data: InitData| async move {
-    //         info!("Recieved init data");
-    //         let mut state = state.lock().await;
-    //         let language = match Language::from_language_code(&data.language) {
-    //             Some(a) => a,
-    //             None => {
-    //                 error!("Bad error code provided: {}", &data.language);
-    //                 return Err(warp::reject::custom(
-    //                     create_error("Bad error code provided")) );
-    //             }
-    //         };
-    //         let key = match derive_from_words(language, &data.eth_seed) {
-    //             Ok(a) => a,
-    //             Err(e) => {
-    //                 let error = format!("Failed deriving from eth seed: {}", e);
-    //                 error!("{}", &error);
-    //                 return with_status(create_error(&error), StatusCode::BAD_REQUEST);
-    //             }
-    //         };
-    //
-    //         if let Err(e) = KeyData::init(
-    //             &config.pem_location,
-    //             data.password.into(),
-    //             vec![1, 2, 3, 4],
-    //             key,
-    //         ) {
-    //             let err = format!("Failed initializing: {}", e);
-    //             error!("{}", &err);
-    //             return with_status(create_error(&err), StatusCode::INTERNAL_SERVER_ERROR);
-    //         };
-    //         info!("Successfully initialized");
-    //         *state = State::InitDataReceived;
-    //         with_status(warp::reply::json(&""), StatusCode::OK) //fixme Fucking shame, fix it asap
-    //     });
+
     let state = warp::any().map(move || (Arc::clone(&state), config.clone()));
 
     let password = warp::path!("unlock")
         .and(json_data)
         .and(state.clone())
         .and_then(
-            |data: Password, (state, config): (Arc<Mutex<State>>, RelayConfig)| async { wait_for_password(data,(config, state)) }
+            |data: Password, (state, config): (Arc<Mutex<State>>, RelayConfig)| {
+                wait_for_password(data, config, state)
+            },
         )
         .recover(PasswordError::handle_rejection);
 
+    let init = warp::path!("init")
+        .and(json_data)
+        .and(state.clone())
+        .and_then(
+            |data: InitData, (state, config): (Arc<Mutex<State>>, RelayConfig)| {
+                wait_for_init(data, config, state)
+            },
+        )
+        .recover(WaitForInitError::handle_rejection);
+
+    let routes = init.or(password);
     let addr: SocketAddr = "127.0.0.1:12345".parse().unwrap();
-    // warp::serve(routes).run(addr).await;
+    warp::serve(routes).run(addr).await;
+}
+
+#[derive(Debug)]
+struct WaitForInitError(String, StatusCode);
+
+impl reject::Reject for WaitForInitError {}
+
+impl WaitForInitError {
+    async fn handle_rejection(err: Rejection) -> std::result::Result<impl Reply, Infallible> {
+        return if let Some(WaitForInitError(a, b)) = err.find() {
+            let err = create_error(a);
+            Ok(with_status(err, *b))
+        } else {
+            Ok(with_status(
+                create_error("Internal Server Error"),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            ))
+        }
+    }
+}
+
+async fn wait_for_init(
+    data: InitData,
+    config: RelayConfig,
+    state: Arc<Mutex<State>>,
+) -> Result<impl Reply, Rejection> {
+    info!("Recieved init data");
+    let mut state = state.lock().await;
+    if *state != State::InitDataWaiting {
+        let err = format!("Not waiting for init data now");
+        error!("{}", &err);
+        return Err(custom(WaitForInitError(
+            err,
+            StatusCode::METHOD_NOT_ALLOWED,
+        )));
+    }
+    let language = match Language::from_language_code(&data.language) {
+        Some(a) => a,
+        None => {
+            let error = format!("Bad error code provided: {}", &data.language);
+            error!("{}", &error);
+            return Err(custom(WaitForInitError(error, StatusCode::BAD_REQUEST)));
+        }
+    };
+    let key = match derive_from_words(language, &data.eth_seed) {
+        Ok(a) => a,
+        Err(e) => {
+            let error = format!("Failed deriving from eth seed: {}", e);
+            error!("{}", &error);
+            return Err(custom(WaitForInitError(error, StatusCode::BAD_REQUEST)));
+        }
+    };
+
+    if let Err(e) = KeyData::init(
+        &config.pem_location,
+        data.password.into(),
+        vec![1, 2, 3, 4],
+        key,
+    ) {
+        let err = format!("Failed initializing: {}", e);
+        error!("{}", &err);
+        return Err(custom(WaitForInitError(
+            err,
+            StatusCode::INTERNAL_SERVER_ERROR,
+        )));
+    };
+    info!("Successfully initialized");
+    *state = State::InitDataReceived;
+    Ok(warp::reply())
 }
 
 async fn wait_for_password(
     data: Password,
-    (config, state): (RelayConfig, Arc<Mutex<State>>),
+    config: RelayConfig,
+    state: Arc<Mutex<State>>,
 ) -> Result<impl Reply, Rejection> {
-
     let mut state = state.lock().await;
     if *state != State::PasswordWaiting {
         return Err(custom(PasswordError(
@@ -172,7 +219,7 @@ async fn wait_for_password(
             return Err(custom(PasswordError(error, StatusCode::BAD_REQUEST)));
         }
     };
-    Ok(())
+    Ok(warp::reply())
 }
 
 // }
