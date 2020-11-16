@@ -5,12 +5,9 @@ use std::sync::Arc;
 
 use anyhow::Error;
 use bip39::Language;
-use futures::{AsyncReadExt, FutureExt, TryFutureExt};
 use log::error;
 use log::{info, warn};
-use secstr::SecStr;
 use serde::Deserialize;
-use tiny_hderive::bip44::IntoDerivationPath;
 use tokio::sync::Mutex;
 use url::Url;
 use warp::http::StatusCode;
@@ -228,7 +225,7 @@ pub async fn run(config: RelayConfig) -> Result<(), Error> {
     };
 
     if file_size == 0 {
-        let state = state.lock().await;
+        let mut state = state.lock().await;
         *state = State::InitDataWaiting;
         drop(state);
 

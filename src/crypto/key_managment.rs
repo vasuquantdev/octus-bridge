@@ -1,7 +1,6 @@
 use std::fmt;
 use std::fmt::{Debug, Formatter};
 use std::fs::File;
-use std::io::Write;
 use std::num::NonZeroU32;
 use std::path::Path;
 
@@ -15,8 +14,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{from_reader, to_writer_pretty};
 use sodiumoxide::crypto::secretbox;
 use sodiumoxide::crypto::secretbox::{Key, Nonce};
-
-
+use anyhow::anyhow;
 // use hex::{FromHex, ToHex};
 
 const CREDENTIAL_LEN: usize = digest::SHA256_OUTPUT_LEN;
@@ -152,9 +150,9 @@ impl KeyData {
             &*conf.encrypted_private_key,
             &sym_key,
             &conf.eth_nonce,
-        );
-        let ton_data = secretbox::open(&*conf.encrypted_ton_data, &conf.ton_nonce, &sym_key)
-            .expect("Failed decrypting ton secret data");
+        )?;
+        let ton_data = secretbox::open(&*conf.encrypted_ton_data, &conf.ton_nonce, &sym_key).map_err(|_|anyhow!("Failed decrypting with provided password"))?;
+
         Ok(Self {
             eth: EthSigner {
                 pubkey: conf.eth_pubkey,
@@ -176,11 +174,11 @@ impl KeyData {
         secretbox::Key::from_slice(&pbkdf2_hash.unsecure()).expect("Shouldn't panic")
     }
 
-    fn private_key_from_encrypted(encrypted_key: &[u8], key: &Key, nonce: &Nonce) -> SecretKey {
+    fn private_key_from_encrypted(encrypted_key: &[u8], key: &Key, nonce: &Nonce) -> Result<SecretKey, Error> {
         SecretKey::from_slice(
-            &secretbox::open(encrypted_key, nonce, key).expect("Failed decrypting eth SecretKey"),
+            &secretbox::open(encrypted_key, nonce, key).map_err(|_|anyhow!("Failed decrypting eth SecretKey"))?,
         )
-        .expect("Failed constructing SecretKey from decrypted data")
+        .map_err(|_|anyhow!("Failed constructing SecretKey from decrypted data"))
     }
 
     pub fn init<T>(
@@ -279,7 +277,7 @@ mod test {
         )
         .unwrap();
         let result =
-            std::panic::catch_unwind(|| KeyData::from_file(&path, SecStr::new("lol".into())));
+             KeyData::from_file(&path, SecStr::new("lol".into()));
         std::fs::remove_file(path).unwrap();
         assert!(result.is_err());
     }
