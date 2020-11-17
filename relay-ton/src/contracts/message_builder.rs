@@ -4,7 +4,6 @@ use ton_block::MsgAddress;
 use super::errors::*;
 use crate::models::*;
 use crate::prelude::*;
-use crate::transport::errors::{TransportError, TransportResult};
 use crate::transport::Transport;
 
 impl From<ExternalMessageHeader> for HashMap<String, TokenValue> {

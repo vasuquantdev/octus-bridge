@@ -1,7 +1,8 @@
 pub mod errors;
-pub mod graphql_transport;
+pub mod tonlib_transport;
+//pub mod graphql_transport;
 
-pub use graphql_transport::GraphQlTransport;
+//pub use graphql_transport::GraphQlTransport;
 
 use self::errors::*;
 use crate::models::*;

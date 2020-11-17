@@ -8,6 +8,8 @@ pub enum TransportError {
     FailedToSerialize,
     #[error("api request failed. {reason}")]
     ApiFailure { reason: String },
+    #[error("failed to fetch transaction. {reason}")]
+    FailedToFetchTransaction { reason: String },
     #[error("failed to parse block. {reason}")]
     FailedToParseBlock { reason: String },
     #[error("failed to fetch block. {reason}")]

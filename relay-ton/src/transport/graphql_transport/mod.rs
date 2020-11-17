@@ -1,15 +1,15 @@
 pub mod config;
+mod subscription;
 
 pub use config::ClientConfig;
 
 use num_traits::Num;
 use serde_json::Value;
-use ton_block::{ExternalInboundMessageHeader, Message, Serializable};
-use ton_sdk::{
-    AbiFunction, Block, BlockId, Contract, NodeClient, NodeClientConfig, OrderBy, SortDirection,
-};
+use ton_block::{Deserializable, ExternalInboundMessageHeader, Message, Serializable};
+use ton_client::ClientContext;
+use ton_sdk::{AbiFunction, Block, BlockId, Contract};
 
-use self::config::*;
+use self::subscription::*;
 use super::errors::*;
 use super::Transport;
 use crate::models::*;
@@ -17,15 +17,25 @@ use crate::prelude::*;
 
 pub struct GraphQlTransport {
     config: ClientConfig,
-    node_client: NodeClient,
+    context: ClientContext,
+    action_queues: Arc<RwLock<AccountActionQueues>>,
+}
+
+type AccountActionQueues = HashMap<UInt256, Arc<AccountActionQueue>>;
+
+struct AccountActionQueue {
+    account: MsgAddrStd,
 }
 
 impl GraphQlTransport {
     pub async fn new(config: ClientConfig) -> TransportResult<Self> {
-        let node_client = NodeClient::new(NodeClientConfig {
-            base_url: Some(config.server_address.clone()),
-            timeouts: None,
-            access_key: None,
+        let context = ClientContext::new(ton_client::ClientConfig {
+            network: ton_client::net::NetworkConfig {
+                server_address: config.server_address.clone(),
+                ..Default::default()
+            },
+            crypto: Default::default(),
+            abi: Default::default(),
         })
         .await
         .map_err(|e| TransportError::FailedToInitialize {
@@ -34,8 +44,48 @@ impl GraphQlTransport {
 
         Ok(Self {
             config,
-            node_client,
+            context,
+            action_queues: Arc::new(Default::default()),
         })
+    }
+
+    fn listen(
+        &self,
+        address: &MsgAddressInt,
+    ) -> TransportResult<(
+        SubscriptionHandle,
+        impl Stream<Item = TransportResult<ton_sdk::Transaction>> + Send,
+    )> {
+        let node_client = self.context
+
+        subscribe(
+            &self.node_client,
+            "transactions",
+            &format!(
+                r#"{{ 
+                    "account_addr": {{ "eq": "{}" }},
+                    "tr_type": {{ "eq": 0 }}
+                }}"#,
+                address
+            ),
+            r#"boc"#,
+            |value| {
+                let boc = match value.get("boc") {
+                    Some(Value::String(boc)) if !boc.is_empty() => boc,
+                    _ => {
+                        return Err(TransportError::ApiFailure {
+                            reason: "invalid transaction response".to_owned(),
+                        })
+                    }
+                };
+
+                ton_block::Transaction::construct_from_base64(boc)
+                    .and_then(ton_sdk::Transaction::try_from)
+                    .map_err(|e| TransportError::ApiFailure {
+                        reason: e.to_string(),
+                    })
+            },
+        )
     }
 
     async fn load_contract(&self, address: &MsgAddressInt) -> TransportResult<Contract> {
@@ -45,206 +95,6 @@ impl GraphQlTransport {
                 reason: e.to_string(),
             })?
             .ok_or_else(|| TransportError::AccountNotFound)
-    }
-
-    async fn find_last_shard_block(&self, address: &MsgAddressInt) -> TransportResult<BlockId> {
-        // Helpers
-        fn get_block_id(blk: &Value) -> Option<BlockId> {
-            blk.get("id")
-                .and_then(|id| id.as_str())
-                .map(|val| val.to_owned().into())
-        }
-
-        // Get latest block from masterchain
-        let blocks = self
-            .node_client
-            .query(
-                BLOCKS_TABLE_NAME,
-                r#"{ "workchain_id": { "eq": -1 } }"#,
-                "id master { shard_hashes { workchain_id shard descr { root_hash } } }",
-                Some(OrderBy {
-                    path: "seq_no".to_owned(),
-                    direction: SortDirection::Descending,
-                }),
-                Some(1),
-                None,
-            )
-            .await
-            .check_sync()?;
-        let block = &blocks[0];
-
-        let workchain = address.get_workchain_id();
-
-        // Check Node SE case (without masterchain and sharding)
-        if block.is_null() {
-            let blocks = self
-                .node_client
-                .query(
-                    BLOCKS_TABLE_NAME,
-                    &format!(r#"{{ "workchain_id": {{ "eq": {} }} }}"#, workchain),
-                    "after_merge shard",
-                    Some(OrderBy {
-                        path: "seq_no".to_owned(),
-                        direction: SortDirection::Descending,
-                    }),
-                    Some(1),
-                    None,
-                )
-                .await
-                .check_sync()?;
-            let block = blocks.get(0).ok_or_else(|| TransportError::NoBlocksFound)?;
-
-            // If workchain is sharded then it is not Node SE and missing masterchain blocks is error
-            if block["after_merge"] == true || block["shard"] != "8000000000000000" {
-                return Err(TransportError::NoBlocksFound);
-            }
-
-            // Get last block by seqno
-            self.node_client
-                .query(
-                    BLOCKS_TABLE_NAME,
-                    &format!(
-                        r#"{{ "workchain_id": {{ "eq": {} }}, "shard": {{ "eq": "8000000000000000" }} }}"#,
-                        workchain
-                    ),
-                    "id",
-                    Some(OrderBy {
-                        path: "seq_no".to_owned(),
-                        direction: SortDirection::Descending,
-                    }),
-                    Some(1),
-                    None,
-                )
-                .await
-                .check_sync()?
-                .get(0)
-                .and_then(get_block_id)
-                .ok_or_else(|| TransportError::NoBlocksFound)
-        } else {
-            // Handle simple case when searched account is in masterchain
-            if workchain == -1 {
-                return get_block_id(&block).ok_or_else(|| TransportError::NoBlocksFound);
-            }
-
-            // Find account's shard block
-            let shards = block["master"]["shard_hashes"].as_array().ok_or(
-                TransportError::FailedToInitialize {
-                    reason: "no shard_hashes found in masterchain block".to_string(),
-                },
-            )?;
-
-            let shard_block =
-                ton_sdk::Contract::find_matching_shard(shards, address).map_err(|e| {
-                    TransportError::ApiFailure {
-                        reason: e.to_string(),
-                    }
-                })?;
-
-            if shard_block.is_null() {
-                return Err(TransportError::ApiFailure {
-                    reason: format!(
-                        "no matching shard for account {} in block {}",
-                        address, block["id"]
-                    ),
-                });
-            }
-
-            shard_block["descr"]["root_hash"]
-                .as_str()
-                .map(|val| val.to_owned().into())
-                .ok_or_else(|| TransportError::NoBlocksFound)
-        }
-    }
-
-    async fn wait_next_block(
-        &self,
-        current: &str,
-        address: &MsgAddressInt,
-        timeout: Option<u32>,
-    ) -> TransportResult<Block> {
-        let block = self
-            .node_client
-            .wait_for(
-                BLOCKS_TABLE_NAME,
-                &format!(
-                    r#"{{
-                        "prev_ref": {{
-                            "root_hash": {{ "eq": "{}" }}
-                        }},
-                        "OR": {{
-                            "prev_alt_ref": {{
-                                "root_hash": {{ "eq": "{}" }}
-                            }}
-                        }}
-                    }}"#,
-                    current, current
-                ),
-                BLOCK_FIELDS,
-                timeout,
-            )
-            .await
-            .check_sync()?;
-
-        if block["after_split"] == true && !check_shard_match(block.clone(), address)? {
-            self.node_client
-                .wait_for(
-                    BLOCKS_TABLE_NAME,
-                    &format!(
-                        r#"{{
-                            "id": {{ "ne": "{}" }},
-                            "prev_ref": {{
-                                "root_hash": {{ "eq": "{}" }}
-                            }}
-                        }}"#,
-                        block["id"], current
-                    ),
-                    BLOCK_FIELDS,
-                    timeout,
-                )
-                .await
-                .check_sync()
-                .and_then(|value| {
-                    serde_json::from_value(value).map_err(|e| TransportError::FailedToParseBlock {
-                        reason: e.to_string(),
-                    })
-                })
-        } else {
-            serde_json::from_value(block).map_err(|e| TransportError::FailedToParseBlock {
-                reason: e.to_string(),
-            })
-        }
-    }
-
-    async fn wait_next_shard_block(
-        &self,
-        block_id: &str,
-        address: &MsgAddressInt,
-        timeout: u32,
-    ) -> TransportResult<Block> {
-        let mut retries: u8 = 0;
-        loop {
-            match self.wait_next_block(block_id, address, Some(timeout)).await {
-                Ok(block) => return Ok(block),
-                Err(e) if !can_retry_network_error(&self.config, retries) => {
-                    return Err(TransportError::FailedToFetchBlock {
-                        reason: e.to_string(),
-                    });
-                }
-                _ => {
-                    tokio::time::delay_for(tokio::time::Duration::from_secs(1)).await;
-                    retries = retries.checked_add(1).unwrap_or(retries);
-                }
-            }
-        }
-    }
-
-    async fn wait_for_transaction(
-        &self,
-        abi: &AbiFunction,
-        expires_at: u32,
-        shard_block_id: &str,
-    ) -> TransportResult<ContractOutput> {
-        todo!()
     }
 
     async fn run_local(
@@ -470,14 +320,49 @@ mod tests {
         .unwrap()
     }
 
-    #[tokio::test]
-    async fn test_get_existing_account_state() {
-        let transport = GraphQlTransport::new(ClientConfig {
-            server_address: MAIN_SERVER_ADDR.to_owned(),
+    async fn make_transport(url: &str) -> GraphQlTransport {
+        GraphQlTransport::new(ClientConfig {
+            server_address: url.to_owned(),
             ..Default::default()
         })
         .await
-        .unwrap();
+        .unwrap()
+    }
+
+    #[tokio::test(threaded_scheduler)]
+    async fn test_subscription() {
+        use tokio::stream::StreamExt;
+
+        let transport = make_transport(MAIN_SERVER_ADDR).await;
+
+        let (subscription, mut rx) = transport.listen(&bridge_addr()).unwrap();
+
+        tokio::spawn(async move {
+            tokio::time::delay_for(tokio::time::Duration::from_secs(2)).await;
+            std::mem::drop(subscription);
+        });
+
+        while let Some(item) = rx.next().await {
+            let transaction = match item {
+                Ok(transaction) => transaction,
+                Err(e) => {
+                    log::error!("subscription error: {}", e);
+                    continue;
+                }
+            };
+
+            let in_msg = match &transaction.in_msg {
+                Some(in_msg) => in_msg,
+                None => continue,
+            };
+
+            println!("Item: {:?}", transaction);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_existing_account_state() {
+        let transport = make_transport(MAIN_SERVER_ADDR).await;
 
         let account_state = transport.get_account_state(&elector_addr()).await.unwrap();
         println!("Account state: {:?}", account_state);
@@ -485,12 +370,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_local_get_last_block() {
-        let transport = GraphQlTransport::new(ClientConfig {
-            server_address: LOCAL_SERVER_ADDR.to_owned(),
-            ..Default::default()
-        })
-        .await
-        .unwrap();
+        let transport = make_transport(LOCAL_SERVER_ADDR).await;
 
         let last_shard_block = transport
             .find_last_shard_block(&bridge_addr())
@@ -501,12 +381,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_last_block() {
-        let transport = GraphQlTransport::new(ClientConfig {
-            server_address: MAIN_SERVER_ADDR.to_owned(),
-            ..Default::default()
-        })
-        .await
-        .unwrap();
+        let transport = make_transport(MAIN_SERVER_ADDR).await;
 
         let last_shard_block = transport
             .find_last_shard_block(&elector_addr())
@@ -519,4 +394,5 @@ mod tests {
 
         println!("Next block: {:#?}", next_block);
     }
+
 }
