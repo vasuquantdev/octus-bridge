@@ -194,8 +194,8 @@ const ABI: &str = include_str!("../../abi/Bridge.abi.json");
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::transport::graphql_transport::config::ClientConfig;
-    use crate::transport::GraphQlTransport;
+    use crate::transport::tonlib_transport::config::Config;
+    use crate::transport::TonlibTransport;
 
     const LOCAL_SERVER_ADDR: &str = "http://127.0.0.1:80";
 
@@ -206,19 +206,19 @@ mod tests {
         .unwrap()
     }
 
-    #[tokio::test]
-    async fn get_ethereum_events_configuration() {
-        let transport: Arc<dyn Transport> = Arc::new(
-            GraphQlTransport::new(ClientConfig {
-                server_address: LOCAL_SERVER_ADDR.to_owned(),
-                ..Default::default()
-            })
-            .await
-            .unwrap(),
-        );
-
-        let bridge = BridgeContract::new(&transport, &bridge_addr());
-        let config = bridge.get_ethereum_events_configuration().await.unwrap();
-        println!("Configs: {:?}", config);
-    }
+    // #[tokio::test]
+    // async fn get_ethereum_events_configuration() {
+    //     let transport: Arc<dyn Transport> = Arc::new(
+    //         GraphQlTransport::new(ClientConfig {
+    //             server_address: LOCAL_SERVER_ADDR.to_owned(),
+    //             ..Default::default()
+    //         })
+    //         .await
+    //         .unwrap(),
+    //     );
+    //
+    //     let bridge = BridgeContract::new(&transport, &bridge_addr());
+    //     let config = bridge.get_ethereum_events_configuration().await.unwrap();
+    //     println!("Configs: {:?}", config);
+    // }
 }

@@ -33,7 +33,7 @@ impl From<KeystoreType> for tonlib::KeystoreType {
     fn from(t: KeystoreType) -> Self {
         match t {
             KeystoreType::InMemory => Self::InMemory,
-            KeystoreType::FileSystem(root_dir) => Self::FileSystem(root_dir),
+            KeystoreType::FileSystem { root_dir } => Self::FileSystem(root_dir),
         }
     }
 }
