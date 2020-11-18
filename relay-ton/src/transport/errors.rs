@@ -20,6 +20,8 @@ pub enum TransportError {
     FailedToFetchAccountState { reason: String },
     #[error("failed to parse account state. {reason}")]
     FailedToParseAccountState { reason: String },
+    #[error("failed to parse transaction. {reason}")]
+    FailedToParseTransaction { reason: String },
     #[error("failed to send message. {reason}")]
     FailedToSendMessage { reason: String },
     #[error("message was not found before expiration time")]
