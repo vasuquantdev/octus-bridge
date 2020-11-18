@@ -8,7 +8,6 @@ publish = false
 members = [
     "relay-eth",
     "client"
-    #    "enigma"
 ]
 [dependencies]
 relay-eth = { path = "./relay-eth" }
@@ -35,10 +34,8 @@ warp-json-rpc = "0.2.0"
 structopt = "0.3.20"
 log = "*"
 env_logger = "*"
-#failure = "*"
+thiserror = "1.0.22"
 futures = "0.3.1"
 tokio = { version = "0.2", features = ["full"] }
 daemonize = "0.4.1"
 dialoguer = "0.7.1"
-
-machine = "0.3.0"

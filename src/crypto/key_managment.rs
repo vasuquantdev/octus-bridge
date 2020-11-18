@@ -4,6 +4,7 @@ use std::fs::File;
 use std::num::NonZeroU32;
 use std::path::Path;
 
+use anyhow::anyhow;
 use anyhow::Error;
 use base64::{decode, encode};
 use rand::prelude::*;
@@ -14,7 +15,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{from_reader, to_writer_pretty};
 use sodiumoxide::crypto::secretbox;
 use sodiumoxide::crypto::secretbox::{Key, Nonce};
-use anyhow::anyhow;
+
 // use hex::{FromHex, ToHex};
 
 const CREDENTIAL_LEN: usize = digest::SHA256_OUTPUT_LEN;
@@ -22,18 +23,18 @@ const N_ITER: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(1_000_000) }; //to
 
 #[derive(Eq, PartialEq, Debug)]
 pub struct KeyData {
-    eth: EthSigner,
-    ton: TonSigner,
+    pub eth: EthSigner,
+    pub ton: TonSigner,
 }
 
 #[derive(Eq, PartialEq)]
-struct EthSigner {
+pub struct EthSigner {
     pubkey: PublicKey,
     private_key: SecretKey,
 }
 
 #[derive(Eq, PartialEq, Clone)]
-struct TonSigner {
+pub struct TonSigner {
     inner: Vec<u8>,
 }
 
@@ -151,7 +152,8 @@ impl KeyData {
             &sym_key,
             &conf.eth_nonce,
         )?;
-        let ton_data = secretbox::open(&*conf.encrypted_ton_data, &conf.ton_nonce, &sym_key).map_err(|_|anyhow!("Failed decrypting with provided password"))?;
+        let ton_data = secretbox::open(&*conf.encrypted_ton_data, &conf.ton_nonce, &sym_key)
+            .map_err(|_| anyhow!("Failed decrypting with provided password"))?;
 
         Ok(Self {
             eth: EthSigner {
@@ -174,11 +176,16 @@ impl KeyData {
         secretbox::Key::from_slice(&pbkdf2_hash.unsecure()).expect("Shouldn't panic")
     }
 
-    fn private_key_from_encrypted(encrypted_key: &[u8], key: &Key, nonce: &Nonce) -> Result<SecretKey, Error> {
+    fn private_key_from_encrypted(
+        encrypted_key: &[u8],
+        key: &Key,
+        nonce: &Nonce,
+    ) -> Result<SecretKey, Error> {
         SecretKey::from_slice(
-            &secretbox::open(encrypted_key, nonce, key).map_err(|_|anyhow!("Failed decrypting eth SecretKey"))?,
+            &secretbox::open(encrypted_key, nonce, key)
+                .map_err(|_| anyhow!("Failed decrypting eth SecretKey"))?,
         )
-        .map_err(|_|anyhow!("Failed constructing SecretKey from decrypted data"))
+        .map_err(|_| anyhow!("Failed constructing SecretKey from decrypted data"))
     }
 
     pub fn init<T>(
@@ -276,8 +283,7 @@ mod test {
             private,
         )
         .unwrap();
-        let result =
-             KeyData::from_file(&path, SecStr::new("lol".into()));
+        let result = KeyData::from_file(&path, SecStr::new("lol".into()));
         std::fs::remove_file(path).unwrap();
         assert!(result.is_err());
     }

@@ -4,11 +4,11 @@ use anyhow::Error;
 use sled::{Db, IVec};
 
 #[derive(Clone, Debug)]
-pub struct StateManager {
+pub struct PersistentStateManager {
     inner: Db,
 }
 
-impl StateManager {
+impl PersistentStateManager {
     pub fn new<T>(p: T) -> Result<Self, Error>
         where
             T: AsRef<Path>,

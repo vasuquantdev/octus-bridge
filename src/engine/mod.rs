@@ -8,7 +8,7 @@ use bip39::Language;
 use log::error;
 use log::{info, warn};
 use serde::Deserialize;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 use url::Url;
 use warp::http::StatusCode;
 use warp::reject::custom;
@@ -16,20 +16,31 @@ use warp::reply::{with_status, Json};
 use warp::{reject, Filter, Rejection, Reply};
 
 use recovery::derive_from_words;
-use relay_eth::ws::EthConfig;
+use relay_eth::ws::EthListener;
 
 use crate::config::RelayConfig;
-use crate::crypto::key_managment::KeyData;
+use crate::crypto::key_managment::{EthSigner, KeyData};
 use crate::crypto::recovery;
+use crate::engine::bridge::Bridge;
 use crate::storage;
+use crate::storage::PersistentStateManager;
 
-#[derive(Debug, Eq, PartialEq)]
-enum State {
-    Sleeping,
-    InitDataWaiting,
-    InitDataReceived,
-    PasswordWaiting,
-    PasswordReceived(KeyData),
+mod bridge;
+
+// #[derive(Debug, Eq, PartialEq)]
+// enum State {
+//     Sleeping,
+//     InitDataWaiting,
+//     InitDataReceived,
+//     PasswordWaiting,
+//     PasswordReceived(KeyData),
+// }
+
+struct State {
+    init_data_needed: bool,
+    password_needed: bool,
+    bridge: Option<Arc<Bridge>>,
+    relay_state: RelayState,
 }
 
 #[derive(Deserialize, Debug)]
@@ -53,7 +64,7 @@ where
 struct PasswordError(String, StatusCode);
 
 impl PasswordError {
-    async fn handle_rejection(err: Rejection) -> std::result::Result<impl Reply, Infallible> {
+    async fn handle_rejection(err: Rejection) ->  std::result::Result<impl Reply, Infallible> {
         return if let Some(PasswordError(a, b)) = err.find() {
             let err = create_error(a);
             Ok(with_status(err, *b))
@@ -62,7 +73,7 @@ impl PasswordError {
                 create_error("Internal Server Error"),
                 StatusCode::INTERNAL_SERVER_ERROR,
             ))
-        }
+        };
     }
 }
 
@@ -74,7 +85,7 @@ struct Password {
 }
 
 async fn serve(config: RelayConfig, state: Arc<Mutex<State>>) {
-    info!("Waiting for config data");
+    info!("Starting server");
 
     fn json_data<T>() -> impl Filter<Extract = (T,), Error = warp::Rejection> + Clone
     where
@@ -116,7 +127,7 @@ struct WaitForInitError(String, StatusCode);
 impl reject::Reject for WaitForInitError {}
 
 impl WaitForInitError {
-    async fn handle_rejection(err: Rejection) -> std::result::Result<impl Reply, warp::Rejection> {
+    async fn handle_rejection(err: Rejection) ->  std::result::Result<impl Reply, Infallible> {
         return if let Some(WaitForInitError(a, b)) = err.find() {
             let err = create_error(a);
             Ok(with_status(err, *b))
@@ -136,7 +147,7 @@ async fn wait_for_init(
 ) -> Result<impl Reply, Rejection> {
     info!("Recieved init data");
     let mut state = state.lock().await;
-    if *state != State::InitDataWaiting {
+    if !state.init_data_needed {
         let err = format!("Not waiting for init data now");
         error!("{}", &err);
         return Err(custom(WaitForInitError(
@@ -160,22 +171,36 @@ async fn wait_for_init(
             return Err(custom(WaitForInitError(error, StatusCode::BAD_REQUEST)));
         }
     };
-
-    if let Err(e) = KeyData::init(
+    let key_data = match KeyData::init(
         &config.pem_location,
         data.password.into(),
         vec![1, 2, 3, 4],
         key,
     ) {
-        let err = format!("Failed initializing: {}", e);
-        error!("{}", &err);
-        return Err(custom(WaitForInitError(
-            err,
-            StatusCode::INTERNAL_SERVER_ERROR,
-        )));
+        Err(e) => {
+            let err = format!("Failed initializing: {}", e);
+            error!("{}", &err);
+            return Err(custom(WaitForInitError(
+                err,
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )));
+        }
+        Ok(a) => a,
     };
+
+    let bridge = Arc::new(Bridge::new(
+        key_data.eth,
+        state.relay_state.eth_listener.clone(),
+    )); //todo  ton
     info!("Successfully initialized");
-    *state = State::InitDataReceived;
+    let spawned_bridge = bridge.clone();
+    tokio::spawn(async move   { spawned_bridge.run().await });
+    *state = State {
+        init_data_needed: false,
+        password_needed: state.password_needed,
+        bridge: Some(bridge),
+        relay_state: state.relay_state.clone(),
+    };
     Ok(warp::reply())
 }
 
@@ -184,8 +209,9 @@ async fn wait_for_password(
     config: RelayConfig,
     state: Arc<Mutex<State>>,
 ) -> Result<impl Reply, Rejection> {
-    let mut state = state.lock().await;
-    if *state != State::PasswordWaiting {
+    info!("Received unlock request");
+    let state = state.lock().await;
+    if !state.password_needed {
         return Err(custom(PasswordError(
             "Not waiting for password".to_string(),
             StatusCode::NOT_ACCEPTABLE,
@@ -193,7 +219,10 @@ async fn wait_for_password(
     }
 
     match KeyData::from_file(config.pem_location, data.password.into()) {
-        Ok(a) => *state = State::PasswordReceived(a),
+        Ok(a) => {
+            let (signer, _) = (a.eth, a.ton); //todo ton part
+            let bridge = Bridge::new(signer, state.relay_state.eth_listener.clone());
+        }
         Err(e) => {
             let error = format!("Failed unlocking relay: {}", &e);
             error!("{}", &error);
@@ -203,19 +232,30 @@ async fn wait_for_password(
     Ok(warp::reply())
 }
 
-// }
+#[derive(Clone)]
+struct RelayState {
+    persistent_state_manager: PersistentStateManager,
+    eth_listener: EthListener,
+}
 
 pub async fn run(config: RelayConfig) -> Result<(), Error> {
-    let eth_config = EthConfig::new(
+    let eth_config = EthListener::new(
         Url::parse(config.eth_node_address.as_str())
             .map_err(|e| Error::new(e).context("Bad url for eth_config provided"))?,
     )
     .await;
 
-    let state_manager = storage::StateManager::new(&config.storage_path)?;
+    let state_manager = storage::PersistentStateManager::new(&config.storage_path)?;
     let crypto_data_metadata = std::fs::File::open(&config.pem_location);
-    let mut state = Arc::new(Mutex::new(State::Sleeping));
-    tokio::spawn(serve(config.clone(), state.clone()));
+    let mut state = State {
+        bridge: None,
+        password_needed: false,
+        init_data_needed: false,
+        relay_state: RelayState {
+            eth_listener: eth_config,
+            persistent_state_manager: state_manager,
+        },
+    };
     let file_size = match crypto_data_metadata {
         Err(e) => {
             warn!("Error opening file with encrypted config: {}", e);
@@ -225,13 +265,20 @@ pub async fn run(config: RelayConfig) -> Result<(), Error> {
     };
 
     if file_size == 0 {
-        let mut state = state.lock().await;
-        *state = State::InitDataWaiting;
-        drop(state);
-
+        state = State {
+            init_data_needed: true,
+            ..state
+        };
+    } else {
+        state = State {
+            password_needed: true,
+            ..state
+        }
     }
-    // let crypto_config = KeyData::from_file(&config.pem_location)?;
-
-    // serve().await;
+    info!(
+        "State is: password_needed: {}, init_data_needed:{}",
+        state.password_needed, state.init_data_needed
+    );
+    serve(config, Arc::new(Mutex::new(state))).await;
     Ok(())
 }

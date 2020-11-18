@@ -11,7 +11,8 @@ pub use web3::types::{Address, H256, BlockNumber};
 use web3::types::{FilterBuilder, Log};
 use web3::Web3;
 
-pub struct EthConfig {
+#[derive(Clone)]
+pub struct EthListener {
     stream: Web3<WebSocket>,
 }
 
@@ -24,7 +25,7 @@ pub struct Event {
     pub topics: Vec<H256>,
 }
 
-impl EthConfig {
+impl EthListener {
     fn log_to_event(log: Log) -> Result<Event, Error> {
         let num = Uint256::from_bytes_be(&log.data.0);
         let hash = match log.transaction_hash {
@@ -75,7 +76,7 @@ impl EthConfig {
                         }
                     }
                     Ok(a) => {
-                        let event = EthConfig::log_to_event(a);
+                        let event = EthListener::log_to_event(a);
                         log::trace!("Received event: {:#?}", &event);
                         if let Err(e) = tx.send(event) {
                             error!("Error while transmitting value via channel: {}", e);
