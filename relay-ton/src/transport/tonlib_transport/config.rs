@@ -2,7 +2,7 @@ use tokio::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     pub network_config: String,
     pub network_name: String,
