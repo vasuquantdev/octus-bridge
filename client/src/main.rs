@@ -1,10 +1,10 @@
 use anyhow::anyhow;
 use anyhow::Error;
-use dialoguer::theme::ColorfulTheme;
 use dialoguer::{Input, Password, Select};
+use dialoguer::theme::ColorfulTheme;
 use reqwest::Url;
-use serde::{Deserialize, Serialize};
-use std::net::SocketAddr;
+use serde::{Serialize};
+use serde_json::json;
 use structopt::StructOpt;
 
 fn parse_url(url: &str) -> Result<Url, Error> {
@@ -20,33 +20,45 @@ struct Arguments {
 #[derive(Serialize, Debug)]
 struct InitData {
     ton_seed: Vec<String>,
-    eth_seed: Vec<String>,
+    eth_seed: String,
     password: String,
+    language: String
 }
 
 fn provide_ton_seed() -> Result<Vec<String>, Error> {
     let input: String = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("Provide ton seed words. 12 words are needed.")
         .interact_text()?;
-    let words: Vec<String> = input.split(" ").map(|x| x.to_string()).collect();
+    let words: Vec<String> = input.split(' ').map(|x| x.to_string()).collect();
     if words.len() != 12 {
         return Err(anyhow!("{} words for ton seed are provided", words.len()));
     }
     Ok(words)
 }
 
-fn provide_eth_seed() -> Result<Vec<String>, Error> {
+fn provide_eth_seed() -> Result<String, Error> {
     let input: String = Input::with_theme(&ColorfulTheme::default())
-        .with_prompt("Provide ton seed words.")
+        .with_prompt("Provide eth seed words.")
         .interact_text()?;
-    let words: Vec<String> = input.split(" ").map(|x| x.to_string()).collect();
+    let words: Vec<String> = input.split(' ').map(|x| x.to_string()).collect();
     if words.len() < 12 {
         return Err(anyhow!(
             "{} words for eth seed are provided which is not enough for high entropy",
             words.len()
         ));
     }
-    Ok(words)
+    Ok(words.join(" "))
+}
+
+fn provide_language()->Result<String, Error>
+{
+    let langs = ["en", "zh-hans", "zh-hant", "fr", "it", "ja", "ko", "es"];
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Choose bip39 mnemonic language for eth")
+        .items(&langs)
+        .default(0)
+        .interact()?;
+    Ok(langs[selection].to_string())
 }
 
 fn provide_password() -> Result<String, Error> {
@@ -69,13 +81,19 @@ fn unlock_node() -> Result<String, Error> {
 
 fn init() -> Result<InitData, Error> {
     let ton_seed = provide_ton_seed()?;
+    let language= provide_language()?;
     let eth_seed = provide_eth_seed()?;
     let password = provide_password()?;
     Ok(InitData {
         password,
         eth_seed,
         ton_seed,
+        language
     })
+}
+#[derive(Serialize)]
+struct PasswordData {
+    password: String,
 }
 
 fn main() -> Result<(), Error> {
@@ -87,16 +105,23 @@ fn main() -> Result<(), Error> {
         .items(&ACTIONS[..])
         .interact()
         .unwrap();
-    if selection == 0 {
+    let (url, data) = if selection == 0 {
         let init_data = init()?;
-        let client = reqwest::blocking::Client::new();
-        let url = args.server_addr.join("init")?;
-        let response = client.post(url).json(&init_data).send()?;
-        if response.status().is_success() {
-            println!("Initialized successfully");
-        }
+        (args.server_addr.join("init")?, json!(init_data))
     } else if selection == 1 {
         let password = unlock_node()?;
+        (args.server_addr.join("unlock")?, json!(PasswordData { password }))
+    }else{
+        unreachable!()
+    };
+    dbg!(&data);
+    let client = reqwest::blocking::Client::new();
+    let response = client.post(url).json(&data).send()?;
+    if response.status().is_success() {
+        println!("Success");
+    }
+    else {
+        println!("Failed: {}", response.text()?);
     }
     Ok(())
 }
