@@ -7,8 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use structopt::StructOpt;
 
-
-fn parse_url(url: &str) -> Result<Url, Error>{
+fn parse_url(url: &str) -> Result<Url, Error> {
     Ok(Url::parse(url)?)
 }
 
@@ -17,8 +16,6 @@ struct Arguments {
     #[structopt(short, long, parse(try_from_str = parse_url))]
     server_addr: Url,
 }
-
-
 
 #[derive(Serialize, Debug)]
 struct InitData {
@@ -63,8 +60,7 @@ fn provide_password() -> Result<String, Error> {
     Ok(password)
 }
 
-fn unlock_node()->Result<String, Error>
-{
+fn unlock_node() -> Result<String, Error> {
     let password = Password::with_theme(&ColorfulTheme::default())
         .with_prompt("Password:")
         .interact()?;
@@ -82,7 +78,6 @@ fn init() -> Result<InitData, Error> {
     })
 }
 
-
 fn main() -> Result<(), Error> {
     let args: Arguments = Arguments::from_args();
     const ACTIONS: &[&str; 2] = &["Init", "Provide password"];
@@ -96,17 +91,12 @@ fn main() -> Result<(), Error> {
         let init_data = init()?;
         let client = reqwest::blocking::Client::new();
         let url = args.server_addr.join("init")?;
-        let response =
-            client
-                .post(url)
-                .json(&init_data)
-                .send()?;
+        let response = client.post(url).json(&init_data).send()?;
         if response.status().is_success() {
             println!("Initialized successfully");
         }
     } else if selection == 1 {
-        let password =unlock_node()?;
-
+        let password = unlock_node()?;
     }
     Ok(())
 }

@@ -64,7 +64,7 @@ where
 struct PasswordError(String, StatusCode);
 
 impl PasswordError {
-    async fn handle_rejection(err: Rejection) ->  std::result::Result<impl Reply, Infallible> {
+    async fn handle_rejection(err: Rejection) -> std::result::Result<impl Reply, Infallible> {
         return if let Some(PasswordError(a, b)) = err.find() {
             let err = create_error(a);
             Ok(with_status(err, *b))
@@ -97,26 +97,26 @@ async fn serve(config: RelayConfig, state: Arc<Mutex<State>>) {
     let state = warp::any().map(move || (Arc::clone(&state), config.clone()));
 
     let password = warp::path!("unlock")
+        .and(warp::path::end())
         .and(json_data::<Password>())
         .and(state.clone())
         .and_then(
             |data: Password, (state, config): (Arc<Mutex<State>>, RelayConfig)| {
                 wait_for_password(data, config, state)
             },
-        )
-        .recover(PasswordError::handle_rejection);
+        );
 
     let init = warp::path!("init")
+        .and(warp::path::end())
         .and(json_data::<InitData>())
         .and(state.clone())
         .and_then(
             |data: InitData, (state, config): (Arc<Mutex<State>>, RelayConfig)| {
                 wait_for_init(data, config, state)
             },
-        )
-        .recover(WaitForInitError::handle_rejection);
+        );
 
-    let routes = init.or(password);
+    let routes = (init.or(password)).recover(PasswordError::handle_rejection);
     let addr: SocketAddr = "127.0.0.1:12345".parse().unwrap();
     warp::serve(routes).run(addr).await;
 }
@@ -127,7 +127,7 @@ struct WaitForInitError(String, StatusCode);
 impl reject::Reject for WaitForInitError {}
 
 impl WaitForInitError {
-    async fn handle_rejection(err: Rejection) ->  std::result::Result<impl Reply, Infallible> {
+    async fn handle_rejection(err: Rejection) -> Result<impl warp::Reply, warp::Rejection> {
         return if let Some(WaitForInitError(a, b)) = err.find() {
             let err = create_error(a);
             Ok(with_status(err, *b))
@@ -194,7 +194,7 @@ async fn wait_for_init(
     )); //todo  ton
     info!("Successfully initialized");
     let spawned_bridge = bridge.clone();
-    tokio::spawn(async move   { spawned_bridge.run().await });
+    tokio::spawn(async move { spawned_bridge.run().await });
     *state = State {
         init_data_needed: false,
         password_needed: state.password_needed,

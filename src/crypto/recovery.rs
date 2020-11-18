@@ -14,8 +14,6 @@ pub fn derive_from_words(lang: Language, phrase: &str) -> Result<SecretKey, Erro
     Ok(SecretKey::from_slice(&derived.secret())?)
 }
 
-
-
 #[cfg(test)]
 mod test {
     use bip39::Language;
@@ -36,7 +34,7 @@ mod test {
         );
     }
     #[test]
-    fn bad_mnemonic(){
+    fn bad_mnemonic() {
         let key = derive_from_words(Language::English, "talk rave choice void clever tired humor marble clutch ankle fish type deliver witness picnic thumb away offer legend keep trouble island earn pet");
         assert!(key.is_err());
     }

@@ -1,4 +1,3 @@
-
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -57,7 +56,12 @@ pub struct Arguments {
     pub config: String,
     #[structopt(long, help = "It will generate default config.")]
     pub gen_config: bool,
-    #[structopt(long, short, requires_if("gen_config", "true"), help = "Path for encrypted data storage")]
+    #[structopt(
+        long,
+        short,
+        requires_if("gen_config", "true"),
+        help = "Path for encrypted data storage"
+    )]
     pub crypto_store_path: Option<PathBuf>,
 }
 
@@ -66,8 +70,11 @@ where
     T: AsRef<Path>,
 {
     let mut file = std::fs::File::create(path)?;
-    let mut  config = RelayConfig::default();
-    config = RelayConfig { pem_location: pem_path, ..config };
+    let mut config = RelayConfig::default();
+    config = RelayConfig {
+        pem_location: pem_path,
+        ..config
+    };
     file.write_all(serde_json::to_vec_pretty(&config)?.as_slice())?;
     Ok(())
 }

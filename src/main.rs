@@ -1,8 +1,8 @@
 use anyhow::Error;
 use log::info;
 
-use relay::engine;
 use relay::config::{generate_config, parse_args, read_config};
+use relay::engine;
 
 fn main() -> Result<(), Error> {
     env_logger::init();
@@ -25,7 +25,7 @@ fn main() -> Result<(), Error> {
     info!("Really started");
     let _err = executor.block_on(engine::run(config))?;
 
-// },
+    // },
     // Err(e)=>error!("Eror daemonizing app: {}",e)
     // };
     //

@@ -10,8 +10,8 @@ pub struct PersistentStateManager {
 
 impl PersistentStateManager {
     pub fn new<T>(p: T) -> Result<Self, Error>
-        where
-            T: AsRef<Path>,
+    where
+        T: AsRef<Path>,
     {
         Ok(Self {
             inner: sled::open(p)?,
@@ -21,9 +21,9 @@ impl PersistentStateManager {
         Ok(self.inner.flush()?)
     }
     pub fn update_state<K, V>(&self, key: K, value: V) -> Result<Option<IVec>, Error>
-        where
-            K: AsRef<[u8]>,
-            V: Into<IVec>,
+    where
+        K: AsRef<[u8]>,
+        V: Into<IVec>,
     {
         Ok(self.inner.insert(key, value)?)
     }

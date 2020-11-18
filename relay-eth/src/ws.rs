@@ -1,13 +1,13 @@
 use anyhow::Error;
 use futures::stream::{Stream, StreamExt};
-use log::{info,error};
+use log::{error, info};
 use num256::Uint256;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tokio::spawn;
 use url::Url;
 use web3::transports::ws::WebSocket;
-pub use web3::types::{Address, H256, BlockNumber};
+pub use web3::types::{Address, BlockNumber, H256};
 use web3::types::{FilterBuilder, Log};
 use web3::Web3;
 
@@ -56,7 +56,7 @@ impl EthListener {
         &self,
         addresses: Vec<Address>,
         topics: Vec<H256>,
-        height:BlockNumber
+        height: BlockNumber,
     ) -> Result<impl Stream<Item = Result<Event, Error>>, Error> {
         let filter = FilterBuilder::default()
             .address(addresses)
