@@ -16,10 +16,12 @@ use serde_json::{from_reader, to_writer_pretty};
 use sodiumoxide::crypto::secretbox;
 use sodiumoxide::crypto::secretbox::{Key, Nonce};
 
-// use hex::{FromHex, ToHex};
 
 const CREDENTIAL_LEN: usize = digest::SHA256_OUTPUT_LEN;
-const N_ITER: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(1_000_000) }; //todo tune len
+
+///Change it to tune number of iterations in pbkdf2 function. Higher number - password bruteforce becomes slower.
+/// Initial value is optimal for the current machine, so you maybe want to change it.
+const N_ITER: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(5_000_000) };
 
 #[derive(Eq, PartialEq, Debug)]
 pub struct KeyData {
@@ -295,4 +297,5 @@ mod test {
             ring::digest::SHA256_OUTPUT_LEN
         );
     }
+
 }

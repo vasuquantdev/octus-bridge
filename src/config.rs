@@ -1,4 +1,5 @@
 use std::io::Write;
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
 use anyhow::Error;
@@ -6,7 +7,6 @@ use config::{Config, File, FileFormat};
 use serde::{Deserialize, Serialize};
 use sha3::Digest;
 use structopt::StructOpt;
-
 use relay_eth::ws::{Address as EthAddr, H256};
 
 #[derive(Deserialize, Serialize, Clone, Debug, Default, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -34,13 +34,24 @@ impl Method {
     }
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug, Default)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct RelayConfig {
-    pub pem_location: PathBuf,
+    pub encrypted_data: PathBuf,
     pub eth_node_address: String,
     pub ton_contract_address: TonAddress,
     pub storage_path: PathBuf,
-    // pub contract_mapping: HashMap<Address, Method>,
+    pub listen_address: SocketAddr,
+}
+impl Default for RelayConfig {
+    fn default() -> Self {
+        Self {
+            encrypted_data: PathBuf::from("./cryptodata.json"),
+            storage_path: PathBuf::from("./persistent_storage"),
+            eth_node_address: "ws://localhost:12345".into(),
+            ton_contract_address: TonAddress("".into()),
+            listen_address: "127.0.0.1:12345".parse().unwrap(),
+        }
+    }
 }
 
 pub fn read_config(path: &str) -> Result<RelayConfig, Error> {
@@ -72,7 +83,7 @@ where
     let mut file = std::fs::File::create(path)?;
     let mut config = RelayConfig::default();
     config = RelayConfig {
-        pem_location: pem_path,
+        encrypted_data: pem_path,
         ..config
     };
     file.write_all(serde_json::to_vec_pretty(&config)?.as_slice())?;

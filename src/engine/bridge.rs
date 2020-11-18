@@ -1,7 +1,9 @@
-use crate::crypto::key_managment::EthSigner;
 use log::info;
-use relay_eth::ws::EthListener;
 use tokio::time::Duration;
+
+use relay_eth::ws::EthListener;
+
+use crate::crypto::key_managment::EthSigner;
 
 pub struct Bridge {
     eth_signer: EthSigner,
@@ -20,10 +22,16 @@ impl Bridge {
 
     pub async fn run(&self) {
         info!("Bridge started");
-        tokio::time::delay_for(Duration::from_secs(std::u64::MAX)).await;
+        tokio::time::delay_for(Duration::from_secs(8640000)).await;
     }
 
-    fn start_voting_for_update_config() {}
-    fn update_config() {}
-    fn start_voting_for_remove_event_type() {}
+    fn start_voting_for_update_config() {
+        todo!()
+    }
+    fn update_config() {
+        todo!()
+    }
+    fn start_voting_for_remove_event_type() {
+        todo!()
+    }
 }
