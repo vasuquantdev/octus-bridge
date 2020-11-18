@@ -1,8 +1,6 @@
 pub mod errors;
-//pub mod graphql_transport;
 pub mod tonlib_transport;
 
-//pub use graphql_transport::GraphQlTransport;
 pub use tonlib_transport::TonlibTransport;
 
 use self::errors::*;
