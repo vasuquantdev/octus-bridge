@@ -42,10 +42,11 @@ impl EthListener {
             topics: log.topics,
         })
     }
+
     pub async fn new(url: Url) -> Self {
         let connection = WebSocket::new(url.as_str())
             .await
-            .expect("Failed connecting to etherium node");
+            .expect("Failed connecting to ethereum node");
         info!("Connected to: {}", &url);
         Self {
             stream: Web3::new(connection),
@@ -64,8 +65,8 @@ impl EthListener {
             .from_block(height)
             .build();
 
-        let filter = self.stream.eth_filter().create_logs_filter(filter).await;
-        let mut stream = filter?.stream(Duration::from_secs(1));
+        let filter = self.stream.eth_filter().create_logs_filter(filter).await?;
+        let mut stream = filter.stream(Duration::from_secs(1));
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         spawn(async move {
             while let Some(a) = stream.next().await {
