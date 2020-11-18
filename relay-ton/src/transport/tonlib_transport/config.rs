@@ -9,6 +9,7 @@ pub struct Config {
     pub verbosity: u8,
     pub keystore: KeystoreType,
     pub last_block_threshold_sec: u64,
+    pub subscription_polling_interval_sec: u64,
 }
 
 impl From<Config> for tonlib::Config {

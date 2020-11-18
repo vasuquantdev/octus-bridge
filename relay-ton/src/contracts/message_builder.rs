@@ -4,7 +4,7 @@ use ton_block::MsgAddress;
 use super::errors::*;
 use crate::models::*;
 use crate::prelude::*;
-use crate::transport::Transport;
+use crate::transport::{AccountSubscription, Transport};
 
 impl From<ExternalMessageHeader> for HashMap<String, TokenValue> {
     fn from(header: ExternalMessageHeader) -> Self {
@@ -82,8 +82,8 @@ impl<'a> MessageBuilder<'a> {
         })
     }
 
-    pub async fn send(self, transport: &dyn Transport) -> ContractResult<ContractOutput> {
-        let function = self.function;
+    pub async fn send(self, transport: &dyn AccountSubscription) -> ContractResult<ContractOutput> {
+        let function = Arc::new(self.function.clone());
 
         let output = transport.send_message(function, self.build()?).await?;
         Ok(output)

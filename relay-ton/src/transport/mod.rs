@@ -11,14 +11,27 @@ use crate::prelude::*;
 
 #[async_trait]
 pub trait Transport: Send + Sync + 'static {
-    async fn get_account_state(
-        &self,
-        addr: &MsgAddressInt,
-    ) -> TransportResult<Option<AccountState>>;
-
-    async fn send_message(
+    async fn run_local(
         &self,
         abi: &AbiFunction,
         message: ExternalMessage,
     ) -> TransportResult<ContractOutput>;
+
+    async fn subscribe(&self, addr: &str) -> TransportResult<Arc<dyn AccountSubscription>>;
+}
+
+#[async_trait]
+pub trait AccountSubscription: Send + Sync {
+    fn events(&self) -> watch::Receiver<AccountEvent>;
+
+    async fn send_message(
+        &self,
+        abi: Arc<AbiFunction>,
+        message: ExternalMessage,
+    ) -> TransportResult<ContractOutput>;
+}
+
+#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
+pub enum AccountEvent {
+    StateChanged,
 }

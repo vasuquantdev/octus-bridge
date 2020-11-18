@@ -9,24 +9,57 @@ use crate::prelude::*;
 use crate::transport::*;
 
 pub struct BridgeContract {
-    transport: Arc<dyn Transport>,
+    transport: Arc<dyn AccountSubscription>,
     config: ContractConfig,
     contract: Contract,
 }
 
 impl BridgeContract {
-    pub fn new(transport: &Arc<dyn Transport>, account: &MsgAddressInt) -> BridgeContract {
+    pub async fn new(
+        transport: &Arc<dyn Transport>,
+        account: &MsgAddressInt,
+    ) -> ContractResult<BridgeContract> {
         let contract =
             Contract::load(Cursor::new(ABI)).expect("Failed to load bridge contract ABI");
 
-        Self {
-            transport: transport.clone(),
+        let transport = transport.subscribe(&account.to_string()).await?;
+
+        Ok(Self {
+            transport,
             config: ContractConfig {
                 account: account.clone(),
                 timeout_sec: 60,
             },
             contract,
-        }
+        })
+    }
+
+    pub fn events(self: &Arc<Self>) -> impl Stream<Item = BridgeContractEvent> {
+        let mut events = self.transport.events();
+        let this = Arc::downgrade(self);
+        let (tx, rx) = mpsc::unbounded_channel();
+        tokio::spawn(async move {
+            while let Some(AccountEvent::StateChanged) = events.recv().await {
+                let this = match this.upgrade() {
+                    Some(this) => this,
+                    _ => return,
+                };
+
+                let configs = match this.get_ethereum_events_configuration().await {
+                    Ok(configs) => configs,
+                    Err(e) => {
+                        log::error!("failed to get ethereum events configuration. {}", e);
+                        continue;
+                    }
+                };
+
+                if let Err(_) = tx.send(BridgeContractEvent::ConfigurationChanged(configs)) {
+                    return;
+                }
+            }
+        });
+
+        rx
     }
 
     pub async fn add_ethereum_event_configuration(
@@ -107,6 +140,11 @@ impl BridgeContract {
 }
 
 #[derive(Debug, Clone)]
+pub enum BridgeContractEvent {
+    ConfigurationChanged(Vec<EthereumEventsConfiguration>),
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct EthereumEventsConfiguration {
     pub ethereum_event_abi: String,
     pub ethereum_address: Vec<u8>,
