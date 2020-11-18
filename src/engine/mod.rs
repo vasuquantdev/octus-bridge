@@ -1,40 +1,29 @@
-use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
 use anyhow::Error;
 use bip39::Language;
-use log::error;
 use log::{info, warn};
+use log::error;
 use serde::Deserialize;
-use tokio::sync::{Mutex, Notify};
+use tokio::sync::Mutex;
 use url::Url;
+use warp::{Filter, Reply};
 use warp::http::StatusCode;
-use warp::reject::custom;
-use warp::reply::{with_status, Json};
-use warp::{reject, Filter, Rejection, Reply};
+use warp::reply::with_status;
 
 use recovery::derive_from_words;
 use relay_eth::ws::EthListener;
 
 use crate::config::RelayConfig;
-use crate::crypto::key_managment::{EthSigner, KeyData};
+use crate::crypto::key_managment::KeyData;
 use crate::crypto::recovery;
 use crate::engine::bridge::Bridge;
 use crate::storage;
 use crate::storage::PersistentStateManager;
 
 mod bridge;
-
-// #[derive(Debug, Eq, PartialEq)]
-// enum State {
-//     Sleeping,
-//     InitDataWaiting,
-//     InitDataReceived,
-//     PasswordWaiting,
-//     PasswordReceived(KeyData),
-// }
 
 struct State {
     init_data_needed: bool,
@@ -51,33 +40,7 @@ pub struct InitData {
     language: String,
 }
 
-fn create_error<R>(reason: R) -> Json
-where
-    R: AsRef<str>,
-{
-    let mut obj = HashMap::new();
-    obj.insert("reason", reason.as_ref());
-    warp::reply::json(&obj)
-}
 
-#[derive(Debug)]
-struct PasswordError(String, StatusCode);
-
-impl PasswordError {
-    async fn handle_rejection(err: Rejection) -> std::result::Result<impl Reply, Infallible> {
-        return if let Some(PasswordError(a, b)) = err.find() {
-            let err = create_error(a);
-            Ok(with_status(err, *b))
-        } else {
-            Ok(with_status(
-                create_error("Internal Server Error"),
-                StatusCode::INTERNAL_SERVER_ERROR,
-            ))
-        };
-    }
-}
-
-impl reject::Reject for PasswordError {}
 
 #[derive(Deserialize, Debug)]
 struct Password {
@@ -116,51 +79,30 @@ async fn serve(config: RelayConfig, state: Arc<Mutex<State>>) {
             },
         );
 
-    let routes = (init.or(password)).recover(PasswordError::handle_rejection);
+    let routes = init.or(password);
     let addr: SocketAddr = "127.0.0.1:12345".parse().unwrap();
     warp::serve(routes).run(addr).await;
 }
 
-#[derive(Debug)]
-struct WaitForInitError(String, StatusCode);
-
-impl reject::Reject for WaitForInitError {}
-
-impl WaitForInitError {
-    async fn handle_rejection(err: Rejection) -> Result<impl warp::Reply, warp::Rejection> {
-        return if let Some(WaitForInitError(a, b)) = err.find() {
-            let err = create_error(a);
-            Ok(with_status(err, *b))
-        } else {
-            Ok(with_status(
-                create_error("Internal Server Error"),
-                StatusCode::INTERNAL_SERVER_ERROR,
-            ))
-        };
-    }
-}
 
 async fn wait_for_init(
     data: InitData,
     config: RelayConfig,
     state: Arc<Mutex<State>>,
-) -> Result<impl Reply, Rejection> {
+) -> Result<impl Reply, Infallible> {
     info!("Recieved init data");
     let mut state = state.lock().await;
     if !state.init_data_needed {
-        let err = format!("Not waiting for init data now");
+        let err = "Already initialized".to_string();
         error!("{}", &err);
-        return Err(custom(WaitForInitError(
-            err,
-            StatusCode::METHOD_NOT_ALLOWED,
-        )));
+        return Ok(with_status(err, StatusCode::METHOD_NOT_ALLOWED));
     }
     let language = match Language::from_language_code(&data.language) {
         Some(a) => a,
         None => {
-            let error = format!("Bad error code provided: {}", &data.language);
+            let error = format!("Bad language code provided: {}.", &data.language);
             error!("{}", &error);
-            return Err(custom(WaitForInitError(error, StatusCode::BAD_REQUEST)));
+            return Ok(with_status(error, StatusCode::BAD_REQUEST));
         }
     };
     let key = match derive_from_words(language, &data.eth_seed) {
@@ -168,22 +110,19 @@ async fn wait_for_init(
         Err(e) => {
             let error = format!("Failed deriving from eth seed: {}", e);
             error!("{}", &error);
-            return Err(custom(WaitForInitError(error, StatusCode::BAD_REQUEST)));
+            return Ok(with_status(error, StatusCode::BAD_REQUEST));
         }
     };
     let key_data = match KeyData::init(
-        &config.pem_location,
+        &config.encrypted_data,
         data.password.into(),
         vec![1, 2, 3, 4],
         key,
     ) {
         Err(e) => {
-            let err = format!("Failed initializing: {}", e);
-            error!("{}", &err);
-            return Err(custom(WaitForInitError(
-                err,
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )));
+            let error = format!("Failed initializing: {}", e);
+            error!("{}", &error);
+            return Ok(with_status(error, StatusCode::BAD_REQUEST));
         }
         Ok(a) => a,
     };
@@ -201,35 +140,54 @@ async fn wait_for_init(
         bridge: Some(bridge),
         relay_state: state.relay_state.clone(),
     };
-    Ok(warp::reply())
+    Ok(with_status(
+        "Initialized successfully".to_string(),
+        StatusCode::ACCEPTED,
+    ))
 }
 
 async fn wait_for_password(
     data: Password,
     config: RelayConfig,
     state: Arc<Mutex<State>>,
-) -> Result<impl Reply, Rejection> {
+) -> Result<impl Reply, Infallible> {
     info!("Received unlock request");
-    let state = state.lock().await;
-    if !state.password_needed {
-        return Err(custom(PasswordError(
-            "Not waiting for password".to_string(),
-            StatusCode::NOT_ACCEPTABLE,
-        )));
+    let mut state = state.lock().await;
+    if !state.password_needed && state.init_data_needed {
+        return Ok(with_status(
+            "Need to initialize first".to_string(),
+            StatusCode::METHOD_NOT_ALLOWED,
+        ));
+    } else if !state.password_needed {
+        return Ok(with_status(
+            "Already unlocked".to_string(),
+            StatusCode::METHOD_NOT_ALLOWED,
+        ));
     }
 
-    match KeyData::from_file(config.pem_location, data.password.into()) {
+    match KeyData::from_file(config.encrypted_data, data.password.into()) {
         Ok(a) => {
             let (signer, _) = (a.eth, a.ton); //todo ton part
-            let bridge = Bridge::new(signer, state.relay_state.eth_listener.clone());
+            let bridge = Arc::new(Bridge::new(signer, state.relay_state.eth_listener.clone()));
+
+            *state = State {
+                init_data_needed: false,
+                password_needed: false,
+                bridge: Some(bridge.clone()),
+                relay_state: state.relay_state.clone(),
+            };
+            tokio::spawn(async move { bridge.run().await });
         }
         Err(e) => {
             let error = format!("Failed unlocking relay: {}", &e);
             error!("{}", &error);
-            return Err(custom(PasswordError(error, StatusCode::BAD_REQUEST)));
+            return Ok(with_status(error, StatusCode::BAD_REQUEST));
         }
     };
-    Ok(warp::reply())
+    Ok(with_status(
+        "Password accepted".to_string(),
+        StatusCode::ACCEPTED,
+    ))
 }
 
 #[derive(Clone)]
@@ -246,7 +204,7 @@ pub async fn run(config: RelayConfig) -> Result<(), Error> {
     .await;
 
     let state_manager = storage::PersistentStateManager::new(&config.storage_path)?;
-    let crypto_data_metadata = std::fs::File::open(&config.pem_location);
+    let crypto_data_metadata = std::fs::File::open(&config.encrypted_data);
     let mut state = State {
         bridge: None,
         password_needed: false,
