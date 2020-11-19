@@ -9,6 +9,8 @@ use log::{info, warn};
 use serde::Deserialize;
 use serde_json::json;
 use tokio::sync::Mutex;
+use ton_block::Deserializable;
+use ton_block::MsgAddressInt;
 use url::Url;
 use warp::http::StatusCode;
 use warp::reply::{json, with_status};
@@ -16,6 +18,9 @@ use warp::{Filter, Reply};
 
 use recovery::derive_from_words;
 use relay_eth::ws::EthListener;
+use relay_ton::contracts::bridge::BridgeContract;
+use relay_ton::prelude::FromStr;
+use relay_ton::transport::{TonlibTransport, Transport};
 
 use crate::config::RelayConfig;
 use crate::crypto::key_managment::KeyData;
@@ -143,6 +148,7 @@ async fn wait_for_init(
     let bridge = Arc::new(Bridge::new(
         key_data.eth,
         state.relay_state.eth_listener.clone(),
+        state.relay_state.ton_client.clone(),
     )); //todo  ton
     info!("Successfully initialized");
     let spawned_bridge = bridge.clone();
@@ -181,7 +187,11 @@ async fn wait_for_password(
     match KeyData::from_file(config.encrypted_data, data.password.into()) {
         Ok(a) => {
             let (signer, _) = (a.eth, a.ton); //todo ton part
-            let bridge = Arc::new(Bridge::new(signer, state.relay_state.eth_listener.clone()));
+            let bridge = Arc::new(Bridge::new(
+                signer,
+                state.relay_state.eth_listener.clone(),
+                state.relay_state.ton_client.clone(),
+            ));
 
             *state = State {
                 init_data_needed: false,
@@ -207,6 +217,7 @@ async fn wait_for_password(
 struct RelayState {
     persistent_state_manager: PersistentStateManager,
     eth_listener: EthListener,
+    ton_client: BridgeContract,
 }
 
 pub async fn run(config: RelayConfig) -> Result<(), Error> {
@@ -218,6 +229,13 @@ pub async fn run(config: RelayConfig) -> Result<(), Error> {
 
     let state_manager = storage::PersistentStateManager::new(&config.storage_path)?;
     let crypto_data_metadata = std::fs::File::open(&config.encrypted_data);
+    let transport: Arc<dyn Transport> =
+        Arc::new(relay_ton::transport::TonlibTransport::new(config.ton_config.clone()).await?);
+    let transport = Arc::from(transport);
+    let contract_address = MsgAddressInt::from_str(&*config.ton_contract_address.0)
+        .map_err(|e| Error::msg(e.to_string()))?;
+    let ton_client = BridgeContract::new(&transport, &contract_address).await?;
+
     let mut state = State {
         bridge: None,
         password_needed: false,
@@ -225,6 +243,7 @@ pub async fn run(config: RelayConfig) -> Result<(), Error> {
         relay_state: RelayState {
             eth_listener: eth_config,
             persistent_state_manager: state_manager,
+            ton_client,
         },
     };
     let file_size = match crypto_data_metadata {
