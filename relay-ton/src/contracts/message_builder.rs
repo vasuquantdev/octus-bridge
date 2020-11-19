@@ -114,6 +114,12 @@ impl FunctionArg for AccountId {
     }
 }
 
+impl FunctionArg for MsgAddrStd {
+    fn token_value(self) -> TokenValue {
+        TokenValue::Address(MsgAddress::AddrStd(self))
+    }
+}
+
 impl FunctionArg for UInt256 {
     fn token_value(self) -> TokenValue {
         num_bigint::BigUint::from_bytes_be(self.as_slice()).token_value()

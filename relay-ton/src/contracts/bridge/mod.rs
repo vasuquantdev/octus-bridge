@@ -72,7 +72,7 @@ impl BridgeContract {
         &self,
         ethereum_event_abi: &str,
         ethereum_address: &str,
-        event_proxy_address: &AccountId,
+        event_proxy_address: &MsgAddrStd,
     ) -> ContractResult<()> {
         self.message("addEthereumEventConfiguration")?
             .arg(ethereum_event_abi)
@@ -122,7 +122,7 @@ impl BridgeContract {
         eth_public_key: Vec<u8>,
         sign: Vec<u8>,
         signed_at: u32,
-        event_root_address: AccountId,
+        event_root_address: MsgAddrStd,
     ) -> ContractResult<()> {
         self.message("signTonToEthEvent")?
             .arg(payload)
@@ -138,7 +138,7 @@ impl BridgeContract {
     pub async fn sign_eth_to_ton_event(
         &self,
         payload: Cell,
-        eth_event_address: AccountId,
+        eth_event_address: MsgAddrStd,
     ) -> ContractResult<()> {
         self.message("signEthToTonEvent")?
             .arg(payload)
@@ -164,7 +164,7 @@ impl BridgeContract {
 
     pub async fn get_event_config(
         &self,
-        event_root_address: AccountId,
+        event_root_address: MsgAddrStd,
     ) -> ContractResult<(MsgAddrStd, TonEventConfiguration)> {
         self.message("getEventConfig")?
             .arg(event_root_address)
@@ -193,7 +193,7 @@ impl BridgeContract {
 
     pub async fn vote_for_update_config(
         &self,
-        voting_address: AccountId,
+        voting_address: MsgAddrStd,
         high_part: UInt256,
         low_part: UInt256,
     ) -> ContractResult<()> {
@@ -248,7 +248,7 @@ impl BridgeContract {
 
     pub async fn vote_for_event_type(
         &self,
-        voting_address: AccountId,
+        voting_address: MsgAddrStd,
         high_part: UInt256,
         low_part: UInt256,
     ) -> ContractResult<()> {
@@ -285,7 +285,7 @@ impl BridgeContract {
 
     pub async fn start_voting_for_remove_event_type(
         &self,
-        ton_address: AccountId,
+        ton_address: MsgAddrStd,
     ) -> ContractResult<MsgAddrStd> {
         self.message("startVotingForRemoveEventType")?
             .arg(ton_address)
@@ -296,7 +296,7 @@ impl BridgeContract {
 
     pub async fn vote_for_remove_event_type(
         &self,
-        voting_address: AccountId,
+        voting_address: MsgAddrStd,
         high_part: UInt256,
         low_part: UInt256,
     ) -> ContractResult<()> {
@@ -311,7 +311,7 @@ impl BridgeContract {
 
     pub async fn remove_event_type(
         &self,
-        ton_address: AccountId,
+        ton_address: MsgAddrStd,
         voting_set: OffchainVotingSet,
     ) -> ContractResult<()> {
         self.message("removeEventType")?

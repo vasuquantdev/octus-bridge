@@ -434,26 +434,20 @@ mod tests {
     use super::*;
 
     const MAINNET_CONFIG: &str = r#"{
-      "liteservers": [
-        {
-          "ip": 916349379,
-          "port": 3031,
-          "id": {
-            "@type": "pub.ed25519",
-            "key": "uNRRL+6enQjuiZ/s6Z+vO7yxUUR7uxdfzIy+RxkECrc="
-          }
-        }
-      ],
-      "validator": {
-        "@type": "validator.config.global",
+        "lite_servers": [
+            {                
+                "ip": "54.158.97.195",
+                "port": 3031,
+                "public_key": "uNRRL+6enQjuiZ/s6Z+vO7yxUUR7uxdfzIy+RxkECrc="
+            }
+        ],
         "zero_state": {
-          "workchain": -1,
-          "shard": -9223372036854775808,
-          "seqno": 0,
-          "root_hash": "WP/KGheNr/cF3lQhblQzyb0ufYUAcNM004mXhHq56EU=",
-          "file_hash": "0nC4eylStbp9qnCq8KjDYb789NjS25L5ZA1UQwcIOOQ="
+            "file_hash": "0nC4eylStbp9qnCq8KjDYb789NjS25L5ZA1UQwcIOOQ=",
+            "root_hash": "WP/KGheNr/cF3lQhblQzyb0ufYUAcNM004mXhHq56EU=",
+            "shard": -9223372036854775808,
+            "seqno": 0,
+            "workchain": -1
         }
-      }
     }"#;
 
     const ELECTOR_ADDR: &str =
@@ -464,7 +458,7 @@ mod tests {
         env_logger::init();
 
         TonlibTransport::new(Config {
-            network_config: MAINNET_CONFIG.to_string(),
+            network_config: serde_json::from_str(MAINNET_CONFIG).unwrap(),
             network_name: "mainnet".to_string(),
             verbosity: 1,
             keystore: KeystoreType::InMemory,
@@ -481,6 +475,6 @@ mod tests {
 
         let _subscription = transport.subscribe(ELECTOR_ADDR).await;
 
-        tokio::time::delay_for(Duration::from_secs(10)).await;
+        tokio::time::delay_for(Duration::from_secs(10)).awai;
     }
 }

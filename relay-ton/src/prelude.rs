@@ -6,9 +6,9 @@ pub use std::sync::Arc;
 
 pub use async_trait::async_trait;
 pub use chrono::Utc;
+pub use futures::stream::Stream;
 pub use num_bigint::{BigInt, BigUint};
 pub use serde::{Deserialize, Serialize};
-pub use tokio::stream::Stream;
 pub use tokio::sync::{mpsc, watch, RwLock};
 pub use ton_block::{MsgAddrStd, MsgAddressInt};
 pub use ton_sdk::{AbiContract, AbiFunction};
