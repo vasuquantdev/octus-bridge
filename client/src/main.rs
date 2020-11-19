@@ -1,9 +1,9 @@
 use anyhow::anyhow;
 use anyhow::Error;
-use dialoguer::{Input, Password, Select};
 use dialoguer::theme::ColorfulTheme;
+use dialoguer::{Input, Password, Select};
 use reqwest::Url;
-use serde::{Serialize};
+use serde::{Serialize, Deserialize};
 use serde_json::json;
 use structopt::StructOpt;
 
@@ -22,7 +22,7 @@ struct InitData {
     ton_seed: Vec<String>,
     eth_seed: String,
     password: String,
-    language: String
+    language: String,
 }
 
 fn provide_ton_seed() -> Result<Vec<String>, Error> {
@@ -50,8 +50,7 @@ fn provide_eth_seed() -> Result<String, Error> {
     Ok(words.join(" "))
 }
 
-fn provide_language()->Result<String, Error>
-{
+fn provide_language() -> Result<String, Error> {
     let langs = ["en", "zh-hans", "zh-hant", "fr", "it", "ja", "ko", "es"];
     let selection = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Choose bip39 mnemonic language for eth")
@@ -81,14 +80,14 @@ fn unlock_node() -> Result<String, Error> {
 
 fn init() -> Result<InitData, Error> {
     let ton_seed = provide_ton_seed()?;
-    let language= provide_language()?;
+    let language = provide_language()?;
     let eth_seed = provide_eth_seed()?;
     let password = provide_password()?;
     Ok(InitData {
         password,
         eth_seed,
         ton_seed,
-        language
+        language,
     })
 }
 #[derive(Serialize)]
@@ -96,31 +95,48 @@ struct PasswordData {
     password: String,
 }
 
+#[derive(Deserialize, Serialize)]
+struct Status {
+    init_data_needed: bool,
+    is_working: bool,
+    password_needed: bool,
+}
+
 fn main() -> Result<(), Error> {
     let args: Arguments = Arguments::from_args();
-    const ACTIONS: &[&str; 2] = &["Init", "Provide password"];
+    const ACTIONS: &[&str; 3] = &["Init", "Provide password", "Get status"];
     let selection = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("What do you want?")
         .default(0)
         .items(&ACTIONS[..])
         .interact()
         .unwrap();
+    let client = reqwest::blocking::Client::new();
     let (url, data) = if selection == 0 {
         let init_data = init()?;
         (args.server_addr.join("init")?, json!(init_data))
     } else if selection == 1 {
         let password = unlock_node()?;
-        (args.server_addr.join("unlock")?, json!(PasswordData { password }))
-    }else{
+        (
+            args.server_addr.join("unlock")?,
+            json!(PasswordData { password }),
+        )
+    } else if selection == 2 {
+        let url = args.server_addr.join("status")?;
+        let response: Status = client.get(url).send()?.json()?;
+        println!(
+            "Status:\n {}",
+            serde_json::to_string_pretty(&response)?
+        );
+        return Ok(());
+    } else {
         unreachable!()
     };
     dbg!(&data);
-    let client = reqwest::blocking::Client::new();
     let response = client.post(url).json(&data).send()?;
     if response.status().is_success() {
         println!("Success");
-    }
-    else {
+    } else {
         println!("Failed: {}", response.text()?);
     }
     Ok(())
