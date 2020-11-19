@@ -4,6 +4,7 @@ use relay_eth::ws::EthListener;
 use crate::crypto::key_managment::EthSigner;
 use relay_ton::contracts::bridge::{BridgeContract, BridgeContractEvent, EthereumEventsConfiguration};
 use relay_ton::transport::TonlibTransport;
+mod util;
 
 
 
