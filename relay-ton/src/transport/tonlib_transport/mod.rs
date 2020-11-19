@@ -9,8 +9,8 @@ use tokio::time::Duration;
 use ton_abi::Function;
 use ton_api::ton;
 use ton_block::{
-    AccountStuff, CommonMsgInfo, Deserializable, ExternalInboundMessageHeader,
-    GetRepresentationHash, Message, MsgAddrVar, MsgAddressInt, Serializable, Transaction,
+    AccountStuff, CommonMsgInfo, Deserializable, ExternalInboundMessageHeader, Message,
+    Serializable, Transaction,
 };
 use ton_types::SliceData;
 use tonlib::{TonlibClient, TonlibError};
@@ -114,19 +114,6 @@ impl TonlibAccountSubscription {
         subscription.start_loop(tx, last_trans_lt, polling_interval.clone());
 
         Ok(subscription)
-    }
-
-    async fn run_local(
-        &self,
-        function: &Function,
-        message: &Message,
-    ) -> TransportResult<ContractOutput> {
-        let account_state = self.known_state.read().await;
-        let info = parse_account_stuff(account_state.data.0.as_slice())?;
-
-        let (messages, _) = tvm::call_msg(&account_state, info, message)?;
-
-        process_out_messages(&messages, function)
     }
 
     fn start_loop(
@@ -249,24 +236,32 @@ impl AccountSubscription for TonlibAccountSubscription {
         self.event_notifier.clone()
     }
 
+    async fn run_local(
+        &self,
+        abi: &AbiFunction,
+        message: ExternalMessage,
+    ) -> TransportResult<ContractOutput> {
+        let message = encode_external_message(message);
+
+        let account_state = self.known_state.read().await;
+        let info = parse_account_stuff(account_state.data.0.as_slice())?;
+
+        let (messages, _) = tvm::call_msg(&account_state, info, &message)?;
+
+        process_out_messages(&messages, abi)
+    }
+
     async fn send_message(
         &self,
         abi: Arc<Function>,
         message: ExternalMessage,
     ) -> TransportResult<ContractOutput> {
-        let mut message_header = ExternalInboundMessageHeader::default();
-        message_header.dst = message.dest.clone();
-
-        let mut msg = Message::with_ext_in_header(message_header);
-        if let Some(body) = message.body {
-            msg.set_body(body);
-        }
-
         if message.run_local {
-            return self.run_local(abi.as_ref(), &msg).await;
+            return self.run_local(abi.as_ref(), message).await;
         }
+        let expires_at = message.header.expire;
 
-        let cells = msg
+        let cells = encode_external_message(message)
             .write_to_new_cell()
             .map_err(|_| TransportError::FailedToSerialize)?
             .into();
@@ -288,8 +283,8 @@ impl AccountSubscription for TonlibAccountSubscription {
                         .map_err(to_api_error)?;
 
                     entry.insert(PendingMessage {
-                        expires_at: message.header.expire,
-                        previous_known_lt,
+                        expires_at,
+                        _previous_known_lt: previous_known_lt,
                         abi,
                         tx,
                     })
@@ -302,7 +297,7 @@ impl AccountSubscription for TonlibAccountSubscription {
             };
         }
 
-        rx.await.unwrap_or_else(|e| {
+        rx.await.unwrap_or_else(|_| {
             Err(TransportError::ApiFailure {
                 reason: "subscription part dropped before receiving message response".to_owned(),
             })
@@ -312,9 +307,20 @@ impl AccountSubscription for TonlibAccountSubscription {
 
 struct PendingMessage {
     expires_at: u32,
-    previous_known_lt: u64,
+    _previous_known_lt: u64,
     abi: Arc<Function>,
     tx: oneshot::Sender<TransportResult<ContractOutput>>,
+}
+
+fn encode_external_message(message: ExternalMessage) -> Message {
+    let mut message_header = ExternalInboundMessageHeader::default();
+    message_header.dst = message.dest.clone();
+
+    let mut msg = Message::with_ext_in_header(message_header);
+    if let Some(body) = message.body {
+        msg.set_body(body);
+    }
+    msg
 }
 
 fn parse_account_stuff(raw: &[u8]) -> TransportResult<AccountStuff> {
@@ -426,7 +432,6 @@ fn to_api_error(e: TonlibError) -> TransportError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::str::FromStr;
 
     const MAINNET_CONFIG: &str = r#"{
       "liteservers": [
@@ -474,7 +479,7 @@ mod tests {
     async fn test_subscription() {
         let transport = make_transport().await;
 
-        let subscription = transport.subscribe(ELECTOR_ADDR).await;
+        let _subscription = transport.subscribe(ELECTOR_ADDR).await;
 
         tokio::time::delay_for(Duration::from_secs(10)).await;
     }
