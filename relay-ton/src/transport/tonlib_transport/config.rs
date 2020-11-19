@@ -14,6 +14,19 @@ pub struct Config {
     pub subscription_polling_interval_sec: u64,
 }
 
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            network_config: default_testnet_config(),
+            network_name: "testnet".to_string(),
+            verbosity: 4,
+            keystore: KeystoreType::InMemory,
+            last_block_threshold_sec: 1,
+            subscription_polling_interval_sec: 1,
+        }
+    }
+}
+
 impl From<Config> for tonlib::Config {
     fn from(c: Config) -> Self {
         Self {
@@ -36,12 +49,6 @@ pub struct NetworkConfig {
         rename(serialize = "validator")
     )]
     zero_state: NetworkConfigZeroState,
-}
-
-impl Default for NetworkConfig {
-    fn default() -> Self {
-        default_testnet_config()
-    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
