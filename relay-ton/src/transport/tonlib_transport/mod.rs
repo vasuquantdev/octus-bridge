@@ -172,7 +172,7 @@ impl TonlibAccountSubscription {
                     let mut known_state = subscription.known_state.write().await;
                     *known_state = account_state;
                 }
-                state_notifier.broadcast(AccountEvent::StateChanged);
+                let _ = state_notifier.broadcast(AccountEvent::StateChanged);
 
                 let mut pending_messages = subscription.pending_messages.write().await;
 
