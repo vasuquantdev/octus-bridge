@@ -4,14 +4,15 @@ use std::sync::Arc;
 
 use anyhow::Error;
 use bip39::Language;
-use log::{info, warn};
 use log::error;
+use log::{info, warn};
 use serde::Deserialize;
+use serde_json::json;
 use tokio::sync::Mutex;
 use url::Url;
-use warp::{Filter, Reply};
 use warp::http::StatusCode;
-use warp::reply::with_status;
+use warp::reply::{json, with_status};
+use warp::{Filter, Reply};
 
 use recovery::derive_from_words;
 use relay_eth::ws::EthListener;
@@ -40,8 +41,6 @@ pub struct InitData {
     language: String,
 }
 
-
-
 #[derive(Deserialize, Debug)]
 struct Password {
     password: String,
@@ -68,6 +67,10 @@ async fn serve(config: RelayConfig, state: Arc<Mutex<State>>) {
                 wait_for_password(data, config, state)
             },
         );
+    let status = warp::path!("status")
+        .and(warp::path::end())
+        .and(state.clone())
+        .and_then(|(state, _): (Arc<Mutex<State>>, RelayConfig)| get_status(state));
 
     let init = warp::path!("init")
         .and(warp::path::end())
@@ -79,11 +82,21 @@ async fn serve(config: RelayConfig, state: Arc<Mutex<State>>) {
             },
         );
 
-    let routes = init.or(password);
+    let routes = init.or(password).or(status);
     let addr: SocketAddr = "127.0.0.1:12345".parse().unwrap();
     warp::serve(routes).run(addr).await;
 }
 
+async fn get_status(state: Arc<Mutex<State>>) -> Result<impl Reply, Infallible> {
+    let state = state.lock().await;
+    let json = json!({
+        "password_needed": state.password_needed,
+        "init_data_needed": state.init_data_needed,
+        "is_working": state.bridge.is_some()
+    });
+    drop(state);
+    Ok(serde_json::to_string(&json).expect("Can't fail"))
+}
 
 async fn wait_for_init(
     data: InitData,
