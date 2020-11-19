@@ -32,7 +32,6 @@ secstr = "0.4.0"
 tiny-hderive = "0.2.1"
 tiny-bip39 = "0.8.0"
 sled = "0.34.5"
-warp-json-rpc = "0.2.0"
 
 structopt = "0.3.20"
 log = "*"
@@ -42,6 +41,7 @@ futures = "0.3.1"
 tokio = { version = "0.2", features = ["full"] }
 daemonize = "0.4.1"
 dialoguer = "0.7.1"
+ton_block = { git = "https://github.com/tonlabs/ton-labs-block.git" }
 
 [package.metadata.deb]
 depends = "$auto"

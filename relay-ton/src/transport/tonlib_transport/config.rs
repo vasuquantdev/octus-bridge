@@ -4,7 +4,7 @@ use std::time::Duration;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize, Serializer};
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {
     pub network_config: NetworkConfig,
     pub network_name: String,

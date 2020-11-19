@@ -9,6 +9,7 @@ use crate::models::*;
 use crate::prelude::*;
 use crate::transport::*;
 
+#[derive(Clone)]
 pub struct BridgeContract {
     transport: Arc<dyn AccountSubscription>,
     config: ContractConfig,
