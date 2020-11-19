@@ -116,6 +116,12 @@ impl FunctionArg for BuilderData {
     }
 }
 
+impl FunctionArg for ton_types::Cell {
+    fn token_value(self) -> TokenValue {
+        TokenValue::Cell(self)
+    }
+}
+
 impl FunctionArg for TokenValue {
     fn token_value(self) -> TokenValue {
         self

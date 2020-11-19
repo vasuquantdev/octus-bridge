@@ -1,12 +1,14 @@
 use std::io::Cursor;
 
 use ton_abi::{Contract, Token, TokenValue};
+use ton_types::Cell;
 
 use super::errors::*;
 use super::prelude::*;
 use crate::models::*;
 use crate::prelude::*;
 use crate::transport::*;
+use futures::StreamExt;
 
 pub struct BridgeContract {
     transport: Arc<dyn AccountSubscription>,
@@ -103,14 +105,10 @@ impl BridgeContract {
         Ok(())
     }
 
-    pub async fn emit_event_instance(&self) -> ContractResult<()> {
-        todo!()
-    }
-
     pub async fn confirm_event_instance(
         &self,
         ethereum_event_configuration_id: UInt256,
-        ethereum_event_data: BuilderData,
+        ethereum_event_data: Cell,
     ) -> ContractResult<()> {
         let _ = MessageBuilder::with_args(&self.config, &self.contract, "confirmEventInstance", 2)?
             .arg(
@@ -134,14 +132,37 @@ impl BridgeContract {
         )?
         .run_local()
         .send(self.transport.as_ref())
-        .await?
-        .try_into()
+        .await
+        .and_then(|output| output.tokens.into_iter().next().try_parse())
     }
 }
 
 #[derive(Debug, Clone)]
 pub enum BridgeContractEvent {
     ConfigurationChanged(Vec<EthereumEventsConfiguration>),
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct BridgeConfiguration {
+    add_event_type_required_confirmations_percent: u8,
+    remove_event_type_required_confirmations_percent: u8,
+    add_relay_required_confirmations_percent: u8,
+    remove_relay_required_confirmations_percent: u8,
+    update_config_required_confirmations_percent: u8,
+    event_root_code: Cell,
+    ton_to_eth_event_code: Cell,
+    eth_to_ton_event_code: Cell,
+}
+
+impl ParseToken<BridgeConfiguration> for TokenValue {
+    fn try_parse(self) -> ContractResult<BridgeConfiguration> {
+        let tokens = match self {
+            TokenValue::Tuple(tokens) => tokens,
+            _ => return Err(ContractError::InvalidAbi),
+        };
+
+        todo!()
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -153,77 +174,104 @@ pub struct EthereumEventsConfiguration {
     pub confirmed: bool,
 }
 
-impl TryFrom<ContractOutput> for Vec<EthereumEventsConfiguration> {
-    type Error = ContractError;
-
-    fn try_from(mut value: ContractOutput) -> Result<Self, Self::Error> {
-        let tokens = match value.tokens.into_iter().next() {
-            Some(array) => match array.value {
-                TokenValue::Array(tokens) => tokens,
-                _ => return Err(ContractError::InvalidAbi),
-            },
-            None => return Err(ContractError::InvalidAbi),
-        };
-
-        let mut configs = Vec::with_capacity(tokens.len());
-        for token in tokens {
-            let mut tuple = match token {
-                TokenValue::Tuple(tuple) => tuple,
-                _ => return Err(ContractError::InvalidAbi),
-            }
-            .into_iter();
-
-            let ethereum_event_abi = match tuple.next() {
-                Some(Token {
-                    value: TokenValue::Bytes(bytes),
-                    ..
-                }) => bytes,
-                _ => return Err(ContractError::InvalidAbi),
-            };
-
-            let ethereum_address = match tuple.next() {
-                Some(Token {
-                    value: TokenValue::Bytes(bytes),
-                    ..
-                }) => bytes,
-                _ => return Err(ContractError::InvalidAbi),
-            };
-
-            let event_proxy_address = match tuple.next() {
-                Some(Token {
-                    value: TokenValue::Address(ton_block::MsgAddress::AddrStd(address)),
-                    ..
-                }) => address,
-                _ => return Err(ContractError::InvalidAbi),
-            };
-
-            let confirmations = match tuple.next() {
-                Some(Token {
-                    value: TokenValue::Uint(confirmations),
-                    ..
-                }) => confirmations,
-                _ => return Err(ContractError::InvalidAbi),
-            };
-
-            let confirmed = match tuple.next() {
-                Some(Token {
-                    value: TokenValue::Bool(confirmed),
-                    ..
-                }) => confirmed,
-                _ => return Err(ContractError::InvalidAbi),
-            };
-
-            configs.push(EthereumEventsConfiguration {
-                ethereum_event_abi: String::from_utf8(ethereum_event_abi)
-                    .map_err(|_| ContractError::InvalidString)?,
-                ethereum_address,
-                event_proxy_address,
-                confirmations: confirmations.number,
-                confirmed,
-            });
+impl ParseToken<EthereumEventsConfiguration> for TokenValue {
+    fn try_parse(self) -> ContractResult<EthereumEventsConfiguration> {
+        let mut tuple = match self {
+            TokenValue::Tuple(tuple) => tuple,
+            _ => return Err(ContractError::InvalidAbi),
         }
+        .into_iter();
 
-        Ok(configs)
+        let ethereum_event_abi = tuple.next().try_parse()?;
+        let ethereum_address = tuple.next().try_parse()?;
+        let event_proxy_address = tuple.next().try_parse()?;
+        let confirmations = tuple.next().try_parse()?;
+        let confirmed = tuple.next().try_parse()?;
+
+        Ok(EthereumEventsConfiguration {
+            ethereum_event_abi: String::from_utf8(ethereum_event_abi)
+                .map_err(|_| ContractError::InvalidString)?,
+            ethereum_address,
+            event_proxy_address,
+            confirmations,
+            confirmed,
+        })
+    }
+}
+
+trait ParseToken<T> {
+    fn try_parse(self) -> ContractResult<T>;
+}
+
+impl ParseToken<MsgAddrStd> for TokenValue {
+    fn try_parse(self) -> ContractResult<MsgAddrStd> {
+        match self {
+            TokenValue::Address(ton_block::MsgAddress::AddrStd(address)) => Ok(address),
+            _ => return Err(ContractError::InvalidAbi),
+        }
+    }
+}
+
+impl ParseToken<Vec<u8>> for TokenValue {
+    fn try_parse(self) -> ContractResult<Vec<u8>> {
+        match self {
+            TokenValue::Bytes(bytes) => Ok(bytes),
+            _ => return Err(ContractError::InvalidAbi),
+        }
+    }
+}
+
+impl ParseToken<BigUint> for TokenValue {
+    fn try_parse(self) -> ContractResult<BigUint> {
+        match self {
+            TokenValue::Uint(confirmations) => Ok(confirmations.number),
+            _ => return Err(ContractError::InvalidAbi),
+        }
+    }
+}
+
+impl ParseToken<bool> for TokenValue {
+    fn try_parse(self) -> ContractResult<bool> {
+        match self {
+            TokenValue::Bool(confirmed) => Ok(confirmed),
+            _ => return Err(ContractError::InvalidAbi),
+        }
+    }
+}
+
+impl<T> ParseToken<T> for Option<Token>
+where
+    TokenValue: ParseToken<T>,
+{
+    fn try_parse(self) -> ContractResult<T> {
+        match self {
+            Some(token) => token.value.try_parse(),
+            None => Err(ContractError::InvalidAbi),
+        }
+    }
+}
+
+impl<T> ParseToken<Vec<T>> for TokenValue
+where
+    TokenValue: ParseToken<T>,
+{
+    fn try_parse(self) -> ContractResult<Vec<T>> {
+        match self {
+            TokenValue::Array(tokens) | TokenValue::FixedArray(tokens) => tokens,
+            _ => return Err(ContractError::InvalidAbi),
+        }
+        .into_iter()
+        .map(ParseToken::try_parse)
+        .collect()
+    }
+}
+
+impl<T> ParseToken<T> for Token
+where
+    TokenValue: ParseToken<T>,
+{
+    fn try_parse(self) -> ContractResult<T> {
+        self.value.try_parse()
     }
 }
 
@@ -243,6 +291,9 @@ mod tests {
         )
         .unwrap()
     }
+
+    #[test]
+    fn test() {}
 
     // #[tokio::test]
     // async fn get_ethereum_events_configuration() {
