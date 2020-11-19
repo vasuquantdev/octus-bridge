@@ -2,9 +2,10 @@ use ton_abi::{Contract, Function, Token, TokenValue};
 use ton_block::MsgAddress;
 
 use super::errors::*;
+use super::prelude::*;
 use crate::models::*;
 use crate::prelude::*;
-use crate::transport::{AccountSubscription, Transport};
+use crate::transport::*;
 
 impl From<ExternalMessageHeader> for HashMap<String, TokenValue> {
     fn from(header: ExternalMessageHeader) -> Self {
@@ -24,44 +25,42 @@ pub fn make_header(timeout_sec: u32) -> ExternalMessageHeader {
 pub struct MessageBuilder<'a> {
     config: &'a ContractConfig,
     function: &'a Function,
+    transport: &'a dyn AccountSubscription,
     input: Vec<Token>,
     run_local: bool,
 }
 
 impl<'a> MessageBuilder<'a> {
-    pub fn empty(
+    pub fn new(
         config: &'a ContractConfig,
         contract: &'a Contract,
+        transport: &'a dyn AccountSubscription,
         name: &str,
     ) -> ContractResult<Self> {
-        Self::with_args(config, contract, name, 0)
-    }
+        let function = contract
+            .function(name)
+            .map_err(|_| ContractError::InvalidAbi)?;
+        let input = Vec::with_capacity(function.inputs.len());
 
-    pub fn with_args(
-        config: &'a ContractConfig,
-        contract: &'a Contract,
-        name: &str,
-        arg_count: usize,
-    ) -> ContractResult<Self> {
         Ok(Self {
             config,
-            function: contract
-                .function(name)
-                .map_err(|_| ContractError::InvalidAbi)?,
-            input: Vec::with_capacity(arg_count),
+            function,
+            transport,
+            input,
             run_local: false,
         })
     }
 
-    pub fn arg<T>(mut self, name: &str, value: T) -> Self
+    pub fn arg<T>(mut self, value: T) -> Self
     where
         T: FunctionArg,
     {
+        let name = &self.function.inputs[self.input.len()].name;
         self.input.push(Token::new(name, value.token_value()));
         self
     }
 
-    pub fn run_local(mut self) -> Self {
+    pub fn mark_local(mut self) -> Self {
         self.run_local = true;
         self
     }
@@ -82,10 +81,17 @@ impl<'a> MessageBuilder<'a> {
         })
     }
 
-    pub async fn send(self, transport: &dyn AccountSubscription) -> ContractResult<ContractOutput> {
-        let function = Arc::new(self.function.clone());
+    pub async fn run_local(self) -> ContractResult<ContractOutput> {
+        let output = self
+            .transport
+            .run_local(self.function, self.build()?)
+            .await?;
+        Ok(output)
+    }
 
-        let output = transport.send_message(function, self.build()?).await?;
+    pub async fn send(self) -> ContractResult<ContractOutput> {
+        let function = Arc::new(self.function.clone());
+        let output = self.transport.send_message(function, self.build()?).await?;
         Ok(output)
     }
 }
@@ -93,6 +99,12 @@ impl<'a> MessageBuilder<'a> {
 impl FunctionArg for &str {
     fn token_value(self) -> TokenValue {
         TokenValue::Bytes(self.as_bytes().into())
+    }
+}
+
+impl FunctionArg for Vec<u8> {
+    fn token_value(self) -> TokenValue {
+        TokenValue::Bytes(self)
     }
 }
 
@@ -104,9 +116,25 @@ impl FunctionArg for AccountId {
 
 impl FunctionArg for UInt256 {
     fn token_value(self) -> TokenValue {
-        let number = num_bigint::BigUint::from_bytes_be(self.as_slice());
+        num_bigint::BigUint::from_bytes_be(self.as_slice()).token_value()
+    }
+}
 
-        TokenValue::Uint(ton_abi::Uint { number, size: 256 })
+impl FunctionArg for BigUint {
+    fn token_value(self) -> TokenValue {
+        TokenValue::Uint(ton_abi::Uint {
+            number: self,
+            size: 256,
+        })
+    }
+}
+
+impl FunctionArg for u8 {
+    fn token_value(self) -> TokenValue {
+        TokenValue::Uint(ton_abi::Uint {
+            number: BigUint::from(self),
+            size: 8,
+        })
     }
 }
 
@@ -119,6 +147,15 @@ impl FunctionArg for BuilderData {
 impl FunctionArg for ton_types::Cell {
     fn token_value(self) -> TokenValue {
         TokenValue::Cell(self)
+    }
+}
+
+impl<T> FunctionArg for Vec<T>
+where
+    T: StandaloneToken + FunctionArg,
+{
+    fn token_value(self) -> TokenValue {
+        TokenValue::Array(self.into_iter().map(FunctionArg::token_value).collect())
     }
 }
 
