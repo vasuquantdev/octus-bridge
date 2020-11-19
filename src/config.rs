@@ -1,18 +1,21 @@
+use std::io::Write;
+use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
+
 use anyhow::Error;
 use config::{Config, File, FileFormat};
-use relay_eth::ws::{Address as EthAddr, H256};
 use serde::{Deserialize, Serialize};
 use sha3::Digest;
-use std::collections::HashMap;
-use std::io::Write;
-use std::path::{Path, PathBuf};
 use structopt::StructOpt;
-
+use relay_eth::ws::{Address as EthAddr, H256};
 
 #[derive(Deserialize, Serialize, Clone, Debug, Default, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct Address(String);
+pub struct EthAddress(String);
 
-impl Address {
+#[derive(Deserialize, Serialize, Clone, Debug, Default, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct TonAddress(String);
+
+impl EthAddress {
     pub fn to_eth_addr(&self) -> Result<EthAddr, Error> {
         let bytes = hex::decode(&self.0)?;
         let hash = sha3::Keccak256::digest(&*bytes);
@@ -31,11 +34,24 @@ impl Method {
     }
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug, Default)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct RelayConfig {
-    pub pem_location: PathBuf,
+    pub encrypted_data: PathBuf,
     pub eth_node_address: String,
-    pub contract_mapping: HashMap<Address, Method>,
+    pub ton_contract_address: TonAddress,
+    pub storage_path: PathBuf,
+    pub listen_address: SocketAddr,
+}
+impl Default for RelayConfig {
+    fn default() -> Self {
+        Self {
+            encrypted_data: PathBuf::from("./cryptodata.json"),
+            storage_path: PathBuf::from("./persistent_storage"),
+            eth_node_address: "ws://localhost:12345".into(),
+            ton_contract_address: TonAddress("".into()),
+            listen_address: "127.0.0.1:12345".parse().unwrap(),
+        }
+    }
 }
 
 pub fn read_config(path: &str) -> Result<RelayConfig, Error> {
@@ -47,10 +63,17 @@ pub fn read_config(path: &str) -> Result<RelayConfig, Error> {
 
 #[derive(Deserialize, Serialize, Clone, Debug, StructOpt)]
 pub struct Arguments {
-    #[structopt(required_unless = "gen_config", short, required=true)]
+    #[structopt(short, long, default_value = "config.json")]
     pub config: String,
-    #[structopt(long, help="It will generate key pair for both ton and ehtherium signing. Provide pem filename.")]
-    pub gen_config: Option<PathBuf>,
+    #[structopt(long, help = "It will generate default config.")]
+    pub gen_config: bool,
+    #[structopt(
+        long,
+        short,
+        requires_if("gen_config", "true"),
+        help = "Path for encrypted data storage"
+    )]
+    pub crypto_store_path: Option<PathBuf>,
 }
 
 pub fn generate_config<T>(path: T, pem_path: PathBuf) -> Result<(), Error>
@@ -58,12 +81,15 @@ where
     T: AsRef<Path>,
 {
     let mut file = std::fs::File::create(path)?;
-    let mut  config = RelayConfig::default();
-    config = RelayConfig { pem_location: pem_path, ..config };
+    let mut config = RelayConfig::default();
+    config = RelayConfig {
+        encrypted_data: pem_path,
+        ..config
+    };
     file.write_all(serde_json::to_vec_pretty(&config)?.as_slice())?;
     Ok(())
 }
 
 pub fn parse_args() -> Arguments {
-    Arguments::from_args()
+    dbg!(Arguments::from_args())
 }

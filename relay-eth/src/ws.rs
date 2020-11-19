@@ -1,17 +1,18 @@
 use anyhow::Error;
 use futures::stream::{Stream, StreamExt};
-use log::{info,error};
+use log::{error, info};
 use num256::Uint256;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tokio::spawn;
 use url::Url;
 use web3::transports::ws::WebSocket;
-pub use web3::types::{Address, H256};
-use web3::types::{FilterBuilder, Log, BlockNumber};
+pub use web3::types::{Address, BlockNumber, H256};
+use web3::types::{FilterBuilder, Log};
 use web3::Web3;
 
-pub struct EthConfig {
+#[derive(Clone)]
+pub struct EthListener {
     stream: Web3<WebSocket>,
 }
 
@@ -24,7 +25,7 @@ pub struct Event {
     pub topics: Vec<H256>,
 }
 
-impl EthConfig {
+impl EthListener {
     fn log_to_event(log: Log) -> Result<Event, Error> {
         let num = Uint256::from_bytes_be(&log.data.0);
         let hash = match log.transaction_hash {
@@ -41,10 +42,11 @@ impl EthConfig {
             topics: log.topics,
         })
     }
+
     pub async fn new(url: Url) -> Self {
         let connection = WebSocket::new(url.as_str())
             .await
-            .expect("Failed connecting to etherium node");
+            .expect("Failed connecting to ethereum node");
         info!("Connected to: {}", &url);
         Self {
             stream: Web3::new(connection),
@@ -55,7 +57,7 @@ impl EthConfig {
         &self,
         addresses: Vec<Address>,
         topics: Vec<H256>,
-        height:BlockNumber
+        height: BlockNumber,
     ) -> Result<impl Stream<Item = Result<Event, Error>>, Error> {
         let filter = FilterBuilder::default()
             .address(addresses)
@@ -63,8 +65,8 @@ impl EthConfig {
             .from_block(height)
             .build();
 
-        let filter = self.stream.eth_filter().create_logs_filter(filter).await;
-        let mut stream = filter?.stream(Duration::from_secs(1));
+        let filter = self.stream.eth_filter().create_logs_filter(filter).await?;
+        let mut stream = filter.stream(Duration::from_secs(1));
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         spawn(async move {
             while let Some(a) = stream.next().await {
@@ -75,7 +77,7 @@ impl EthConfig {
                         }
                     }
                     Ok(a) => {
-                        let event = EthConfig::log_to_event(a);
+                        let event = EthListener::log_to_event(a);
                         log::trace!("Received event: {:#?}", &event);
                         if let Err(e) = tx.send(event) {
                             error!("Error while transmitting value via channel: {}", e);

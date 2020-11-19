@@ -1,5 +1,4 @@
 use anyhow::Error;
-use bip39;
 use bip39::{Language, Seed};
 use secp256k1::SecretKey;
 use tiny_hderive::bip32::ExtendedPrivKey;
@@ -14,8 +13,6 @@ pub fn derive_from_words(lang: Language, phrase: &str) -> Result<SecretKey, Erro
         ExtendedPrivKey::derive(seed_bytes, path).map_err(|e| Error::msg(format!("{:#?}", e)))?;
     Ok(SecretKey::from_slice(&derived.secret())?)
 }
-
-
 
 #[cfg(test)]
 mod test {
@@ -37,7 +34,7 @@ mod test {
         );
     }
     #[test]
-    fn bad_mnemonic(){
+    fn bad_mnemonic() {
         let key = derive_from_words(Language::English, "talk rave choice void clever tired humor marble clutch ankle fish type deliver witness picnic thumb away offer legend keep trouble island earn pet");
         assert!(key.is_err());
     }

@@ -1,0 +1,31 @@
+[package]
+name = "relay-ton"
+version = "0.1.0"
+authors = ["Ivan Kalinin <i.kalinin@dexpa.io>"]
+edition = "2018"
+
+[dependencies]
+anyhow = "1.0.33"
+async-trait = "0.1.41"
+chrono = "0.4"
+log = "0.4.11"
+tokio = { version = "0.2", features = ["full"] }
+thiserror = "1.0"
+env_logger = "0.8.1"
+failure = "0.1.8"
+futures = "0.3.6"
+num-bigint = "0.2.6" # fuck tonlabs
+num-traits = "0.2.14"
+parking_lot = "0.11"
+pin-project = "1.0.1"
+serde = { version = "1.0.117", features = ["derive"] }
+serde_json = "1.0.59"
+
+ton_abi = { git = "https://github.com/tonlabs/ton-labs-abi.git", branch = "1.0.0-rc"}
+ton_api = { git = "https://github.com/broxus/ton-labs-tl.git" }
+ton_vm = { git = "https://github.com/tonlabs/ton-labs-vm.git", default-features = false }
+ton_types = { git = "https://github.com/tonlabs/ton-labs-types.git" }
+ton_block = { git = "https://github.com/tonlabs/ton-labs-block.git" }
+
+ton_sdk = { git = "https://github.com/tonlabs/TON-SDK.git", tag = "1" }
+tonlib = { git = "https://github.com/broxus/tonlib-rs.git" }
