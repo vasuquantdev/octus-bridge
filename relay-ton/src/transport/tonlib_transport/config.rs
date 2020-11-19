@@ -38,6 +38,12 @@ pub struct NetworkConfig {
     zero_state: NetworkConfigZeroState,
 }
 
+impl Default for NetworkConfig {
+    fn default() -> Self {
+        default_testnet_config()
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct NetworkConfigLiteServer {
     #[serde(serialize_with = "serialize_ip_addr")]
@@ -49,9 +55,6 @@ pub struct NetworkConfigLiteServer {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct NetworkConfigZeroState {
-    workchain: i8,
-    shard: i64,
-    seqno: i32,
     root_hash: String,
     file_hash: String,
 }
@@ -109,18 +112,64 @@ where
     S: Serializer,
 {
     #[derive(Serialize)]
+    struct ZeroState<'a> {
+        workchain: i8,
+        shard: i64,
+        seqno: i32,
+        root_hash: &'a str,
+        file_hash: &'a str,
+    }
+
+    #[derive(Serialize)]
     struct Helper<'a> {
         #[serde(rename = "@type")]
         ty: &'a str,
-        zero_state: &'a NetworkConfigZeroState,
+        zero_state: ZeroState<'a>,
     }
 
     Helper {
         ty: "validator.config.global",
-        zero_state,
+        zero_state: ZeroState {
+            workchain: MASTERCHAIN_ID,
+            shard: MASTERCHAIN_SHARD as i64,
+            seqno: 0,
+            root_hash: &zero_state.root_hash,
+            file_hash: &zero_state.file_hash,
+        },
     }
     .serialize(serializer)
 }
+
+pub fn default_mainnet_config() -> NetworkConfig {
+    NetworkConfig {
+        lite_servers: vec![NetworkConfigLiteServer {
+            ip: Ipv4Addr::new(54, 158, 97, 195),
+            port: 3031,
+            public_key: "uNRRL+6enQjuiZ/s6Z+vO7yxUUR7uxdfzIy+RxkECrc=".to_owned(),
+        }],
+        zero_state: NetworkConfigZeroState {
+            root_hash: "WP/KGheNr/cF3lQhblQzyb0ufYUAcNM004mXhHq56EU=".to_owned(),
+            file_hash: "0nC4eylStbp9qnCq8KjDYb789NjS25L5ZA1UQwcIOOQ=".to_owned(),
+        },
+    }
+}
+
+pub fn default_testnet_config() -> NetworkConfig {
+    NetworkConfig {
+        lite_servers: vec![NetworkConfigLiteServer {
+            ip: Ipv4Addr::new(54, 158, 97, 195),
+            port: 3032,
+            public_key: "uNRRL+6enQjuiZ/s6Z+vO7yxUUR7uxdfzIy+RxkECrc=".to_owned(),
+        }],
+        zero_state: NetworkConfigZeroState {
+            root_hash: "hw7m9dVxoI9QzNp8jlOA9fxZeojPQS+T12KTEAXFzS8=".to_owned(),
+            file_hash: "OqQ7U32OCh0RI9EeRs9rCR78C6075Ff9WFk653M2qBk=".to_owned(),
+        },
+    }
+}
+
+pub const MASTERCHAIN_ID: i8 = -1;
+pub const MASTERCHAIN_SHARD: u64 = 0x8000000000000000;
 
 #[cfg(test)]
 mod tests {

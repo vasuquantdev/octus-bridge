@@ -475,6 +475,6 @@ mod tests {
 
         let _subscription = transport.subscribe(ELECTOR_ADDR).await;
 
-        tokio::time::delay_for(Duration::from_secs(10)).awai;
+        tokio::time::delay_for(Duration::from_secs(10)).await;
     }
 }
