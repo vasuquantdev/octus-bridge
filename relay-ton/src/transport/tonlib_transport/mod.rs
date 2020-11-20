@@ -1,6 +1,8 @@
 pub mod config;
 mod tvm;
 
+pub use config::*;
+
 use std::collections::hash_map;
 
 use failure::AsFail;

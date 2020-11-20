@@ -1,11 +1,13 @@
+mod bridge;
+
 use std::convert::Infallible;
 use std::net::SocketAddr;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use anyhow::Error;
 use bip39::Language;
-use log::error;
-use log::{info, warn};
+use log::{error, info, warn};
 use serde::Deserialize;
 use serde_json::json;
 use tokio::sync::Mutex;
@@ -16,19 +18,14 @@ use warp::http::StatusCode;
 use warp::reply::{json, with_status};
 use warp::{Filter, Reply};
 
-use recovery::*;
 use relay_eth::ws::EthListener;
-use relay_ton::contracts::bridge::BridgeContract;
-use relay_ton::prelude::FromStr;
+use relay_ton::contracts::BridgeContract;
 use relay_ton::transport::{TonlibTransport, Transport};
 
 use crate::config::RelayConfig;
 use crate::crypto::key_managment::KeyData;
-use crate::crypto::recovery;
+use crate::crypto::recovery::*;
 use crate::engine::bridge::Bridge;
-
-
-mod bridge;
 
 struct State {
     init_data_needed: bool,
@@ -39,7 +36,7 @@ struct State {
 
 #[derive(Deserialize, Debug)]
 pub struct InitData {
-    ton_seed: Vec<String>,
+    ton_seed: String,
     eth_seed: String,
     password: String,
     language: String,
@@ -122,7 +119,8 @@ async fn wait_for_init(
             return Ok(with_status(error, StatusCode::BAD_REQUEST));
         }
     };
-    let key = match derive_from_words_eth(language, &data.eth_seed) {
+
+    let eth_private_key = match derive_from_words_eth(language, &data.eth_seed) {
         Ok(a) => a,
         Err(e) => {
             let error = format!("Failed deriving from eth seed: {}", e);
@@ -130,11 +128,21 @@ async fn wait_for_init(
             return Ok(with_status(error, StatusCode::BAD_REQUEST));
         }
     };
+
+    let ton_key_pair = match derive_from_words_ton(language, &data.ton_seed) {
+        Ok(a) => a,
+        Err(e) => {
+            let error = format!("Failed deriving from ton seed: {}", e);
+            error!("{}", &error);
+            return Ok(with_status(error, StatusCode::BAD_REQUEST));
+        }
+    };
+
     let key_data = match KeyData::init(
         &config.encrypted_data,
         data.password.into(),
-        vec![1, 2, 3, 4],
-        key,
+        eth_private_key,
+        ton_key_pair,
     ) {
         Err(e) => {
             let error = format!("Failed initializing: {}", e);
@@ -148,16 +156,20 @@ async fn wait_for_init(
         key_data.eth,
         state.relay_state.eth_listener.clone(),
         state.relay_state.ton_client.clone(),
-    )); //todo  ton
+    ));
+
     info!("Successfully initialized");
+
     let spawned_bridge = bridge.clone();
     tokio::spawn(async move { spawned_bridge.run().await });
+
     *state = State {
         init_data_needed: false,
         password_needed: state.password_needed,
         bridge: Some(bridge),
         relay_state: state.relay_state.clone(),
     };
+
     Ok(with_status(
         "Initialized successfully".to_string(),
         StatusCode::ACCEPTED,
@@ -185,7 +197,7 @@ async fn wait_for_password(
 
     match KeyData::from_file(config.encrypted_data, data.password.into()) {
         Ok(a) => {
-            let (signer, _) = (a.eth, a.ton); //todo ton part
+            let (signer, _) = (a.eth, a.ton);
             let bridge = Arc::new(Bridge::new(
                 signer,
                 state.relay_state.eth_listener.clone(),
@@ -198,6 +210,7 @@ async fn wait_for_password(
                 bridge: Some(bridge.clone()),
                 relay_state: state.relay_state.clone(),
             };
+
             tokio::spawn(async move { bridge.run().await });
         }
         Err(e) => {
@@ -219,7 +232,6 @@ struct RelayState {
 }
 
 pub async fn run(config: RelayConfig) -> Result<(), Error> {
-
     let state_manager = sled::open(&config.storage_path)?;
     let transport: Arc<dyn Transport> =
         Arc::new(relay_ton::transport::TonlibTransport::new(config.ton_config.clone()).await?);
@@ -232,9 +244,9 @@ pub async fn run(config: RelayConfig) -> Result<(), Error> {
     let eth_config = EthListener::new(
         Url::parse(config.eth_node_address.as_str())
             .map_err(|e| Error::new(e).context("Bad url for eth_config provided"))?,
-        state_manager.clone()
+        state_manager.clone(),
     )
-        .await;
+    .await;
     let mut state = State {
         bridge: None,
         password_needed: false,

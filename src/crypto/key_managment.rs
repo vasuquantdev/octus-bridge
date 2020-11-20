@@ -54,7 +54,7 @@ impl PartialEq for TonSigner {
 
 impl Debug for TonSigner {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "***SECRET***")
+        write!(f, "{:?}", self.inner.public)
     }
 }
 
@@ -66,22 +66,24 @@ impl Debug for EthSigner {
 
 #[derive(Serialize, Deserialize)]
 struct CryptoData {
+    #[serde(serialize_with = "buffer_to_hex", deserialize_with = "hex_to_buffer")]
+    salt: Vec<u8>,
+
     #[serde(
         serialize_with = "serialize_pubkey",
         deserialize_with = "deserialize_pubkey"
     )]
     eth_pubkey: PublicKey,
     #[serde(serialize_with = "buffer_to_hex", deserialize_with = "hex_to_buffer")]
-    salt: Vec<u8>,
-    #[serde(serialize_with = "buffer_to_hex", deserialize_with = "hex_to_buffer")]
-    encrypted_ton_data: Vec<u8>,
-    #[serde(serialize_with = "buffer_to_hex", deserialize_with = "hex_to_buffer")]
-    encrypted_private_key: Vec<u8>,
+    eth_encrypted_private_key: Vec<u8>,
     #[serde(
         serialize_with = "serialize_nonce",
         deserialize_with = "deserialize_nonce"
     )]
     eth_nonce: Nonce,
+
+    #[serde(serialize_with = "buffer_to_hex", deserialize_with = "hex_to_buffer")]
+    ton_encrypted_private_key: Vec<u8>,
     #[serde(
         serialize_with = "serialize_nonce",
         deserialize_with = "deserialize_nonce"
@@ -161,6 +163,10 @@ impl TonSigner {
     pub fn sign(&self, data: &[u8]) -> [u8; ed25519::SIGNATURE_LENGTH] {
         self.inner.sign(data).to_bytes()
     }
+
+    pub fn keypair(&self) -> Arc<ed25519_dalek::Keypair> {
+        self.inner.clone()
+    }
 }
 
 impl KeyData {
@@ -169,24 +175,25 @@ impl KeyData {
         T: AsRef<Path>,
     {
         let file = File::open(&path)?;
-        let conf: CryptoData = from_reader(&file)?;
-        let sym_key = Self::key_from_password(password, &*conf.salt);
-        let private_key = Self::private_key_from_encrypted(
-            &*conf.encrypted_private_key,
+        let crypto_data: CryptoData = from_reader(&file)?;
+        let sym_key = Self::symmetric_key_from_password(password, &*crypto_data.salt);
+
+        let eth_private_key = Self::eth_private_key_from_encrypted(
+            &crypto_data.eth_encrypted_private_key,
             &sym_key,
-            &conf.eth_nonce,
+            &crypto_data.eth_nonce,
         )?;
-        let ton_data = secretbox::open(&*conf.encrypted_ton_data, &conf.ton_nonce, &sym_key)
-            .map_err(|_| anyhow!("Failed decrypting with provided password"))
-            .and_then(|data| {
-                Keypair::from_bytes(&data)
-                    .map_err(|e| anyhow!("failed to load ton key. {}", e.to_string()))
-            })?;
+
+        let ton_data = Self::ton_private_key_from_encrypted(
+            &crypto_data.ton_encrypted_private_key,
+            &sym_key,
+            &crypto_data.ton_nonce,
+        )?;
 
         Ok(Self {
             eth: EthSigner {
-                pubkey: conf.eth_pubkey,
-                private_key,
+                pubkey: crypto_data.eth_pubkey,
+                private_key: eth_private_key,
             },
             ton: TonSigner {
                 inner: Arc::new(ton_data),
@@ -194,7 +201,64 @@ impl KeyData {
         })
     }
 
-    fn key_from_password(password: SecStr, salt: &[u8]) -> Key {
+    pub fn init<T>(
+        pem_file_path: T,
+        password: SecStr,
+        eth_private_key: SecretKey,
+        ton_key_pair: ed25519_dalek::Keypair,
+    ) -> Result<Self, Error>
+    //todo use Writer instead of Path?
+    where
+        T: AsRef<Path>,
+    {
+        sodiumoxide::init().expect("Failed initializing libsodium");
+
+        let mut rng = rand::rngs::OsRng::new().expect("OsRng fail");
+        let mut salt = vec![0u8; CREDENTIAL_LEN];
+        rng.fill(salt.as_mut_slice());
+        let key = Self::symmetric_key_from_password(password, &salt);
+
+        // ETH
+        let (eth_pubkey, eth_encrypted_private_key, eth_nonce) = {
+            let curve = secp256k1::Secp256k1::new();
+
+            let public = PublicKey::from_secret_key(&curve, &eth_private_key);
+            let nonce = secretbox::gen_nonce();
+            let private_key = secretbox::seal(&eth_private_key[..], &nonce, &key);
+            (public, private_key, nonce)
+        };
+
+        // TON
+        let (ton_encrypted_private_key, ton_nonce) = {
+            let nonce = secretbox::gen_nonce();
+            let private_key = secretbox::seal(ton_key_pair.secret.as_bytes(), &nonce, &key);
+            (private_key, nonce)
+        };
+
+        //
+        let data = CryptoData {
+            salt,
+            eth_pubkey,
+            eth_encrypted_private_key,
+            eth_nonce,
+            ton_encrypted_private_key,
+            ton_nonce,
+        };
+
+        let crypto_config = File::create(pem_file_path)?;
+        to_writer_pretty(crypto_config, &data)?;
+        Ok(Self {
+            eth: EthSigner {
+                private_key: eth_private_key,
+                pubkey: eth_pubkey,
+            },
+            ton: TonSigner {
+                inner: Arc::new(ton_key_pair),
+            },
+        })
+    }
+
+    fn symmetric_key_from_password(password: SecStr, salt: &[u8]) -> Key {
         let mut pbkdf2_hash = SecVec::new(vec![0; CREDENTIAL_LEN]);
         pbkdf2::derive(
             pbkdf2::PBKDF2_HMAC_SHA256,
@@ -206,7 +270,7 @@ impl KeyData {
         secretbox::Key::from_slice(&pbkdf2_hash.unsecure()).expect("Shouldn't panic")
     }
 
-    fn private_key_from_encrypted(
+    fn eth_private_key_from_encrypted(
         encrypted_key: &[u8],
         key: &Key,
         nonce: &Nonce,
@@ -218,49 +282,17 @@ impl KeyData {
         .map_err(|_| anyhow!("Failed constructing SecretKey from decrypted data"))
     }
 
-    pub fn init<T>(
-        pem_file_path: T,
-        password: SecStr,
-        ton_data: Vec<u8>,
-        eth_private_key: SecretKey,
-    ) -> Result<Self, Error>
-    //todo use Writer instead of Path?
-    where
-        T: AsRef<Path>,
-    {
-        sodiumoxide::init().expect("Failed initializing libsodium");
-        let eth_nonce = secretbox::gen_nonce();
-        let mut rng = rand::rngs::OsRng::new().expect("OsRng fail");
-        let mut salt = vec![0u8; CREDENTIAL_LEN];
-        rng.fill(salt.as_mut_slice());
-        let key = Self::key_from_password(password, &salt);
-        let curve = secp256k1::Secp256k1::new();
-        let public = PublicKey::from_secret_key(&curve, &eth_private_key);
-        let encrypted_private_key = secretbox::seal(&eth_private_key[..], &eth_nonce, &key);
-        let ton_nonce = secretbox::gen_nonce();
-        let ton_secret = ed25519_dalek::Keypair::from_bytes(&ton_data)
-            .map_err(|e| anyhow!("failed to load ton key. {}", e.to_string()))?;
-        let encrypted_ton_data = secretbox::seal(&ton_data, &ton_nonce, &key);
-        let data = CryptoData {
-            eth_pubkey: public,
-            ton_nonce,
-            encrypted_ton_data,
-            salt,
-            eth_nonce,
-            encrypted_private_key,
-        };
-
-        let crypto_config = File::create(pem_file_path)?;
-        to_writer_pretty(crypto_config, &data)?;
-        Ok(Self {
-            eth: EthSigner {
-                private_key: eth_private_key,
-                pubkey: public,
-            },
-            ton: TonSigner {
-                inner: Arc::new(ton_secret),
-            },
-        })
+    fn ton_private_key_from_encrypted(
+        encrypted_key: &[u8],
+        key: &Key,
+        nonce: &Nonce,
+    ) -> Result<ed25519_dalek::Keypair, Error> {
+        secretbox::open(encrypted_key, nonce, key)
+            .map_err(|_| anyhow!("Failed decrypting with provided password"))
+            .and_then(|data| {
+                Keypair::from_bytes(&data)
+                    .map_err(|e| anyhow!("failed to load ton key. {}", e.to_string()))
+            })
     }
 }
 
@@ -270,6 +302,24 @@ mod test {
     use secstr::SecStr;
 
     use crate::crypto::key_managment::KeyData;
+
+    fn default_keys() -> (SecretKey, ed25519_dalek::Keypair) {
+        let eth_private_key = SecretKey::from_slice(&hex::decode("9ee05332323beff8b0f27bc09d7be149c8387a32d392eb0dceffba58a23b9e8d3d1a07db8b045e784ea44097430ea4faac23b46e3d709192d23ea6fbfb53ad07")
+            .unwrap()).unwrap();
+
+        let ton_private_key = ed25519_dalek::SecretKey::from_bytes(
+            &hex::decode("e371ef1d7266fc47b30d49dc886861598f09e2e6294d7f0520fe9aa460114e51")
+                .unwrap(),
+        )
+        .unwrap();
+        let ton_public_key = ed25519_dalek::PublicKey::from(&ton_private_key);
+        let ton_key_pair = ed25519_dalek::Keypair {
+            secret: ton_private_key,
+            public: ton_public_key,
+        };
+
+        (eth_private_key, ton_key_pair)
+    }
 
     // #[test]
     // fn test_sign() {
@@ -289,14 +339,10 @@ mod test {
         .unwrap();
         let password = SecStr::new("123".into());
         let path = "./test/test_init.key";
-        let signer = KeyData::init(
-            &path,
-            password.clone(),
-            hex::decode("9ee05332323beff8b0f27bc09d7be149c8387a32d392eb0dceffba58a23b9e8d3d1a07db8b045e784ea44097430ea4faac23b46e3d709192d23ea6fbfb53ad07")
-                .unwrap(),
-            private,
-        )
-        .unwrap();
+
+        let (eth_private_key, ton_key_pair) = default_keys();
+
+        let signer = KeyData::init(&path, password.clone(), eth_private_key, ton_key_pair).unwrap();
         let read_signer = KeyData::from_file(&path, password).unwrap();
         std::fs::remove_file(path).unwrap();
         assert_eq!(read_signer, signer);
@@ -311,14 +357,10 @@ mod test {
                 .unwrap(),
         )
         .unwrap();
-        KeyData::init(
-            &path,
-            password.clone(),
-            hex::decode("9ee05332323beff8b0f27bc09d7be149c8387a32d392eb0dceffba58a23b9e8d3d1a07db8b045e784ea44097430ea4faac23b46e3d709192d23ea6fbfb53ad07")
-                .unwrap(),
-            private,
-        )
-        .unwrap();
+
+        let (eth_private_key, ton_key_pair) = default_keys();
+
+        KeyData::init(&path, password.clone(), eth_private_key, ton_key_pair).unwrap();
         let result = KeyData::from_file(&path, SecStr::new("lol".into()));
         std::fs::remove_file(path).unwrap();
         assert!(result.is_err());

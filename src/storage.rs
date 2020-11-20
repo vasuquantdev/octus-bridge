@@ -17,9 +17,11 @@ impl PersistentStateManager {
             inner: sled::open(p)?,
         })
     }
+
     pub fn flush_state(&self) -> Result<usize, Error> {
         Ok(self.inner.flush()?)
     }
+
     pub fn update_state<K, V>(&self, key: K, value: V) -> Result<Option<IVec>, Error>
     where
         K: AsRef<[u8]>,
@@ -27,9 +29,11 @@ impl PersistentStateManager {
     {
         Ok(self.inner.insert(key, value)?)
     }
+
     pub fn get<K: AsRef<[u8]>>(&self, key: K) -> Result<Option<IVec>, Error> {
         Ok(self.inner.get(&key)?)
     }
+
     pub fn remove<K: AsRef<[u8]>>(&self, key: K) -> Result<Option<IVec>, Error> {
         Ok(self.inner.remove(&key)?)
     }
