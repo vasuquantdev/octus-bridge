@@ -1,7 +1,12 @@
+use anyhow::Context;
+use anyhow::Error;
+use futures::stream::Stream;
+use futures::StreamExt;
 use log::info;
 use tokio::time::Duration;
 
-use relay_eth::ws::EthListener;
+use relay_eth::ws::Address;
+use relay_eth::ws::{EthListener, H256};
 use relay_ton::contracts::bridge::{
     BridgeContract, BridgeContractEvent, EthereumEventsConfiguration,
 };
@@ -9,6 +14,7 @@ use relay_ton::transport::tonlib_transport::config::Config;
 use relay_ton::transport::TonlibTransport;
 
 use crate::crypto::key_managment::EthSigner;
+use crate::engine::bridge::util::abi_to_topic_hash;
 
 mod util;
 
@@ -27,9 +33,35 @@ impl Bridge {
         }
     }
 
-    pub async fn run(&self) {
+    async fn eth_side(
+        eth_client: EthListener,
+        config: Vec<EthereumEventsConfiguration>,
+        ton_client: BridgeContract,
+    ) -> Result<(), Error> {
+        let mut eth_addr = Vec::new();
+        let mut eth_topic = Vec::new();
+        for conf in config.into_iter() {
+            eth_addr.push(Address::from_slice(conf.ethereum_address.as_slice()));
+            eth_topic.push(abi_to_topic_hash(&conf.ethereum_event_abi)?); //todo Vec of hashes
+        }
+        let mut stream = eth_client.subscribe(eth_addr, eth_topic).await?; //todo logzz &&  business logic
+        while let Some(a) = stream.next().await {
+            todo!()
+            // ton_client.sign_eth_to_ton_event();
+        }
+        Ok(())
+    }
+
+    pub async fn run(&self) -> Result<(), anyhow::Error> {
         info!("Bridge started");
+        let config = self.ton_client.get_ethereum_events_configuration().await?;
+        tokio::spawn(Self::eth_side(
+            self.eth_client.clone(),
+            config,
+            self.ton_client.clone(),
+        ));
         tokio::time::delay_for(Duration::from_secs(8640000)).await;
+        Ok(())
     }
 
     fn start_voting_for_update_config() {
