@@ -26,8 +26,7 @@ use crate::config::RelayConfig;
 use crate::crypto::key_managment::KeyData;
 use crate::crypto::recovery;
 use crate::engine::bridge::Bridge;
-use crate::storage;
-use crate::storage::PersistentStateManager;
+
 
 mod bridge;
 
@@ -215,20 +214,13 @@ async fn wait_for_password(
 
 #[derive(Clone)]
 struct RelayState {
-    persistent_state_manager: PersistentStateManager,
     eth_listener: EthListener,
     ton_client: BridgeContract,
 }
 
 pub async fn run(config: RelayConfig) -> Result<(), Error> {
-    let eth_config = EthListener::new(
-        Url::parse(config.eth_node_address.as_str())
-            .map_err(|e| Error::new(e).context("Bad url for eth_config provided"))?,
-    )
-    .await;
 
-    let state_manager = storage::PersistentStateManager::new(&config.storage_path)?;
-    let crypto_data_metadata = std::fs::File::open(&config.encrypted_data);
+    let state_manager = sled::open(&config.storage_path)?;
     let transport: Arc<dyn Transport> =
         Arc::new(relay_ton::transport::TonlibTransport::new(config.ton_config.clone()).await?);
     let transport = Arc::from(transport);
@@ -236,13 +228,19 @@ pub async fn run(config: RelayConfig) -> Result<(), Error> {
         .map_err(|e| Error::msg(e.to_string()))?;
     let ton_client = BridgeContract::new(&transport, &contract_address).await?;
 
+    let crypto_data_metadata = std::fs::File::open(&config.encrypted_data);
+    let eth_config = EthListener::new(
+        Url::parse(config.eth_node_address.as_str())
+            .map_err(|e| Error::new(e).context("Bad url for eth_config provided"))?,
+        state_manager.clone()
+    )
+        .await;
     let mut state = State {
         bridge: None,
         password_needed: false,
         init_data_needed: false,
         relay_state: RelayState {
             eth_listener: eth_config,
-            persistent_state_manager: state_manager,
             ton_client,
         },
     };

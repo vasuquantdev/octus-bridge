@@ -1,14 +1,16 @@
 use anyhow::Error;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
-use serde_json::from_value;
+use serde_json::{from_value, from_str};
 use serde_json::Value;
 use sha3::digest::Digest;
 use sha3::Keccak256;
-
+use futures::Future;
 use relay_eth::ws::H256;
+use relay_ton::contracts::errors::ContractResult;
 
-pub fn abi_to_topic_hash(abi: Value) -> Result<H256, Error> { //todo list of hashes?
+
+pub fn abi_to_topic_hash(abi: &str) -> Result<H256, Error> { //todo list of hashes?
     #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct Abi {
@@ -40,7 +42,7 @@ pub fn abi_to_topic_hash(abi: Value) -> Result<H256, Error> { //todo list of has
         #[serde(rename = "type")]
         pub type_field: String,
     }
-    let abi: Abi = from_value(abi)?;
+    let abi: Abi = from_str(abi)?;
     let fn_name = abi.name;
     let input_types: String = abi
         .inputs
@@ -87,8 +89,7 @@ mod test {
 
     #[test]
     fn test_event_contract_abi() {
-        let value: Value = serde_json::from_str(ABI).unwrap();
-        let hash = abi_to_topic_hash(value).unwrap();
+        let hash = abi_to_topic_hash(ABI).unwrap();
         let expected = H256::from_slice(&*Keccak256::digest(b"StateChange(uint256,address)"));
         assert_eq!(expected, hash);
     }
