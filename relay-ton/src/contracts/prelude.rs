@@ -54,7 +54,7 @@ impl ParseToken<MsgAddrStd> for TokenValue {
     fn try_parse(self) -> ContractResult<MsgAddrStd> {
         match self {
             TokenValue::Address(ton_block::MsgAddress::AddrStd(address)) => Ok(address),
-            _ => return Err(ContractError::InvalidAbi),
+            _ => Err(ContractError::InvalidAbi),
         }
     }
 }
@@ -63,7 +63,7 @@ impl ParseToken<Cell> for TokenValue {
     fn try_parse(self) -> ContractResult<Cell> {
         match self {
             TokenValue::Cell(cell) => Ok(cell),
-            _ => return Err(ContractError::InvalidAbi),
+            _ => Err(ContractError::InvalidAbi),
         }
     }
 }
@@ -72,7 +72,7 @@ impl ParseToken<Vec<u8>> for TokenValue {
     fn try_parse(self) -> ContractResult<Vec<u8>> {
         match self {
             TokenValue::Bytes(bytes) => Ok(bytes),
-            _ => return Err(ContractError::InvalidAbi),
+            _ => Err(ContractError::InvalidAbi),
         }
     }
 }
@@ -81,7 +81,7 @@ impl ParseToken<BigUint> for TokenValue {
     fn try_parse(self) -> ContractResult<BigUint> {
         match self {
             TokenValue::Uint(confirmations) => Ok(confirmations.number),
-            _ => return Err(ContractError::InvalidAbi),
+            _ => Err(ContractError::InvalidAbi),
         }
     }
 }
@@ -98,7 +98,7 @@ impl ParseToken<bool> for TokenValue {
     fn try_parse(self) -> ContractResult<bool> {
         match self {
             TokenValue::Bool(confirmed) => Ok(confirmed),
-            _ => return Err(ContractError::InvalidAbi),
+            _ => Err(ContractError::InvalidAbi),
         }
     }
 }

@@ -1,7 +1,7 @@
 use std::net::{Ipv4Addr, SocketAddrV4};
 use std::time::Duration;
 
-use serde::ser::{SerializeSeq, SerializeStruct};
+use serde::ser::SerializeSeq;
 use serde::{Deserialize, Serialize, Serializer};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

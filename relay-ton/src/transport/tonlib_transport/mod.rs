@@ -17,7 +17,6 @@ use ton_block::{
 use ton_types::SliceData;
 use tonlib::{TonlibClient, TonlibError};
 
-use self::config::*;
 use super::errors::*;
 use super::{AccountEvent, AccountSubscription, Transport};
 use crate::models::*;
@@ -113,7 +112,7 @@ impl TonlibAccountSubscription {
             known_state: RwLock::new(known_state),
             pending_messages: RwLock::new(HashMap::new()),
         });
-        subscription.start_loop(tx, last_trans_lt, polling_interval.clone());
+        subscription.start_loop(tx, last_trans_lt, *polling_interval);
 
         Ok(subscription)
     }
@@ -344,7 +343,7 @@ fn parse_account_stuff(raw: &[u8]) -> TransportResult<AccountStuff> {
 }
 
 fn parse_transaction(raw: &[u8]) -> TransportResult<(Transaction, UInt256)> {
-    let mut cell =
+    let cell =
         ton_types::deserialize_tree_of_cells(&mut std::io::Cursor::new(raw)).map_err(|e| {
             TransportError::FailedToParseTransaction {
                 reason: e.to_string(),
@@ -367,10 +366,7 @@ fn process_transaction(
     transaction
         .out_msgs
         .iterate_slices(|slice| {
-            if let Ok(message) = slice
-                .reference(0)
-                .and_then(|cell| Message::construct_from_cell(cell))
-            {
+            if let Ok(message) = slice.reference(0).and_then(Message::construct_from_cell) {
                 messages.push(message);
             }
             Ok(true)
@@ -382,10 +378,10 @@ fn process_transaction(
 }
 
 fn process_out_messages(
-    messages: &Vec<Message>,
+    messages: &[Message],
     abi_function: &AbiFunction,
 ) -> TransportResult<ContractOutput> {
-    if messages.len() == 0 || !abi_function.has_output() {
+    if messages.is_empty() || !abi_function.has_output() {
         return Ok(ContractOutput {
             transaction_id: None,
             tokens: Vec::new(),
@@ -420,9 +416,9 @@ fn process_out_messages(
         }
     }
 
-    return Err(TransportError::ExecutionError {
+    Err(TransportError::ExecutionError {
         reason: "no external output messages".to_owned(),
-    });
+    })
 }
 
 fn to_api_error(e: TonlibError) -> TransportError {

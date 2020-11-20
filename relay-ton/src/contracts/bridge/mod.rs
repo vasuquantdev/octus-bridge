@@ -55,7 +55,10 @@ impl BridgeContract {
                     }
                 };
 
-                if let Err(_) = tx.send(BridgeContractEvent::ConfigurationChanged(configs)) {
+                if tx
+                    .send(BridgeContractEvent::ConfigurationChanged(configs))
+                    .is_err()
+                {
                     return;
                 }
             }

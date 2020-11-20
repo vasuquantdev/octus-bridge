@@ -60,6 +60,7 @@ impl<'a> MessageBuilder<'a> {
         self
     }
 
+    #[allow(dead_code)]
     pub fn mark_local(mut self) -> Self {
         self.run_local = true;
         self
@@ -76,7 +77,7 @@ impl<'a> MessageBuilder<'a> {
             dest: self.config.account.clone(),
             init: None,
             body: Some(encoded_input.into()),
-            header: header.clone(),
+            header,
             run_local: self.run_local,
         })
     }

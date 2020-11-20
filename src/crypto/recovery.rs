@@ -1,6 +1,5 @@
 use anyhow::Error;
 use bip39::{Language, Seed};
-use ed25519_dalek::ed25519;
 use secp256k1::SecretKey;
 use tiny_hderive::bip32::ExtendedPrivKey;
 

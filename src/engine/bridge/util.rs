@@ -1,16 +1,11 @@
 use anyhow::Error;
-use futures::StreamExt;
+use relay_eth::ws::H256;
 use serde::{Deserialize, Serialize};
-use serde_json::{from_value, from_str};
-use serde_json::Value;
 use sha3::digest::Digest;
 use sha3::Keccak256;
-use futures::Future;
-use relay_eth::ws::H256;
-use relay_ton::contracts::errors::ContractResult;
 
-
-pub fn abi_to_topic_hash(abi: &str) -> Result<H256, Error> { //todo list of hashes?
+pub fn abi_to_topic_hash(abi: &str) -> Result<H256, Error> {
+    //todo list of hashes?
     #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct Abi {
@@ -42,7 +37,7 @@ pub fn abi_to_topic_hash(abi: &str) -> Result<H256, Error> { //todo list of hash
         #[serde(rename = "type")]
         pub type_field: String,
     }
-    let abi: Abi = from_str(abi)?;
+    let abi: Abi = serde_json::from_str(abi)?;
     let fn_name = abi.name;
     let input_types: String = abi
         .inputs

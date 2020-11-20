@@ -11,16 +11,14 @@ use log::{error, info, warn};
 use serde::Deserialize;
 use serde_json::json;
 use tokio::sync::Mutex;
-use ton_block::Deserializable;
 use ton_block::MsgAddressInt;
 use url::Url;
 use warp::http::StatusCode;
-use warp::reply::{json, with_status};
-use warp::{Filter, Reply};
+use warp::{reply, Filter, Reply};
 
 use relay_eth::ws::EthListener;
 use relay_ton::contracts::BridgeContract;
-use relay_ton::transport::{TonlibTransport, Transport};
+use relay_ton::transport::Transport;
 
 use crate::config::RelayConfig;
 use crate::crypto::key_managment::KeyData;
@@ -109,14 +107,14 @@ async fn wait_for_init(
     if !state.init_data_needed {
         let err = "Already initialized".to_string();
         error!("{}", &err);
-        return Ok(with_status(err, StatusCode::METHOD_NOT_ALLOWED));
+        return Ok(reply::with_status(err, StatusCode::METHOD_NOT_ALLOWED));
     }
     let language = match Language::from_language_code(&data.language) {
         Some(a) => a,
         None => {
             let error = format!("Bad language code provided: {}.", &data.language);
             error!("{}", &error);
-            return Ok(with_status(error, StatusCode::BAD_REQUEST));
+            return Ok(reply::with_status(error, StatusCode::BAD_REQUEST));
         }
     };
 
@@ -125,7 +123,7 @@ async fn wait_for_init(
         Err(e) => {
             let error = format!("Failed deriving from eth seed: {}", e);
             error!("{}", &error);
-            return Ok(with_status(error, StatusCode::BAD_REQUEST));
+            return Ok(reply::with_status(error, StatusCode::BAD_REQUEST));
         }
     };
 
@@ -134,7 +132,7 @@ async fn wait_for_init(
         Err(e) => {
             let error = format!("Failed deriving from ton seed: {}", e);
             error!("{}", &error);
-            return Ok(with_status(error, StatusCode::BAD_REQUEST));
+            return Ok(reply::with_status(error, StatusCode::BAD_REQUEST));
         }
     };
 
@@ -147,7 +145,7 @@ async fn wait_for_init(
         Err(e) => {
             let error = format!("Failed initializing: {}", e);
             error!("{}", &error);
-            return Ok(with_status(error, StatusCode::BAD_REQUEST));
+            return Ok(reply::with_status(error, StatusCode::BAD_REQUEST));
         }
         Ok(a) => a,
     };
@@ -170,7 +168,7 @@ async fn wait_for_init(
         relay_state: state.relay_state.clone(),
     };
 
-    Ok(with_status(
+    Ok(reply::with_status(
         "Initialized successfully".to_string(),
         StatusCode::ACCEPTED,
     ))
@@ -184,12 +182,12 @@ async fn wait_for_password(
     info!("Received unlock request");
     let mut state = state.lock().await;
     if !state.password_needed && state.init_data_needed {
-        return Ok(with_status(
+        return Ok(reply::with_status(
             "Need to initialize first".to_string(),
             StatusCode::METHOD_NOT_ALLOWED,
         ));
     } else if !state.password_needed {
-        return Ok(with_status(
+        return Ok(reply::with_status(
             "Already unlocked".to_string(),
             StatusCode::METHOD_NOT_ALLOWED,
         ));
@@ -216,10 +214,10 @@ async fn wait_for_password(
         Err(e) => {
             let error = format!("Failed unlocking relay: {}", &e);
             error!("{}", &error);
-            return Ok(with_status(error, StatusCode::BAD_REQUEST));
+            return Ok(reply::with_status(error, StatusCode::BAD_REQUEST));
         }
     };
-    Ok(with_status(
+    Ok(reply::with_status(
         "Password accepted".to_string(),
         StatusCode::ACCEPTED,
     ))
@@ -235,7 +233,7 @@ pub async fn run(config: RelayConfig) -> Result<(), Error> {
     let state_manager = sled::open(&config.storage_path)?;
     let transport: Arc<dyn Transport> =
         Arc::new(relay_ton::transport::TonlibTransport::new(config.ton_config.clone()).await?);
-    let transport = Arc::from(transport);
+
     let contract_address = MsgAddressInt::from_str(&*config.ton_contract_address.0)
         .map_err(|e| Error::msg(e.to_string()))?;
     let ton_client = BridgeContract::new(&transport, &contract_address).await?;
