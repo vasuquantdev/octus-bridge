@@ -1,7 +1,7 @@
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, SocketAddrV4};
 use std::time::Duration;
 
-use serde::ser::SerializeStruct;
+use serde::ser::{SerializeSeq, SerializeStruct};
 use serde::{Deserialize, Serialize, Serializer};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -48,7 +48,10 @@ pub struct NetworkConfig {
 fn serialize_tonlib_network_config(config: &NetworkConfig) -> String {
     #[derive(Serialize)]
     struct TonlibConfig<'a> {
-        #[serde(rename(serialize = "liteservers"))]
+        #[serde(
+            serialize_with = "serialize_lite_servers",
+            rename(serialize = "liteservers")
+        )]
         lite_servers: &'a [NetworkConfigLiteServer],
         #[serde(
             serialize_with = "serialize_zero_state",
@@ -66,10 +69,7 @@ fn serialize_tonlib_network_config(config: &NetworkConfig) -> String {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct NetworkConfigLiteServer {
-    #[serde(serialize_with = "serialize_ip_addr")]
-    ip: Ipv4Addr,
-    port: u16,
-    #[serde(serialize_with = "serialize_public_key", rename(serialize = "id"))]
+    addr: SocketAddrV4,
     public_key: String,
 }
 
@@ -94,13 +94,40 @@ impl From<KeystoreType> for tonlib::KeystoreType {
     }
 }
 
+fn serialize_lite_servers<S>(
+    lite_servers: &[NetworkConfigLiteServer],
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    #[derive(Serialize)]
+    pub struct Helper<'a> {
+        #[serde(serialize_with = "serialize_ip_addr")]
+        ip: &'a Ipv4Addr,
+        port: u16,
+        #[serde(serialize_with = "serialize_public_key", rename(serialize = "id"))]
+        public_key: &'a str,
+    }
+
+    let mut arr = serializer.serialize_seq(Some(lite_servers.len()))?;
+    for item in lite_servers.iter() {
+        arr.serialize_element(&Helper {
+            ip: &item.addr.ip(),
+            port: item.addr.port(),
+            public_key: &item.public_key,
+        })?;
+    }
+    arr.end()
+}
+
 fn serialize_ip_addr<S>(ip: &Ipv4Addr, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
-    let octests = ip.octets();
+    let octets = ip.octets();
     let mut result = 0;
-    for (i, &octet) in octests.iter().enumerate() {
+    for (i, &octet) in octets.iter().enumerate() {
         result += (octet as u32) << (24 - i * 8);
     }
     serializer.serialize_i32(result as i32)
@@ -116,7 +143,6 @@ where
         ty: &'a str,
         key: &'a str,
     }
-
     Helper {
         ty: "pub.ed25519",
         key,
@@ -163,8 +189,7 @@ where
 pub fn default_mainnet_config() -> NetworkConfig {
     NetworkConfig {
         lite_servers: vec![NetworkConfigLiteServer {
-            ip: Ipv4Addr::new(54, 158, 97, 195),
-            port: 3031,
+            addr: SocketAddrV4::new(Ipv4Addr::new(54, 158, 97, 195), 3031),
             public_key: "uNRRL+6enQjuiZ/s6Z+vO7yxUUR7uxdfzIy+RxkECrc=".to_owned(),
         }],
         zero_state: NetworkConfigZeroState {
@@ -177,8 +202,7 @@ pub fn default_mainnet_config() -> NetworkConfig {
 pub fn default_testnet_config() -> NetworkConfig {
     NetworkConfig {
         lite_servers: vec![NetworkConfigLiteServer {
-            ip: Ipv4Addr::new(54, 158, 97, 195),
-            port: 3032,
+            addr: SocketAddrV4::new(Ipv4Addr::new(54, 158, 97, 195), 3032),
             public_key: "uNRRL+6enQjuiZ/s6Z+vO7yxUUR7uxdfzIy+RxkECrc=".to_owned(),
         }],
         zero_state: NetworkConfigZeroState {
@@ -226,8 +250,7 @@ mod tests {
         let config = r#"{
             "lite_servers": [
                 {                
-                    "ip": "54.158.97.195",
-                    "port": 3031,
+                    "addr": "54.158.97.195:3031",
                     "public_key": "uNRRL+6enQjuiZ/s6Z+vO7yxUUR7uxdfzIy+RxkECrc="
                 }
             ],
