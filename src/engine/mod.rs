@@ -16,7 +16,7 @@ use warp::http::StatusCode;
 use warp::reply::{json, with_status};
 use warp::{Filter, Reply};
 
-use recovery::derive_from_words;
+use recovery::*;
 use relay_eth::ws::EthListener;
 use relay_ton::contracts::bridge::BridgeContract;
 use relay_ton::prelude::FromStr;
@@ -123,7 +123,7 @@ async fn wait_for_init(
             return Ok(with_status(error, StatusCode::BAD_REQUEST));
         }
     };
-    let key = match derive_from_words(language, &data.eth_seed) {
+    let key = match derive_from_words_eth(language, &data.eth_seed) {
         Ok(a) => a,
         Err(e) => {
             let error = format!("Failed deriving from eth seed: {}", e);
