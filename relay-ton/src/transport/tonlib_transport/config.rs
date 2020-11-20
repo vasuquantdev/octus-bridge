@@ -30,8 +30,7 @@ impl Default for Config {
 impl From<Config> for tonlib::Config {
     fn from(c: Config) -> Self {
         Self {
-            network_config: serde_json::to_string(&c.network_config)
-                .expect("failed to serialize tonlib network config"),
+            network_config: serialize_tonlib_network_config(&c.network_config),
             network_name: c.network_name,
             verbosity: c.verbosity,
             keystore: c.keystore.into(),
@@ -42,13 +41,27 @@ impl From<Config> for tonlib::Config {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct NetworkConfig {
-    #[serde(rename(serialize = "liteservers"))]
     lite_servers: Vec<NetworkConfigLiteServer>,
-    #[serde(
-        serialize_with = "serialize_zero_state",
-        rename(serialize = "validator")
-    )]
     zero_state: NetworkConfigZeroState,
+}
+
+fn serialize_tonlib_network_config(config: &NetworkConfig) -> String {
+    #[derive(Serialize)]
+    struct TonlibConfig<'a> {
+        #[serde(rename(serialize = "liteservers"))]
+        lite_servers: &'a [NetworkConfigLiteServer],
+        #[serde(
+            serialize_with = "serialize_zero_state",
+            rename(serialize = "validator")
+        )]
+        zero_state: &'a NetworkConfigZeroState,
+    }
+
+    serde_json::to_string(&TonlibConfig {
+        lite_servers: &config.lite_servers,
+        zero_state: &config.zero_state,
+    })
+    .expect("failed to serialize tonlib network config")
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -228,7 +241,7 @@ mod tests {
         }"#;
         let custom_json = serde_json::from_str::<NetworkConfig>(config).unwrap();
 
-        let serialized_config = serde_json::to_string(&custom_json).unwrap();
+        let serialized_config = serialize_tonlib_network_config(&custom_json);
         let deserialized_config = serde_json::from_str::<Value>(&serialized_config).unwrap();
 
         assert_eq!(
