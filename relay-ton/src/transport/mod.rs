@@ -22,6 +22,12 @@ pub trait Transport: Send + Sync + 'static {
 pub trait AccountSubscription: Send + Sync {
     fn events(&self) -> watch::Receiver<AccountEvent>;
 
+    async fn run_local(
+        &self,
+        abi: &AbiFunction,
+        message: ExternalMessage,
+    ) -> TransportResult<ContractOutput>;
+
     async fn send_message(
         &self,
         abi: Arc<AbiFunction>,

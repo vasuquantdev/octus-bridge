@@ -2,6 +2,7 @@
 name = "relay"
 version = "0.1.0"
 edition = "2018"
+authors = ["Broxus team"]
 publish = false
 
 [workspace]
@@ -12,6 +13,7 @@ members = [
 ]
 [dependencies]
 relay-eth = { path = "./relay-eth" }
+relay-ton = { path = "./relay-ton" }
 url = "2.1.1"
 base64 = "*"
 anyhow = "1.0.33"
@@ -24,13 +26,13 @@ hex = "0.4.2"
 warp = "0.2.5"
 #crypto stuff
 secp256k1 = { version = "0.19.0", features = ["default", "rand"] }
+ed25519-dalek = "1.0.1"
 ring = "0.16.15"
 sodiumoxide = "0.2.6"
 secstr = "0.4.0"
 tiny-hderive = "0.2.1"
 tiny-bip39 = "0.8.0"
 sled = "0.34.5"
-warp-json-rpc = "0.2.0"
 
 structopt = "0.3.20"
 log = "*"
@@ -40,3 +42,14 @@ futures = "0.3.1"
 tokio = { version = "0.2", features = ["full"] }
 daemonize = "0.4.1"
 dialoguer = "0.7.1"
+ton_block = { git = "https://github.com/tonlabs/ton-labs-block.git" }
+
+[package.metadata.deb]
+depends = "$auto"
+section = "utility"
+priority = "optional"
+copyright = "todo"
+assets = [
+    ["target/release/relay", "usr/bin/relay", "755"],
+    ["target/release/client", "usr/bin/relay-client", "755"],
+]

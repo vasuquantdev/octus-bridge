@@ -3,10 +3,12 @@ use std::fmt::{Debug, Formatter};
 use std::fs::File;
 use std::num::NonZeroU32;
 use std::path::Path;
+use std::sync::Arc;
 
 use anyhow::anyhow;
 use anyhow::Error;
 use base64::{decode, encode};
+use ed25519_dalek::{ed25519, Keypair, Signer};
 use rand::prelude::*;
 use ring::{digest, pbkdf2};
 use secp256k1::{Message, PublicKey, SecretKey, Signature};
@@ -15,7 +17,6 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{from_reader, to_writer_pretty};
 use sodiumoxide::crypto::secretbox;
 use sodiumoxide::crypto::secretbox::{Key, Nonce};
-
 
 const CREDENTIAL_LEN: usize = digest::SHA256_OUTPUT_LEN;
 
@@ -35,9 +36,20 @@ pub struct EthSigner {
     private_key: SecretKey,
 }
 
-#[derive(Eq, PartialEq, Clone)]
+#[derive(Clone)]
 pub struct TonSigner {
-    inner: Vec<u8>,
+    inner: Arc<Keypair>,
+}
+
+impl Eq for TonSigner {}
+
+impl PartialEq for TonSigner {
+    fn eq(&self, other: &Self) -> bool {
+        self.inner
+            .secret
+            .as_bytes()
+            .eq(other.inner.secret.as_bytes())
+    }
 }
 
 impl Debug for TonSigner {
@@ -141,6 +153,16 @@ impl EthSigner {
     }
 }
 
+impl TonSigner {
+    pub fn public_key(&self) -> &[u8; 32] {
+        self.inner.public.as_bytes()
+    }
+
+    pub fn sign(&self, data: &[u8]) -> [u8; ed25519::SIGNATURE_LENGTH] {
+        self.inner.sign(data).to_bytes()
+    }
+}
+
 impl KeyData {
     pub fn from_file<T>(path: T, password: SecStr) -> Result<Self, Error>
     where
@@ -155,14 +177,20 @@ impl KeyData {
             &conf.eth_nonce,
         )?;
         let ton_data = secretbox::open(&*conf.encrypted_ton_data, &conf.ton_nonce, &sym_key)
-            .map_err(|_| anyhow!("Failed decrypting with provided password"))?;
+            .map_err(|_| anyhow!("Failed decrypting with provided password"))
+            .and_then(|data| {
+                Keypair::from_bytes(&data)
+                    .map_err(|e| anyhow!("failed to load ton key. {}", e.to_string()))
+            })?;
 
         Ok(Self {
             eth: EthSigner {
                 pubkey: conf.eth_pubkey,
                 private_key,
             },
-            ton: TonSigner { inner: ton_data },
+            ton: TonSigner {
+                inner: Arc::new(ton_data),
+            },
         })
     }
 
@@ -210,6 +238,8 @@ impl KeyData {
         let public = PublicKey::from_secret_key(&curve, &eth_private_key);
         let encrypted_private_key = secretbox::seal(&eth_private_key[..], &eth_nonce, &key);
         let ton_nonce = secretbox::gen_nonce();
+        let ton_secret = ed25519_dalek::Keypair::from_bytes(&ton_data)
+            .map_err(|e| anyhow!("failed to load ton key. {}", e.to_string()))?;
         let encrypted_ton_data = secretbox::seal(&ton_data, &ton_nonce, &key);
         let data = CryptoData {
             eth_pubkey: public,
@@ -227,7 +257,9 @@ impl KeyData {
                 private_key: eth_private_key,
                 pubkey: public,
             },
-            ton: TonSigner { inner: ton_data },
+            ton: TonSigner {
+                inner: Arc::new(ton_secret),
+            },
         })
     }
 }
@@ -260,7 +292,8 @@ mod test {
         let signer = KeyData::init(
             &path,
             password.clone(),
-            "SOME_SUPA_SECRET_DATA".into(),
+            hex::decode("9ee05332323beff8b0f27bc09d7be149c8387a32d392eb0dceffba58a23b9e8d3d1a07db8b045e784ea44097430ea4faac23b46e3d709192d23ea6fbfb53ad07")
+                .unwrap(),
             private,
         )
         .unwrap();
@@ -281,7 +314,8 @@ mod test {
         KeyData::init(
             &path,
             password.clone(),
-            "SOME_SUPA_SECRET_DATA".into(),
+            hex::decode("9ee05332323beff8b0f27bc09d7be149c8387a32d392eb0dceffba58a23b9e8d3d1a07db8b045e784ea44097430ea4faac23b46e3d709192d23ea6fbfb53ad07")
+                .unwrap(),
             private,
         )
         .unwrap();
@@ -297,5 +331,4 @@ mod test {
             ring::digest::SHA256_OUTPUT_LEN
         );
     }
-
 }

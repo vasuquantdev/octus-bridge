@@ -1,7 +1,7 @@
 use std::io::Write;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-
+use relay_ton::transport::tonlib_transport::config::Config as TonConfig;
 use anyhow::Error;
 use config::{Config, File, FileFormat};
 use serde::{Deserialize, Serialize};
@@ -13,7 +13,7 @@ use relay_eth::ws::{Address as EthAddr, H256};
 pub struct EthAddress(String);
 
 #[derive(Deserialize, Serialize, Clone, Debug, Default, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct TonAddress(String);
+pub struct TonAddress(pub String);
 
 impl EthAddress {
     pub fn to_eth_addr(&self) -> Result<EthAddr, Error> {
@@ -41,6 +41,7 @@ pub struct RelayConfig {
     pub ton_contract_address: TonAddress,
     pub storage_path: PathBuf,
     pub listen_address: SocketAddr,
+    pub ton_config: TonConfig
 }
 impl Default for RelayConfig {
     fn default() -> Self {
@@ -50,6 +51,7 @@ impl Default for RelayConfig {
             eth_node_address: "ws://localhost:12345".into(),
             ton_contract_address: TonAddress("".into()),
             listen_address: "127.0.0.1:12345".parse().unwrap(),
+            ton_config: TonConfig::default()
         }
     }
 }

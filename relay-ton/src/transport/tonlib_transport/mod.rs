@@ -9,8 +9,8 @@ use tokio::time::Duration;
 use ton_abi::Function;
 use ton_api::ton;
 use ton_block::{
-    AccountStuff, CommonMsgInfo, Deserializable, ExternalInboundMessageHeader,
-    GetRepresentationHash, Message, MsgAddrVar, MsgAddressInt, Serializable, Transaction,
+    AccountStuff, CommonMsgInfo, Deserializable, ExternalInboundMessageHeader, Message,
+    Serializable, Transaction,
 };
 use ton_types::SliceData;
 use tonlib::{TonlibClient, TonlibError};
@@ -116,19 +116,6 @@ impl TonlibAccountSubscription {
         Ok(subscription)
     }
 
-    async fn run_local(
-        &self,
-        function: &Function,
-        message: &Message,
-    ) -> TransportResult<ContractOutput> {
-        let account_state = self.known_state.read().await;
-        let info = parse_account_stuff(account_state.data.0.as_slice())?;
-
-        let (messages, _) = tvm::call_msg(&account_state, info, message)?;
-
-        process_out_messages(&messages, function)
-    }
-
     fn start_loop(
         self: &Arc<Self>,
         state_notifier: watch::Sender<AccountEvent>,
@@ -172,7 +159,7 @@ impl TonlibAccountSubscription {
                     let mut known_state = subscription.known_state.write().await;
                     *known_state = account_state;
                 }
-                state_notifier.broadcast(AccountEvent::StateChanged);
+                let _ = state_notifier.broadcast(AccountEvent::StateChanged);
 
                 let mut pending_messages = subscription.pending_messages.write().await;
 
@@ -249,24 +236,32 @@ impl AccountSubscription for TonlibAccountSubscription {
         self.event_notifier.clone()
     }
 
+    async fn run_local(
+        &self,
+        abi: &AbiFunction,
+        message: ExternalMessage,
+    ) -> TransportResult<ContractOutput> {
+        let message = encode_external_message(message);
+
+        let account_state = self.known_state.read().await;
+        let info = parse_account_stuff(account_state.data.0.as_slice())?;
+
+        let (messages, _) = tvm::call_msg(&account_state, info, &message)?;
+
+        process_out_messages(&messages, abi)
+    }
+
     async fn send_message(
         &self,
         abi: Arc<Function>,
         message: ExternalMessage,
     ) -> TransportResult<ContractOutput> {
-        let mut message_header = ExternalInboundMessageHeader::default();
-        message_header.dst = message.dest.clone();
-
-        let mut msg = Message::with_ext_in_header(message_header);
-        if let Some(body) = message.body {
-            msg.set_body(body);
-        }
-
         if message.run_local {
-            return self.run_local(abi.as_ref(), &msg).await;
+            return self.run_local(abi.as_ref(), message).await;
         }
+        let expires_at = message.header.expire;
 
-        let cells = msg
+        let cells = encode_external_message(message)
             .write_to_new_cell()
             .map_err(|_| TransportError::FailedToSerialize)?
             .into();
@@ -288,8 +283,8 @@ impl AccountSubscription for TonlibAccountSubscription {
                         .map_err(to_api_error)?;
 
                     entry.insert(PendingMessage {
-                        expires_at: message.header.expire,
-                        previous_known_lt,
+                        expires_at,
+                        _previous_known_lt: previous_known_lt,
                         abi,
                         tx,
                     })
@@ -302,7 +297,7 @@ impl AccountSubscription for TonlibAccountSubscription {
             };
         }
 
-        rx.await.unwrap_or_else(|e| {
+        rx.await.unwrap_or_else(|_| {
             Err(TransportError::ApiFailure {
                 reason: "subscription part dropped before receiving message response".to_owned(),
             })
@@ -312,9 +307,20 @@ impl AccountSubscription for TonlibAccountSubscription {
 
 struct PendingMessage {
     expires_at: u32,
-    previous_known_lt: u64,
+    _previous_known_lt: u64,
     abi: Arc<Function>,
     tx: oneshot::Sender<TransportResult<ContractOutput>>,
+}
+
+fn encode_external_message(message: ExternalMessage) -> Message {
+    let mut message_header = ExternalInboundMessageHeader::default();
+    message_header.dst = message.dest.clone();
+
+    let mut msg = Message::with_ext_in_header(message_header);
+    if let Some(body) = message.body {
+        msg.set_body(body);
+    }
+    msg
 }
 
 fn parse_account_stuff(raw: &[u8]) -> TransportResult<AccountStuff> {
@@ -426,29 +432,22 @@ fn to_api_error(e: TonlibError) -> TransportError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::str::FromStr;
 
     const MAINNET_CONFIG: &str = r#"{
-      "liteservers": [
-        {
-          "ip": 916349379,
-          "port": 3031,
-          "id": {
-            "@type": "pub.ed25519",
-            "key": "uNRRL+6enQjuiZ/s6Z+vO7yxUUR7uxdfzIy+RxkECrc="
-          }
-        }
-      ],
-      "validator": {
-        "@type": "validator.config.global",
+        "lite_servers": [
+            {                
+                "ip": "54.158.97.195",
+                "port": 3031,
+                "public_key": "uNRRL+6enQjuiZ/s6Z+vO7yxUUR7uxdfzIy+RxkECrc="
+            }
+        ],
         "zero_state": {
-          "workchain": -1,
-          "shard": -9223372036854775808,
-          "seqno": 0,
-          "root_hash": "WP/KGheNr/cF3lQhblQzyb0ufYUAcNM004mXhHq56EU=",
-          "file_hash": "0nC4eylStbp9qnCq8KjDYb789NjS25L5ZA1UQwcIOOQ="
+            "file_hash": "0nC4eylStbp9qnCq8KjDYb789NjS25L5ZA1UQwcIOOQ=",
+            "root_hash": "WP/KGheNr/cF3lQhblQzyb0ufYUAcNM004mXhHq56EU=",
+            "shard": -9223372036854775808,
+            "seqno": 0,
+            "workchain": -1
         }
-      }
     }"#;
 
     const ELECTOR_ADDR: &str =
@@ -459,7 +458,7 @@ mod tests {
         env_logger::init();
 
         TonlibTransport::new(Config {
-            network_config: MAINNET_CONFIG.to_string(),
+            network_config: serde_json::from_str(MAINNET_CONFIG).unwrap(),
             network_name: "mainnet".to_string(),
             verbosity: 1,
             keystore: KeystoreType::InMemory,
@@ -474,7 +473,7 @@ mod tests {
     async fn test_subscription() {
         let transport = make_transport().await;
 
-        let subscription = transport.subscribe(ELECTOR_ADDR).await;
+        let _subscription = transport.subscribe(ELECTOR_ADDR).await;
 
         tokio::time::delay_for(Duration::from_secs(10)).await;
     }
