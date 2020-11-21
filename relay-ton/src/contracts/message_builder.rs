@@ -22,10 +22,16 @@ pub fn make_header(timeout_sec: u32) -> ExternalMessageHeader {
     ExternalMessageHeader { time, expire }
 }
 
+pub enum MessageType {
+    Signed,
+    Unsigned,
+}
+
 pub struct MessageBuilder<'a> {
     config: &'a ContractConfig,
     function: &'a Function,
     transport: &'a dyn AccountSubscription,
+    keypair: &'a Keypair,
     input: Vec<Token>,
     run_local: bool,
 }
@@ -35,6 +41,7 @@ impl<'a> MessageBuilder<'a> {
         config: &'a ContractConfig,
         contract: &'a Contract,
         transport: &'a dyn AccountSubscription,
+        keypair: &'a Keypair,
         name: &str,
     ) -> ContractResult<Self> {
         let function = contract
@@ -46,6 +53,7 @@ impl<'a> MessageBuilder<'a> {
             config,
             function,
             transport,
+            keypair,
             input,
             run_local: false,
         })
@@ -66,11 +74,19 @@ impl<'a> MessageBuilder<'a> {
         self
     }
 
-    pub fn build(self) -> ContractResult<ExternalMessage> {
+    pub fn build(self, message_type: MessageType) -> ContractResult<ExternalMessage> {
         let header = make_header(self.config.timeout_sec);
         let encoded_input = self
             .function
-            .encode_input(&header.clone().into(), &self.input, false, None)
+            .encode_input(
+                &header.clone().into(),
+                &self.input,
+                false,
+                match message_type {
+                    MessageType::Signed => Some(self.keypair),
+                    MessageType::Unsigned => None,
+                },
+            )
             .map_err(|_| ContractError::InvalidInput)?;
 
         Ok(ExternalMessage {
@@ -85,14 +101,17 @@ impl<'a> MessageBuilder<'a> {
     pub async fn run_local(self) -> ContractResult<ContractOutput> {
         let output = self
             .transport
-            .run_local(self.function, self.build()?)
+            .run_local(self.function, self.build(MessageType::Unsigned)?)
             .await?;
         Ok(output)
     }
 
     pub async fn send(self) -> ContractResult<ContractOutput> {
         let function = Arc::new(self.function.clone());
-        let output = self.transport.send_message(function, self.build()?).await?;
+        let output = self
+            .transport
+            .send_message(function, self.build(MessageType::Signed)?)
+            .await?;
         Ok(output)
     }
 }

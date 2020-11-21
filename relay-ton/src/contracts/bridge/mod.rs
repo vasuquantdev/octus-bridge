@@ -12,14 +12,16 @@ use crate::transport::*;
 #[derive(Clone)]
 pub struct BridgeContract {
     transport: Arc<dyn AccountSubscription>,
+    keypair: Arc<Keypair>,
     config: ContractConfig,
     contract: Contract,
 }
 
 impl BridgeContract {
     pub async fn new(
-        transport: &Arc<dyn Transport>,
+        transport: Arc<dyn Transport>,
         account: &MsgAddressInt,
+        keypair: Arc<Keypair>,
     ) -> ContractResult<BridgeContract> {
         let contract =
             Contract::load(Cursor::new(ABI)).expect("Failed to load bridge contract ABI");
@@ -28,6 +30,7 @@ impl BridgeContract {
 
         Ok(Self {
             transport,
+            keypair,
             config: ContractConfig {
                 account: account.clone(),
                 timeout_sec: 60,
@@ -69,7 +72,13 @@ impl BridgeContract {
 
     #[inline]
     fn message(&self, name: &str) -> ContractResult<MessageBuilder> {
-        MessageBuilder::new(&self.config, &self.contract, self.transport.as_ref(), name)
+        MessageBuilder::new(
+            &self.config,
+            &self.contract,
+            self.transport.as_ref(),
+            self.keypair.as_ref(),
+            name,
+        )
     }
 
     pub async fn add_ethereum_event_configuration(

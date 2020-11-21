@@ -6,6 +6,7 @@ pub use std::sync::Arc;
 
 pub use async_trait::async_trait;
 pub use chrono::Utc;
+pub use ed25519_dalek::Keypair;
 pub use futures::stream::Stream;
 pub use num_bigint::{BigInt, BigUint};
 pub use serde::{Deserialize, Serialize};
