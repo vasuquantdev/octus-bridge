@@ -4,6 +4,7 @@ pub use ton_types::Cell;
 
 use super::errors::*;
 pub use super::message_builder::{FunctionArg, MessageBuilder};
+pub use super::Contract;
 use crate::models::*;
 use crate::prelude::*;
 

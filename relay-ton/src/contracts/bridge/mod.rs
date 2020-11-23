@@ -1,7 +1,5 @@
 mod models;
 
-use ton_abi::Contract;
-
 pub use self::models::*;
 use super::errors::*;
 use super::prelude::*;
@@ -14,7 +12,7 @@ pub struct BridgeContract {
     transport: Arc<dyn AccountSubscription>,
     keypair: Arc<Keypair>,
     config: ContractConfig,
-    contract: Arc<Contract>,
+    contract: Arc<ton_abi::Contract>,
 }
 
 impl BridgeContract {
@@ -30,8 +28,9 @@ impl BridgeContract {
             timeout_sec: 60,
         };
 
-        let contract =
-            Arc::new(Contract::load(Cursor::new(ABI)).expect("Failed to load bridge contract ABI"));
+        let contract = Arc::new(
+            ton_abi::Contract::load(Cursor::new(ABI)).expect("Failed to load bridge contract ABI"),
+        );
 
         Ok(Self {
             transport,
@@ -39,79 +38,6 @@ impl BridgeContract {
             config,
             contract,
         })
-    }
-
-    pub fn events(self: &Arc<Self>) -> impl Stream<Item = BridgeContractEvent> {
-        let contract = self.contract.clone();
-
-        let mut events_rx = self.transport.events();
-        let this = Arc::downgrade(self);
-        let (tx, rx) = mpsc::unbounded_channel();
-        tokio::spawn(async move {
-            let events_map = contract
-                .events()
-                .iter()
-                .map(|(key, event)| {
-                    let kind =
-                        BridgeContractEventKind::try_from(key.as_str()).expect("invalid abi");
-                    (event.get_id(), (kind, event))
-                })
-                .collect::<HashMap<_, _>>();
-
-            while let Some(event) = events_rx.recv().await {
-                let _this = match this.upgrade() {
-                    Some(this) => this,
-                    _ => return,
-                };
-
-                if let AccountEvent::OutboundEvent(body) = event {
-                    let event_id = match body.read_method_id() {
-                        Ok(id) => id,
-                        Err(_) => {
-                            log::error!("got invalid event body");
-                            continue;
-                        }
-                    };
-
-                    let (kind, event) = match events_map.get(&event_id) {
-                        Some(&info) => info,
-                        None => {
-                            log::error!("got unknown event");
-                            continue;
-                        }
-                    };
-
-                    let data = match event
-                        .decode_input(body.as_ref().clone())
-                        .map_err(|_| ContractError::InvalidInput)
-                        .and_then(move |data| BridgeContractEvent::try_from((kind, data)))
-                    {
-                        Ok(tokens) => tokens,
-                        Err(e) => {
-                            log::error!("failed to decode event. {}", e);
-                            continue;
-                        }
-                    };
-
-                    if tx.send(data).is_err() {
-                        return;
-                    }
-                };
-            }
-        });
-
-        rx
-    }
-
-    #[inline]
-    fn message(&self, name: &str) -> ContractResult<MessageBuilder> {
-        MessageBuilder::new(
-            &self.config,
-            &self.contract,
-            self.transport.as_ref(),
-            self.keypair.as_ref(),
-            name,
-        )
     }
 
     pub async fn add_ethereum_event_configuration(
@@ -369,6 +295,32 @@ impl BridgeContract {
             .send()
             .await?
             .ignore_output()
+    }
+}
+
+impl Contract for BridgeContract {
+    type Event = BridgeContractEvent;
+    type EventKind = BridgeContractEventKind;
+
+    #[inline]
+    fn contract(&self) -> &Arc<ton_abi::Contract> {
+        &self.contract
+    }
+
+    #[inline]
+    fn transport(&self) -> &Arc<dyn AccountSubscription> {
+        &self.transport
+    }
+
+    #[inline]
+    fn message(&self, name: &str) -> ContractResult<MessageBuilder> {
+        MessageBuilder::new(
+            &self.config,
+            &self.contract,
+            self.transport.as_ref(),
+            self.keypair.as_ref(),
+            name,
+        )
     }
 }
 
