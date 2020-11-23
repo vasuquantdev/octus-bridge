@@ -18,7 +18,7 @@ use ton_types::SliceData;
 use tonlib::{TonlibClient, TonlibError};
 
 use super::errors::*;
-use super::{AccountEvent, AccountSubscription, Transport};
+use super::{AccountEvent, AccountSubscription, RunLocal, Transport};
 use crate::models::*;
 use crate::prelude::*;
 
@@ -44,7 +44,7 @@ impl TonlibTransport {
 }
 
 #[async_trait]
-impl Transport for TonlibTransport {
+impl RunLocal for TonlibTransport {
     async fn run_local(
         &self,
         abi: &Function,
@@ -77,7 +77,10 @@ impl Transport for TonlibTransport {
             },
         )
     }
+}
 
+#[async_trait]
+impl Transport for TonlibTransport {
     async fn subscribe(&self, addr: &str) -> TransportResult<Arc<dyn AccountSubscription>> {
         let subscription: Arc<dyn AccountSubscription> =
             TonlibAccountSubscription::new(&self.client, &self.subscription_polling_interval, addr)
@@ -251,11 +254,7 @@ impl TonlibAccountSubscription {
 }
 
 #[async_trait]
-impl AccountSubscription for TonlibAccountSubscription {
-    fn events(&self) -> watch::Receiver<AccountEvent> {
-        self.event_notifier.clone()
-    }
-
+impl RunLocal for TonlibAccountSubscription {
     async fn run_local(
         &self,
         abi: &AbiFunction,
@@ -275,6 +274,13 @@ impl AccountSubscription for TonlibAccountSubscription {
                 events_tx: None,
             },
         )
+    }
+}
+
+#[async_trait]
+impl AccountSubscription for TonlibAccountSubscription {
+    fn events(&self) -> watch::Receiver<AccountEvent> {
+        self.event_notifier.clone()
     }
 
     async fn send_message(

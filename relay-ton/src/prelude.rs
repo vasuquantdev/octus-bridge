@@ -1,3 +1,4 @@
+pub use std::borrow::Cow;
 pub use std::collections::HashMap;
 pub use std::convert::{TryFrom, TryInto};
 pub use std::io::Cursor;

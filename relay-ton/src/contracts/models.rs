@@ -3,14 +3,6 @@ use crate::contracts::prelude::*;
 use crate::models::*;
 use crate::prelude::*;
 
-#[derive(Debug, Clone)]
-pub struct OffchainVotingSet {
-    pub change_nonce: BigUint,
-    pub signers: Vec<AccountId>,
-    pub signatures_high_parts: Vec<UInt256>,
-    pub signatures_low_parts: Vec<UInt256>,
-}
-
 crate::define_event!(BridgeContractEvent, BridgeContractEventKind, {
     VotingForUpdateConfigStarted { voting_address: MsgAddrStd },
     BridgeConfigUpdated,
@@ -54,6 +46,26 @@ impl TryFrom<(BridgeContractEventKind, Vec<Token>)> for BridgeContractEvent {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
+pub struct VotingSet {
+    pub change_nonce: BigUint,
+    pub signers: Vec<MsgAddrStd>,
+    pub signatures_high_parts: Vec<UInt256>,
+    pub signatures_low_parts: Vec<UInt256>,
+}
+
+fn parse_voting_set<I>(tokens: &mut ContractOutputParser<I>) -> ContractResult<VotingSet>
+where
+    I: Iterator<Item = Token>,
+{
+    Ok(VotingSet {
+        change_nonce: tokens.parse_next()?,
+        signers: tokens.parse_next()?,
+        signatures_high_parts: tokens.parse_next()?,
+        signatures_low_parts: tokens.parse_next()?,
+    })
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct BridgeConfiguration {
     pub add_event_type_required_confirmations_percent: u8,
     pub remove_event_type_required_confirmations_percent: u8,
@@ -72,18 +84,26 @@ impl TryFrom<ContractOutput> for BridgeConfiguration {
 
     fn try_from(output: ContractOutput) -> ContractResult<Self> {
         let mut tokens = output.into_parser();
-
-        Ok(Self {
-            add_event_type_required_confirmations_percent: tokens.parse_next()?,
-            remove_event_type_required_confirmations_percent: tokens.parse_next()?,
-            add_relay_required_confirmations_percent: tokens.parse_next()?,
-            remove_relay_required_confirmations_percent: tokens.parse_next()?,
-            update_config_required_confirmations_percent: tokens.parse_next()?,
-            event_root_code: tokens.parse_next()?,
-            ton_to_eth_event_code: tokens.parse_next()?,
-            eth_to_ton_event_code: tokens.parse_next()?,
-        })
+        parse_bridge_configuration(&mut tokens)
     }
+}
+
+fn parse_bridge_configuration<I>(
+    tokens: &mut ContractOutputParser<I>,
+) -> ContractResult<BridgeConfiguration>
+where
+    I: Iterator<Item = Token>,
+{
+    Ok(BridgeConfiguration {
+        add_event_type_required_confirmations_percent: tokens.parse_next()?,
+        remove_event_type_required_confirmations_percent: tokens.parse_next()?,
+        add_relay_required_confirmations_percent: tokens.parse_next()?,
+        remove_relay_required_confirmations_percent: tokens.parse_next()?,
+        update_config_required_confirmations_percent: tokens.parse_next()?,
+        event_root_code: tokens.parse_next()?,
+        ton_to_eth_event_code: tokens.parse_next()?,
+        eth_to_ton_event_code: tokens.parse_next()?,
+    })
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -134,18 +154,82 @@ impl TryFrom<ContractOutput> for (MsgAddrStd, TonEventConfiguration) {
         let mut tokens = output.into_parser();
 
         let ton_address = tokens.parse_next()?;
+        let config = parse_ton_event_configuration(&mut tokens)?;
 
-        Ok((
-            ton_address,
-            TonEventConfiguration {
-                eth_address: tokens.parse_next()?,
-                eth_event_abi: tokens.parse_next()?,
-                event_proxy_address: tokens.parse_next()?,
-                min_signs: tokens.parse_next()?,
-                min_signs_percent: tokens.parse_next()?,
-                ton_to_eth_rate: tokens.parse_next()?,
-                eth_to_ton_rate: tokens.parse_next()?,
-            },
-        ))
+        Ok((ton_address, config))
+    }
+}
+
+fn parse_ton_event_configuration<I>(
+    tokens: &mut ContractOutputParser<I>,
+) -> ContractResult<TonEventConfiguration>
+where
+    I: Iterator<Item = Token>,
+{
+    Ok(TonEventConfiguration {
+        eth_address: tokens.parse_next()?,
+        eth_event_abi: tokens.parse_next()?,
+        event_proxy_address: tokens.parse_next()?,
+        min_signs: tokens.parse_next()?,
+        min_signs_percent: tokens.parse_next()?,
+        ton_to_eth_rate: tokens.parse_next()?,
+        eth_to_ton_rate: tokens.parse_next()?,
+    })
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct VotingForAddEventTypeDetails {
+    config: TonEventConfiguration,
+    votes: VotingSet,
+}
+
+impl TryFrom<ContractOutput> for VotingForAddEventTypeDetails {
+    type Error = ContractError;
+
+    fn try_from(output: ContractOutput) -> ContractResult<Self> {
+        let mut tokens = output.into_parser();
+
+        let config = parse_ton_event_configuration(&mut tokens)?;
+        let votes = parse_voting_set(&mut tokens)?;
+
+        Ok(Self { config, votes })
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct VotingForRemoveEventTypeDetails {
+    address: MsgAddrStd,
+    votes: VotingSet,
+}
+
+impl TryFrom<ContractOutput> for VotingForRemoveEventTypeDetails {
+    type Error = ContractError;
+
+    fn try_from(output: ContractOutput) -> ContractResult<Self> {
+        let mut tokens = output.into_parser();
+
+        let address = tokens.parse_next()?;
+        let votes = parse_voting_set(&mut tokens)?;
+
+        Ok(Self { address, votes })
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct VotingForUpdateConfigDetails {
+    config: BridgeConfiguration,
+    votes: VotingSet,
+}
+
+impl TryFrom<ContractOutput> for VotingForUpdateConfigDetails {
+    type Error = ContractError;
+
+    fn try_from(output: ContractOutput) -> ContractResult<Self> {
+        let mut tokens = output.into_parser();
+
+        let config = parse_bridge_configuration(&mut tokens)?;
+        let votes = parse_voting_set(&mut tokens)?;
+
+        Ok(Self { config, votes })
     }
 }

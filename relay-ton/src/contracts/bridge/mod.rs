@@ -1,7 +1,5 @@
-mod models;
-
-pub use self::models::*;
 use super::errors::*;
+use super::models::*;
 use super::prelude::*;
 use crate::models::*;
 use crate::prelude::*;
@@ -20,7 +18,7 @@ impl BridgeContract {
         transport: Arc<dyn Transport>,
         account: &MsgAddressInt,
         keypair: Arc<Keypair>,
-    ) -> ContractResult<BridgeContract> {
+    ) -> ContractResult<Self> {
         let transport = transport.subscribe(&account.to_string()).await?;
 
         let config = ContractConfig {
@@ -29,7 +27,8 @@ impl BridgeContract {
         };
 
         let contract = Arc::new(
-            ton_abi::Contract::load(Cursor::new(ABI)).expect("Failed to load bridge contract ABI"),
+            ton_abi::Contract::load(Cursor::new(ABI))
+                .expect("failed to load bridge BridgeContract ABI"),
         );
 
         Ok(Self {
@@ -38,6 +37,17 @@ impl BridgeContract {
             config,
             contract,
         })
+    }
+
+    #[inline]
+    fn message(&self, name: &str) -> ContractResult<SignedMessageBuilder> {
+        SignedMessageBuilder::new(
+            Cow::Borrowed(&self.config),
+            &self.contract,
+            self.transport.as_ref(),
+            self.keypair.as_ref(),
+            name,
+        )
     }
 
     pub async fn add_ethereum_event_configuration(
@@ -181,7 +191,7 @@ impl BridgeContract {
     pub async fn update_config(
         &self,
         new_config: BridgeConfiguration,
-        voting_set: OffchainVotingSet,
+        voting_set: VotingSet,
     ) -> ContractResult<()> {
         self.message("updateConfig")?
             .arg(new_config.add_event_type_required_confirmations_percent)
@@ -236,7 +246,7 @@ impl BridgeContract {
     pub async fn add_event_type(
         &self,
         new_event_type: TonEventConfiguration,
-        voting_set: OffchainVotingSet,
+        voting_set: VotingSet,
     ) -> ContractResult<()> {
         self.message("addEventType")?
             .arg(new_event_type.eth_address)
@@ -284,7 +294,7 @@ impl BridgeContract {
     pub async fn remove_event_type(
         &self,
         ton_address: MsgAddrStd,
-        voting_set: OffchainVotingSet,
+        voting_set: VotingSet,
     ) -> ContractResult<()> {
         self.message("removeEventType")?
             .arg(ton_address)
@@ -299,28 +309,19 @@ impl BridgeContract {
 }
 
 impl Contract for BridgeContract {
+    #[inline]
+    fn abi(&self) -> &Arc<ton_abi::Contract> {
+        &self.contract
+    }
+}
+
+impl ContractWithEvents for BridgeContract {
     type Event = BridgeContractEvent;
     type EventKind = BridgeContractEventKind;
 
     #[inline]
-    fn contract(&self) -> &Arc<ton_abi::Contract> {
-        &self.contract
-    }
-
-    #[inline]
-    fn transport(&self) -> &Arc<dyn AccountSubscription> {
+    fn subscription(&self) -> &Arc<dyn AccountSubscription> {
         &self.transport
-    }
-
-    #[inline]
-    fn message(&self, name: &str) -> ContractResult<MessageBuilder> {
-        MessageBuilder::new(
-            &self.config,
-            &self.contract,
-            self.transport.as_ref(),
-            self.keypair.as_ref(),
-            name,
-        )
     }
 }
 
