@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use anyhow::Error;
-use ethabi::{Param, ParamType, Token};
+use ethabi::{ParamType, Token};
 use serde::{Deserialize, Serialize};
 use sha3::digest::Digest;
 use sha3::Keccak256;
@@ -85,7 +85,7 @@ pub fn abi_to_topic_hash(abi: &str) -> Result<H256, Error> {
 #[cfg(test)]
 mod test {
     use ethabi::ParamType;
-    use serde_json::Value;
+
     use sha3::Digest;
     use sha3::Keccak256;
 
