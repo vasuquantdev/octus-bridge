@@ -14,7 +14,7 @@ pub struct BridgeContract {
     transport: Arc<dyn AccountSubscription>,
     keypair: Arc<Keypair>,
     config: ContractConfig,
-    contract: Contract,
+    contract: Arc<Contract>,
 }
 
 impl BridgeContract {
@@ -23,47 +23,80 @@ impl BridgeContract {
         account: &MsgAddressInt,
         keypair: Arc<Keypair>,
     ) -> ContractResult<BridgeContract> {
-        let contract =
-            Contract::load(Cursor::new(ABI)).expect("Failed to load bridge contract ABI");
-
         let transport = transport.subscribe(&account.to_string()).await?;
+
+        let config = ContractConfig {
+            account: account.clone(),
+            timeout_sec: 60,
+        };
+
+        let contract =
+            Arc::new(Contract::load(Cursor::new(ABI)).expect("Failed to load bridge contract ABI"));
 
         Ok(Self {
             transport,
             keypair,
-            config: ContractConfig {
-                account: account.clone(),
-                timeout_sec: 60,
-            },
+            config,
             contract,
         })
     }
 
     pub fn events(self: &Arc<Self>) -> impl Stream<Item = BridgeContractEvent> {
-        let mut events = self.transport.events();
+        let contract = self.contract.clone();
+
+        let mut events_rx = self.transport.events();
         let this = Arc::downgrade(self);
         let (tx, rx) = mpsc::unbounded_channel();
         tokio::spawn(async move {
-            while let Some(AccountEvent::StateChanged) = events.recv().await {
-                let this = match this.upgrade() {
+            let events_map = contract
+                .events()
+                .iter()
+                .map(|(key, event)| {
+                    let kind =
+                        BridgeContractEventKind::try_from(key.as_str()).expect("invalid abi");
+                    (event.get_id(), (kind, event))
+                })
+                .collect::<HashMap<_, _>>();
+
+            while let Some(event) = events_rx.recv().await {
+                let _this = match this.upgrade() {
                     Some(this) => this,
                     _ => return,
                 };
 
-                let configs = match this.get_ethereum_events_configuration().await {
-                    Ok(configs) => configs,
-                    Err(e) => {
-                        log::error!("failed to get ethereum events configuration. {}", e);
-                        continue;
+                if let AccountEvent::OutboundEvent(body) = event {
+                    let event_id = match body.read_method_id() {
+                        Ok(id) => id,
+                        Err(_) => {
+                            log::error!("got invalid event body");
+                            continue;
+                        }
+                    };
+
+                    let (kind, event) = match events_map.get(&event_id) {
+                        Some(&info) => info,
+                        None => {
+                            log::error!("got unknown event");
+                            continue;
+                        }
+                    };
+
+                    let data = match event
+                        .decode_input(body.as_ref().clone())
+                        .map_err(|_| ContractError::InvalidInput)
+                        .and_then(move |data| BridgeContractEvent::try_from((kind, data)))
+                    {
+                        Ok(tokens) => tokens,
+                        Err(e) => {
+                            log::error!("failed to decode event. {}", e);
+                            continue;
+                        }
+                    };
+
+                    if tx.send(data).is_err() {
+                        return;
                     }
                 };
-
-                if tx
-                    .send(BridgeContractEvent::ConfigurationChanged(configs))
-                    .is_err()
-                {
-                    return;
-                }
             }
         });
 

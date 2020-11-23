@@ -60,7 +60,7 @@ pub struct ExternalMessage {
     pub run_local: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ContractOutput {
     pub transaction_id: Option<TransactionId>,
     pub tokens: Vec<Token>,

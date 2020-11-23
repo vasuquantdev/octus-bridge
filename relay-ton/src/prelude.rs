@@ -13,4 +13,4 @@ pub use serde::{Deserialize, Serialize};
 pub use tokio::sync::{mpsc, watch, RwLock};
 pub use ton_block::{MsgAddrStd, MsgAddressInt};
 pub use ton_sdk::{AbiContract, AbiFunction};
-pub use ton_types::{BuilderData, UInt256};
+pub use ton_types::{BuilderData, SliceData, UInt256};

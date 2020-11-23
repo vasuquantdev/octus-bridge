@@ -35,7 +35,8 @@ pub trait AccountSubscription: Send + Sync {
     ) -> TransportResult<ContractOutput>;
 }
 
-#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub enum AccountEvent {
     StateChanged,
+    OutboundEvent(Arc<SliceData>),
 }

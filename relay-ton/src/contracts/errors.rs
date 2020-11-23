@@ -10,6 +10,8 @@ pub enum ContractError {
     InvalidInput,
     #[error("invalid string")]
     InvalidString,
+    #[error("unknown event")]
+    UnknownEvent,
     #[error("transport error")]
     TransportError(#[from] TransportError),
 }

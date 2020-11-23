@@ -11,9 +11,46 @@ pub struct OffchainVotingSet {
     pub signatures_low_parts: Vec<UInt256>,
 }
 
-#[derive(Debug, Clone)]
-pub enum BridgeContractEvent {
-    ConfigurationChanged(Vec<EthereumEventsConfiguration>),
+crate::define_event!(BridgeContractEvent, BridgeContractEventKind, {
+    VotingForUpdateConfigStarted { voting_address: MsgAddrStd },
+    BridgeConfigUpdated,
+    VotingForAddEventTypeStarted { voting_address: MsgAddrStd },
+    EventTypeAdded { event_root_address: MsgAddrStd },
+    VotingForRemoveEventTypeStarted { voting_address: MsgAddrStd },
+    EventTypeRemoved { event_root_address: MsgAddrStd },
+});
+
+impl TryFrom<(BridgeContractEventKind, Vec<Token>)> for BridgeContractEvent {
+    type Error = ContractError;
+
+    fn try_from((kind, tokens): (BridgeContractEventKind, Vec<Token>)) -> ContractResult<Self> {
+        Ok(match kind {
+            BridgeContractEventKind::VotingForUpdateConfigStarted => {
+                BridgeContractEvent::VotingForUpdateConfigStarted {
+                    voting_address: tokens.into_iter().next().try_parse()?,
+                }
+            }
+            BridgeContractEventKind::BridgeConfigUpdated => {
+                BridgeContractEvent::BridgeConfigUpdated
+            }
+            BridgeContractEventKind::VotingForAddEventTypeStarted => {
+                BridgeContractEvent::VotingForAddEventTypeStarted {
+                    voting_address: tokens.into_iter().next().try_parse()?,
+                }
+            }
+            BridgeContractEventKind::EventTypeAdded => BridgeContractEvent::EventTypeAdded {
+                event_root_address: tokens.into_iter().next().try_parse()?,
+            },
+            BridgeContractEventKind::VotingForRemoveEventTypeStarted => {
+                BridgeContractEvent::VotingForRemoveEventTypeStarted {
+                    voting_address: tokens.into_iter().next().try_parse()?,
+                }
+            }
+            BridgeContractEventKind::EventTypeRemoved => BridgeContractEvent::EventTypeRemoved {
+                event_root_address: tokens.into_iter().next().try_parse()?,
+            },
+        })
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
