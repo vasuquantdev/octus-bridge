@@ -1,11 +1,13 @@
 use std::sync::Arc;
+
+use anyhow::Error;
+use serde::Deserialize;
 use sled::Db;
-use crate::engine::bridge::Bridge;
-use crate::engine::routes::create_bridge;
+
 use crate::config::RelayConfig;
 use crate::crypto::key_managment::KeyData;
-use serde::{Deserialize};
-use anyhow::Error;
+use crate::engine::bridge::Bridge;
+use crate::engine::routes::create_bridge;
 
 impl State {
     pub async fn finalize(&mut self, config: RelayConfig, key_data: KeyData) -> Result<(), Error> {
@@ -43,4 +45,9 @@ pub struct InitData {
 #[derive(Deserialize, Debug)]
 pub struct Password {
     pub password: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct RescanEthData {
+    pub block: u64,
 }

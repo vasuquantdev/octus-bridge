@@ -1,27 +1,30 @@
-use crate::config::RelayConfig;
-use relay_ton::prelude::{Arc, RwLock};
-use crate::engine::models::{State, Password, InitData, BridgeState};
-use warp::{Filter, Reply, reply};
-use std::net::SocketAddr;
 use std::convert::Infallible;
-use warp::http::StatusCode;
-use bip39::Language;
-use crate::crypto::recovery::{derive_from_words_eth, derive_from_words_ton};
-use crate::crypto::key_managment::KeyData;
-use sled::Db;
-use crate::engine::bridge::Bridge;
-use anyhow::Error;
-use relay_ton::transport::Transport;
-use ton_block::MsgAddressInt;
-use relay_ton::contracts::BridgeContract;
-use relay_eth::ws::EthListener;
-use url::Url;
-use serde::{Serialize};
 use std::str::FromStr;
+
+use anyhow::Error;
+use bip39::Language;
+use serde::Serialize;
+use sled::Db;
+use ton_block::MsgAddressInt;
+use url::Url;
+use warp::http::StatusCode;
+use warp::{reply, Filter, Reply};
+
+use relay_eth::ws::update_eth_state;
+use relay_eth::ws::EthListener;
+use relay_ton::contracts::BridgeContract;
+use relay_ton::prelude::{Arc, RwLock};
+use relay_ton::transport::Transport;
+
+use crate::config::RelayConfig;
+use crate::crypto::key_managment::KeyData;
+use crate::crypto::recovery::{derive_from_words_eth, derive_from_words_ton};
+use crate::engine::bridge::Bridge;
+use crate::engine::models::{BridgeState, InitData, Password, RescanEthData, State};
 
 pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>) {
     log::info!("Starting server");
-
+    let serve_address = config.listen_address.clone();
     fn json_data<T>() -> impl Filter<Extract = (T,), Error = warp::Rejection> + Clone
     where
         for<'a> T: serde::Deserialize<'a> + Send,
@@ -48,9 +51,33 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>) {
         .and(state.clone())
         .and_then(|data, (state, config)| wait_for_init(data, config, state));
 
-    let routes = init.or(password).or(status);
-    let addr: SocketAddr = "127.0.0.1:12345".parse().unwrap();
-    warp::serve(routes).run(addr).await;
+    let rescan_from_block_eth = warp::path!("rescan_eth")
+        .and(warp::path::end())
+        .and(json_data::<RescanEthData>())
+        .and(state.clone())
+        .and_then(|data, (state, _)| set_eth_block_height(state, data));
+
+    let routes = init.or(password).or(status).or(rescan_from_block_eth);
+    warp::serve(routes).run(serve_address).await;
+}
+
+async fn set_eth_block_height(
+    state: Arc<RwLock<State>>,
+    height: RescanEthData,
+) -> Result<impl Reply, Infallible> {
+    let state = state.write().await;
+    let db = state.state_manager.clone();
+    Ok(match update_eth_state(&db, height.block) {
+        Ok(_) => {
+            log::info!("Changed  eth scan height to {}", height.block);
+            reply::with_status("OK".to_string(), StatusCode::OK)
+        }
+        Err(e) => {
+            let err = format!("Failed changeging eth scan height: {}", e);
+            log::error!("{}", &err);
+            reply::with_status(err, StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    })
 }
 
 async fn get_status(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {
