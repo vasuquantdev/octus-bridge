@@ -52,7 +52,6 @@ pub fn abi_to_topic_hash(abi: &str) -> Result<H256, Error> {
 
 #[cfg(test)]
 mod test {
-    use hex::encode;
     use serde_json::Value;
     use sha3::Digest;
     use sha3::Keccak256;

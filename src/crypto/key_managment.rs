@@ -5,9 +5,7 @@ use std::num::NonZeroU32;
 use std::path::Path;
 use std::sync::Arc;
 
-use anyhow::anyhow;
-use anyhow::Error;
-use base64::{decode, encode};
+use anyhow::{anyhow, Error};
 use ed25519_dalek::{ed25519, Keypair, Signer};
 use rand::prelude::*;
 use ring::{digest, pbkdf2};
@@ -97,7 +95,7 @@ where
     T: AsRef<[u8]> + ?Sized,
     S: Serializer,
 {
-    serializer.serialize_str(&*encode(&buffer.as_ref()))
+    serializer.serialize_str(&*hex::encode(&buffer.as_ref()))
 }
 
 /// Deserializes a lowercase hex string to a `Vec<u8>`.
@@ -107,7 +105,7 @@ where
 {
     use serde::de::Error;
     String::deserialize(deserializer)
-        .and_then(|string| decode(string).map_err(|e| D::Error::custom(e.to_string())))
+        .and_then(|string| hex::decode(string).map_err(|e| D::Error::custom(e.to_string())))
 }
 
 fn serialize_pubkey<S>(t: &PublicKey, ser: S) -> Result<S::Ok, S::Error>
@@ -290,8 +288,10 @@ impl KeyData {
         secretbox::open(encrypted_key, nonce, key)
             .map_err(|_| anyhow!("Failed decrypting with provided password"))
             .and_then(|data| {
-                Keypair::from_bytes(&data)
-                    .map_err(|e| anyhow!("failed to load ton key. {}", e.to_string()))
+                let secret = ed25519_dalek::SecretKey::from_bytes(&data)
+                    .map_err(|e| anyhow!("failed to load ton key. {}", e.to_string()))?;
+                let public = ed25519_dalek::PublicKey::from(&secret);
+                Ok(Keypair { secret, public })
             })
     }
 }
@@ -304,8 +304,11 @@ mod test {
     use crate::crypto::key_managment::KeyData;
 
     fn default_keys() -> (SecretKey, ed25519_dalek::Keypair) {
-        let eth_private_key = SecretKey::from_slice(&hex::decode("9ee05332323beff8b0f27bc09d7be149c8387a32d392eb0dceffba58a23b9e8d3d1a07db8b045e784ea44097430ea4faac23b46e3d709192d23ea6fbfb53ad07")
-            .unwrap()).unwrap();
+        let eth_private_key = SecretKey::from_slice(
+            &hex::decode("416ddb82736d0ddf80cc50eda0639a2dd9f104aef121fb9c8af647ad8944a8b1")
+                .unwrap(),
+        )
+        .unwrap();
 
         let ton_private_key = ed25519_dalek::SecretKey::from_bytes(
             &hex::decode("e371ef1d7266fc47b30d49dc886861598f09e2e6294d7f0520fe9aa460114e51")
@@ -330,13 +333,9 @@ mod test {
     //     let res = signer.sign(b"test").unwrap();
     //     assert_eq!(res, Signature::from_bytes(decode("2d34bd34780a6fb76181c103653161c456eb7163eb9e098b29fc1619b46fa123ae3d962ca738e480a83ed1943e965b652175c78536781abe426f46cdfe64a209").unwrap().as_slice()).unwrap());
     // }
+
     #[test]
     fn test_init() {
-        let private = SecretKey::from_slice(
-            &hex::decode("416ddb82736d0ddf80cc50eda0639a2dd9f104aef121fb9c8af647ad8944a8b1")
-                .unwrap(),
-        )
-        .unwrap();
         let password = SecStr::new("123".into());
         let path = "./test/test_init.key";
 
@@ -352,11 +351,6 @@ mod test {
     fn test_bad_password() {
         let password = SecStr::new("123".into());
         let path = "./test/test_bad.key";
-        let private = SecretKey::from_slice(
-            &hex::decode("416ddb82736d0ddf80cc50eda0639a2dd9f104aef121fb9c8af647ad8944a8b1")
-                .unwrap(),
-        )
-        .unwrap();
 
         let (eth_private_key, ton_key_pair) = default_keys();
 
