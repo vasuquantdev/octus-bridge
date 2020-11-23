@@ -469,8 +469,7 @@ mod tests {
     const MAINNET_CONFIG: &str = r#"{
         "lite_servers": [
             {                
-                "ip": "54.158.97.195",
-                "port": 3031,
+                "addr": "54.158.97.195:3031",
                 "public_key": "uNRRL+6enQjuiZ/s6Z+vO7yxUUR7uxdfzIy+RxkECrc="
             }
         ],
