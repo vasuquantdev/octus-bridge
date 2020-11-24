@@ -10,8 +10,8 @@ use url::Url;
 use warp::http::StatusCode;
 use warp::{reply, Filter, Reply};
 
-use relay_eth::ws::update_eth_state;
 use relay_eth::ws::EthListener;
+use relay_eth::ws::{update_eth_state, ETH_PERSISTENT_KEY_NAME};
 use relay_ton::contracts::BridgeContract;
 use relay_ton::prelude::{Arc, RwLock};
 use relay_ton::transport::Transport;
