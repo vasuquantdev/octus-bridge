@@ -62,12 +62,18 @@ fn map_eth_ton(eth: EthTokenValue) -> TonTokenValue {
 fn map_ton_eth(ton: TonTokenValue) -> EthTokenValue {
     match ton {
         TonTokenValue::Uint(a) => {
-            let bytes = a.number.to_bytes_be();
-            EthTokenValue::Uint(ethabi::Uint::from_big_endian(&*bytes))
+            let bytes = a.number.to_bytes_le();
+            EthTokenValue::Uint(ethabi::Uint::from_little_endian(&bytes))
         }
         TonTokenValue::Int(a) => {
-            let (_, bytes) = a.number.to_bytes_be();
-            EthTokenValue::Int(ethabi::Int::from_big_endian(&*bytes))
+            let mut bytes = a.number.to_signed_bytes_le();
+            let sign = bytes
+                .last()
+                .map(|first| (first >> 7) * 255)
+                .unwrap_or_default();
+            bytes.resize(32, sign);
+
+            EthTokenValue::Int(ethabi::Int::from_little_endian(&bytes))
         }
         TonTokenValue::Bytes(a) => EthTokenValue::Bytes(ethabi::Bytes::from(a)),
         TonTokenValue::Address(a) => EthTokenValue::String(a.to_string()),
@@ -131,7 +137,6 @@ mod test {
     use ethabi::ParamType;
     use ethabi::Token as EthTokenValue;
     use num_bigint::BigInt;
-    use pretty_assertions::{assert_eq, assert_ne};
     use sha3::Digest;
     use sha3::Keccak256;
     use ton_abi::TokenValue as TonTokenValue;
@@ -271,7 +276,6 @@ mod test {
         let number = make_int256_le(-1234567);
 
         let eth = EthTokenValue::Int(EInt::from_little_endian(&number));
-        println!("{}", eth);
         let ton_expected = TonTokenValue::Int(TInt {
             number: BigInt::from_signed_bytes_le(&number),
             size: 256,
