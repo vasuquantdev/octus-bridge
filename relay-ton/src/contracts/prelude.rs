@@ -4,6 +4,7 @@ pub use ton_types::Cell;
 
 use super::errors::*;
 pub use super::message_builder::{FunctionArg, MessageBuilder, SignedMessageBuilder};
+use super::utils::*;
 pub use super::{Contract, ContractWithEvents};
 use crate::models::*;
 use crate::prelude::*;
@@ -36,11 +37,7 @@ impl ContractOutput {
     }
 
     pub fn hash(&self) -> ContractResult<UInt256> {
-        let data = TokenValue::pack_values_into_chain(&self.tokens, Vec::new(), 2)
-            .and_then(|data| data.into_cell())
-            .map_err(|_| ContractError::InvalidAbi)?;
-
-        Ok(data.hash(0))
+        pack_tokens(&self.tokens).map(|data| data.hash(0))
     }
 }
 
