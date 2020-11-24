@@ -247,8 +247,13 @@ async fn create_bridge(
     config: RelayConfig,
     key_data: KeyData,
 ) -> Result<Arc<Bridge>, Error> {
-    let transport: Arc<dyn Transport> =
-        Arc::new(relay_ton::transport::TonlibTransport::new(config.ton_config.clone()).await?);
+    let transport: Arc<dyn Transport> = Arc::new(
+        relay_ton::transport::TonlibTransport::new(
+            config.ton_config.clone(),
+            state_manager.clone(),
+        )
+        .await?,
+    );
 
     let contract_address = MsgAddressInt::from_str(&*config.ton_contract_address.0)
         .map_err(|e| Error::msg(e.to_string()))?;

@@ -12,6 +12,13 @@ pub struct Config {
     pub keystore: KeystoreType,
     pub last_block_threshold_sec: u64,
     pub subscription_polling_interval_sec: u64,
+
+    /// seconds
+    #[serde(default)]
+    pub max_initial_rescan_gap: Option<u32>,
+    /// seconds
+    #[serde(default)]
+    pub max_rescan_gap: Option<u32>,
 }
 
 impl Default for Config {
@@ -23,6 +30,8 @@ impl Default for Config {
             keystore: KeystoreType::InMemory,
             last_block_threshold_sec: 1,
             subscription_polling_interval_sec: 1,
+            max_initial_rescan_gap: None,
+            max_rescan_gap: None,
         }
     }
 }
