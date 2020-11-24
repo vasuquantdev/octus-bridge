@@ -1,17 +1,10 @@
-use anyhow::Context;
 use anyhow::Error;
-use futures::stream::Stream;
 use futures::StreamExt;
 use log::info;
 use tokio::time::Duration;
 
-use relay_eth::ws::Address;
-use relay_eth::ws::{EthListener, H256};
-use relay_ton::contracts::bridge::{
-    BridgeContract, BridgeContractEvent, EthereumEventsConfiguration,
-};
-use relay_ton::transport::tonlib_transport::config::Config;
-use relay_ton::transport::TonlibTransport;
+use relay_eth::ws::{Address, EthListener};
+use relay_ton::contracts::*;
 
 use crate::crypto::key_managment::EthSigner;
 use crate::engine::bridge::util::abi_to_topic_hash;
@@ -36,7 +29,7 @@ impl Bridge {
     async fn eth_side(
         eth_client: EthListener,
         config: Vec<EthereumEventsConfiguration>,
-        ton_client: BridgeContract,
+        _ton_client: BridgeContract,
     ) -> Result<(), Error> {
         let mut eth_addr = Vec::new();
         let mut eth_topic = Vec::new();
@@ -45,7 +38,7 @@ impl Bridge {
             eth_topic.push(abi_to_topic_hash(&conf.ethereum_event_abi)?); //todo Vec of hashes
         }
         let mut stream = eth_client.subscribe(eth_addr, eth_topic).await?; //todo logzz &&  business logic
-        while let Some(a) = stream.next().await {
+        while let Some(_a) = stream.next().await {
             todo!()
             // ton_client.sign_eth_to_ton_event();
         }

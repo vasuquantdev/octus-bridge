@@ -1,6 +1,8 @@
 pub mod config;
 mod tvm;
 
+pub use config::*;
+
 use std::collections::hash_map;
 
 use failure::AsFail;
@@ -15,35 +17,43 @@ use ton_block::{
 use ton_types::SliceData;
 use tonlib::{TonlibClient, TonlibError};
 
-use self::config::*;
 use super::errors::*;
-use super::{AccountEvent, AccountSubscription, Transport};
+use super::{AccountEvent, AccountSubscription, RunLocal, Transport};
 use crate::models::*;
 use crate::prelude::*;
 
 pub struct TonlibTransport {
+    db: Db,
     client: Arc<TonlibClient>,
     subscription_polling_interval: Duration,
+    max_initial_rescan_gap: Option<u32>,
+    max_rescan_gap: Option<u32>,
 }
 
 impl TonlibTransport {
-    pub async fn new(config: Config) -> TransportResult<Self> {
+    pub async fn new(config: Config, db: Db) -> TransportResult<Self> {
         let subscription_polling_interval =
             Duration::from_secs(config.subscription_polling_interval_sec);
+
+        let max_initial_rescan_gap = config.max_initial_rescan_gap;
+        let max_rescan_gap = config.max_rescan_gap;
 
         let client = tonlib::TonlibClient::new(&config.into())
             .await
             .map_err(to_api_error)?;
 
         Ok(Self {
+            db,
             client: Arc::new(client),
             subscription_polling_interval,
+            max_initial_rescan_gap,
+            max_rescan_gap,
         })
     }
 }
 
 #[async_trait]
-impl Transport for TonlibTransport {
+impl RunLocal for TonlibTransport {
     async fn run_local(
         &self,
         abi: &Function,
@@ -68,19 +78,35 @@ impl Transport for TonlibTransport {
         let info = parse_account_stuff(account_state.data.0.as_slice())?;
 
         let (messages, _) = tvm::call_msg(&account_state, info, &msg)?;
-        process_out_messages(&messages, abi)
+        process_out_messages(
+            &messages,
+            MessageProcessingParams {
+                abi_function: Some(abi),
+                events_tx: None,
+            },
+        )
     }
+}
 
+#[async_trait]
+impl Transport for TonlibTransport {
     async fn subscribe(&self, addr: &str) -> TransportResult<Arc<dyn AccountSubscription>> {
-        let subscription: Arc<dyn AccountSubscription> =
-            TonlibAccountSubscription::new(&self.client, &self.subscription_polling_interval, addr)
-                .await?;
+        let subscription: Arc<dyn AccountSubscription> = TonlibAccountSubscription::new(
+            &self.db,
+            &self.client,
+            &self.subscription_polling_interval,
+            self.max_initial_rescan_gap,
+            self.max_rescan_gap,
+            addr,
+        )
+        .await?;
 
         Ok(subscription)
     }
 }
 
 struct TonlibAccountSubscription {
+    db: Db,
     client: Arc<tonlib::TonlibClient>,
     event_notifier: watch::Receiver<AccountEvent>,
     account: ton::lite_server::accountid::AccountId,
@@ -90,28 +116,53 @@ struct TonlibAccountSubscription {
 
 impl TonlibAccountSubscription {
     async fn new(
+        db: &Db,
         client: &Arc<tonlib::TonlibClient>,
         polling_interval: &Duration,
+        max_initial_rescan_gap: Option<u32>,
+        max_rescan_gap: Option<u32>,
         addr: &str,
     ) -> TransportResult<Arc<Self>> {
+        let db = db.clone();
         let client = client.clone();
         let account = tonlib::utils::make_address_from_str(addr).map_err(to_api_error)?;
         let known_state = client
             .get_account_state(account.clone())
             .await
             .map_err(to_api_error)?;
-        let last_trans_lt = known_state.last_trans_lt as u64;
+
+        let last_trans_lt = match db.get(account.id.0.as_slice()).map_err(|e| {
+            TransportError::FailedToInitialize {
+                reason: e.to_string(),
+            }
+        })? {
+            Some(data) => {
+                let mut lt = 0;
+                for (i, &byte) in data.iter().take(4).enumerate() {
+                    lt += (byte as u64) << i;
+                }
+                lt
+            }
+            None => known_state.last_trans_lt as u64,
+        };
 
         let (tx, rx) = watch::channel(AccountEvent::StateChanged);
 
         let subscription = Arc::new(Self {
+            db,
             client,
             event_notifier: rx,
             account,
             known_state: RwLock::new(known_state),
             pending_messages: RwLock::new(HashMap::new()),
         });
-        subscription.start_loop(tx, last_trans_lt, polling_interval.clone());
+        subscription.start_loop(
+            tx,
+            last_trans_lt,
+            *polling_interval,
+            max_initial_rescan_gap,
+            max_rescan_gap,
+        );
 
         Ok(subscription)
     }
@@ -121,6 +172,8 @@ impl TonlibAccountSubscription {
         state_notifier: watch::Sender<AccountEvent>,
         mut last_trans_lt: u64,
         interval: Duration,
+        mut max_initial_rescan_gap: Option<u32>,
+        max_rescan_gap: Option<u32>,
     ) {
         let subscription = Arc::downgrade(self);
         tokio::spawn(async move {
@@ -163,79 +216,101 @@ impl TonlibAccountSubscription {
 
                 let mut pending_messages = subscription.pending_messages.write().await;
 
-                if !pending_messages.is_empty() {
-                    log::debug!("fetching latest transactions");
-                    'process_transactions: loop {
-                        let transactions = match subscription
-                            .client
-                            .get_transactions(
-                                subscription.account.clone(),
-                                16,
-                                current_trans_lt as i64,
-                                current_trans_hash.clone(),
-                            )
-                            .await
-                        {
-                            Ok(transactions) if !transactions.is_empty() => transactions,
-                            Ok(_) => {
-                                log::debug!("no transactions found");
-                                break 'process_transactions;
-                            }
+                log::debug!("fetching latest transactions");
+                'process_transactions: loop {
+                    let transactions = match subscription
+                        .client
+                        .get_transactions(
+                            subscription.account.clone(),
+                            16,
+                            current_trans_lt as i64,
+                            current_trans_hash.clone(),
+                        )
+                        .await
+                    {
+                        Ok(transactions) if !transactions.is_empty() => transactions,
+                        Ok(_) => {
+                            log::debug!("no transactions found");
+                            break 'process_transactions;
+                        }
+                        Err(e) => {
+                            log::error!("error during account subscription loop. {}", e);
+                            continue 'subscription_loop;
+                        }
+                    };
+
+                    for transaction in transactions.into_iter() {
+                        let (transaction, hash) =
+                            match parse_transaction(transaction.data.0.as_slice()) {
+                                Ok(transaction) => transaction,
+                                Err(e) => {
+                                    log::error!("error during account subscription loop. {}", e);
+                                    continue 'subscription_loop;
+                                }
+                            };
+
+                        current_trans_lt = transaction.lt;
+                        current_trans_hash = ton::bytes(hash.as_slice().to_vec());
+
+                        let out_messages = match parse_transaction_messages(&transaction) {
+                            Ok(messages) => messages,
                             Err(e) => {
-                                log::error!("error during account subscription loop. {}", e);
+                                log::error!("error during transaction processing. {}", e);
                                 continue 'subscription_loop;
                             }
                         };
 
-                        for transaction in transactions.into_iter() {
-                            let (transaction, hash) =
-                                match parse_transaction(transaction.data.0.as_slice()) {
-                                    Ok(transaction) => transaction,
-                                    Err(e) => {
-                                        log::error!(
-                                            "error during account subscription loop. {}",
-                                            e
-                                        );
-                                        continue 'subscription_loop;
-                                    }
-                                };
-
-                            current_trans_lt = transaction.lt;
-                            current_trans_hash = ton::bytes(hash.as_slice().to_vec());
-
-                            if let Some(in_msg) = &transaction.in_msg {
-                                if let Some(pending_message) =
-                                    pending_messages.remove(&in_msg.hash())
-                                {
-                                    let result = process_transaction(
-                                        &transaction,
-                                        pending_message.abi.as_ref(),
-                                    );
-                                    let _ = pending_message.tx.send(result);
-                                }
-                            }
-
-                            if transaction.prev_trans_lt < last_trans_lt {
-                                break 'process_transactions;
+                        if let Some(in_msg) = &transaction.in_msg {
+                            if let Some(pending_message) = pending_messages.remove(&in_msg.hash()) {
+                                let result = process_out_messages(
+                                    &out_messages,
+                                    MessageProcessingParams {
+                                        abi_function: Some(pending_message.abi.as_ref()),
+                                        events_tx: Some(&state_notifier),
+                                    },
+                                );
+                                let _ = pending_message.tx.send(result);
+                            } else if let Err(e) = process_out_messages(
+                                &out_messages,
+                                MessageProcessingParams {
+                                    abi_function: None,
+                                    events_tx: Some(&state_notifier),
+                                },
+                            ) {
+                                log::error!("error during out messages processing. {}", e);
+                                // Just ignore
                             }
                         }
-                    }
 
-                    pending_messages.retain(|_, message| message.expires_at <= gen_utime);
+                        match max_initial_rescan_gap.or(max_rescan_gap) {
+                            Some(gap) if gen_utime - transaction.now >= gap => {
+                                max_initial_rescan_gap = None;
+                                break 'process_transactions;
+                            }
+                            _ if transaction.prev_trans_lt < last_trans_lt => {
+                                break 'process_transactions;
+                            }
+                            _ => {}
+                        }
+                    }
                 }
 
+                pending_messages.retain(|_, message| message.expires_at <= gen_utime);
+
                 last_trans_lt = current_trans_lt;
+                if let Err(e) = subscription.db.insert(
+                    subscription.account.id.0.as_slice(),
+                    &current_trans_lt.to_le_bytes(),
+                ) {
+                    log::error!("failed to save state into db. {}", e);
+                }
             }
         });
     }
 }
 
 #[async_trait]
-impl AccountSubscription for TonlibAccountSubscription {
-    fn events(&self) -> watch::Receiver<AccountEvent> {
-        self.event_notifier.clone()
-    }
-
+impl RunLocal for TonlibAccountSubscription {
     async fn run_local(
         &self,
         abi: &AbiFunction,
@@ -248,7 +323,20 @@ impl AccountSubscription for TonlibAccountSubscription {
 
         let (messages, _) = tvm::call_msg(&account_state, info, &message)?;
 
-        process_out_messages(&messages, abi)
+        process_out_messages(
+            &messages,
+            MessageProcessingParams {
+                abi_function: Some(abi),
+                events_tx: None,
+            },
+        )
+    }
+}
+
+#[async_trait]
+impl AccountSubscription for TonlibAccountSubscription {
+    fn events(&self) -> watch::Receiver<AccountEvent> {
+        self.event_notifier.clone()
     }
 
     async fn send_message(
@@ -342,7 +430,7 @@ fn parse_account_stuff(raw: &[u8]) -> TransportResult<AccountStuff> {
 }
 
 fn parse_transaction(raw: &[u8]) -> TransportResult<(Transaction, UInt256)> {
-    let mut cell =
+    let cell =
         ton_types::deserialize_tree_of_cells(&mut std::io::Cursor::new(raw)).map_err(|e| {
             TransportError::FailedToParseTransaction {
                 reason: e.to_string(),
@@ -357,18 +445,12 @@ fn parse_transaction(raw: &[u8]) -> TransportResult<(Transaction, UInt256)> {
         })
 }
 
-fn process_transaction(
-    transaction: &Transaction,
-    abi_function: &AbiFunction,
-) -> TransportResult<ContractOutput> {
+fn parse_transaction_messages(transaction: &Transaction) -> TransportResult<Vec<Message>> {
     let mut messages = Vec::new();
     transaction
         .out_msgs
         .iterate_slices(|slice| {
-            if let Ok(message) = slice
-                .reference(0)
-                .and_then(|cell| Message::construct_from_cell(cell))
-            {
+            if let Ok(message) = slice.reference(0).and_then(Message::construct_from_cell) {
                 messages.push(message);
             }
             Ok(true)
@@ -376,19 +458,19 @@ fn process_transaction(
         .map_err(|e| TransportError::FailedToParseTransaction {
             reason: e.to_string(),
         })?;
-    process_out_messages(&messages, abi_function)
+    Ok(messages)
 }
 
-fn process_out_messages(
-    messages: &Vec<Message>,
-    abi_function: &AbiFunction,
+struct MessageProcessingParams<'a> {
+    abi_function: Option<&'a AbiFunction>,
+    events_tx: Option<&'a watch::Sender<AccountEvent>>,
+}
+
+fn process_out_messages<'a>(
+    messages: &'a [Message],
+    params: MessageProcessingParams<'a>,
 ) -> TransportResult<ContractOutput> {
-    if messages.len() == 0 || !abi_function.has_output() {
-        return Ok(ContractOutput {
-            transaction_id: None,
-            tokens: Vec::new(),
-        });
-    }
+    let mut output = None;
 
     for msg in messages {
         if !matches!(msg.header(), CommonMsgInfo::ExtOutMsgInfo(_)) {
@@ -399,28 +481,41 @@ fn process_out_messages(
             reason: "output message has not body".to_string(),
         })?;
 
-        if abi_function
-            .is_my_output_message(body.clone(), false)
-            .map_err(|e| TransportError::ExecutionError {
-                reason: e.to_string(),
-            })?
-        {
-            let tokens = abi_function.decode_output(body, false).map_err(|e| {
-                TransportError::ExecutionError {
-                    reason: e.to_string(),
-                }
-            })?;
+        match (&params.abi_function, &params.events_tx) {
+            (Some(abi_function), _) if output.is_none() => {
+                if abi_function
+                    .is_my_output_message(body.clone(), false)
+                    .map_err(|e| TransportError::ExecutionError {
+                        reason: e.to_string(),
+                    })?
+                {
+                    let tokens = abi_function.decode_output(body, false).map_err(|e| {
+                        TransportError::ExecutionError {
+                            reason: e.to_string(),
+                        }
+                    })?;
 
-            return Ok(ContractOutput {
-                transaction_id: None,
-                tokens,
-            });
+                    output = Some(ContractOutput {
+                        transaction_id: None,
+                        tokens,
+                    });
+                }
+            }
+            (_, Some(events_tx)) => {
+                let _ = events_tx.broadcast(AccountEvent::OutboundEvent(Arc::new(body)));
+            }
+            _ => {}
         }
     }
 
-    return Err(TransportError::ExecutionError {
-        reason: "no external output messages".to_owned(),
-    });
+    match (params.abi_function, output) {
+        (Some(abi_function), _) if !abi_function.has_output() => Ok(Default::default()),
+        (Some(_), Some(output)) => Ok(output),
+        (None, _) => Ok(Default::default()),
+        _ => Err(TransportError::ExecutionError {
+            reason: "no external output messages".to_owned(),
+        }),
+    }
 }
 
 fn to_api_error(e: TonlibError) -> TransportError {
@@ -436,8 +531,7 @@ mod tests {
     const MAINNET_CONFIG: &str = r#"{
         "lite_servers": [
             {                
-                "ip": "54.158.97.195",
-                "port": 3031,
+                "addr": "54.158.97.195:3031",
                 "public_key": "uNRRL+6enQjuiZ/s6Z+vO7yxUUR7uxdfzIy+RxkECrc="
             }
         ],
@@ -464,6 +558,8 @@ mod tests {
             keystore: KeystoreType::InMemory,
             last_block_threshold_sec: 1,
             subscription_polling_interval_sec: 1,
+            max_initial_rescan_gap: None,
+            max_rescan_gap: None,
         })
         .await
         .unwrap()

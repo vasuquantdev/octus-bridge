@@ -22,19 +22,115 @@ pub fn make_header(timeout_sec: u32) -> ExternalMessageHeader {
     ExternalMessageHeader { time, expire }
 }
 
-pub struct MessageBuilder<'a> {
-    config: &'a ContractConfig,
+pub struct MessageBuilder<'a>(MessageBuilderImpl<'a, dyn Transport>);
+
+impl<'a> MessageBuilder<'a> {
+    pub fn new(
+        config: Cow<'a, ContractConfig>,
+        contract: &'a Contract,
+        transport: &'a dyn Transport,
+        name: &str,
+    ) -> ContractResult<Self> {
+        Ok(Self(MessageBuilderImpl::new(
+            config, contract, transport, name,
+        )?))
+    }
+
+    #[allow(dead_code)]
+    pub fn arg<A>(self, value: A) -> Self
+    where
+        A: FunctionArg,
+    {
+        Self(self.0.arg(value))
+    }
+
+    #[allow(dead_code)]
+    pub fn mark_local(self) -> Self {
+        Self(self.0.mark_local())
+    }
+
+    pub fn build(self, keypair: Option<&Keypair>) -> ContractResult<ExternalMessage> {
+        self.0.build(keypair)
+    }
+
+    pub async fn run_local(self) -> ContractResult<ContractOutput> {
+        let transport = self.0.transport;
+        let output = transport
+            .run_local(self.0.function, self.build(None)?)
+            .await?;
+        Ok(output)
+    }
+}
+
+pub struct SignedMessageBuilder<'a>(&'a Keypair, MessageBuilderImpl<'a, dyn AccountSubscription>);
+
+impl<'a> SignedMessageBuilder<'a> {
+    pub fn new(
+        config: Cow<'a, ContractConfig>,
+        contract: &'a Contract,
+        transport: &'a dyn AccountSubscription,
+        keypair: &'a Keypair,
+        name: &str,
+    ) -> ContractResult<Self> {
+        Ok(Self(
+            keypair,
+            MessageBuilderImpl::new(config, contract, transport, name)?,
+        ))
+    }
+
+    #[allow(dead_code)]
+    pub fn arg<A>(self, value: A) -> Self
+    where
+        A: FunctionArg,
+    {
+        Self(self.0, self.1.arg(value))
+    }
+
+    #[allow(dead_code)]
+    pub fn mark_local(self) -> Self {
+        Self(self.0, self.1.mark_local())
+    }
+
+    pub fn build(self, with_signature: bool) -> ContractResult<ExternalMessage> {
+        self.1
+            .build(if with_signature { Some(self.0) } else { None })
+    }
+
+    pub async fn run_local(self) -> ContractResult<ContractOutput> {
+        let transport = self.1.transport;
+        let output = transport
+            .run_local(self.1.function, self.build(false)?)
+            .await?;
+        Ok(output)
+    }
+
+    pub async fn send(self) -> ContractResult<ContractOutput> {
+        let function = Arc::new(self.1.function.clone());
+        let output = self
+            .1
+            .transport
+            .send_message(function, self.build(true)?)
+            .await?;
+        Ok(output)
+    }
+}
+
+struct MessageBuilderImpl<'a, T: ?Sized> {
+    config: Cow<'a, ContractConfig>,
     function: &'a Function,
-    transport: &'a dyn AccountSubscription,
+    transport: &'a T,
     input: Vec<Token>,
     run_local: bool,
 }
 
-impl<'a> MessageBuilder<'a> {
+impl<'a, T> MessageBuilderImpl<'a, T>
+where
+    T: ?Sized,
+{
     pub fn new(
-        config: &'a ContractConfig,
+        config: Cow<'a, ContractConfig>,
         contract: &'a Contract,
-        transport: &'a dyn AccountSubscription,
+        transport: &'a T,
         name: &str,
     ) -> ContractResult<Self> {
         let function = contract
@@ -51,48 +147,35 @@ impl<'a> MessageBuilder<'a> {
         })
     }
 
-    pub fn arg<T>(mut self, value: T) -> Self
+    pub fn arg<A>(mut self, value: A) -> Self
     where
-        T: FunctionArg,
+        A: FunctionArg,
     {
         let name = &self.function.inputs[self.input.len()].name;
         self.input.push(Token::new(name, value.token_value()));
         self
     }
 
+    #[allow(dead_code)]
     pub fn mark_local(mut self) -> Self {
         self.run_local = true;
         self
     }
 
-    pub fn build(self) -> ContractResult<ExternalMessage> {
+    pub fn build(self, keypair: Option<&Keypair>) -> ContractResult<ExternalMessage> {
         let header = make_header(self.config.timeout_sec);
         let encoded_input = self
             .function
-            .encode_input(&header.clone().into(), &self.input, false, None)
+            .encode_input(&header.clone().into(), &self.input, false, keypair)
             .map_err(|_| ContractError::InvalidInput)?;
 
         Ok(ExternalMessage {
             dest: self.config.account.clone(),
             init: None,
             body: Some(encoded_input.into()),
-            header: header.clone(),
+            header,
             run_local: self.run_local,
         })
-    }
-
-    pub async fn run_local(self) -> ContractResult<ContractOutput> {
-        let output = self
-            .transport
-            .run_local(self.function, self.build()?)
-            .await?;
-        Ok(output)
-    }
-
-    pub async fn send(self) -> ContractResult<ContractOutput> {
-        let function = Arc::new(self.function.clone());
-        let output = self.transport.send_message(function, self.build()?).await?;
-        Ok(output)
     }
 }
 

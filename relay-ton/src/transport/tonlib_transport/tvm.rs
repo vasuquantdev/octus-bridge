@@ -143,11 +143,10 @@ pub fn call_msg(
 
     let mut msgs = vec![];
     for (_, action) in actions.iter_mut().enumerate() {
-        match std::mem::replace(action, ton_block::OutAction::None) {
-            ton_block::OutAction::SendMsg { out_msg, .. } => {
-                msgs.push(out_msg);
-            }
-            _ => {}
+        if let ton_block::OutAction::SendMsg { out_msg, .. } =
+            std::mem::replace(action, ton_block::OutAction::None)
+        {
+            msgs.push(out_msg);
         }
     }
 

@@ -31,6 +31,12 @@ pub struct Event {
     pub topics: Vec<H256>,
 }
 
+pub fn update_eth_state(db: &Db, height: u64) -> Result<() ,Error>
+{
+    db.insert(ETH_PERSISTENT_KEY_NAME, &height.to_le_bytes())?;
+    Ok(())
+}
+
 impl EthListener {
     fn log_to_event(log: Log, db: &Db) -> Result<Event, Error> {
         let num = Uint256::from_bytes_be(&log.data.0);
@@ -43,7 +49,7 @@ impl EthListener {
         };
         match log.block_number {
             Some(a) => {
-                if let Err(e) = db.insert(ETH_PERSISTENT_KEY_NAME, &a.as_u64().to_le_bytes()) {
+                if let Err(e) = update_eth_state(db, a.as_u64()) {
                     error!("Failed saving eth state: {}", e)
                 }
             }

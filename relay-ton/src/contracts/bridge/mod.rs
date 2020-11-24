@@ -1,9 +1,5 @@
-mod models;
-
-use ton_abi::Contract;
-
-pub use self::models::*;
 use super::errors::*;
+use super::models::*;
 use super::prelude::*;
 use crate::models::*;
 use crate::prelude::*;
@@ -12,61 +8,46 @@ use crate::transport::*;
 #[derive(Clone)]
 pub struct BridgeContract {
     transport: Arc<dyn AccountSubscription>,
+    keypair: Arc<Keypair>,
     config: ContractConfig,
-    contract: Contract,
+    contract: Arc<ton_abi::Contract>,
 }
 
 impl BridgeContract {
     pub async fn new(
-        transport: &Arc<dyn Transport>,
+        transport: Arc<dyn Transport>,
         account: &MsgAddressInt,
-    ) -> ContractResult<BridgeContract> {
-        let contract =
-            Contract::load(Cursor::new(ABI)).expect("Failed to load bridge contract ABI");
-
+        keypair: Arc<Keypair>,
+    ) -> ContractResult<Self> {
         let transport = transport.subscribe(&account.to_string()).await?;
+
+        let config = ContractConfig {
+            account: account.clone(),
+            timeout_sec: 60,
+        };
+
+        let contract = Arc::new(
+            ton_abi::Contract::load(Cursor::new(ABI))
+                .expect("failed to load bridge BridgeContract ABI"),
+        );
 
         Ok(Self {
             transport,
-            config: ContractConfig {
-                account: account.clone(),
-                timeout_sec: 60,
-            },
+            keypair,
+            config,
             contract,
         })
     }
 
-    pub fn events(self: &Arc<Self>) -> impl Stream<Item = BridgeContractEvent> {
-        let mut events = self.transport.events();
-        let this = Arc::downgrade(self);
-        let (tx, rx) = mpsc::unbounded_channel();
-        tokio::spawn(async move {
-            while let Some(AccountEvent::StateChanged) = events.recv().await {
-                let this = match this.upgrade() {
-                    Some(this) => this,
-                    _ => return,
-                };
-
-                let configs = match this.get_ethereum_events_configuration().await {
-                    Ok(configs) => configs,
-                    Err(e) => {
-                        log::error!("failed to get ethereum events configuration. {}", e);
-                        continue;
-                    }
-                };
-
-                if let Err(_) = tx.send(BridgeContractEvent::ConfigurationChanged(configs)) {
-                    return;
-                }
-            }
-        });
-
-        rx
-    }
-
     #[inline]
-    fn message(&self, name: &str) -> ContractResult<MessageBuilder> {
-        MessageBuilder::new(&self.config, &self.contract, self.transport.as_ref(), name)
+    fn message(&self, name: &str) -> ContractResult<SignedMessageBuilder> {
+        SignedMessageBuilder::new(
+            Cow::Borrowed(&self.config),
+            &self.contract,
+            self.transport.as_ref(),
+            self.keypair.as_ref(),
+            name,
+        )
     }
 
     pub async fn add_ethereum_event_configuration(
@@ -210,7 +191,7 @@ impl BridgeContract {
     pub async fn update_config(
         &self,
         new_config: BridgeConfiguration,
-        voting_set: OffchainVotingSet,
+        voting_set: VotingSet,
     ) -> ContractResult<()> {
         self.message("updateConfig")?
             .arg(new_config.add_event_type_required_confirmations_percent)
@@ -265,7 +246,7 @@ impl BridgeContract {
     pub async fn add_event_type(
         &self,
         new_event_type: TonEventConfiguration,
-        voting_set: OffchainVotingSet,
+        voting_set: VotingSet,
     ) -> ContractResult<()> {
         self.message("addEventType")?
             .arg(new_event_type.eth_address)
@@ -313,7 +294,7 @@ impl BridgeContract {
     pub async fn remove_event_type(
         &self,
         ton_address: MsgAddrStd,
-        voting_set: OffchainVotingSet,
+        voting_set: VotingSet,
     ) -> ContractResult<()> {
         self.message("removeEventType")?
             .arg(ton_address)
@@ -324,6 +305,23 @@ impl BridgeContract {
             .send()
             .await?
             .ignore_output()
+    }
+}
+
+impl Contract for BridgeContract {
+    #[inline]
+    fn abi(&self) -> &Arc<ton_abi::Contract> {
+        &self.contract
+    }
+}
+
+impl ContractWithEvents for BridgeContract {
+    type Event = BridgeContractEvent;
+    type EventKind = BridgeContractEventKind;
+
+    #[inline]
+    fn subscription(&self) -> &Arc<dyn AccountSubscription> {
+        &self.transport
     }
 }
 

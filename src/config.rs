@@ -1,13 +1,13 @@
+use anyhow::Error;
+use config::{Config, File, FileFormat};
+use relay_eth::ws::{Address as EthAddr, H256};
+use relay_ton::transport::tonlib_transport::Config as TonConfig;
+use serde::{Deserialize, Serialize};
+use sha3::Digest;
 use std::io::Write;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use relay_ton::transport::tonlib_transport::config::Config as TonConfig;
-use anyhow::Error;
-use config::{Config, File, FileFormat};
-use serde::{Deserialize, Serialize};
-use sha3::Digest;
 use structopt::StructOpt;
-use relay_eth::ws::{Address as EthAddr, H256};
 
 #[derive(Deserialize, Serialize, Clone, Debug, Default, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct EthAddress(String);
@@ -41,8 +41,9 @@ pub struct RelayConfig {
     pub ton_contract_address: TonAddress,
     pub storage_path: PathBuf,
     pub listen_address: SocketAddr,
-    pub ton_config: TonConfig
+    pub ton_config: TonConfig,
 }
+
 impl Default for RelayConfig {
     fn default() -> Self {
         Self {
@@ -51,7 +52,7 @@ impl Default for RelayConfig {
             eth_node_address: "ws://localhost:12345".into(),
             ton_contract_address: TonAddress("".into()),
             listen_address: "127.0.0.1:12345".parse().unwrap(),
-            ton_config: TonConfig::default()
+            ton_config: TonConfig::default(),
         }
     }
 }

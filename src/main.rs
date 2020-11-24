@@ -1,7 +1,6 @@
 use anyhow::Error;
-use log::info;
 
-use relay::config::{generate_config, parse_args, read_config};
+use relay::config::*;
 use relay::engine;
 
 fn main() -> Result<(), Error> {
@@ -15,14 +14,14 @@ fn main() -> Result<(), Error> {
 
     let config = read_config(&args.config)?;
 
-    info!("Relay ready.");
+    log::info!("Relay ready.");
 
     let mut executor = tokio::runtime::Runtime::new().unwrap();
 
     // let res = Daemonize::new().start();
     // match res {
     //     Ok(_) => {
-    info!("Really started");
+    log::info!("Really started");
     let _err = executor.block_on(engine::run(config))?;
 
     // },
