@@ -1,0 +1,103 @@
+{
+  "ABI version": 2,
+  "header": [
+    "time",
+    "expire"
+  ],
+  "functions": [
+    {
+      "name": "constructor",
+      "inputs": [
+      ],
+      "outputs": [
+      ]
+    },
+    {
+      "name": "addEthereumEventConfiguration",
+      "inputs": [
+        {
+          "name": "ethereumEventABI",
+          "type": "bytes"
+        },
+        {
+          "name": "ethereumAddress",
+          "type": "bytes"
+        },
+        {
+          "name": "eventProxyAddress",
+          "type": "address"
+        }
+      ],
+      "outputs": [
+      ]
+    },
+    {
+      "name": "confirmEthereumEventConfiguration",
+      "inputs": [
+        {
+          "name": "ethereumEventConfigurationID",
+          "type": "uint256"
+        }
+      ],
+      "outputs": [
+      ]
+    },
+    {
+      "name": "confirmEventInstance",
+      "inputs": [
+        {
+          "name": "ethereumEventConfigurationID",
+          "type": "uint256"
+        },
+        {
+          "name": "ethereumEventData",
+          "type": "cell"
+        }
+      ],
+      "outputs": [
+      ]
+    },
+    {
+      "name": "getEthereumEventsConfiguration",
+      "inputs": [
+      ],
+      "outputs": [
+        {
+          "components": [
+            {
+              "name": "ethereumEventABI",
+              "type": "bytes"
+            },
+            {
+              "name": "ethereumAddress",
+              "type": "bytes"
+            },
+            {
+              "name": "eventProxyAddress",
+              "type": "address"
+            },
+            {
+              "name": "confirmations",
+              "type": "uint256"
+            },
+            {
+              "name": "confirmed",
+              "type": "bool"
+            }
+          ],
+          "name": "value0",
+          "type": "tuple[]"
+        }
+      ]
+    }
+  ],
+  "data": [
+    {
+      "key": 1,
+      "name": "nonce",
+      "type": "uint256"
+    }
+  ],
+  "events": [
+  ]
+}
