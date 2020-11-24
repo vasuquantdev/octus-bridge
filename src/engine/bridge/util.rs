@@ -119,6 +119,7 @@ pub fn abi_to_topic_hash(abi: &str) -> Result<H256, Error> {
 mod test {
     use ethabi::ParamType;
     use ethabi::Token as EthTokenValue;
+    use num_bigint::BigInt;
     use sha3::Digest;
     use sha3::Keccak256;
     use ton_abi::TokenValue as TonTokenValue;
@@ -190,12 +191,7 @@ mod test {
         assert_eq!(map_eth_ton(eth), ton_expected);
     }
 
-    #[test]
-    fn test_conversion_int() {
-        use ethabi::Int as EInt;
-        use num_bigint::BigInt;
-        use ton_abi::Int as TInt;
-
+    fn make_int256_le(number: i64) -> [u8; 32] {
         let value = BigInt::from(-1234567i64);
         let mut value_bytes = value.to_signed_bytes_le();
 
@@ -205,9 +201,21 @@ mod test {
             .unwrap_or_default();
         value_bytes.resize(32, sign);
 
-        let eth = EthTokenValue::Int(EInt::from_little_endian(&value_bytes));
+        let mut result = [sign; 32];
+        result[0..value_bytes.len()].clone_from_slice(&value_bytes);
+        result
+    }
+
+    #[test]
+    fn test_conversion_int() {
+        use ethabi::Int as EInt;
+        use ton_abi::Int as TInt;
+
+        let number = make_int256_le(-1234567);
+
+        let eth = EthTokenValue::Int(EInt::from_little_endian(&number));
         let ton_expected = TonTokenValue::Int(TInt {
-            number: BigInt::from_signed_bytes_le(&value_bytes),
+            number: BigInt::from_signed_bytes_le(&number),
             size: 256,
         });
         assert_eq!(map_eth_ton(eth), ton_expected);
@@ -217,8 +225,14 @@ mod test {
     fn test_conversion_int_plus() {
         use ethabi::Int as EInt;
         use ton_abi::Int as TInt;
-        let eth = EthTokenValue::Int(EInt::from(1234567));
-        let ton_expected = TonTokenValue::Int(TInt::new(1234567, 256));
+
+        let number = make_int256_le(1234567);
+
+        let eth = EthTokenValue::Int(EInt::from_little_endian(&number));
+        let ton_expected = TonTokenValue::Int(TInt {
+            number: BigInt::from_signed_bytes_le(&number),
+            size: 256,
+        });
         assert_eq!(map_eth_ton(eth), ton_expected);
     }
 }
