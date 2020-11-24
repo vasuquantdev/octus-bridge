@@ -3,8 +3,8 @@ pub use ton_abi::{Token, TokenValue};
 pub use ton_types::Cell;
 
 use super::errors::*;
-pub use super::message_builder::{FunctionArg, MessageBuilder};
-pub use super::Contract;
+pub use super::message_builder::{FunctionArg, MessageBuilder, SignedMessageBuilder};
+pub use super::{Contract, ContractWithEvents};
 use crate::models::*;
 use crate::prelude::*;
 
@@ -33,6 +33,14 @@ impl ContractOutput {
         T: TryFrom<Self, Error = ContractError>,
     {
         self.try_into()
+    }
+
+    pub fn hash(&self) -> ContractResult<UInt256> {
+        let data = TokenValue::pack_values_into_chain(&self.tokens, Vec::new(), 2)
+            .and_then(|data| data.into_cell())
+            .map_err(|_| ContractError::InvalidAbi)?;
+
+        Ok(data.hash(0))
     }
 }
 
@@ -81,7 +89,16 @@ impl ParseToken<Vec<u8>> for TokenValue {
 impl ParseToken<BigUint> for TokenValue {
     fn try_parse(self) -> ContractResult<BigUint> {
         match self {
-            TokenValue::Uint(confirmations) => Ok(confirmations.number),
+            TokenValue::Uint(data) => Ok(data.number),
+            _ => Err(ContractError::InvalidAbi),
+        }
+    }
+}
+
+impl ParseToken<UInt256> for TokenValue {
+    fn try_parse(self) -> ContractResult<UInt256> {
+        match self {
+            TokenValue::Uint(data) => Ok(data.number.to_bytes_be().into()),
             _ => Err(ContractError::InvalidAbi),
         }
     }

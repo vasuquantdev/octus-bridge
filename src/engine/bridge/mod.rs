@@ -4,7 +4,7 @@ use log::info;
 use tokio::time::Duration;
 
 use relay_eth::ws::{Address, EthListener};
-use relay_ton::contracts::bridge::*;
+use relay_ton::contracts::*;
 
 use crate::crypto::key_managment::EthSigner;
 use crate::engine::bridge::util::abi_to_topic_hash;

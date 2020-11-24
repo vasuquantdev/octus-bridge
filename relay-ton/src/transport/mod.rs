@@ -8,25 +8,22 @@ use crate::models::*;
 use crate::prelude::*;
 
 #[async_trait]
-pub trait Transport: Send + Sync + 'static {
+pub trait RunLocal: Send + Sync + 'static {
     async fn run_local(
         &self,
         abi: &AbiFunction,
         message: ExternalMessage,
     ) -> TransportResult<ContractOutput>;
+}
 
+#[async_trait]
+pub trait Transport: RunLocal {
     async fn subscribe(&self, addr: &str) -> TransportResult<Arc<dyn AccountSubscription>>;
 }
 
 #[async_trait]
-pub trait AccountSubscription: Send + Sync {
+pub trait AccountSubscription: RunLocal {
     fn events(&self) -> watch::Receiver<AccountEvent>;
-
-    async fn run_local(
-        &self,
-        abi: &AbiFunction,
-        message: ExternalMessage,
-    ) -> TransportResult<ContractOutput>;
 
     async fn send_message(
         &self,

@@ -40,6 +40,6 @@ pub async fn run(config: RelayConfig) -> Result<(), Error> {
             bridge_state,
         })),
     )
-    .await;
+        .await;
     Ok(())
 }

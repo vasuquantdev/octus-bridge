@@ -4,19 +4,19 @@ use crate::prelude::*;
 use crate::transport::*;
 
 pub trait Contract: Send + Sync + 'static {
+    fn abi(&self) -> &Arc<ton_abi::Contract>;
+}
+
+pub trait ContractWithEvents: Contract {
     type Event: TryFrom<(Self::EventKind, Vec<Token>), Error = ContractError> + Send;
     type EventKind: for<'a> TryFrom<&'a str, Error = ContractError> + Send + Copy + Clone;
 
-    fn contract(&self) -> &Arc<ton_abi::Contract>;
-
-    fn transport(&self) -> &Arc<dyn AccountSubscription>;
-
-    fn message(&self, name: &str) -> ContractResult<MessageBuilder>;
+    fn subscription(&self) -> &Arc<dyn AccountSubscription>;
 
     fn events(self: &Arc<Self>) -> mpsc::UnboundedReceiver<Self::Event> {
-        let contract = self.contract().clone();
+        let contract = self.abi().clone();
 
-        let mut events_rx = self.transport().events();
+        let mut events_rx = self.subscription().events();
         let this = Arc::downgrade(self);
         let (tx, rx) = mpsc::unbounded_channel();
         tokio::spawn(async move {

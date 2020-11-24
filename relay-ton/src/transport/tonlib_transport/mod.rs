@@ -18,33 +18,42 @@ use ton_types::SliceData;
 use tonlib::{TonlibClient, TonlibError};
 
 use super::errors::*;
-use super::{AccountEvent, AccountSubscription, Transport};
+use super::{AccountEvent, AccountSubscription, RunLocal, Transport};
 use crate::models::*;
 use crate::prelude::*;
 
 pub struct TonlibTransport {
+    db: Db,
     client: Arc<TonlibClient>,
     subscription_polling_interval: Duration,
+    max_initial_rescan_gap: Option<u32>,
+    max_rescan_gap: Option<u32>,
 }
 
 impl TonlibTransport {
-    pub async fn new(config: Config) -> TransportResult<Self> {
+    pub async fn new(config: Config, db: Db) -> TransportResult<Self> {
         let subscription_polling_interval =
             Duration::from_secs(config.subscription_polling_interval_sec);
+
+        let max_initial_rescan_gap = config.max_initial_rescan_gap;
+        let max_rescan_gap = config.max_rescan_gap;
 
         let client = tonlib::TonlibClient::new(&config.into())
             .await
             .map_err(to_api_error)?;
 
         Ok(Self {
+            db,
             client: Arc::new(client),
             subscription_polling_interval,
+            max_initial_rescan_gap,
+            max_rescan_gap,
         })
     }
 }
 
 #[async_trait]
-impl Transport for TonlibTransport {
+impl RunLocal for TonlibTransport {
     async fn run_local(
         &self,
         abi: &Function,
@@ -77,17 +86,27 @@ impl Transport for TonlibTransport {
             },
         )
     }
+}
 
+#[async_trait]
+impl Transport for TonlibTransport {
     async fn subscribe(&self, addr: &str) -> TransportResult<Arc<dyn AccountSubscription>> {
-        let subscription: Arc<dyn AccountSubscription> =
-            TonlibAccountSubscription::new(&self.client, &self.subscription_polling_interval, addr)
-                .await?;
+        let subscription: Arc<dyn AccountSubscription> = TonlibAccountSubscription::new(
+            &self.db,
+            &self.client,
+            &self.subscription_polling_interval,
+            self.max_initial_rescan_gap,
+            self.max_rescan_gap,
+            addr,
+        )
+        .await?;
 
         Ok(subscription)
     }
 }
 
 struct TonlibAccountSubscription {
+    db: Db,
     client: Arc<tonlib::TonlibClient>,
     event_notifier: watch::Receiver<AccountEvent>,
     account: ton::lite_server::accountid::AccountId,
@@ -97,28 +116,53 @@ struct TonlibAccountSubscription {
 
 impl TonlibAccountSubscription {
     async fn new(
+        db: &Db,
         client: &Arc<tonlib::TonlibClient>,
         polling_interval: &Duration,
+        max_initial_rescan_gap: Option<u32>,
+        max_rescan_gap: Option<u32>,
         addr: &str,
     ) -> TransportResult<Arc<Self>> {
+        let db = db.clone();
         let client = client.clone();
         let account = tonlib::utils::make_address_from_str(addr).map_err(to_api_error)?;
         let known_state = client
             .get_account_state(account.clone())
             .await
             .map_err(to_api_error)?;
-        let last_trans_lt = known_state.last_trans_lt as u64;
+
+        let last_trans_lt = match db.get(account.id.0.as_slice()).map_err(|e| {
+            TransportError::FailedToInitialize {
+                reason: e.to_string(),
+            }
+        })? {
+            Some(data) => {
+                let mut lt = 0;
+                for (i, &byte) in data.iter().take(4).enumerate() {
+                    lt += (byte as u64) << i;
+                }
+                lt
+            }
+            None => known_state.last_trans_lt as u64,
+        };
 
         let (tx, rx) = watch::channel(AccountEvent::StateChanged);
 
         let subscription = Arc::new(Self {
+            db,
             client,
             event_notifier: rx,
             account,
             known_state: RwLock::new(known_state),
             pending_messages: RwLock::new(HashMap::new()),
         });
-        subscription.start_loop(tx, last_trans_lt, *polling_interval);
+        subscription.start_loop(
+            tx,
+            last_trans_lt,
+            *polling_interval,
+            max_initial_rescan_gap,
+            max_rescan_gap,
+        );
 
         Ok(subscription)
     }
@@ -128,6 +172,8 @@ impl TonlibAccountSubscription {
         state_notifier: watch::Sender<AccountEvent>,
         mut last_trans_lt: u64,
         interval: Duration,
+        mut max_initial_rescan_gap: Option<u32>,
+        max_rescan_gap: Option<u32>,
     ) {
         let subscription = Arc::downgrade(self);
         tokio::spawn(async move {
@@ -236,8 +282,15 @@ impl TonlibAccountSubscription {
                             }
                         }
 
-                        if transaction.prev_trans_lt < last_trans_lt {
-                            break 'process_transactions;
+                        match max_initial_rescan_gap.or(max_rescan_gap) {
+                            Some(gap) if gen_utime - transaction.now >= gap => {
+                                max_initial_rescan_gap = None;
+                                break 'process_transactions;
+                            }
+                            _ if transaction.prev_trans_lt < last_trans_lt => {
+                                break 'process_transactions;
+                            }
+                            _ => {}
                         }
                     }
                 }
@@ -245,17 +298,19 @@ impl TonlibAccountSubscription {
                 pending_messages.retain(|_, message| message.expires_at <= gen_utime);
 
                 last_trans_lt = current_trans_lt;
+                if let Err(e) = subscription.db.insert(
+                    subscription.account.id.0.as_slice(),
+                    &current_trans_lt.to_le_bytes(),
+                ) {
+                    log::error!("failed to save state into db. {}", e);
+                }
             }
         });
     }
 }
 
 #[async_trait]
-impl AccountSubscription for TonlibAccountSubscription {
-    fn events(&self) -> watch::Receiver<AccountEvent> {
-        self.event_notifier.clone()
-    }
-
+impl RunLocal for TonlibAccountSubscription {
     async fn run_local(
         &self,
         abi: &AbiFunction,
@@ -275,6 +330,13 @@ impl AccountSubscription for TonlibAccountSubscription {
                 events_tx: None,
             },
         )
+    }
+}
+
+#[async_trait]
+impl AccountSubscription for TonlibAccountSubscription {
+    fn events(&self) -> watch::Receiver<AccountEvent> {
+        self.event_notifier.clone()
     }
 
     async fn send_message(
@@ -496,6 +558,8 @@ mod tests {
             keystore: KeystoreType::InMemory,
             last_block_threshold_sec: 1,
             subscription_polling_interval_sec: 1,
+            max_initial_rescan_gap: None,
+            max_rescan_gap: None,
         })
         .await
         .unwrap()
