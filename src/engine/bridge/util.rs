@@ -50,19 +50,30 @@ fn map_eth_ton(eth: EthTokenValue) -> TonTokenValue {
         EthTokenValue::Int(x) => {
             let mut bytes = [0u8; 256 / 8];
             x.to_big_endian(&mut bytes);
-
-            let sign = bytes[0] & 0x80;
-
-            let sign = if sign == 1 {
-                num_bigint::Sign::Plus
-            } else {
-                num_bigint::Sign::Minus
-            };
-            dbg!(&sign);
             let number = BigInt::from_signed_bytes_be(&bytes);
             TonTokenValue::Int(ton_abi::Int { number, size: 256 }) //fixme ? check correctness
         }
-        // TonTokenValue::Uint(x.as_byte_slice()) }
+        EthTokenValue::Address(ad) => TonTokenValue::Bytes(ad.0.to_vec()),
+        EthTokenValue::String(a) => TonTokenValue::Bytes(Vec::from(a)),
+        _ => unimplemented!(),
+    }
+}
+
+fn map_ton_eth(ton: TonTokenValue) -> EthTokenValue {
+    match ton {
+        TonTokenValue::Uint(a) => {
+            let bytes = a.number.to_bytes_be();
+            EthTokenValue::Uint(ethabi::Uint::from_big_endian(&*bytes))
+        }
+        TonTokenValue::Int(a) => {
+            let (_, bytes) = a.number.to_bytes_be();
+            EthTokenValue::Int(ethabi::Int::from_big_endian(&*bytes))
+        }
+        TonTokenValue::Bytes(a) => EthTokenValue::Bytes(ethabi::Bytes::from(a)),
+        TonTokenValue::Address(a) => EthTokenValue::String(a.to_string()),
+        TonTokenValue::FixedBytes(a) => EthTokenValue::FixedBytes(a),
+        TonTokenValue::Bool(a) => EthTokenValue::Bool(a),
+        TonTokenValue::Cell(a) => EthTokenValue::Bytes(a.data().to_vec()),
         _ => unimplemented!(),
     }
 }
@@ -120,13 +131,14 @@ mod test {
     use ethabi::ParamType;
     use ethabi::Token as EthTokenValue;
     use num_bigint::BigInt;
+    use pretty_assertions::{assert_eq, assert_ne};
     use sha3::Digest;
     use sha3::Keccak256;
     use ton_abi::TokenValue as TonTokenValue;
 
     use relay_eth::ws::H256;
 
-    use crate::engine::bridge::util::{abi_to_topic_hash, from_str, map_eth_ton};
+    use crate::engine::bridge::util::{abi_to_topic_hash, from_str, map_eth_ton, map_ton_eth};
 
     const ABI: &str = r#"
   {
@@ -192,7 +204,7 @@ mod test {
     }
 
     fn make_int256_le(number: i64) -> [u8; 32] {
-        let value = BigInt::from(-1234567i64);
+        let value = BigInt::from(number);
         let mut value_bytes = value.to_signed_bytes_le();
 
         let sign = value_bytes
@@ -234,5 +246,46 @@ mod test {
             size: 256,
         });
         assert_eq!(map_eth_ton(eth), ton_expected);
+    }
+
+    #[test]
+    fn ton_test_conversion_int_plus() {
+        use ethabi::Int as EInt;
+        use ton_abi::Int as TInt;
+
+        let number = make_int256_le(1234567);
+
+        let eth_expected = EthTokenValue::Int(EInt::from_little_endian(&number));
+        let ton = TonTokenValue::Int(TInt {
+            number: BigInt::from_signed_bytes_le(&number),
+            size: 256,
+        });
+        assert_eq!(map_ton_eth(ton), eth_expected);
+    }
+
+    #[test]
+    fn ton_test_conversion_int() {
+        use ethabi::Int as EInt;
+        use ton_abi::Int as TInt;
+
+        let number = make_int256_le(-1234567);
+
+        let eth = EthTokenValue::Int(EInt::from_little_endian(&number));
+        println!("{}", eth);
+        let ton_expected = TonTokenValue::Int(TInt {
+            number: BigInt::from_signed_bytes_le(&number),
+            size: 256,
+        });
+        let got = map_ton_eth(ton_expected);
+        assert_eq!(got, eth);
+    }
+
+    #[test]
+    fn ton_test_conversion_uint() {
+        use ethabi::Uint as EUint;
+        use ton_abi::Uint as TUint;
+        let eth = EthTokenValue::Uint(EUint::from(1234567));
+        let ton_expected = TonTokenValue::Uint(TUint::new(1234567, 256));
+        assert_eq!(map_ton_eth(ton_expected), eth);
     }
 }
