@@ -193,12 +193,23 @@ mod test {
     #[test]
     fn test_conversion_int() {
         use ethabi::Int as EInt;
+        use num_bigint::BigInt;
         use ton_abi::Int as TInt;
-        let eth_value: u64 = -1234567i64 as u64;
 
+        let value = BigInt::from(-1234567i64);
+        let mut value_bytes = value.to_signed_bytes_le();
 
-        let eth = EthTokenValue::Int(EInt::from(eth_value));
-        let ton_expected = TonTokenValue::Int(TInt::new(-1234567, 256));
+        let sign = value_bytes
+            .last()
+            .map(|first| (first >> 7) * 255)
+            .unwrap_or_default();
+        value_bytes.resize(32, sign);
+
+        let eth = EthTokenValue::Int(EInt::from_little_endian(&value_bytes));
+        let ton_expected = TonTokenValue::Int(TInt {
+            number: BigInt::from_signed_bytes_le(&value_bytes),
+            size: 256,
+        });
         assert_eq!(map_eth_ton(eth), ton_expected);
     }
 
