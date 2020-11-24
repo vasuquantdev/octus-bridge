@@ -90,8 +90,7 @@ impl ParseToken<BigUint> for TokenValue {
 impl ParseToken<u8> for TokenValue {
     fn try_parse(self) -> ContractResult<u8> {
         ParseToken::<BigUint>::try_parse(self)?
-            .to_u8()
-            .ok_or_else(|| ContractError::InvalidAbi)
+            .to_u8().ok_or(ContractError::InvalidAbi)
     }
 }
 
