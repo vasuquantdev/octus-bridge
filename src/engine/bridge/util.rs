@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use anyhow::Error;
-use ethabi::{ParamType, Token};
+use ethabi::ParamType;
 use serde::{Deserialize, Serialize};
 use sha3::digest::Digest;
 use sha3::Keccak256;
