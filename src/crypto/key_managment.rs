@@ -28,7 +28,7 @@ pub struct KeyData {
     pub ton: TonSigner,
 }
 
-#[derive(Eq, PartialEq)]
+#[derive(Eq, PartialEq, Clone)]
 pub struct EthSigner {
     pubkey: PublicKey,
     private_key: SecretKey,

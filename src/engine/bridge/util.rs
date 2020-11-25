@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use anyhow::Error;
-use ethabi::ParamType;
 use ethabi::Token as EthTokenValue;
+use ethabi::{ParamType};
 use num_bigint::{BigInt, BigUint};
 use serde::{Deserialize, Serialize};
 use sha3::digest::Digest;
@@ -37,7 +37,7 @@ pub fn from_str(token: &str) -> Result<ParamType, Error> {
     })
 }
 
-fn map_eth_ton(eth: EthTokenValue) -> TonTokenValue {
+pub fn map_eth_ton(eth: EthTokenValue) -> TonTokenValue {
     match eth {
         EthTokenValue::FixedBytes(x) => TonTokenValue::FixedBytes(x.to_vec()),
         EthTokenValue::Bytes(x) => TonTokenValue::Bytes(x.to_vec()),
@@ -59,7 +59,7 @@ fn map_eth_ton(eth: EthTokenValue) -> TonTokenValue {
     }
 }
 
-fn map_ton_eth(ton: TonTokenValue) -> EthTokenValue {
+pub fn map_ton_eth(ton: TonTokenValue) -> EthTokenValue {
     match ton {
         TonTokenValue::Uint(a) => {
             let bytes = a.number.to_bytes_le();
@@ -84,7 +84,8 @@ fn map_ton_eth(ton: TonTokenValue) -> EthTokenValue {
     }
 }
 
-pub fn abi_to_topic_hash(abi: &str) -> Result<Vec<H256>, Error> {
+///returns signature and its hash.
+pub fn abi_to_topic_hash(abi: &str) -> Result<Vec<(H256, Vec<ParamType>)>, Error> {
     //todo list of hashes?
     #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
@@ -118,22 +119,28 @@ pub fn abi_to_topic_hash(abi: &str) -> Result<Vec<H256>, Error> {
         pub type_field: String,
     }
     let abi_list: Vec<Abi> = serde_json::from_str(abi)?;
-    Ok(abi_list
-        .into_iter()
-        .filter(|x| x.type_field == "event")
-        .map(|abi| {
-            let fn_name = abi.name;
-            let input_types: String = abi
-                .inputs
-                .into_iter()
-                .map(|x| x.type_field)
-                .collect::<Vec<String>>()
-                .join(",");
-            // let output_type =abi.outputs.into_iter().map(|x|x.type_field).collect::<Vec<String>>().first(); //todo ????
-            let signature = format!("{}({})", fn_name, input_types);
-            H256::from_slice(&*Keccak256::digest(signature.as_bytes()))
-        }).collect()
-    )
+    let abi_list = abi_list.into_iter().filter(|x| x.type_field == "event");
+    let mut result = Vec::new();
+    for abi in abi_list {
+        let fn_name = abi.name;
+        let input_types: String = abi
+            .inputs
+            .iter()
+            .map(|x| x.type_field.clone())
+            .collect::<Vec<String>>()
+            .join(",");
+        let abi_types: Result<Vec<ParamType>, Error> = abi
+            .inputs
+            .iter()
+            .map(|x| from_str(x.internal_type.as_str()))
+            .collect();
+        let signature = format!("{}({})", fn_name, input_types);
+        result.push((
+            H256::from_slice(&*Keccak256::digest(signature.as_bytes())),
+            abi_types?,
+        ))
+    }
+    Ok(result)
 }
 
 // fn serialize_eth_payload_in_ton(data: &[u8]) -> Vec<u8> {}
@@ -203,10 +210,17 @@ mod test {
 
     #[test]
     fn test_event_contract_abi() {
-        let hash = abi_to_topic_hash(ABI).unwrap();
-        let expected =vec![H256::from_slice(&*Keccak256::digest(b"StateChange(uint256,address)"))];
+        let hash: Vec<_> = abi_to_topic_hash(ABI)
+            .unwrap()
+            .into_iter()
+            .map(|x| x.0)
+            .collect();
+        let expected = vec![H256::from_slice(&*Keccak256::digest(
+            b"StateChange(uint256,address)",
+        ))];
         assert_eq!(expected, hash);
     }
+    //todo test abi parsing
 
     #[test]
     fn test_u256() {
