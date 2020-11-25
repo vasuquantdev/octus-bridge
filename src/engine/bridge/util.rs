@@ -84,7 +84,7 @@ fn map_ton_eth(ton: TonTokenValue) -> EthTokenValue {
     }
 }
 
-pub fn abi_to_topic_hash(abi: &str) -> Result<H256, Error> {
+pub fn abi_to_topic_hash(abi: &str) -> Result<Vec<H256>, Error> {
     //todo list of hashes?
     #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
@@ -117,17 +117,23 @@ pub fn abi_to_topic_hash(abi: &str) -> Result<H256, Error> {
         #[serde(rename = "type")]
         pub type_field: String,
     }
-    let abi: Abi = serde_json::from_str(abi)?;
-    let fn_name = abi.name;
-    let input_types: String = abi
-        .inputs
+    let abi_list: Vec<Abi> = serde_json::from_str(abi)?;
+    Ok(abi_list
         .into_iter()
-        .map(|x| x.type_field)
-        .collect::<Vec<String>>()
-        .join(",");
-    // let output_type =abi.outputs.into_iter().map(|x|x.type_field).collect::<Vec<String>>().first(); //todo ????
-    let signature = format!("{}({})", fn_name, input_types);
-    Ok(H256::from_slice(&*Keccak256::digest(signature.as_bytes())))
+        .filter(|x| x.type_field == "event")
+        .map(|abi| {
+            let fn_name = abi.name;
+            let input_types: String = abi
+                .inputs
+                .into_iter()
+                .map(|x| x.type_field)
+                .collect::<Vec<String>>()
+                .join(",");
+            // let output_type =abi.outputs.into_iter().map(|x|x.type_field).collect::<Vec<String>>().first(); //todo ????
+            let signature = format!("{}({})", fn_name, input_types);
+            H256::from_slice(&*Keccak256::digest(signature.as_bytes()))
+        }).collect()
+    )
 }
 
 // fn serialize_eth_payload_in_ton(data: &[u8]) -> Vec<u8> {}
@@ -146,6 +152,7 @@ mod test {
     use crate::engine::bridge::util::{abi_to_topic_hash, from_str, map_eth_ton, map_ton_eth};
 
     const ABI: &str = r#"
+[
   {
     "anonymous": false,
     "inputs": [
@@ -164,12 +171,40 @@ mod test {
     ],
     "name": "StateChange",
     "type": "event"
-  }"#;
+  },
+  {
+    "inputs": [],
+    "name": "currentState",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "newState",
+        "type": "uint256"
+      }
+    ],
+    "name": "setState",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  }
+]
+  "#;
 
     #[test]
     fn test_event_contract_abi() {
         let hash = abi_to_topic_hash(ABI).unwrap();
-        let expected = H256::from_slice(&*Keccak256::digest(b"StateChange(uint256,address)"));
+        let expected =vec![H256::from_slice(&*Keccak256::digest(b"StateChange(uint256,address)"))];
         assert_eq!(expected, hash);
     }
 

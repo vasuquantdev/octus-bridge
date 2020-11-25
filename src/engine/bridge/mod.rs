@@ -37,6 +37,7 @@ impl Bridge {
             eth_addr.push(Address::from_slice(conf.ethereum_address.as_slice()));
             eth_topic.push(abi_to_topic_hash(&conf.ethereum_event_abi)?); //todo Vec of hashes
         }
+        let eth_topic = eth_topic.into_iter().flatten().collect();
         let mut stream = eth_client.subscribe(eth_addr, eth_topic).await?; //todo logzz &&  business logic
         while let Some(_a) = stream.next().await {
             todo!()
