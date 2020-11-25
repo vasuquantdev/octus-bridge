@@ -8,7 +8,7 @@ fn main() -> Result<(), Error> {
     let args = parse_args();
 
     if args.gen_config {
-        generate_config(args.config, args.crypto_store_path.unwrap())?;
+        generate_config(args.generated_config_path, args.crypto_store_path.unwrap())?;
         return Ok(());
     }
 

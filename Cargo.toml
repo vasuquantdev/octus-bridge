@@ -35,7 +35,7 @@ tiny-hderive = "0.2.1"
 tiny-bip39 = "0.8.0"
 sled = "0.34.5"
 
-structopt = "0.3.20"
+clap = "3.0.0-beta.2"
 log = "*"
 env_logger = "*"
 thiserror = "1.0.22"
