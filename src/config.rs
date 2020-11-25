@@ -68,7 +68,12 @@ pub fn read_config(path: &str) -> Result<RelayConfig, Error> {
 
 #[derive(Deserialize, Serialize, Clone, Debug, Clap)]
 pub struct Arguments {
-    #[clap(short, long, default_value = "config.json", conflicts_with = "gen-config")]
+    #[clap(
+        short,
+        long,
+        default_value = "config.json",
+        conflicts_with = "gen-config"
+    )]
     pub config: String,
     ///It will generate default config
     #[clap(long, requires = "crypto-store-path")]
