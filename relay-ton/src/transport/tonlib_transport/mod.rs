@@ -1,5 +1,4 @@
 pub mod config;
-mod tvm;
 
 pub use config::*;
 
@@ -18,6 +17,8 @@ use ton_types::SliceData;
 use tonlib::{TonlibClient, TonlibError};
 
 use super::errors::*;
+use super::tvm;
+use super::utils::*;
 use super::{AccountEvent, AccountSubscription, RunLocal, Transport};
 use crate::models::*;
 use crate::prelude::*;
@@ -77,7 +78,12 @@ impl RunLocal for TonlibTransport {
             .map_err(to_api_error)?;
         let info = parse_account_stuff(account_state.data.0.as_slice())?;
 
-        let (messages, _) = tvm::call_msg(&account_state, info, &msg)?;
+        let (messages, _) = tvm::call_msg(
+            account_state.gen_utime as u32,
+            account_state.gen_lt as u64,
+            info,
+            &msg,
+        )?;
         process_out_messages(
             &messages,
             MessageProcessingParams {
@@ -321,7 +327,12 @@ impl RunLocal for TonlibAccountSubscription {
         let account_state = self.known_state.read().await;
         let info = parse_account_stuff(account_state.data.0.as_slice())?;
 
-        let (messages, _) = tvm::call_msg(&account_state, info, &message)?;
+        let (messages, _) = tvm::call_msg(
+            account_state.gen_utime as u32,
+            account_state.gen_lt as u64,
+            info,
+            &message,
+        )?;
 
         process_out_messages(
             &messages,
@@ -400,17 +411,6 @@ struct PendingMessage {
     tx: oneshot::Sender<TransportResult<ContractOutput>>,
 }
 
-fn encode_external_message(message: ExternalMessage) -> Message {
-    let mut message_header = ExternalInboundMessageHeader::default();
-    message_header.dst = message.dest.clone();
-
-    let mut msg = Message::with_ext_in_header(message_header);
-    if let Some(body) = message.body {
-        msg.set_body(body);
-    }
-    msg
-}
-
 fn parse_account_stuff(raw: &[u8]) -> TransportResult<AccountStuff> {
     let mut slice = ton_types::deserialize_tree_of_cells(&mut std::io::Cursor::new(raw))
         .and_then(|cell| {
@@ -427,95 +427,6 @@ fn parse_account_stuff(raw: &[u8]) -> TransportResult<AccountStuff> {
             reason: e.to_string(),
         }
     })
-}
-
-fn parse_transaction(raw: &[u8]) -> TransportResult<(Transaction, UInt256)> {
-    let cell =
-        ton_types::deserialize_tree_of_cells(&mut std::io::Cursor::new(raw)).map_err(|e| {
-            TransportError::FailedToParseTransaction {
-                reason: e.to_string(),
-            }
-        })?;
-    let hash = cell.hash(0);
-
-    Transaction::construct_from(&mut cell.into())
-        .map(|transaction| (transaction, hash))
-        .map_err(|e| TransportError::FailedToParseAccountState {
-            reason: e.to_string(),
-        })
-}
-
-fn parse_transaction_messages(transaction: &Transaction) -> TransportResult<Vec<Message>> {
-    let mut messages = Vec::new();
-    transaction
-        .out_msgs
-        .iterate_slices(|slice| {
-            if let Ok(message) = slice.reference(0).and_then(Message::construct_from_cell) {
-                messages.push(message);
-            }
-            Ok(true)
-        })
-        .map_err(|e| TransportError::FailedToParseTransaction {
-            reason: e.to_string(),
-        })?;
-    Ok(messages)
-}
-
-struct MessageProcessingParams<'a> {
-    abi_function: Option<&'a AbiFunction>,
-    events_tx: Option<&'a watch::Sender<AccountEvent>>,
-}
-
-fn process_out_messages<'a>(
-    messages: &'a [Message],
-    params: MessageProcessingParams<'a>,
-) -> TransportResult<ContractOutput> {
-    let mut output = None;
-
-    for msg in messages {
-        if !matches!(msg.header(), CommonMsgInfo::ExtOutMsgInfo(_)) {
-            continue;
-        }
-
-        let body = msg.body().ok_or_else(|| TransportError::ExecutionError {
-            reason: "output message has not body".to_string(),
-        })?;
-
-        match (&params.abi_function, &params.events_tx) {
-            (Some(abi_function), _) if output.is_none() => {
-                if abi_function
-                    .is_my_output_message(body.clone(), false)
-                    .map_err(|e| TransportError::ExecutionError {
-                        reason: e.to_string(),
-                    })?
-                {
-                    let tokens = abi_function.decode_output(body, false).map_err(|e| {
-                        TransportError::ExecutionError {
-                            reason: e.to_string(),
-                        }
-                    })?;
-
-                    output = Some(ContractOutput {
-                        transaction_id: None,
-                        tokens,
-                    });
-                }
-            }
-            (_, Some(events_tx)) => {
-                let _ = events_tx.broadcast(AccountEvent::OutboundEvent(Arc::new(body)));
-            }
-            _ => {}
-        }
-    }
-
-    match (params.abi_function, output) {
-        (Some(abi_function), _) if !abi_function.has_output() => Ok(Default::default()),
-        (Some(_), Some(output)) => Ok(output),
-        (None, _) => Ok(Default::default()),
-        _ => Err(TransportError::ExecutionError {
-            reason: "no external output messages".to_owned(),
-        }),
-    }
 }
 
 fn to_api_error(e: TonlibError) -> TransportError {

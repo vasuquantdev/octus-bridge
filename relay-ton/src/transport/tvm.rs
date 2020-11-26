@@ -1,4 +1,3 @@
-use ton_api::ton;
 use ton_block::{Deserializable, Message, Serializable};
 use ton_types::SliceData;
 use ton_vm::executor::gas::gas_state::Gas;
@@ -9,7 +8,8 @@ use crate::prelude::*;
 use crate::transport::errors::*;
 
 pub fn call(
-    raw_info: &ton::lite_server::rawaccount::RawAccount,
+    utime: u32,
+    lt: u64,
     mut account: ton_block::AccountStuff,
     stack: Stack,
 ) -> TransportResult<(ton_vm::executor::Engine, ton_block::AccountStuff)> {
@@ -30,13 +30,7 @@ pub fn call(
             reason: format!("can not put data to registers: {}", err),
         })?;
 
-    let sci = build_contract_info(
-        &account.addr,
-        &account.storage.balance,
-        raw_info.gen_utime as u32,
-        raw_info.gen_lt as u64,
-        raw_info.gen_lt as u64,
-    );
+    let sci = build_contract_info(&account.addr, &account.storage.balance, utime, lt, lt);
     ctrls
         .put(7, &mut sci.into_temp_data())
         .map_err(|err| TransportError::ExecutionError {
@@ -97,7 +91,8 @@ pub fn call(
 }
 
 pub fn call_msg(
-    raw_info: &ton::lite_server::rawaccount::RawAccount,
+    utime: u32,
+    lt: u64,
     account: ton_block::AccountStuff,
     msg: &Message,
 ) -> TransportResult<(Vec<Message>, ton_block::AccountStuff)> {
@@ -125,7 +120,7 @@ pub fn call_msg(
         .push(StackItem::Slice(msg.body().unwrap_or_default())) // message body
         .push(function_selector); // function selector
 
-    let (engine, account) = call(raw_info, account, stack)?;
+    let (engine, account) = call(utime, lt, account, stack)?;
 
     // process out actions to get out messages
     let actions_cell = engine
