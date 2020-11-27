@@ -10,8 +10,8 @@ use url::Url;
 use warp::http::StatusCode;
 use warp::{reply, Filter, Reply};
 
+use relay_eth::ws::update_eth_state;
 use relay_eth::ws::EthListener;
-use relay_eth::ws::{update_eth_state};
 use relay_ton::contracts::BridgeContract;
 use relay_ton::prelude::{Arc, RwLock};
 use relay_ton::transport::Transport;
@@ -24,7 +24,7 @@ use crate::engine::models::{BridgeState, InitData, Password, RescanEthData, Stat
 
 pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>) {
     log::info!("Starting server");
-    let serve_address = config.listen_address.clone();
+    let serve_address = config.listen_address;
     fn json_data<T>() -> impl Filter<Extract = (T,), Error = warp::Rejection> + Clone
     where
         for<'a> T: serde::Deserialize<'a> + Send,
