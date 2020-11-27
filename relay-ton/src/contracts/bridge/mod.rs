@@ -329,21 +329,19 @@ const ABI: &str = include_str!("../../../abi/Bridge.abi.json");
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::transport::tonlib_transport::config::Config;
-    use crate::transport::TonlibTransport;
-
-    const LOCAL_SERVER_ADDR: &str = "http://127.0.0.1:80";
-
-    fn bridge_addr() -> MsgAddressInt {
-        MsgAddressInt::from_str(
-            "0:a3fb29fb5d681820eb8a45714101fccd6ff6e7e742f29549a0a87dbb505c50ba",
-        )
-        .unwrap()
-    }
-
-    #[test]
-    fn test() {}
+    // use super::*;
+    // use crate::transport::tonlib_transport::config::Config;
+    // use crate::transport::TonlibTransport;
+    //
+    // const LOCAL_SERVER_ADDR: &str = "http://127.0.0.1:80";
+    //
+    // fn bridge_addr() -> MsgAddressInt {
+    //     MsgAddressInt::from_str(
+    //         "0:a3fb29fb5d681820eb8a45714101fccd6ff6e7e742f29549a0a87dbb505c50ba",
+    //     )
+    //     .unwrap()
+    // }
+    //
 
     // #[tokio::test]
     // async fn get_ethereum_events_configuration() {

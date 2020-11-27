@@ -218,7 +218,7 @@ impl NodeClient {
         let block = self
             .fetch::<QueryNextBlock>(query_next_block::Variables {
                 id: current.to_owned(),
-                timeout: 60.0, // todo: move into config
+                timeout: 60000.0, // timeout in ms. todo: move into config
             })
             .await?
             .blocks
@@ -244,7 +244,7 @@ impl NodeClient {
                 self.fetch::<QueryBlockAfterSplit>(query_block_after_split::Variables {
                     block_id,
                     prev_id: current.to_owned(),
-                    timeout: 60.0, // todo: move into config
+                    timeout: 60000.0, // timeout in ms. todo: move into config
                 })
                 .await?
                 .blocks
@@ -344,11 +344,67 @@ mod tests {
         .unwrap()
     }
 
+    fn test_addr() -> MsgAddressInt {
+        MsgAddressInt::from_str(
+            "0:9DAA3ED732451E7A5F7856D8AE443C94BE554330964B02FEC15AC424303A860F",
+        )
+        .unwrap()
+    }
+
     #[tokio::test]
     async fn get_account_state() {
+        let account_state = make_client()
+            .get_account_state(&elector_addr())
+            .await
+            .unwrap();
+        println!("Account state: {:?}", account_state);
+    }
+
+    #[tokio::test]
+    async fn get_latest_block_masterchain() {
+        let latest_block = make_client()
+            .get_latest_block(&elector_addr())
+            .await
+            .unwrap();
+        println!("Latest masterchain block: {:?}", latest_block);
+    }
+
+    #[tokio::test]
+    async fn get_latest_block_basechain() {
+        let latest_block = make_client().get_latest_block(&test_addr()).await.unwrap();
+        println!("Latest basechain block: {:?}", latest_block);
+    }
+
+    #[tokio::test]
+    async fn get_next_block_masterchain() {
         let client = make_client();
 
-        let account_state = client.get_account_state(&elector_addr()).await.unwrap();
-        println!("Account state: {:?}", account_state);
+        let latest_block = client.get_latest_block(&elector_addr()).await.unwrap();
+        let next_block = client
+            .wait_for_next_block(&latest_block, &elector_addr())
+            .await
+            .unwrap();
+        println!("Next block masterchain: {:?}", next_block);
+    }
+
+    #[tokio::test]
+    async fn get_next_block_basechain() {
+        let client = make_client();
+
+        let latest_block = client.get_latest_block(&test_addr()).await.unwrap();
+        let next_block = client
+            .wait_for_next_block(&latest_block, &test_addr())
+            .await
+            .unwrap();
+        println!("Next block basechain: {:?}", next_block);
+    }
+
+    #[tokio::test]
+    async fn get_block_by_id() {
+        let block = make_client()
+            .get_block("27b0882bec89de2e2e1638c1c6151ba56ecb270f8c7990c45ce3e5a812888b11")
+            .await
+            .unwrap();
+        println!("Block: {:?}", block);
     }
 }
