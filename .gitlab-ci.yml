@@ -4,7 +4,7 @@ include:
     file: '/templates/cloudbuild-rust.gitlab-ci.yaml'
 
 variables:
-  CONFIG_BUILDER_MASTER: gcr.io/dexpa-175115/rust/rust-builder:stable
+  CONFIG_BUILDER_MASTER: gcr.io/dexpa-175115/rust/rust-builder:stable-release
 
 stages:
   - cloudbuild
