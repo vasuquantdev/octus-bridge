@@ -2,6 +2,8 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum TransportError {
+    #[error("invalid address")]
+    InvalidAddress,
     #[error("failed to initialize. {reason}")]
     FailedToInitialize { reason: String },
     #[error("failed to serialize BOC")]

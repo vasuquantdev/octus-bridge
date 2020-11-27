@@ -1,6 +1,6 @@
-query AccountTransactionsQuery($account: String, $last_transaction_lt: String, $limit: Int) {
+query QueryAccountTransactions($address: String!, $last_transaction_lt: String!, $limit: Int!) {
     transactions(filter: {
-        account_addr: { eq: $account },
+        account_addr: { eq: $address },
         lt: { le: $last_transaction_lt }
     }, orderBy: [
         {

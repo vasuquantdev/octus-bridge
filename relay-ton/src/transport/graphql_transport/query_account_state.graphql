@@ -1,4 +1,4 @@
-query AccountStateQuery($address: String!) {
+query QueryAccountState($address: String!) {
     accounts(filter: {
         id: { eq: $address }
     }, limit: 1) {

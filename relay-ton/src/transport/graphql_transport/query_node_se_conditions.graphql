@@ -1,4 +1,4 @@
-query QueryNodeSEConditions($workchain: Int) {
+query QueryNodeSEConditions($workchain: Int!) {
     blocks(filter: {
         workchain_id: { eq: $workchain }
     }, orderBy: [

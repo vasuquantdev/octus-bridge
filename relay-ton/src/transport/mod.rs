@@ -2,14 +2,14 @@ pub mod errors;
 mod tvm;
 mod utils;
 
-#[cfg(feature = "graphql_transport")]
+#[cfg(feature = "graphql-transport")]
 pub mod graphql_transport;
-#[cfg(feature = "tonlib_transport")]
+#[cfg(feature = "tonlib-transport")]
 pub mod tonlib_transport;
 
-#[cfg(feature = "graphql_transport")]
+#[cfg(feature = "graphql-transport")]
 pub use graphql_transport::GraphQLTransport;
-#[cfg(feature = "tonlib")]
+#[cfg(feature = "tonlib-transport")]
 pub use tonlib_transport::TonlibTransport;
 
 use self::errors::*;
