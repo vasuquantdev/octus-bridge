@@ -14,7 +14,7 @@ cloudbuild:rust-master:
   extends: .cloudbuild:rust
   variables:
     CONFIG_BUILDER: $CONFIG_BUILDER_MASTER
-    CARGO_TEST: true
+    CARGO_TEST: "true"
   only:
     - master
   except:
