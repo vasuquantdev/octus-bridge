@@ -1,0 +1,25 @@
+include:
+  - project: 'common/gitlab-ci'
+    ref: master
+    file: '/templates/cloudbuild-rust.gitlab-ci.yaml'
+
+variables:
+  CONFIG_BUILDER_MASTER: gcr.io/dexpa-175115/rust/rust-builder:stable
+
+stages:
+  - cloudbuild
+
+
+cloudbuild:rust-master:
+  extends: .cloudbuild:rust
+  variables:
+    CONFIG_BUILDER: $CONFIG_BUILDER_MASTER
+    CARGO_TEST: true
+  only:
+    - master
+  except:
+    - tags
+  tags:
+    - rust
+  script:
+    - gcloud builds submit --machine-type=n1-highcpu-8 --config cloudbuild.yaml .
