@@ -22,25 +22,33 @@ impl NodeClient {
         }
     }
 
-    async fn fetch<T>(&self, params: &T::Variables) -> TransportResult<T::ResponseData>
+    async fn fetch<T>(&self, params: T::Variables) -> TransportResult<T::ResponseData>
     where
         T: GraphQLQuery,
     {
+        let request_body = T::build_query(params);
+
         let response = self
             .client
             .post(&self.endpoint)
-            .json(params)
+            .json(&request_body)
             .send()
             .await
             .map_err(api_failure)?;
 
-        response
-            .json::<T::ResponseData>()
+        let response = response
+            .json::<Response<T::ResponseData>>()
             .await
-            .map_err(api_failure)
+            .map_err(api_failure)?;
+
+        if let Some(errors) = response.errors {
+            log::error!("api errors: {:?}", errors);
+        }
+
+        response.data.ok_or_else(invalid_response)
     }
 
-    pub async fn get_account_state(&self, addr: &str) -> TransportResult<AccountStuff> {
+    pub async fn get_account_state(&self, addr: &MsgAddressInt) -> TransportResult<AccountStuff> {
         #[derive(GraphQLQuery)]
         #[graphql(
             schema_path = "src/transport/graphql_transport/schema.graphql",
@@ -49,8 +57,8 @@ impl NodeClient {
         struct QueryAccountState;
 
         let account_state = self
-            .fetch::<QueryAccountState>(&query_account_state::Variables {
-                address: addr.to_owned(),
+            .fetch::<QueryAccountState>(query_account_state::Variables {
+                address: addr.to_string(),
             })
             .await?
             .accounts
@@ -94,7 +102,7 @@ impl NodeClient {
         let workchain_id = addr.get_workchain_id();
 
         let blocks = self
-            .fetch::<QueryLatestMasterchainBlock>(&query_latest_masterchain_block::Variables)
+            .fetch::<QueryLatestMasterchainBlock>(query_latest_masterchain_block::Variables)
             .await?
             .blocks
             .ok_or_else(no_blocks_found)?;
@@ -133,7 +141,7 @@ impl NodeClient {
             // Check Node SE case (without masterchain and sharding)
             None => {
                 let block = self
-                    .fetch::<QueryNodeSEConditions>(&query_node_se_conditions::Variables {
+                    .fetch::<QueryNodeSEConditions>(query_node_se_conditions::Variables {
                         workchain: workchain_id as i64,
                     })
                     .await?
@@ -148,7 +156,7 @@ impl NodeClient {
                     _ => return Err(TransportError::NoBlocksFound),
                 }
 
-                self.fetch::<QueryNodeSELatestBlock>(&query_node_se_latest_block::Variables {
+                self.fetch::<QueryNodeSELatestBlock>(query_node_se_latest_block::Variables {
                     workchain: workchain_id as i64,
                 })
                 .await?
@@ -178,7 +186,7 @@ impl NodeClient {
         )]
         pub struct QueryAccountTransactions;
 
-        self.fetch::<QueryAccountTransactions>(&query_account_transactions::Variables {
+        self.fetch::<QueryAccountTransactions>(query_account_transactions::Variables {
             address: addr.to_string(),
             last_transaction_lt: last_trans_lt.to_string(),
             limit,
@@ -208,7 +216,7 @@ impl NodeClient {
         pub struct QueryNextBlock;
 
         let block = self
-            .fetch::<QueryNextBlock>(&query_next_block::Variables {
+            .fetch::<QueryNextBlock>(query_next_block::Variables {
                 id: current.to_owned(),
                 timeout: 60.0, // todo: move into config
             })
@@ -233,7 +241,7 @@ impl NodeClient {
                 )]
                 pub struct QueryBlockAfterSplit;
 
-                self.fetch::<QueryBlockAfterSplit>(&query_block_after_split::Variables {
+                self.fetch::<QueryBlockAfterSplit>(query_block_after_split::Variables {
                     block_id,
                     prev_id: current.to_owned(),
                     timeout: 60.0, // todo: move into config
@@ -259,7 +267,7 @@ impl NodeClient {
         pub struct QueryBlock;
 
         let boc = self
-            .fetch::<QueryBlock>(&query_block::Variables { id: id.to_owned() })
+            .fetch::<QueryBlock>(query_block::Variables { id: id.to_owned() })
             .await?
             .blocks
             .and_then(|block| block.into_iter().flatten().next())
@@ -302,4 +310,45 @@ fn invalid_response() -> TransportError {
 
 fn no_blocks_found() -> TransportError {
     TransportError::NoBlocksFound
+}
+
+#[cfg(test)]
+mod tests {
+    use reqwest::header::{self, HeaderMap, HeaderValue};
+    use reqwest::ClientBuilder;
+
+    use super::*;
+
+    fn make_client() -> NodeClient {
+        let mut default_headers = HeaderMap::new();
+        default_headers.insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_str("application/json").unwrap(),
+        );
+
+        let client = reqwest::ClientBuilder::new()
+            .default_headers(default_headers)
+            .build()
+            .unwrap();
+
+        NodeClient {
+            client,
+            endpoint: "https://main.ton.dev/graphql".to_owned(),
+        }
+    }
+
+    fn elector_addr() -> MsgAddressInt {
+        MsgAddressInt::from_str(
+            "-1:3333333333333333333333333333333333333333333333333333333333333333",
+        )
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn get_account_state() {
+        let client = make_client();
+
+        let account_state = client.get_account_state(&elector_addr()).await.unwrap();
+        println!("Account state: {:?}", account_state);
+    }
 }
