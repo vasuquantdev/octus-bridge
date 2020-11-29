@@ -1,7 +1,8 @@
 use graphql_client::*;
 use reqwest::Client;
 use ton_block::{
-    Account, AccountIdPrefixFull, AccountStuff, Block, Deserializable, ShardIdent, Transaction,
+    Account, AccountIdPrefixFull, AccountStuff, Block, Deserializable, Message, Serializable,
+    ShardIdent, Transaction,
 };
 
 use crate::prelude::*;
@@ -276,6 +277,31 @@ impl NodeClient {
             reason: e.to_string(),
         })
     }
+
+    pub async fn send_message(&self, message: &Message) -> TransportResult<()> {
+        #[derive(GraphQLQuery)]
+        #[graphql(
+            schema_path = "src/transport/graphql_transport/schema.graphql",
+            query_path = "src/transport/graphql_transport/mutation_send_message.graphql"
+        )]
+        pub struct MutationSendMessage;
+
+        let cell = message
+            .serialize()
+            .map_err(|_| TransportError::FailedToSerialize)?;
+        let id = base64::encode(&cell.repr_hash());
+        let boc = base64::encode(
+            &cell
+                .write_to_bytes()
+                .map_err(|_| TransportError::FailedToSerialize)?,
+        );
+
+        let _ = self
+            .fetch::<MutationSendMessage>(mutation_send_message::Variables { id, boc })
+            .await?;
+
+        Ok(())
+    }
 }
 
 fn check_shard_match(
@@ -403,5 +429,15 @@ mod tests {
             .await
             .unwrap();
         println!("Block: {:?}", block);
+    }
+
+    #[tokio::test]
+    async fn send_message() {
+        let mut message_header = ton_block::ExternalInboundMessageHeader::default();
+        message_header.dst = elector_addr();
+
+        let msg = ton_block::Message::with_ext_in_header(message_header);
+
+        make_client().send_message(&msg).await.unwrap();
     }
 }

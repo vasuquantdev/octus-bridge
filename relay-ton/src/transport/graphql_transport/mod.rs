@@ -48,6 +48,7 @@ impl RunLocal for GraphQLTransport {
         message: ExternalMessage,
     ) -> TransportResult<ContractOutput> {
         let mut message_header = ExternalInboundMessageHeader::default();
+        message_header.dst = message.dest.clone();
 
         let mut msg = Message::with_ext_in_header(message_header);
         if let Some(body) = message.body {

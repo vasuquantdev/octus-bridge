@@ -7,6 +7,7 @@ edition = "2018"
 [dependencies]
 anyhow = "1.0.33"
 async-trait = "0.1.41"
+base64 = "0.13.0"
 chrono = "0.4"
 graphql_client = "0.9.0"
 log = "0.4.11"
