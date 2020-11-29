@@ -9,7 +9,11 @@ use serde::{Deserialize, Serialize};
 use sha3::Digest;
 
 use relay_eth::ws::{Address as EthAddr, H256};
-use relay_ton::transport::tonlib_transport::Config as TonConfig;
+
+#[cfg(feature = "graphql-transport")]
+use relay_ton::transport::graphql_transport::Config as TonGraphQLConfig;
+#[cfg(feature = "tonlib-transport")]
+use relay_ton::transport::tonlib_transport::Config as TonTonlibConfig;
 
 #[derive(Deserialize, Serialize, Clone, Debug, Default, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct EthAddress(String);
@@ -56,6 +60,26 @@ impl Default for RelayConfig {
             listen_address: "127.0.0.1:12345".parse().unwrap(),
             ton_config: TonConfig::default(),
         }
+    }
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+#[serde(tag = "type")]
+pub enum TonConfig {
+    #[cfg(feature = "tonlib-transport")]
+    Tonlib(TonTonlibConfig),
+    #[cfg(feature = "graphql-transport")]
+    GraphQL(TonGraphQLConfig),
+}
+
+#[cfg(any(feature = "tonlib-transport", feature = "graphql-transport"))]
+impl Default for TonConfig {
+    fn default() -> Self {
+        #[cfg(feature = "tonlib-transport")]
+        return Self::Tonlib(TonTonlibConfig::default());
+
+        #[cfg(all(feature = "graphql-transport", not(feature = "tonlib-transport")))]
+        Self::GraphQL(TonGraphQLConfig::default())
     }
 }
 

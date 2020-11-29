@@ -6,17 +6,18 @@ use reqwest::{Client, ClientBuilder};
 use ton_abi::Function;
 use ton_block::{Account, AccountState, Deserializable, ExternalInboundMessageHeader, Message};
 
-use self::config::*;
+pub use self::config::*;
+use self::node_client::*;
 use super::tvm;
 use super::utils::*;
 use crate::models::*;
 use crate::prelude::*;
 use crate::transport::errors::*;
-use crate::transport::RunLocal;
+use crate::transport::{AccountSubscription, RunLocal, Transport};
 
 pub struct GraphQLTransport {
     db: Db,
-    client: Client,
+    client: NodeClient,
     config: Config,
 }
 
@@ -32,6 +33,8 @@ impl GraphQLTransport {
         let client = client_builder
             .build()
             .expect("failed to create graphql client");
+
+        let client = NodeClient::new(client, config.addr.clone());
 
         Ok(Self { db, client, config })
     }
@@ -50,46 +53,30 @@ impl RunLocal for GraphQLTransport {
         if let Some(body) = message.body {
             msg.set_body(body);
         }
-        //
-        // let request_body = account_state_query::Variables {
-        //     address: message.dest.to_string(),
-        // };
-        //
-        // let response = self
-        //     .client
-        //     .post(&self.config.addr)
-        //     .json(&request_body)
-        //     .send()
-        //     .await
-        //     .map_err(|err| TransportError::ApiFailure {
-        //         reason: err.to_string(),
-        //     })?;
-        //
-        // let account_state: String = response
-        //     .json::<account_state_query::ResponseData>()
-        //     .await
-        //     .map_err(|err| TransportError::FailedToParseAccountState {
-        //         reason: err.to_string(),
-        //     })?
-        //     .accounts
-        //     .ok_or_else(|| TransportError::ApiFailure {
-        //         reason: "invalid accounts response".to_string(),
-        //     })?
-        //     .into_iter()
-        //     .next()
-        //     .and_then(|item| item.and_then(|account| account.boc))
-        //     .ok_or_else(|| TransportError::AccountNotFound)?;
-        //
-        // let info = match Account::construct_from_base64(&account_state) {
-        //     Ok(Account::Account(account_stuff)) => Ok(account_stuff),
-        //     Ok(_) => Err(TransportError::AccountNotFound),
-        //     Err(e) => Err(TransportError::FailedToParseAccountState {
-        //         reason: e.to_string(),
-        //     }),
-        // }?;
 
-        //let (messages, _) = tvm::call_msg(info.storage)
+        let utime = Utc::now().timestamp() as u32; // TODO: make sure it is not used by contract. Otherwise force tonlabs to add gen_utime for account response
 
+        let account_state = self.client.get_account_state(&message.dest).await?;
+
+        let (messages, _) = tvm::call_msg(
+            utime,
+            account_state.storage.last_trans_lt,
+            account_state,
+            &msg,
+        )?;
+        process_out_messages(
+            &messages,
+            MessageProcessingParams {
+                abi_function: Some(abi),
+                events_tx: None,
+            },
+        )
+    }
+}
+
+#[async_trait]
+impl Transport for GraphQLTransport {
+    async fn subscribe(&self, addr: &str) -> TransportResult<Arc<dyn AccountSubscription>> {
         todo!()
     }
 }

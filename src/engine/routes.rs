@@ -10,15 +10,15 @@ use url::Url;
 use warp::http::StatusCode;
 use warp::{reply, Filter, Reply};
 
+use relay_eth::ws::update_eth_state;
 use relay_eth::ws::EthListener;
-use relay_eth::ws::{update_eth_state};
 use relay_ton::contracts::BridgeContract;
 use relay_ton::prelude::{Arc, RwLock};
 use relay_ton::transport::Transport;
 
-use crate::config::RelayConfig;
+use crate::config::{RelayConfig, TonConfig};
 use crate::crypto::key_managment::KeyData;
-use crate::crypto::recovery::{derive_from_words_eth, derive_from_words_ton};
+use crate::crypto::recovery::*;
 use crate::engine::bridge::Bridge;
 use crate::engine::models::{BridgeState, InitData, Password, RescanEthData, State};
 
@@ -231,13 +231,10 @@ pub async fn create_bridge(
     config: RelayConfig,
     key_data: KeyData,
 ) -> Result<Arc<Bridge>, Error> {
-    let transport: Arc<dyn Transport> = Arc::new(
-        relay_ton::transport::TonlibTransport::new(
-            config.ton_config.clone(),
-            state_manager.clone(),
-        )
-        .await?,
-    );
+    let transport = config
+        .ton_config
+        .make_transport(state_manager.clone())
+        .await?;
 
     let contract_address = MsgAddressInt::from_str(&*config.ton_contract_address.0)
         .map_err(|e| Error::msg(e.to_string()))?;
@@ -253,4 +250,20 @@ pub async fn create_bridge(
     .await;
 
     Ok(Arc::new(Bridge::new(key_data.eth, eth_client, ton_client)))
+}
+
+impl TonConfig {
+    pub async fn make_transport(&self, db: Db) -> Result<Arc<dyn Transport>, Error> {
+        #[allow(unreachable_code)]
+        Ok(match self {
+            #[cfg(feature = "tonlib-transport")]
+            TonConfig::Tonlib(config) => Arc::new(
+                relay_ton::transport::TonlibTransport::new(config.clone(), db.clone()).await?,
+            ),
+            #[cfg(feature = "graphql-transport")]
+            TonConfig::GraphQL(config) => Arc::new(
+                relay_ton::transport::GraphQLTransport::new(config.clone(), db.clone()).await?,
+            ),
+        })
+    }
 }

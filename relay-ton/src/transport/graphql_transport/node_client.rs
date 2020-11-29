@@ -15,11 +15,8 @@ pub struct NodeClient {
 }
 
 impl NodeClient {
-    pub fn new(client: &Client, endpoint: &str) -> Self {
-        Self {
-            client: client.clone(),
-            endpoint: endpoint.to_owned(),
-        }
+    pub fn new(client: Client, endpoint: String) -> Self {
+        Self { client, endpoint }
     }
 
     async fn fetch<T>(&self, params: T::Variables) -> TransportResult<T::ResponseData>

@@ -26,14 +26,14 @@ serde_json = "1.0.59"
 sled = "0.34.6"
 
 ton_abi = { git = "https://github.com/tonlabs/ton-labs-abi.git", branch = "1.0.0-rc" }
-ton_api = { git = "https://github.com/broxus/ton-labs-tl.git" }
 ton_vm = { git = "https://github.com/tonlabs/ton-labs-vm.git", default-features = false }
 ton_types = { git = "https://github.com/tonlabs/ton-labs-types.git" }
 ton_block = { git = "https://github.com/tonlabs/ton-labs-block.git" }
 
+ton_api = { git = "https://github.com/broxus/ton-labs-tl.git", optional = true }
 tonlib = { git = "https://github.com/broxus/tonlib-rs.git", optional = true }
 
 [features]
 default = ["graphql-transport"]
-tonlib-transport = ["tonlib"]
+tonlib-transport = ["tonlib", "ton_api"]
 graphql-transport = []
