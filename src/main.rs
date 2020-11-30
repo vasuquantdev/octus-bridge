@@ -18,19 +18,21 @@ fn main() -> Result<(), Error> {
     #[cfg(feature = "daemonizeable")]
     {
         match daemonize::Daemonize::new().start() {
-            Ok(_) => run()?,
-            Err(e) => error!("Error daemonizing app: {}", e),
+            Ok(_) => run(config)?,
+            Err(e) => log::error!("Error daemonizing app: {}", e),
         };
     }
     #[cfg(not(feature = "daemonizeable"))]
-    run()?;
+    run(config)?;
 
     Ok(())
 }
 
-fn run() -> Result<(), Error> {
+fn run(config: RelayConfig) -> Result<(), Error> {
     let mut executor = tokio::runtime::Runtime::new().unwrap();
 
     log::info!("Relay started");
     let _err = executor.block_on(engine::run(config))?;
+
+    Ok(())
 }
