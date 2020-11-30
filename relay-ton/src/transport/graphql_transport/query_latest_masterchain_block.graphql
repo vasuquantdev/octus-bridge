@@ -1,0 +1,22 @@
+query QueryLatestMasterchainBlock {
+    blocks(filter: {
+        workchain_id: { eq: -1 }
+    }, orderBy: [
+        {
+            path: "seq_no",
+            direction: DESC
+        }
+    ], limit: 1) {
+        id
+        master
+        {
+            shard_hashes {
+                workchain_id
+                shard
+                descr {
+                    root_hash
+                }
+            }
+        }
+    }
+}

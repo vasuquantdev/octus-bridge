@@ -1,0 +1,13 @@
+query QueryNodeSEConditions($workchain: Int!) {
+    blocks(filter: {
+        workchain_id: { eq: $workchain }
+    }, orderBy: [
+        {
+            path: "seq_no",
+            direction: DESC
+        }
+    ], limit: 1) {
+        after_merge
+        shard
+    }
+}

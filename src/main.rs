@@ -13,20 +13,24 @@ fn main() -> Result<(), Error> {
     }
 
     let config = read_config(&args.config)?;
-
     log::info!("Relay ready.");
 
+    #[cfg(feature = "daemonizeable")]
+    {
+        match daemonize::Daemonize::new().start() {
+            Ok(_) => run()?,
+            Err(e) => error!("Error daemonizing app: {}", e),
+        };
+    }
+    #[cfg(not(feature = "daemonizeable"))]
+    run()?;
+
+    Ok(())
+}
+
+fn run() -> Result<(), Error> {
     let mut executor = tokio::runtime::Runtime::new().unwrap();
 
-    // let res = Daemonize::new().start();
-    // match res {
-    //     Ok(_) => {
-    log::info!("Really started");
+    log::info!("Relay started");
     let _err = executor.block_on(engine::run(config))?;
-
-    // },
-    // Err(e)=>error!("Eror daemonizing app: {}",e)
-    // };
-    //
-    Ok(())
 }

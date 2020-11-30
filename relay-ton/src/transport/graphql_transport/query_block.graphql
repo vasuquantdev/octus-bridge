@@ -1,0 +1,7 @@
+query QueryBlock($id: String!) {
+    blocks(filter: {
+        id: { eq: $id }
+    }, limit: 1) {
+        boc
+    }
+}

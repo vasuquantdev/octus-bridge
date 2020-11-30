@@ -1,0 +1,22 @@
+query QueryNextBlock($id: String!, $timeout: Float!) {
+    blocks(filter: {
+        prev_ref: {
+            root_hash: { eq: $id }
+        },
+        OR: {
+            prev_alt_ref: {
+                root_hash: { eq: $id }
+            }
+        }
+    }, timeout: $timeout) {
+        id
+        gen_utime
+        after_split
+        workchain_id
+        shard
+        in_msg_descr {
+            msg_id
+            transaction_id
+        }
+    }
+}

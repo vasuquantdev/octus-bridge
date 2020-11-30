@@ -1,0 +1,13 @@
+query QueryNodeSELatestBlock($workchain: Int!) {
+    blocks(filter: {
+        workchain_id: { eq: $workchain },
+        shard: { eq: "8000000000000000" }
+    }, orderBy: [
+        {
+            path: "seq_no",
+            direction: DESC
+        }
+    ], limit: 1) {
+        id
+    }
+}

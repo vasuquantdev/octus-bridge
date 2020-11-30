@@ -7,7 +7,9 @@ edition = "2018"
 [dependencies]
 anyhow = "1.0.33"
 async-trait = "0.1.41"
+base64 = "0.13.0"
 chrono = "0.4"
+graphql_client = "0.9.0"
 log = "0.4.11"
 tokio = { version = "0.2", features = ["full"] }
 thiserror = "1.0"
@@ -19,15 +21,20 @@ num-bigint = "0.2.6" # fuck tonlabs
 num-traits = "0.2.14"
 parking_lot = "0.11"
 pin-project = "1.0.1"
+reqwest = { version = "0.10", features = ["json"] }
 serde = { version = "1.0.117", features = ["derive"] }
 serde_json = "1.0.59"
 sled = "0.34.6"
 
-ton_abi = { git = "https://github.com/tonlabs/ton-labs-abi.git", branch = "1.0.0-rc"}
-ton_api = { git = "https://github.com/broxus/ton-labs-tl.git" }
+ton_abi = { git = "https://github.com/tonlabs/ton-labs-abi.git", branch = "1.0.0-rc" }
 ton_vm = { git = "https://github.com/tonlabs/ton-labs-vm.git", default-features = false }
 ton_types = { git = "https://github.com/tonlabs/ton-labs-types.git" }
 ton_block = { git = "https://github.com/tonlabs/ton-labs-block.git" }
 
-ton_sdk = { git = "https://github.com/tonlabs/TON-SDK.git", tag = "1" }
-tonlib = { git = "https://github.com/broxus/tonlib-rs.git" }
+ton_api = { git = "https://github.com/broxus/ton-labs-tl.git", optional = true }
+tonlib = { git = "https://github.com/broxus/tonlib-rs.git", optional = true }
+
+[features]
+default = ["graphql-transport"]
+tonlib-transport = ["tonlib", "ton_api"]
+graphql-transport = []
