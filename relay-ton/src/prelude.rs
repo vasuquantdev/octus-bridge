@@ -12,7 +12,7 @@ pub use futures::stream::Stream;
 pub use num_bigint::{BigInt, BigUint};
 pub use serde::{Deserialize, Serialize};
 pub use sled::Db;
-pub use tokio::sync::{mpsc, watch, RwLock};
+pub use tokio::sync::{mpsc, oneshot, watch, RwLock};
 pub use ton_abi::{Contract as AbiContract, Function as AbiFunction};
 pub use ton_block::{MsgAddrStd, MsgAddressInt};
 pub use ton_types::{BuilderData, SliceData, UInt256};

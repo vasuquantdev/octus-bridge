@@ -7,7 +7,6 @@ use ton_block::{
 
 use crate::prelude::*;
 use crate::transport::errors::*;
-use crate::transport::utils::*;
 
 #[derive(Clone)]
 pub struct NodeClient {
@@ -205,6 +204,7 @@ impl NodeClient {
         &self,
         current: &str,
         addr: &MsgAddressInt,
+        timeout: u32,
     ) -> TransportResult<String> {
         #[derive(GraphQLQuery)]
         #[graphql(
@@ -213,10 +213,12 @@ impl NodeClient {
         )]
         pub struct QueryNextBlock;
 
+        let timeout = (timeout * 1000) as f64; // timeout in ms
+
         let block = self
             .fetch::<QueryNextBlock>(query_next_block::Variables {
                 id: current.to_owned(),
-                timeout: 60000.0, // timeout in ms. todo: move into config
+                timeout,
             })
             .await?
             .blocks
@@ -242,7 +244,7 @@ impl NodeClient {
                 self.fetch::<QueryBlockAfterSplit>(query_block_after_split::Variables {
                     block_id,
                     prev_id: current.to_owned(),
-                    timeout: 60000.0, // timeout in ms. todo: move into config
+                    timeout,
                 })
                 .await?
                 .blocks
@@ -338,7 +340,6 @@ fn no_blocks_found() -> TransportError {
 #[cfg(test)]
 mod tests {
     use reqwest::header::{self, HeaderMap, HeaderValue};
-    use reqwest::ClientBuilder;
 
     use super::*;
 
@@ -404,7 +405,7 @@ mod tests {
 
         let latest_block = client.get_latest_block(&elector_addr()).await.unwrap();
         let next_block = client
-            .wait_for_next_block(&latest_block, &elector_addr())
+            .wait_for_next_block(&latest_block, &elector_addr(), 60)
             .await
             .unwrap();
         println!("Next block masterchain: {:?}", next_block);
@@ -416,7 +417,7 @@ mod tests {
 
         let latest_block = client.get_latest_block(&test_addr()).await.unwrap();
         let next_block = client
-            .wait_for_next_block(&latest_block, &test_addr())
+            .wait_for_next_block(&latest_block, &test_addr(), 60)
             .await
             .unwrap();
         println!("Next block basechain: {:?}", next_block);

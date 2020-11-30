@@ -5,7 +5,6 @@ pub use config::*;
 use std::collections::hash_map;
 
 use failure::AsFail;
-use tokio::sync::oneshot;
 use tokio::time::Duration;
 use ton_abi::Function;
 use ton_api::ton;
