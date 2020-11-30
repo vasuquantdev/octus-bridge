@@ -6,7 +6,7 @@ use reqwest::ClientBuilder;
 use ton_abi::Function;
 use ton_block::{
     Account, AccountState, BlockId, Deserializable, ExternalInboundMessageHeader, HashmapAugType,
-    InRefValue, Message, Transaction,
+    InRefValue, Message, Serializable, Transaction,
 };
 use ton_types::HashmapType;
 
@@ -18,6 +18,7 @@ use crate::models::*;
 use crate::prelude::*;
 use crate::transport::errors::*;
 use crate::transport::{AccountEvent, AccountSubscription, RunLocal, Transport};
+use std::collections::hash_map;
 
 pub struct GraphQLTransport {
     db: Db,
@@ -152,6 +153,9 @@ impl GraphQLAccountSubscription {
         next_block_timeout: u32,
     ) {
         let subscription = Arc::downgrade(self);
+
+        log::debug!("started polling account {}", self.account);
+
         tokio::spawn(async move {
             'subscription_loop: loop {
                 let subscription = match subscription.upgrade() {
@@ -170,6 +174,8 @@ impl GraphQLAccountSubscription {
                         continue 'subscription_loop;
                     }
                 };
+
+                log::debug!("current_block: {}", next_block_id);
 
                 let block = match subscription.client.get_block(&next_block_id).await {
                     Ok(block) => block,
@@ -275,7 +281,47 @@ impl AccountSubscription for GraphQLAccountSubscription {
         abi: Arc<Function>,
         message: ExternalMessage,
     ) -> TransportResult<ContractOutput> {
-        unimplemented!()
+        if message.run_local {
+            return self.run_local(abi.as_ref(), message).await;
+        }
+
+        let expires_at = message.header.expire;
+
+        let cells = encode_external_message(message)
+            .write_to_new_cell()
+            .map_err(|_| TransportError::FailedToSerialize)?
+            .into();
+
+        let serialized =
+            ton_types::serialize_toc(&cells).map_err(|_| TransportError::FailedToSerialize)?;
+        let hash = cells.repr_hash();
+
+        let (tx, rx) = oneshot::channel();
+        {
+            let mut pending_messages = self.pending_messages.write().await;
+            match pending_messages.entry(hash.clone()) {
+                hash_map::Entry::Vacant(entry) => {
+                    self.client.send_message_raw(&hash, &serialized).await?;
+
+                    entry.insert(PendingMessage {
+                        expires_at,
+                        abi,
+                        tx,
+                    })
+                }
+                _ => {
+                    return Err(TransportError::FailedToSendMessage {
+                        reason: "duplicate message hash".to_string(),
+                    });
+                }
+            };
+        }
+
+        rx.await.unwrap_or_else(|_| {
+            Err(TransportError::ApiFailure {
+                reason: "subscription part dropped before receiving message response".to_owned(),
+            })
+        })
     }
 }
 
@@ -309,4 +355,43 @@ async fn run_local(
             events_tx: None,
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    async fn make_transport() -> GraphQLTransport {
+        std::env::set_var("RUST_LOG", "relay_ton::transport::graphql_transport=debug");
+        env_logger::init();
+
+        let db = sled::Config::new().temporary(true).open().unwrap();
+
+        GraphQLTransport::new(
+            Config {
+                addr: "https://main.ton.dev/graphql".to_string(),
+                next_block_timeout_sec: 60,
+            },
+            db,
+        )
+        .await
+        .unwrap()
+    }
+
+    const ELECTOR_ADDR: &str =
+        "-1:3333333333333333333333333333333333333333333333333333333333333333";
+
+    #[tokio::test]
+    async fn create_transport() {
+        let _transport = make_transport().await;
+    }
+
+    #[tokio::test]
+    async fn account_subscription() {
+        let transport = make_transport().await;
+
+        let _subscription = transport.subscribe(&ELECTOR_ADDR).await.unwrap();
+
+        tokio::time::delay_for(tokio::time::Duration::from_secs(10)).await;
+    }
 }

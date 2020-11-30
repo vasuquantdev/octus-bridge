@@ -181,7 +181,7 @@ impl NodeClient {
             schema_path = "src/transport/graphql_transport/schema.graphql",
             query_path = "src/transport/graphql_transport/query_account_transactions.graphql"
         )]
-        pub struct QueryAccountTransactions;
+        struct QueryAccountTransactions;
 
         self.fetch::<QueryAccountTransactions>(query_account_transactions::Variables {
             address: addr.to_string(),
@@ -211,7 +211,7 @@ impl NodeClient {
             schema_path = "src/transport/graphql_transport/schema.graphql",
             query_path = "src/transport/graphql_transport/query_next_block.graphql"
         )]
-        pub struct QueryNextBlock;
+        struct QueryNextBlock;
 
         let timeout = (timeout * 1000) as f64; // timeout in ms
 
@@ -239,7 +239,7 @@ impl NodeClient {
                     schema_path = "src/transport/graphql_transport/schema.graphql",
                     query_path = "src/transport/graphql_transport/query_block_after_split.graphql"
                 )]
-                pub struct QueryBlockAfterSplit;
+                struct QueryBlockAfterSplit;
 
                 self.fetch::<QueryBlockAfterSplit>(query_block_after_split::Variables {
                     block_id,
@@ -264,7 +264,7 @@ impl NodeClient {
             schema_path = "src/transport/graphql_transport/schema.graphql",
             query_path = "src/transport/graphql_transport/query_block.graphql"
         )]
-        pub struct QueryBlock;
+        struct QueryBlock;
 
         let boc = self
             .fetch::<QueryBlock>(query_block::Variables { id: id.to_owned() })
@@ -281,13 +281,6 @@ impl NodeClient {
     }
 
     pub async fn send_message(&self, message: &Message) -> TransportResult<()> {
-        #[derive(GraphQLQuery)]
-        #[graphql(
-            schema_path = "src/transport/graphql_transport/schema.graphql",
-            query_path = "src/transport/graphql_transport/mutation_send_message.graphql"
-        )]
-        pub struct MutationSendMessage;
-
         let cell = message
             .serialize()
             .map_err(|_| TransportError::FailedToSerialize)?;
@@ -304,7 +297,25 @@ impl NodeClient {
 
         Ok(())
     }
+
+    pub async fn send_message_raw(&self, id: &UInt256, boc: &[u8]) -> TransportResult<()> {
+        let _ = self
+            .fetch::<MutationSendMessage>(mutation_send_message::Variables {
+                id: base64::encode(id),
+                boc: base64::encode(boc),
+            })
+            .await?;
+
+        Ok(())
+    }
 }
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/transport/graphql_transport/schema.graphql",
+    query_path = "src/transport/graphql_transport/mutation_send_message.graphql"
+)]
+struct MutationSendMessage;
 
 fn check_shard_match(
     workchain_id: i64,

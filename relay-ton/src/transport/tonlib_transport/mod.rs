@@ -457,30 +457,32 @@ mod tests {
     const ELECTOR_ADDR: &str =
         "-1:3333333333333333333333333333333333333333333333333333333333333333";
 
-    // async fn make_transport() -> TonlibTransport {
-    //     std::env::set_var("RUST_LOG", "debug");
-    //     env_logger::init();
-    //
-    //     TonlibTransport::new(Config {
-    //         network_config: serde_json::from_str(MAINNET_CONFIG).unwrap(),
-    //         network_name: "mainnet".to_string(),
-    //         verbosity: 1,
-    //         keystore: KeystoreType::InMemory,
-    //         last_block_threshold_sec: 1,
-    //         subscription_polling_interval_sec: 1,
-    //         max_initial_rescan_gap: None,
-    //         max_rescan_gap: None,
-    //     })
-    //     .await
-    //     .unwrap()
-    // }
+    async fn make_transport() -> TonlibTransport {
+        std::env::set_var("RUST_LOG", "debug");
+        env_logger::init();
 
-    // #[tokio::test]
-    // async fn test_subscription() {
-    //     let transport = make_transport().await;
-    //
-    //     let _subscription = transport.subscribe(ELECTOR_ADDR).await;
-    //
-    //     tokio::time::delay_for(Duration::from_secs(10)).await;
-    // }
+        let db = sled::Config::new().temporary(true).open().unwrap();
+
+        TonlibTransport::new(Config {
+            network_config: serde_json::from_str(MAINNET_CONFIG).unwrap(),
+            network_name: "mainnet".to_string(),
+            verbosity: 1,
+            keystore: KeystoreType::InMemory,
+            last_block_threshold_sec: 1,
+            subscription_polling_interval_sec: 1,
+            max_initial_rescan_gap: None,
+            max_rescan_gap: None,
+        })
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_subscription() {
+        let transport = make_transport().await;
+
+        let _subscription = transport.subscribe(ELECTOR_ADDR).await.unwrap();
+
+        tokio::time::delay_for(Duration::from_secs(10)).await;
+    }
 }
