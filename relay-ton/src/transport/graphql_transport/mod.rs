@@ -177,13 +177,26 @@ impl GraphQLAccountSubscription {
 
                 log::debug!("current_block: {}", next_block_id);
 
-                let block = match subscription.client.get_block(&next_block_id).await {
+                let (block, block_info) = match subscription
+                    .client
+                    .get_block(&next_block_id)
+                    .await
+                    .and_then(|block| {
+                        let info = block.info.read_struct().map_err(|e| {
+                            TransportError::FailedToParseBlock {
+                                reason: e.to_string(),
+                            }
+                        })?;
+                        Ok((block, info))
+                    }) {
                     Ok(block) => block,
                     Err(e) => {
                         log::error!("failed to get next block data. {}", e);
                         continue 'subscription_loop;
                     }
                 };
+
+                let mut pending_messages = subscription.pending_messages.write().await;
 
                 match block
                     .extra
@@ -193,8 +206,6 @@ impl GraphQLAccountSubscription {
                 {
                     Ok(Some(data)) => {
                         let _ = state_notifier.broadcast(AccountEvent::StateChanged);
-
-                        let mut pending_messages = subscription.pending_messages.write().await;
 
                         for item in data.transactions().iter() {
                             let transaction = match item.and_then(|(_, mut value)| {
@@ -252,6 +263,9 @@ impl GraphQLAccountSubscription {
                         continue 'subscription_loop;
                     }
                 };
+
+                pending_messages
+                    .retain(|_, message| message.expires_at <= block_info.gen_utime().0);
 
                 last_block_id = next_block_id;
             }
