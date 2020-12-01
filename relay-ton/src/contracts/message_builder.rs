@@ -203,6 +203,15 @@ impl FunctionArg for MsgAddrStd {
     }
 }
 
+impl FunctionArg for MsgAddressInt {
+    fn token_value(self) -> TokenValue {
+        TokenValue::Address(match self {
+            MsgAddressInt::AddrStd(addr) => MsgAddress::AddrStd(addr),
+            MsgAddressInt::AddrVar(addr) => MsgAddress::AddrVar(addr),
+        })
+    }
+}
+
 impl FunctionArg for UInt256 {
     fn token_value(self) -> TokenValue {
         num_bigint::BigUint::from_bytes_be(self.as_slice()).token_value()

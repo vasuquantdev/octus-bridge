@@ -1,0 +1,76 @@
+{
+  "ABI version": 2,
+  "header": ["time", "expire"],
+  "functions": [
+    {
+      "name": "constructor",
+      "inputs": [
+        {"name":"_requiredConfirmations","type":"uint256"},
+        {"name":"_requiredRejects","type":"uint256"},
+        {"name":"_ethereumEventCode","type":"cell"},
+        {"name":"relayKey","type":"uint256"}
+      ],
+      "outputs": [
+      ]
+    },
+    {
+      "name": "confirm",
+      "inputs": [
+        {"name":"relayKey","type":"uint256"}
+      ],
+      "outputs": [
+      ]
+    },
+    {
+      "name": "reject",
+      "inputs": [
+        {"name":"relayKey","type":"uint256"}
+      ],
+      "outputs": [
+      ]
+    },
+    {
+      "name": "confirmEvent",
+      "inputs": [
+        {"name":"eventTransaction","type":"bytes"},
+        {"name":"eventIndex","type":"uint256"},
+        {"name":"eventData","type":"cell"},
+        {"name":"relayKey","type":"uint256"}
+      ],
+      "outputs": [
+      ]
+    },
+    {
+      "name": "getDetails",
+      "inputs": [
+      ],
+      "outputs": [
+        {"name":"_eventABI","type":"bytes"},
+        {"name":"_eventAddress","type":"bytes"},
+        {"name":"_proxyAddress","type":"address"},
+        {"name":"_requiredConfirmations","type":"uint256"},
+        {"name":"_requiredRejects","type":"uint256"},
+        {"name":"_confirmKeys","type":"uint256[]"},
+        {"name":"_rejectKeys","type":"uint256[]"},
+        {"name":"_active","type":"bool"}
+      ]
+    }
+  ],
+  "data": [
+    {"key":1,"name":"eventABI","type":"bytes"},
+    {"key":2,"name":"eventAddress","type":"bytes"},
+    {"key":3,"name":"proxyAddress","type":"address"},
+    {"key":4,"name":"bridgeAddress","type":"address"}
+  ],
+  "events": [
+    {
+      "name": "NewEthereumEventConfirmation",
+      "inputs": [
+        {"name":"addr","type":"address"},
+        {"name":"relayKey","type":"uint256"}
+      ],
+      "outputs": [
+      ]
+    }
+  ]
+}

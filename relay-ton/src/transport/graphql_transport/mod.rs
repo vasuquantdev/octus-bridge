@@ -4,10 +4,7 @@ mod node_client;
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use reqwest::ClientBuilder;
 use ton_abi::Function;
-use ton_block::{
-    Account, AccountState, BlockId, Deserializable, ExternalInboundMessageHeader, HashmapAugType,
-    InRefValue, Message, Serializable, Transaction,
-};
+use ton_block::{Deserializable, HashmapAugType, InRefValue, Serializable, Transaction};
 use ton_types::HashmapType;
 
 pub use self::config::*;

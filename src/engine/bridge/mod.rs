@@ -31,7 +31,7 @@ impl Bridge {
 
     async fn eth_side(
         eth_client: EthListener,
-        config: Vec<EthereumEventsConfiguration>,
+        config: Vec<EthereumEventConfiguration>,
         ton_client: BridgeContract,
     ) -> Result<(), Error> {
         let mut eth_addr = Vec::new();
