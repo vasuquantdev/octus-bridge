@@ -108,6 +108,15 @@ impl Transport for TonlibTransport {
 
         Ok(subscription)
     }
+
+    async fn rescan_events(
+        &self,
+        addr: &str,
+        since_lt: Option<u64>,
+        until_lt: Option<u64>,
+    ) -> TransportResult<BoxStream<SliceData>> {
+        unimplemented!()
+    }
 }
 
 struct TonlibAccountSubscription {

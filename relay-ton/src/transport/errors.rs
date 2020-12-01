@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 pub enum TransportError {
     #[error("invalid address")]
     InvalidAddress,
@@ -24,6 +24,8 @@ pub enum TransportError {
     FailedToParseAccountState { reason: String },
     #[error("failed to parse transaction. {reason}")]
     FailedToParseTransaction { reason: String },
+    #[error("failed to parse message. {reason}")]
+    FailedToParseMessage { reason: String },
     #[error("failed to send message. {reason}")]
     FailedToSendMessage { reason: String },
     #[error("message was not found before expiration time")]

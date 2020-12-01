@@ -96,6 +96,7 @@ impl<'a> SignedMessageBuilder<'a> {
             .build(if with_signature { Some(self.0) } else { None })
     }
 
+    #[allow(dead_code)]
     pub async fn run_local(self) -> ContractResult<ContractOutput> {
         let transport = self.1.transport;
         let output = transport

@@ -1,6 +1,11 @@
 pub mod config;
 mod node_client;
 
+use std::collections::hash_map;
+use std::pin::Pin;
+
+use futures::task::{Context, Poll};
+use futures::{Future, FutureExt};
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use reqwest::ClientBuilder;
 use ton_abi::Function;
@@ -15,7 +20,6 @@ use crate::models::*;
 use crate::prelude::*;
 use crate::transport::errors::*;
 use crate::transport::{AccountEvent, AccountSubscription, RunLocal, Transport};
-use std::collections::hash_map;
 
 pub struct GraphQLTransport {
     db: Db,
@@ -56,7 +60,7 @@ impl RunLocal for GraphQLTransport {
 #[async_trait]
 impl Transport for GraphQLTransport {
     async fn subscribe(&self, addr: &str) -> TransportResult<Arc<dyn AccountSubscription>> {
-        let addr = MsgAddressInt::from_str(addr).map_err(|e| TransportError::InvalidAddress)?;
+        let addr = MsgAddressInt::from_str(addr).map_err(|_| TransportError::InvalidAddress)?;
 
         let subscription: Arc<dyn AccountSubscription> = GraphQLAccountSubscription::new(
             self.db.clone(),
@@ -69,7 +73,146 @@ impl Transport for GraphQLTransport {
 
         Ok(subscription)
     }
+
+    fn rescan_events<'a>(
+        &'a self,
+        addr: &str,
+        since_lt: Option<u64>,
+        until_lt: Option<u64>,
+    ) -> TransportResult<BoxStream<'a, TransportResult<SliceData>>> {
+        let address = MsgAddressInt::from_str(addr).map_err(|_| TransportError::InvalidAddress)?;
+
+        Ok(Box::pin(EventsScanner {
+            address,
+            client: &self.client,
+            since_lt,
+            until_lt,
+            request_fut: None,
+            messages: None,
+            current_message: 0,
+        }))
+    }
 }
+
+const MESSAGES_PER_SCAN_ITER: u32 = 50;
+
+struct EventsScanner<'a> {
+    address: MsgAddressInt,
+    client: &'a NodeClient,
+    since_lt: Option<u64>,
+    until_lt: Option<u64>,
+    request_fut: Option<BoxFuture<'static, TransportResult<MessagesResponse>>>,
+    messages: Option<MessagesResponse>,
+    current_message: usize,
+}
+
+impl<'a> EventsScanner<'a>
+where
+    Self: Stream<Item = TransportResult<SliceData>>,
+{
+    fn poll_request_fut<'c, F>(fut: Pin<&mut F>, cx: &mut Context<'c>) -> Poll<MessagesResponse>
+    where
+        F: Future<Output = TransportResult<MessagesResponse>> + ?Sized,
+    {
+        match fut.poll(cx) {
+            Poll::Ready(Ok(new_messages)) => Poll::Ready(new_messages),
+            Poll::Ready(Err(err)) => Poll::Ready(vec![(0, Err(err))]),
+            Poll::Pending => Poll::Pending,
+        }
+    }
+
+    fn handle_state<'c>(&mut self, cx: &mut Context<'c>) -> Poll<Option<<Self as Stream>::Item>> {
+        enum Action<T> {
+            Skip,
+            Clear,
+            Set(T),
+        }
+
+        'outer: loop {
+            let mut new_messages = Action::Skip;
+            let mut new_fut = Action::Skip;
+
+            match (&mut self.messages, &mut self.request_fut) {
+                (Some(messages), _) => {
+                    let (lt, result) = &messages[self.current_message];
+                    self.until_lt = Some(*lt);
+
+                    // check if there are still messages in queue
+                    if self.current_message + 1 < messages.len() {
+                        self.current_message += 1;
+
+                        if matches!(self.since_lt.as_ref(), Some(since_lt) if lt < since_lt) {
+                            continue 'outer;
+                        } else {
+                            return Poll::Ready(Some(result.clone()));
+                        }
+                    }
+
+                    new_messages = Action::Clear
+                }
+                (None, Some(fut)) => match Self::poll_request_fut(fut.as_mut(), cx) {
+                    Poll::Ready(response) if !response.is_empty() => {
+                        log::debug!("got messages: {:?}", response);
+                        new_messages = Action::Set(response);
+                        new_fut = Action::Clear;
+                    }
+                    Poll::Ready(_) => {
+                        log::debug!("got empty response");
+                        return Poll::Ready(None);
+                    }
+                    Poll::Pending => return Poll::Pending,
+                },
+                (None, None) => {
+                    let client = self.client.clone();
+                    let address = self.address.clone();
+                    let since_lt = self.since_lt;
+                    let until_lt = self.until_lt;
+
+                    new_fut = Action::Set(
+                        async move {
+                            client
+                                .get_outbound_messages(
+                                    address,
+                                    since_lt,
+                                    until_lt,
+                                    MESSAGES_PER_SCAN_ITER,
+                                )
+                                .await
+                        }
+                        .boxed(),
+                    );
+                }
+            }
+
+            match new_messages {
+                Action::Set(new_messages) => {
+                    self.current_message = 0;
+                    self.messages = Some(new_messages);
+                }
+                Action::Clear => self.messages = None,
+                _ => {}
+            }
+
+            match new_fut {
+                Action::Set(new_fut) => {
+                    self.request_fut = Some(new_fut);
+                }
+                Action::Clear => self.request_fut = None,
+                _ => {}
+            }
+        }
+    }
+}
+
+impl<'a> Stream for EventsScanner<'a> {
+    type Item = TransportResult<SliceData>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.get_mut().handle_state(cx)
+    }
+}
+
+type MessagesResponse = Vec<(u64, TransportResult<SliceData>)>;
 
 struct GraphQLAccountSubscription {
     db: Db,
@@ -90,30 +233,6 @@ impl GraphQLAccountSubscription {
     ) -> TransportResult<Arc<Self>> {
         let client = client.clone();
         let known_block_id = client.get_latest_block(&addr).await?;
-
-        // let last_trans_lt = match db.get(addr.address().storage()).map_err(|e| {
-        //     TransportError::FailedToInitialize {
-        //         reason: e.to_string(),
-        //     }
-        // })? {
-        //     Some(data) => {
-        //         let mut lt = 0;
-        //         for (i, &byte) in data.iter().take(4).enumerate() {
-        //             lt += (byte as u64) << i;
-        //         }
-        //         lt
-        //     }
-        //     None => {
-        //         let known_block = client.get_block(&known_block_id).await?;
-        //         let info = known_block.info.read_struct().map_err(|e| {
-        //             TransportError::FailedToInitialize {
-        //                 reason: e.to_string(),
-        //             }
-        //         })?;
-        //
-        //         info.start_lt()
-        //     }
-        // };
 
         let (tx, rx) = watch::channel(AccountEvent::StateChanged);
 
@@ -146,7 +265,7 @@ impl GraphQLAccountSubscription {
         self: &Arc<Self>,
         state_notifier: watch::Sender<AccountEvent>,
         mut last_block_id: String,
-        max_interval_rescan_gap: Option<u32>,
+        _max_interval_rescan_gap: Option<u32>,
         next_block_timeout: u32,
     ) {
         let subscription = Arc::downgrade(self);
@@ -371,6 +490,7 @@ async fn run_local(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures::StreamExt;
 
     async fn make_transport() -> GraphQLTransport {
         std::env::set_var("RUST_LOG", "relay_ton::transport::graphql_transport=debug");
@@ -392,6 +512,8 @@ mod tests {
     const ELECTOR_ADDR: &str =
         "-1:3333333333333333333333333333333333333333333333333333333333333333";
 
+    const MY_ADDR: &str = "-1:17519bc2a04b6ecf7afa25ba30601a4e16c9402979c236db13e1c6f3c4674e8c";
+
     #[tokio::test]
     async fn create_transport() {
         let _transport = make_transport().await;
@@ -404,5 +526,16 @@ mod tests {
         let _subscription = transport.subscribe(&ELECTOR_ADDR).await.unwrap();
 
         tokio::time::delay_for(tokio::time::Duration::from_secs(10)).await;
+    }
+
+    #[tokio::test]
+    async fn rescan_lt() {
+        let transport = make_transport().await;
+
+        let mut scanner = transport.rescan_events(MY_ADDR, None, None).unwrap();
+
+        while let Some(item) = scanner.next().await {
+            log::info!("Got item: {:?}", item);
+        }
     }
 }

@@ -117,7 +117,7 @@ impl Bridge {
 
     pub async fn run(&self) -> Result<(), anyhow::Error> {
         info!("Bridge started");
-        let config = self.ton_client.get_ethereum_events_configuration().await?;
+        let config = self.ton_client.get_ethereum_event_configuration().await?;
         tokio::spawn(Self::eth_side(
             self.eth_client.clone(),
             config,
