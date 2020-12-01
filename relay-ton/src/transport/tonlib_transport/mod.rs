@@ -5,12 +5,12 @@ pub use config::*;
 use std::collections::hash_map;
 
 use failure::AsFail;
+use futures::task::{Context, Poll};
 use tokio::time::Duration;
 use ton_abi::Function;
 use ton_api::ton;
 use ton_block::{
-    AccountStuff, CommonMsgInfo, Deserializable, ExternalInboundMessageHeader, Message,
-    Serializable, Transaction,
+    AccountStuff, Deserializable, ExternalInboundMessageHeader, Message, Serializable,
 };
 use ton_types::SliceData;
 use tonlib::{TonlibClient, TonlibError};
@@ -109,13 +109,21 @@ impl Transport for TonlibTransport {
         Ok(subscription)
     }
 
-    async fn rescan_events(
-        &self,
+    fn rescan_events<'a>(
+        &'a self,
         addr: &str,
         since_lt: Option<u64>,
         until_lt: Option<u64>,
-    ) -> TransportResult<BoxStream<SliceData>> {
-        unimplemented!()
+    ) -> TransportResult<BoxStream<'a, TransportResult<SliceData>>> {
+        let addr = tonlib::utils::make_address_from_str(addr).map_err(to_api_error)?;
+
+        Ok(EventsScanner {
+            address: Cow::Owned(addr),
+            client: &self.client,
+            since_lt,
+            until_lt,
+        }
+        .boxed())
     }
 }
 
@@ -409,6 +417,37 @@ impl AccountSubscription for TonlibAccountSubscription {
                 reason: "subscription part dropped before receiving message response".to_owned(),
             })
         })
+    }
+
+    fn rescan_events<'a>(
+        &'a self,
+        since_lt: Option<u64>,
+        until_lt: Option<u64>,
+    ) -> TransportResult<BoxStream<'a, TransportResult<SliceData>>> {
+        Ok(EventsScanner {
+            address: Cow::Borrowed(&self.account),
+            client: &self.client,
+            since_lt,
+            until_lt,
+        }
+        .boxed())
+    }
+}
+
+const MESSAGES_PER_SCAN_ITER: u32 = 16;
+
+struct EventsScanner<'a> {
+    address: Cow<'a, ton::lite_server::accountid::AccountId>,
+    client: &'a TonlibClient,
+    since_lt: Option<u64>,
+    until_lt: Option<u64>,
+}
+
+impl<'a> Stream for EventsScanner<'a> {
+    type Item = TransportResult<SliceData>;
+
+    fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        todo!()
     }
 }
 

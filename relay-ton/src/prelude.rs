@@ -2,14 +2,15 @@ pub use std::borrow::Cow;
 pub use std::collections::HashMap;
 pub use std::convert::{TryFrom, TryInto};
 pub use std::io::Cursor;
+pub use std::pin::Pin;
 pub use std::str::FromStr;
 pub use std::sync::Arc;
 
 pub use async_trait::async_trait;
 pub use chrono::Utc;
 pub use ed25519_dalek::Keypair;
-pub use futures::future::BoxFuture;
-pub use futures::stream::{BoxStream, Stream};
+pub use futures::future::{BoxFuture, Future, FutureExt};
+pub use futures::stream::{BoxStream, Stream, StreamExt};
 pub use num_bigint::{BigInt, BigUint};
 pub use once_cell::sync::OnceCell;
 pub use serde::{Deserialize, Serialize};

@@ -50,6 +50,28 @@ impl BridgeContract {
         )
     }
 
+    async fn get_known_config_contracts(&self) -> ContractResult<Vec<MsgAddrStd>> {
+        let events = self.events_map();
+        let mut scanner = self.transport.rescan_events(None, None)?;
+        let mut configs = Vec::new();
+        while let Some(event_body) = scanner.next().await {
+            match event_body
+                .map_err(ContractError::TransportError)
+                .and_then(|body| Self::parse_event(&events, &body))
+            {
+                Ok(event) => match event {
+                    BridgeContractEvent::NewEthereumEventConfiguration { address } => {
+                        configs.push(address);
+                    }
+                },
+                Err(e) => {
+                    log::error!("failed to parse event. {}", e);
+                }
+            }
+        }
+        Ok(configs)
+    }
+
     pub async fn add_ethereum_event_configuration(
         &self,
         ethereum_event_abi: &str,
@@ -126,33 +148,61 @@ const ABI: &str = include_str!("../../../abi/Bridge.abi.json");
 
 #[cfg(test)]
 mod tests {
-    // use super::*;
-    // use crate::transport::tonlib_transport::config::Config;
-    // use crate::transport::TonlibTransport;
-    //
-    // const LOCAL_SERVER_ADDR: &str = "http://127.0.0.1:80";
-    //
-    // fn bridge_addr() -> MsgAddressInt {
-    //     MsgAddressInt::from_str(
-    //         "0:a3fb29fb5d681820eb8a45714101fccd6ff6e7e742f29549a0a87dbb505c50ba",
-    //     )
-    //     .unwrap()
-    // }
-    //
+    use super::*;
+    use crate::transport::graphql_transport::Config;
+    use crate::transport::GraphQLTransport;
 
-    // #[tokio::test]
-    // async fn get_ethereum_events_configuration() {
-    //     let transport: Arc<dyn Transport> = Arc::new(
-    //         GraphQlTransport::new(ClientConfig {
-    //             server_address: LOCAL_SERVER_ADDR.to_owned(),
-    //             ..Default::default()
-    //         })
-    //         .await
-    //         .unwrap(),
-    //     );
-    //
-    //     let bridge = BridgeContract::new(&transport, &bridge_addr());
-    //     let config = bridge.get_ethereum_events_configuration().await.unwrap();
-    //     println!("Configs: {:?}", config);
-    // }
+    const LOCAL_SERVER_ADDR: &str = "http://127.0.0.1:80/graphql";
+
+    fn bridge_addr() -> MsgAddressInt {
+        MsgAddressInt::from_str(
+            "0:a3fb29fb5d681820eb8a45714101fccd6ff6e7e742f29549a0a87dbb505c50ba",
+        )
+        .unwrap()
+    }
+
+    async fn make_transport() -> Arc<dyn Transport> {
+        std::env::set_var("RUST_LOG", "relay_ton::transport::graphql_transport=debug");
+        env_logger::init();
+
+        let db = sled::Config::new().temporary(true).open().unwrap();
+
+        Arc::new(
+            GraphQLTransport::new(
+                Config {
+                    addr: LOCAL_SERVER_ADDR.to_string(),
+                    next_block_timeout_sec: 60,
+                },
+                db,
+            )
+            .await
+            .unwrap(),
+        )
+    }
+
+    fn keypair() -> Arc<Keypair> {
+        let ton_private_key = ed25519_dalek::SecretKey::from_bytes(
+            &hex::decode("e371ef1d7266fc47b30d49dc886861598f09e2e6294d7f0520fe9aa460114e51")
+                .unwrap(),
+        )
+        .unwrap();
+        let ton_public_key = ed25519_dalek::PublicKey::from(&ton_private_key);
+
+        Arc::new(ed25519_dalek::Keypair {
+            secret: ton_private_key,
+            public: ton_public_key,
+        })
+    }
+
+    #[tokio::test]
+    async fn get_known_contracts() {
+        let transport = make_transport().await;
+        let keypair = keypair();
+
+        let bridge = BridgeContract::new(transport, &bridge_addr(), keypair)
+            .await
+            .unwrap();
+        let configs = bridge.get_known_config_contracts().await.unwrap();
+        println!("Configs: {:?}", configs);
+    }
 }

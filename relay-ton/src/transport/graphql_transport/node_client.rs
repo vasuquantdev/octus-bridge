@@ -170,6 +170,7 @@ impl NodeClient {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn get_account_transactions(
         &self,
         addr: &MsgAddressInt,
@@ -303,7 +304,7 @@ impl NodeClient {
             })
             .await?
             .messages
-            .and_then(|messages| Some(messages.into_iter().flatten()))
+            .map(|messages| messages.into_iter().flatten())
             .ok_or_else(invalid_response)?
             .filter_map(|message| {
                 let boc = message.boc.as_ref()?;
