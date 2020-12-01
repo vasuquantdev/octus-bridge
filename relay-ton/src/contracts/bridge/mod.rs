@@ -65,7 +65,7 @@ impl BridgeContract {
                     }
                 },
                 Err(e) => {
-                    log::error!("failed to parse event. {}", e);
+                    log::warn!("skipping outbound message. {:?}", e);
                 }
             }
         }
@@ -75,8 +75,8 @@ impl BridgeContract {
     pub async fn add_ethereum_event_configuration(
         &self,
         ethereum_event_abi: &str,
-        ethereum_address: &str,
-        event_proxy_address: &MsgAddrStd,
+        ethereum_address: Vec<u8>,
+        event_proxy_address: &MsgAddressInt,
     ) -> ContractResult<MsgAddrStd> {
         self.message("addEthereumEventConfiguration")?
             .arg(ethereum_event_abi)
@@ -89,7 +89,7 @@ impl BridgeContract {
 
     pub async fn confirm_ethereum_event_configuration(
         &self,
-        ethereum_event_configuration_address: &MsgAddrStd,
+        ethereum_event_configuration_address: &MsgAddressInt,
     ) -> ContractResult<()> {
         self.message("confirmEthereumEventConfiguration")?
             .arg(ethereum_event_configuration_address)
@@ -100,7 +100,7 @@ impl BridgeContract {
 
     pub async fn reject_ethereum_event_configuration(
         &self,
-        ethereum_event_configuration_address: &MsgAddrStd,
+        ethereum_event_configuration_address: &MsgAddressInt,
     ) -> ContractResult<()> {
         self.message("rejectEthereumEventConfiguration")?
             .arg(ethereum_event_configuration_address)
@@ -156,13 +156,20 @@ mod tests {
 
     fn bridge_addr() -> MsgAddressInt {
         MsgAddressInt::from_str(
-            "0:a3fb29fb5d681820eb8a45714101fccd6ff6e7e742f29549a0a87dbb505c50ba",
+            "0:70ed01bed4f04baf12d94154bc3a8d66e920d8857a254ce53dad44113a6e1811",
+        )
+        .unwrap()
+    }
+
+    fn event_proxy_address() -> MsgAddressInt {
+        MsgAddressInt::from_str(
+            "0:d114e6f7cea7bbbb297165ee2a544a81c749766119ec57e8b87df4349669ab73",
         )
         .unwrap()
     }
 
     async fn make_transport() -> Arc<dyn Transport> {
-        std::env::set_var("RUST_LOG", "relay_ton::transport::graphql_transport=debug");
+        std::env::set_var("RUST_LOG", "relay_ton=debug");
         env_logger::init();
 
         let db = sled::Config::new().temporary(true).open().unwrap();
@@ -182,7 +189,7 @@ mod tests {
 
     fn keypair() -> Arc<Keypair> {
         let ton_private_key = ed25519_dalek::SecretKey::from_bytes(
-            &hex::decode("e371ef1d7266fc47b30d49dc886861598f09e2e6294d7f0520fe9aa460114e51")
+            &hex::decode("0864b5dfd7a90dbf851a52dac8088b05e18c16df7c4285f177ca72655f6d6370")
                 .unwrap(),
         )
         .unwrap();
@@ -194,15 +201,32 @@ mod tests {
         })
     }
 
+    async fn make_bridge() -> BridgeContract {
+        BridgeContract::new(make_transport().await, &bridge_addr(), keypair())
+            .await
+            .unwrap()
+    }
+
     #[tokio::test]
     async fn get_known_contracts() {
-        let transport = make_transport().await;
-        let keypair = keypair();
-
-        let bridge = BridgeContract::new(transport, &bridge_addr(), keypair)
-            .await
-            .unwrap();
+        let bridge = make_bridge().await;
         let configs = bridge.get_known_config_contracts().await.unwrap();
         println!("Configs: {:?}", configs);
+    }
+
+    #[tokio::test]
+    async fn add_ethereum_event_configuration() {
+        let bridge = make_bridge().await;
+
+        let configs_before = bridge.get_known_config_contracts().await.unwrap();
+
+        let event_configuration_address = bridge
+            .add_ethereum_event_configuration("Test ABI", Vec::new(), &event_proxy_address())
+            .await
+            .unwrap();
+
+        let configs_after = bridge.get_known_config_contracts().await.unwrap();
+
+        assert_eq!(configs_after.len(), configs_before.len() + 1);
     }
 }

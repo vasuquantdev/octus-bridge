@@ -287,7 +287,7 @@ impl NodeClient {
         start_lt: Option<u64>,
         end_lt: Option<u64>,
         limit: u32,
-    ) -> TransportResult<Vec<(u64, TransportResult<SliceData>)>> {
+    ) -> TransportResult<Vec<(u64, TransportResult<Message>)>> {
         #[derive(GraphQLQuery)]
         #[graphql(
             schema_path = "src/transport/graphql_transport/schema.graphql",
@@ -315,7 +315,7 @@ impl NodeClient {
 
                 Some((
                     lt,
-                    SliceData::construct_from_base64(boc).map_err(|e| {
+                    ton_block::Message::construct_from_base64(boc).map_err(|e| {
                         TransportError::FailedToParseMessage {
                             reason: e.to_string(),
                         }

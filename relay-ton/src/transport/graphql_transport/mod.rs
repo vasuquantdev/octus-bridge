@@ -9,7 +9,9 @@ use futures::{Future, FutureExt};
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use reqwest::ClientBuilder;
 use ton_abi::Function;
-use ton_block::{Deserializable, HashmapAugType, InRefValue, Serializable, Transaction};
+use ton_block::{
+    CommonMsgInfo, Deserializable, HashmapAugType, InRefValue, Message, Serializable, Transaction,
+};
 use ton_types::HashmapType;
 
 pub use self::config::*;
@@ -396,23 +398,32 @@ where
             let mut new_fut = Action::Skip;
 
             match (&mut self.messages, &mut self.request_fut) {
-                (Some(messages), _) => {
+                (Some(messages), _) if self.current_message < messages.len() => {
                     let (lt, result) = &messages[self.current_message];
                     self.until_lt = Some(*lt);
 
-                    // check if there are still messages in queue
-                    if self.current_message + 1 < messages.len() {
-                        self.current_message += 1;
+                    self.current_message += 1;
 
-                        if matches!(self.since_lt.as_ref(), Some(since_lt) if lt < since_lt) {
-                            continue 'outer;
-                        } else {
-                            return Poll::Ready(Some(result.clone()));
-                        }
+                    if matches!(self.since_lt.as_ref(), Some(since_lt) if lt < since_lt) {
+                        continue 'outer;
                     }
 
-                    new_messages = Action::Clear
+                    let result = result.clone().and_then(|message| match message.header() {
+                        CommonMsgInfo::ExtOutMsgInfo(_) => {
+                            message
+                                .body()
+                                .ok_or_else(|| TransportError::FailedToParseMessage {
+                                    reason: "event message has not body".to_string(),
+                                })
+                        }
+                        _ => Err(TransportError::ApiFailure {
+                            reason: "got internal message for event".to_string(),
+                        }),
+                    });
+
+                    return Poll::Ready(Some(result));
                 }
+                (Some(_), _) => new_messages = Action::Clear,
                 (None, Some(fut)) => match Self::poll_request_fut(fut.as_mut(), cx) {
                     Poll::Ready(response) if !response.is_empty() => {
                         log::debug!("got messages: {:?}", response);
@@ -475,7 +486,7 @@ impl<'a> Stream for EventsScanner<'a> {
     }
 }
 
-type MessagesResponse = Vec<(u64, TransportResult<SliceData>)>;
+type MessagesResponse = Vec<(u64, TransportResult<Message>)>;
 
 async fn run_local(
     node_client: &NodeClient,
