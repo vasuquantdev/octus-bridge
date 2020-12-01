@@ -1,23 +1,25 @@
-# Official language image. Look for the different tagged releases at:
-# https://hub.docker.com/r/library/rust/tags/
-image: "rust:latest"
+include:
+  - project: 'common/gitlab-ci'
+    ref: master
+    file: '/templates/cloudbuild-rust.gitlab-ci.yaml'
 
-# Optional: Pick zero or more services to be used on all builds.
-# Only needed when using a docker container to run your tests in.
-# Check out: http://docs.gitlab.com/ee/ci/docker/using_docker_images.html#what-is-a-service
-# services:
-#   - mysql:latest
-#   - redis:latest
-#   - postgres:latest
+variables:
+  CONFIG_BUILDER_MASTER: gcr.io/dexpa-175115/rust/rust-builder:stable-release
 
-# Optional: Install a C compiler, cmake and git into the container.
-# You will often need this when you (or any of your dependencies) depends on C code.
-# before_script:
-#   - apt-get update -yqq
-#   - apt-get install -yqq --no-install-recommends build-essential
+stages:
+  - cloudbuild
 
-# Use cargo to test the project
-test:cargo:
+
+cloudbuild:rust-master:
+  extends: .cloudbuild:rust
+  variables:
+    CONFIG_BUILDER: $CONFIG_BUILDER_MASTER
+    CARGO_TEST: "true"
+  only:
+    - master
+  except:
+    - tags
+  tags:
+    - rust
   script:
-    - rustc --version && cargo --version  # Print version info for debugging
-    - cargo test --workspace --verbose
+    - gcloud builds submit --machine-type=n1-highcpu-8 --config cloudbuild.yaml .
