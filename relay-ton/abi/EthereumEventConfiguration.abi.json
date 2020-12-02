@@ -7,6 +7,8 @@
       "inputs": [
         {"name":"_requiredConfirmations","type":"uint256"},
         {"name":"_requiredRejects","type":"uint256"},
+        {"name":"_eventRequiredConfirmations","type":"uint256"},
+        {"name":"_eventRequiredRejects","type":"uint256"},
         {"name":"_ethereumEventCode","type":"cell"},
         {"name":"relayKey","type":"uint256"}
       ],
@@ -35,6 +37,8 @@
         {"name":"eventTransaction","type":"bytes"},
         {"name":"eventIndex","type":"uint256"},
         {"name":"eventData","type":"cell"},
+        {"name":"eventBlockNumber","type":"uint256"},
+        {"name":"eventBlock","type":"bytes"},
         {"name":"relayKey","type":"uint256"}
       ],
       "outputs": [
@@ -48,6 +52,7 @@
         {"name":"_eventABI","type":"bytes"},
         {"name":"_eventAddress","type":"bytes"},
         {"name":"_proxyAddress","type":"address"},
+        {"name":"_ethereumEventBlocksToConfirm","type":"uint256"},
         {"name":"_requiredConfirmations","type":"uint256"},
         {"name":"_requiredRejects","type":"uint256"},
         {"name":"_confirmKeys","type":"uint256[]"},
@@ -60,7 +65,8 @@
     {"key":1,"name":"eventABI","type":"bytes"},
     {"key":2,"name":"eventAddress","type":"bytes"},
     {"key":3,"name":"proxyAddress","type":"address"},
-    {"key":4,"name":"bridgeAddress","type":"address"}
+    {"key":4,"name":"ethereumEventBlocksToConfirm","type":"uint256"},
+    {"key":5,"name":"bridgeAddress","type":"address"}
   ],
   "events": [
     {
