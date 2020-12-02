@@ -76,12 +76,12 @@ impl Transport for GraphQLTransport {
         Ok(subscription)
     }
 
-    fn rescan_events<'a>(
-        &'a self,
+    fn rescan_events(
+        &self,
         addr: &str,
         since_lt: Option<u64>,
         until_lt: Option<u64>,
-    ) -> TransportResult<BoxStream<'a, TransportResult<SliceData>>> {
+    ) -> TransportResult<BoxStream<TransportResult<SliceData>>> {
         let address = MsgAddressInt::from_str(addr).map_err(|_| TransportError::InvalidAddress)?;
 
         Ok(Box::pin(EventsScanner {

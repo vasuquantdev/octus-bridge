@@ -109,12 +109,12 @@ impl Transport for TonlibTransport {
         Ok(subscription)
     }
 
-    fn rescan_events<'a>(
-        &'a self,
+    fn rescan_events(
+        &self,
         addr: &str,
         since_lt: Option<u64>,
         until_lt: Option<u64>,
-    ) -> TransportResult<BoxStream<'a, TransportResult<SliceData>>> {
+    ) -> TransportResult<BoxStream<TransportResult<SliceData>>> {
         let addr = tonlib::utils::make_address_from_str(addr).map_err(to_api_error)?;
 
         Ok(EventsScanner {
@@ -419,11 +419,11 @@ impl AccountSubscription for TonlibAccountSubscription {
         })
     }
 
-    fn rescan_events<'a>(
-        &'a self,
+    fn rescan_events(
+        &self,
         since_lt: Option<u64>,
         until_lt: Option<u64>,
-    ) -> TransportResult<BoxStream<'a, TransportResult<SliceData>>> {
+    ) -> TransportResult<BoxStream<TransportResult<SliceData>>> {
         Ok(EventsScanner {
             address: Cow::Borrowed(&self.account),
             client: &self.client,

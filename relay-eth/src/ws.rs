@@ -4,14 +4,13 @@ use std::time::Duration;
 use anyhow::Error;
 use futures::stream::{Stream, StreamExt};
 use log::{error, info, warn};
-use num256::Uint256;
 use serde::{Deserialize, Serialize};
 use sled::Db;
 use tokio::spawn;
 use url::Url;
 use web3::transports::ws::WebSocket;
 pub use web3::types::{Address, BlockNumber, H256};
-use web3::types::{FilterBuilder, Log, U64};
+use web3::types::{FilterBuilder, Log, U256, U64};
 use web3::Web3;
 
 pub const ETH_PERSISTENT_KEY_NAME: &str = "ethereum_height";
@@ -29,6 +28,8 @@ pub struct Event {
     pub data: Vec<u8>,
     pub tx_hash: H256,
     pub topics: Vec<H256>,
+    pub event_index: u64,
+    pub block_number: u64,
 }
 
 pub fn update_eth_state(db: &Db, height: u64) -> Result<(), Error> {
@@ -46,14 +47,30 @@ impl EthListener {
                 return Err(Error::msg("No tx hash in log"));
             }
         };
-        match log.block_number {
+        let block_number = match log.block_number {
             Some(a) => {
                 if let Err(e) = update_eth_state(db, a.as_u64()) {
-                    error!("Failed saving eth state: {}", e)
+                    let err= format!("Critical error: failed saving eth state: {}", e);
+                    error!("{}", &err);
+                    return Err(Error::msg(err))
                 }
+                a.as_u64()
             }
             None => {
-                error!("No block number in log!");
+                let err = "No block number in log!".to_string();
+                error!("{}", &err);
+                return Err(Error::msg(err))
+            }
+        };
+        let event_index = match log.transaction_log_index {
+            Some(a) => a.as_u64(),
+            None => {
+                let err =format!(
+                    "No transaction_log_index in log. Tx hash: {}. Block: {}",
+                    hash, block_number
+                );
+                error!("{}", &err);
+                return Err(Error::msg(err))
             }
         };
 
@@ -62,6 +79,8 @@ impl EthListener {
             data,
             tx_hash: hash,
             topics: log.topics,
+            event_index,
+            block_number,
         })
     }
 

@@ -354,7 +354,7 @@ mod test {
 
         let (eth_private_key, ton_key_pair) = default_keys();
 
-        KeyData::init(&path, password.clone(), eth_private_key, ton_key_pair).unwrap();
+        KeyData::init(&path, password, eth_private_key, ton_key_pair).unwrap();
         let result = KeyData::from_file(&path, SecStr::new("lol".into()));
         std::fs::remove_file(path).unwrap();
         assert!(result.is_err());

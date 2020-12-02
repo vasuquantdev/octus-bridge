@@ -240,7 +240,7 @@ pub async fn create_bridge(
         .map_err(|e| Error::msg(e.to_string()))?;
 
     let ton_client =
-        BridgeContract::new(transport, &contract_address, key_data.ton.keypair()).await?;
+        BridgeContract::new(transport.clone(), &contract_address, key_data.ton.keypair()).await?;
 
     let eth_client = EthListener::new(
         Url::parse(config.eth_node_address.as_str())
@@ -249,7 +249,12 @@ pub async fn create_bridge(
     )
     .await;
 
-    Ok(Arc::new(Bridge::new(key_data.eth, eth_client, ton_client)))
+    Ok(Arc::new(Bridge::new(
+        key_data.eth,
+        eth_client,
+        ton_client,
+        transport,
+    )))
 }
 
 impl TonConfig {
