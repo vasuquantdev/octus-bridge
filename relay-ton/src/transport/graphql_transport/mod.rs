@@ -519,10 +519,12 @@ mod tests {
     use super::*;
     use futures::StreamExt;
 
+    use util::setup;
+
+
     async fn make_transport() -> GraphQLTransport {
         std::env::set_var("RUST_LOG", "relay_ton::transport::graphql_transport=debug");
-        env_logger::init();
-
+        setup();
         let db = sled::Config::new().temporary(true).open().unwrap();
 
         GraphQLTransport::new(
@@ -542,12 +544,15 @@ mod tests {
     const MY_ADDR: &str = "-1:17519bc2a04b6ecf7afa25ba30601a4e16c9402979c236db13e1c6f3c4674e8c";
 
     #[tokio::test]
-    async fn create_transport() {
+    async fn create_transport()
+    {
+        setup();
         let _transport = make_transport().await;
     }
 
     #[tokio::test]
     async fn account_subscription() {
+        setup();
         let transport = make_transport().await;
 
         let _subscription = transport.subscribe(&ELECTOR_ADDR).await.unwrap();
@@ -557,6 +562,7 @@ mod tests {
 
     #[tokio::test]
     async fn rescan_lt() {
+        setup();
         let transport = make_transport().await;
 
         let mut scanner = transport.rescan_events(MY_ADDR, None, None).unwrap();
