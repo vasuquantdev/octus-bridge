@@ -75,7 +75,7 @@ pub fn map_ton_eth(ton: TonTokenValue) -> EthTokenValue {
 
             EthTokenValue::Int(ethabi::Int::from_little_endian(&bytes))
         }
-        TonTokenValue::Bytes(a) => EthTokenValue::Bytes(ethabi::Bytes::from(a)),
+        TonTokenValue::Bytes(a) => EthTokenValue::Bytes(a),
         TonTokenValue::Address(a) => EthTokenValue::String(a.to_string()),
         TonTokenValue::FixedBytes(a) => EthTokenValue::FixedBytes(a),
         TonTokenValue::Bool(a) => EthTokenValue::Bool(a),

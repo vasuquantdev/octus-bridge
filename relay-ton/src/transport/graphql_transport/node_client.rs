@@ -62,8 +62,7 @@ impl NodeClient {
             .ok_or_else(invalid_response)?
             .into_iter()
             .next()
-            .and_then(|item| item.and_then(|account| account.boc))
-            .ok_or_else(|| TransportError::AccountNotFound)?;
+            .and_then(|item| item.and_then(|account| account.boc)).ok_or(TransportError::AccountNotFound)?;
 
         match Account::construct_from_base64(&account_state) {
             Ok(Account::Account(account_stuff)) => Ok(account_stuff),
@@ -298,7 +297,7 @@ impl NodeClient {
         Ok(self
             .fetch::<QueryOutboundMessages>(query_outbound_messages::Variables {
                 address: addr.to_string(),
-                start_lt: start_lt.unwrap_or_else(|| 0).to_string(),
+                start_lt: start_lt.unwrap_or(0).to_string(),
                 end_lt: end_lt.unwrap_or_else(u64::max_value).to_string(),
                 limit: limit as i64,
             })
