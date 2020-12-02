@@ -85,7 +85,67 @@ const JSON_ABI: &str = include_str!("../../../abi/EthereumEventConfiguration.abi
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::transport::graphql_transport::Config;
+    use crate::transport::GraphQLTransport;
+    use tokio::stream::StreamExt;
 
-    #[test]
-    fn test() {}
+    const LOCAL_SERVER_ADDR: &str = "http://127.0.0.1:80/graphql";
+
+    fn ethereum_event_configuration_addr() -> MsgAddressInt {
+        MsgAddressInt::from_str(
+            "0:b739b86aa55d3016beb44b9ac97edfa4f8221b09320a622c9a0ead70eddf4a02",
+        )
+        .unwrap()
+    }
+
+    async fn make_transport() -> Arc<dyn Transport> {
+        std::env::set_var("RUST_LOG", "relay_ton=debug");
+        util::setup();
+        let db = sled::Config::new().temporary(true).open().unwrap();
+
+        Arc::new(
+            GraphQLTransport::new(
+                Config {
+                    addr: LOCAL_SERVER_ADDR.to_string(),
+                    next_block_timeout_sec: 60,
+                },
+                db,
+            )
+            .await
+            .unwrap(),
+        )
+    }
+
+    async fn make_config_contract() -> EthereumEventConfigurationContract {
+        EthereumEventConfigurationContract::new(
+            make_transport().await,
+            ethereum_event_configuration_addr(),
+        )
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn get_details() {
+        let config_contract = make_config_contract().await;
+        let details = config_contract.get_details().await.unwrap();
+        println!("Details: {:?}", details);
+    }
+
+    #[tokio::test]
+    async fn subscribe() {
+        let config_contract = Arc::new(make_config_contract().await);
+
+        let mut events = config_contract.events();
+        while let Some(event) = events.next().await {
+            match event {
+                EthereumEventConfigurationContractEvent::NewEthereumEventConfirmation {
+                    address,
+                    ..
+                } => {
+                    log::debug!("New event at: {:?}", address);
+                }
+            }
+        }
+    }
 }
