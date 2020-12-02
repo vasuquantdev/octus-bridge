@@ -142,7 +142,7 @@ mod tests {
             }
         });
 
-        /// Business logic
+        // Business logic
         let ethereum_event_contract = make_ethereum_event_contract(&transport).await;
         tokio::spawn(async move {
             while let Some(event) = ton_events.next().await {

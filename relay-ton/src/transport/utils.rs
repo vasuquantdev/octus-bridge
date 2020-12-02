@@ -73,29 +73,31 @@ pub fn process_out_messages<'a>(
         })?;
 
         match (&params.abi_function, &params.events_tx) {
-            (Some(abi_function), _) if output.is_none() => {
-                if abi_function
-                    .is_my_output_message(body.clone(), false)
-                    .map_err(|e| TransportError::ExecutionError {
-                        reason: e.to_string(),
-                    })?
-                {
-                    let tokens = abi_function.decode_output(body, false).map_err(|e| {
-                        TransportError::ExecutionError {
+            (Some(abi_function), _)
+                if output.is_none()
+                    && abi_function
+                        .is_my_output_message(body.clone(), false)
+                        .map_err(|e| TransportError::ExecutionError {
                             reason: e.to_string(),
-                        }
-                    })?;
+                        })? =>
+            {
+                let tokens = abi_function.decode_output(body, false).map_err(|e| {
+                    TransportError::ExecutionError {
+                        reason: e.to_string(),
+                    }
+                })?;
 
-                    output = Some(ContractOutput {
-                        transaction_id: None,
-                        tokens,
-                    });
-                }
+                output = Some(ContractOutput {
+                    transaction_id: None,
+                    tokens,
+                });
             }
             (_, Some(events_tx)) => {
                 let _ = events_tx.broadcast(AccountEvent::OutboundEvent(Arc::new(body)));
             }
-            _ => {}
+            _ => {
+                log::debug!("Unknown");
+            }
         }
     }
 
