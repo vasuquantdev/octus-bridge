@@ -9,7 +9,8 @@ publish = false
 members = [
     "relay-eth",
     "client",
-    "relay-ton"
+    "relay-ton",
+    "util"
 ]
 
 [dependencies]

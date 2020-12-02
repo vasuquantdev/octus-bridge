@@ -485,6 +485,8 @@ fn to_api_error(e: TonlibError) -> TransportError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use util::setup;
+
 
     const MAINNET_CONFIG: &str = r#"{
         "lite_servers": [
@@ -507,8 +509,7 @@ mod tests {
 
     async fn make_transport() -> TonlibTransport {
         std::env::set_var("RUST_LOG", "debug");
-        env_logger::init();
-
+        setup();
         let db = sled::Config::new().temporary(true).open().unwrap();
 
         TonlibTransport::new(Config {

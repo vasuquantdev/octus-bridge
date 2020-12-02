@@ -150,9 +150,12 @@ const ABI: &str = include_str!("../../../abi/Bridge.abi.json");
 mod tests {
     use super::*;
     use crate::transport::graphql_transport::Config;
+    use util::setup;
     use crate::transport::GraphQLTransport;
 
     const LOCAL_SERVER_ADDR: &str = "http://127.0.0.1:80/graphql";
+
+
 
     fn bridge_addr() -> MsgAddressInt {
         MsgAddressInt::from_str(
@@ -170,8 +173,7 @@ mod tests {
 
     async fn make_transport() -> Arc<dyn Transport> {
         std::env::set_var("RUST_LOG", "relay_ton=debug");
-        env_logger::init();
-
+        setup();
         let db = sled::Config::new().temporary(true).open().unwrap();
 
         Arc::new(
@@ -209,6 +211,7 @@ mod tests {
 
     #[tokio::test]
     async fn get_known_contracts() {
+        setup();
         let bridge = make_bridge().await;
         let configs = bridge.get_known_config_contracts().await.unwrap();
         println!("Configs: {:?}", configs);
