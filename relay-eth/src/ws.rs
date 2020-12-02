@@ -6,7 +6,7 @@ use futures::stream::{Stream, StreamExt};
 use log::{error, info, warn};
 use num256::Uint256;
 use serde::{Deserialize, Serialize};
-use sled::{Db};
+use sled::Db;
 use tokio::spawn;
 use url::Url;
 use web3::transports::ws::WebSocket;
@@ -26,20 +26,19 @@ pub struct EthListener {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Serialize, Deserialize, Ord)]
 pub struct Event {
     pub address: Address,
-    pub amount: Uint256,
+    pub data: Vec<u8>,
     pub tx_hash: H256,
     pub topics: Vec<H256>,
 }
 
-pub fn update_eth_state(db: &Db, height: u64) -> Result<() ,Error>
-{
+pub fn update_eth_state(db: &Db, height: u64) -> Result<(), Error> {
     db.insert(ETH_PERSISTENT_KEY_NAME, &height.to_le_bytes())?;
     Ok(())
 }
 
 impl EthListener {
     fn log_to_event(log: Log, db: &Db) -> Result<Event, Error> {
-        let num = Uint256::from_bytes_be(&log.data.0);
+        let data = log.data.0;
         let hash = match log.transaction_hash {
             Some(a) => a,
             None => {
@@ -60,7 +59,7 @@ impl EthListener {
 
         Ok(Event {
             address: log.address,
-            amount: num,
+            data,
             tx_hash: hash,
             topics: log.topics,
         })

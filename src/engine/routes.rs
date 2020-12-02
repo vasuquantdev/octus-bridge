@@ -24,7 +24,7 @@ use crate::engine::models::{BridgeState, InitData, Password, RescanEthData, Stat
 
 pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>) {
     log::info!("Starting server");
-    let serve_address = config.listen_address.clone();
+    let serve_address = config.listen_address;
     fn json_data<T>() -> impl Filter<Extract = (T,), Error = warp::Rejection> + Clone
     where
         for<'a> T: serde::Deserialize<'a> + Send,

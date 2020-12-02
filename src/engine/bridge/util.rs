@@ -143,8 +143,6 @@ pub fn abi_to_topic_hash(abi: &str) -> Result<Vec<(H256, Vec<ParamType>)>, Error
     Ok(result)
 }
 
-// fn serialize_eth_payload_in_ton(data: &[u8]) -> Vec<u8> {}
-
 #[cfg(test)]
 mod test {
     use ethabi::ParamType;
@@ -241,12 +239,15 @@ mod test {
         let got = from_str("bytes32").unwrap();
         assert_eq!(expected, got);
     }
+
     #[test]
     fn test_addr() {
         let expected = ParamType::Address;
         let got = from_str("address").unwrap();
         assert_eq!(expected, got);
     }
+
+
 
     #[test]
     fn test_conversion_uint() {

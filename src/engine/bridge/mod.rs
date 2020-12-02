@@ -1,5 +1,5 @@
 use anyhow::Error;
-
+use ethereum_types::{H160, H256};
 use futures::StreamExt;
 use log::info;
 use tokio::time::Duration;
@@ -7,7 +7,7 @@ use tokio::time::Duration;
 use relay_eth::ws::{Address, EthListener};
 use relay_ton::contracts::utils::pack_tokens;
 use relay_ton::contracts::*;
-use relay_ton::prelude::HashMap;
+use relay_ton::prelude::{HashMap, MsgAddrStd};
 
 use crate::crypto::key_managment::EthSigner;
 use crate::engine::bridge::util::{abi_to_topic_hash, map_eth_ton};
@@ -18,6 +18,15 @@ pub struct Bridge {
     eth_signer: EthSigner,
     ton_client: BridgeContract,
     eth_client: EthListener,
+}
+
+#[derive(Debug)]
+struct MappedData {
+    eth_addr: Vec<ethereum_types::Address>,
+    eth_topic: Vec<H256>,
+    address_topic_map: HashMap<H160, Vec<(H256, Vec<ethabi::ParamType>)>>,
+    topic_abi_map: HashMap<H256, Vec<ethabi::ParamType>>,
+    eth_proxy_map: HashMap<H160, MsgAddrStd>,
 }
 
 impl Bridge {
@@ -39,6 +48,7 @@ impl Bridge {
         let mut address_topic_map = HashMap::new();
         let mut topic_abi_map = HashMap::new();
         let mut eth_proxy_map = HashMap::new();
+        let config = ton_client.get_ethereum_events_configuration().await?;
         for conf in config.into_iter() {
             let address = Address::from_slice(conf.ethereum_address.as_slice());
             eth_addr.push(address);
@@ -50,9 +60,31 @@ impl Bridge {
                 topic_abi_map.insert(topic.0, topic.1);
             });
         }
+        let mapped_data = MappedData {
+            eth_addr,
+            eth_topic,
+            address_topic_map,
+            topic_abi_map,
+            eth_proxy_map,
+        };
+        log::trace!("Full config: {:#?}", &mapped_data);
+
+        Ok(mapped_data)
+    }
+
+    async fn eth_side(eth_client: EthListener, ton_client: BridgeContract) -> Result<(), Error> {
+        let MappedData {
+            eth_addr,
+            eth_topic,
+            address_topic_map,
+            topic_abi_map,
+            eth_proxy_map,
+        } = Self::eth_config_to_maps(&ton_client).await?;
 
         log::info!("Got config for ethereum.");
         log::debug!("Topics: {:?}", &eth_topic);
+        log::debug!("Ethereum address: {:?}", &eth_addr);
+
         let mut stream = eth_client.subscribe(eth_addr, eth_topic).await?;
         while let Some(a) = stream.next().await {
             let event: relay_eth::ws::Event = match a {
@@ -120,7 +152,6 @@ impl Bridge {
         let config = self.ton_client.get_ethereum_event_configuration().await?;
         tokio::spawn(Self::eth_side(
             self.eth_client.clone(),
-            config,
             self.ton_client.clone(),
         ));
         tokio::time::delay_for(Duration::from_secs(8640000)).await;
