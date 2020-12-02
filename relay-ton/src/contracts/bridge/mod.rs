@@ -16,13 +16,13 @@ pub struct BridgeContract {
 impl BridgeContract {
     pub async fn new(
         transport: Arc<dyn Transport>,
-        account: &MsgAddressInt,
+        account: MsgAddressInt,
         keypair: Arc<Keypair>,
     ) -> ContractResult<Self> {
         let transport = transport.subscribe(&account.to_string()).await?;
 
         let config = ContractConfig {
-            account: account.clone(),
+            account,
             timeout_sec: 60,
         };
 
@@ -204,7 +204,7 @@ mod tests {
     }
 
     async fn make_bridge() -> BridgeContract {
-        BridgeContract::new(make_transport().await, &bridge_addr(), keypair())
+        BridgeContract::new(make_transport().await, bridge_addr(), keypair())
             .await
             .unwrap()
     }
