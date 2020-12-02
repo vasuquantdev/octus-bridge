@@ -76,11 +76,17 @@ impl BridgeContract {
         &self,
         ethereum_event_abi: &str,
         ethereum_address: Vec<u8>,
+        ethereum_event_blocks_to_confirm: BigUint,
+        ethereum_event_required_confirmations: BigUint,
+        ethereum_event_required_rejects: BigUint,
         event_proxy_address: &MsgAddressInt,
     ) -> ContractResult<MsgAddrStd> {
         self.message("addEthereumEventConfiguration")?
             .arg(ethereum_event_abi)
             .arg(ethereum_address)
+            .arg(ethereum_event_blocks_to_confirm)
+            .arg(ethereum_event_required_confirmations)
+            .arg(ethereum_event_required_rejects)
             .arg(event_proxy_address)
             .send()
             .await?
@@ -114,12 +120,16 @@ impl BridgeContract {
         event_transaction: Vec<u8>,
         event_index: BigUint,
         event_data: Cell,
+        event_block_number: BigUint,
+        event_block: Vec<u8>,
         ethereum_event_configuration_address: MsgAddressInt,
     ) -> ContractResult<()> {
         self.message("confirmEthereumEvent")?
             .arg(event_transaction)
             .arg(event_index)
             .arg(event_data)
+            .arg(event_block_number)
+            .arg(event_block)
             .arg(ethereum_event_configuration_address)
             .send()
             .await?
@@ -150,12 +160,10 @@ const ABI: &str = include_str!("../../../abi/Bridge.abi.json");
 mod tests {
     use super::*;
     use crate::transport::graphql_transport::Config;
-    use util::setup;
     use crate::transport::GraphQLTransport;
+    use util::setup;
 
     const LOCAL_SERVER_ADDR: &str = "http://127.0.0.1:80/graphql";
-
-
 
     fn bridge_addr() -> MsgAddressInt {
         MsgAddressInt::from_str(
