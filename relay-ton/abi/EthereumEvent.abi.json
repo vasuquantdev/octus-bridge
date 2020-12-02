@@ -1,0 +1,46 @@
+{
+  "ABI version": 2,
+  "header": ["time", "expire"],
+  "functions": [
+    {
+      "name": "constructor",
+      "inputs": [
+        {"name":"relayKey","type":"uint256"}
+      ],
+      "outputs": [
+      ]
+    },
+    {
+      "name": "confirm",
+      "inputs": [
+        {"name":"relayKey","type":"uint256"}
+      ],
+      "outputs": [
+      ]
+    },
+    {
+      "name": "getDetails",
+      "inputs": [
+      ],
+      "outputs": [
+        {"name":"_eventTransaction","type":"bytes"},
+        {"name":"_eventIndex","type":"uint256"},
+        {"name":"_eventData","type":"cell"},
+        {"name":"_proxyAddress","type":"address"},
+        {"name":"_ethereumEventConfirguration","type":"address"},
+        {"name":"_proxyCallbackExecuted","type":"bool"},
+        {"name":"_confirmKeys","type":"uint256[]"},
+        {"name":"_rejectKeys","type":"uint256[]"}
+      ]
+    }
+  ],
+  "data": [
+    {"key":1,"name":"eventTransaction","type":"bytes"},
+    {"key":2,"name":"eventIndex","type":"uint256"},
+    {"key":3,"name":"eventData","type":"cell"},
+    {"key":4,"name":"proxyAddress","type":"address"},
+    {"key":5,"name":"ethereumEventConfirguration","type":"address"}
+  ],
+  "events": [
+  ]
+}

@@ -170,6 +170,7 @@ impl NodeClient {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn get_account_transactions(
         &self,
         addr: &MsgAddressInt,
@@ -278,6 +279,50 @@ impl NodeClient {
         Block::construct_from_base64(&boc).map_err(|e| TransportError::FailedToParseBlock {
             reason: e.to_string(),
         })
+    }
+
+    pub async fn get_outbound_messages(
+        &self,
+        addr: MsgAddressInt,
+        start_lt: Option<u64>,
+        end_lt: Option<u64>,
+        limit: u32,
+    ) -> TransportResult<Vec<(u64, TransportResult<Message>)>> {
+        #[derive(GraphQLQuery)]
+        #[graphql(
+            schema_path = "src/transport/graphql_transport/schema.graphql",
+            query_path = "src/transport/graphql_transport/query_outbound_messages.graphql"
+        )]
+        struct QueryOutboundMessages;
+
+        Ok(self
+            .fetch::<QueryOutboundMessages>(query_outbound_messages::Variables {
+                address: addr.to_string(),
+                start_lt: start_lt.unwrap_or_else(|| 0).to_string(),
+                end_lt: end_lt.unwrap_or_else(u64::max_value).to_string(),
+                limit: limit as i64,
+            })
+            .await?
+            .messages
+            .map(|messages| messages.into_iter().flatten())
+            .ok_or_else(invalid_response)?
+            .filter_map(|message| {
+                let boc = message.boc.as_ref()?;
+                let lt = message
+                    .created_lt
+                    .as_ref()
+                    .and_then(|lt| u64::from_str_radix(lt.trim_start_matches("0x"), 16).ok())?;
+
+                Some((
+                    lt,
+                    ton_block::Message::construct_from_base64(boc).map_err(|e| {
+                        TransportError::FailedToParseMessage {
+                            reason: e.to_string(),
+                        }
+                    }),
+                ))
+            })
+            .collect())
     }
 
     pub async fn send_message(&self, message: &Message) -> TransportResult<()> {

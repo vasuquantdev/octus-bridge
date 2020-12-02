@@ -19,6 +19,7 @@ pub fn encode_external_message(message: ExternalMessage) -> Message {
     msg
 }
 
+#[allow(dead_code)]
 pub fn parse_transaction(raw: &[u8]) -> TransportResult<(Transaction, UInt256)> {
     let cell =
         ton_types::deserialize_tree_of_cells(&mut std::io::Cursor::new(raw)).map_err(|e| {

@@ -50,258 +50,77 @@ impl BridgeContract {
         )
     }
 
+    async fn get_known_config_contracts(&self) -> ContractResult<Vec<MsgAddrStd>> {
+        let events = self.events_map();
+        let mut scanner = self.transport.rescan_events(None, None)?;
+        let mut configs = Vec::new();
+        while let Some(event_body) = scanner.next().await {
+            match event_body
+                .map_err(ContractError::TransportError)
+                .and_then(|body| Self::parse_event(&events, &body))
+            {
+                Ok(event) => match event {
+                    BridgeContractEvent::NewEthereumEventConfiguration { address } => {
+                        configs.push(address);
+                    }
+                },
+                Err(e) => {
+                    log::warn!("skipping outbound message. {:?}", e);
+                }
+            }
+        }
+        Ok(configs)
+    }
+
     pub async fn add_ethereum_event_configuration(
         &self,
         ethereum_event_abi: &str,
-        ethereum_address: &str,
-        event_proxy_address: &MsgAddrStd,
-    ) -> ContractResult<()> {
+        ethereum_address: Vec<u8>,
+        event_proxy_address: &MsgAddressInt,
+    ) -> ContractResult<MsgAddrStd> {
         self.message("addEthereumEventConfiguration")?
             .arg(ethereum_event_abi)
             .arg(ethereum_address)
             .arg(event_proxy_address)
             .send()
             .await?
-            .ignore_output()
+            .parse_first()
     }
 
     pub async fn confirm_ethereum_event_configuration(
         &self,
-        ethereum_event_configuration_id: UInt256,
+        ethereum_event_configuration_address: &MsgAddressInt,
     ) -> ContractResult<()> {
         self.message("confirmEthereumEventConfiguration")?
-            .arg(ethereum_event_configuration_id)
+            .arg(ethereum_event_configuration_address)
             .send()
             .await?
             .ignore_output()
     }
 
-    pub async fn confirm_event_instance(
+    pub async fn reject_ethereum_event_configuration(
         &self,
-        ethereum_event_configuration_id: UInt256,
-        ethereum_event_data: Cell,
+        ethereum_event_configuration_address: &MsgAddressInt,
     ) -> ContractResult<()> {
-        self.message("confirmEventInstance")?
-            .arg(ethereum_event_configuration_id)
-            .arg(ethereum_event_data)
+        self.message("rejectEthereumEventConfiguration")?
+            .arg(ethereum_event_configuration_address)
             .send()
             .await?
             .ignore_output()
     }
 
-    pub async fn get_ethereum_events_configuration(
+    pub async fn confirm_ethereum_event(
         &self,
-    ) -> ContractResult<Vec<EthereumEventsConfiguration>> {
-        self.message("getEthereumEventsConfiguration")?
-            .run_local()
-            .await?
-            .parse_first()
-    }
-
-    pub async fn sign_ton_to_eth_event(
-        &self,
-        payload: Vec<u8>,
-        eth_public_key: Vec<u8>,
-        sign: Vec<u8>,
-        signed_at: u32,
-        event_root_address: MsgAddrStd,
+        event_transaction: Vec<u8>,
+        event_index: BigUint,
+        event_data: Cell,
+        ethereum_event_configuration_address: MsgAddressInt,
     ) -> ContractResult<()> {
-        self.message("signTonToEthEvent")?
-            .arg(payload)
-            .arg(eth_public_key)
-            .arg(sign)
-            .arg(BigUint::from(signed_at))
-            .arg(event_root_address)
-            .send()
-            .await?
-            .ignore_output()
-    }
-
-    pub async fn sign_eth_to_ton_event(
-        &self,
-        payload: Cell,
-        eth_event_address: MsgAddrStd,
-    ) -> ContractResult<()> {
-        self.message("signEthToTonEvent")?
-            .arg(payload)
-            .arg(eth_event_address)
-            .send()
-            .await?
-            .ignore_output()
-    }
-
-    pub async fn get_current_config(&self) -> ContractResult<BridgeConfiguration> {
-        self.message("getCurrentConfig")?
-            .run_local()
-            .await?
-            .parse_all()
-    }
-
-    pub async fn get_event_roots(&self) -> ContractResult<Vec<MsgAddrStd>> {
-        self.message("getEventRoots")?
-            .run_local()
-            .await?
-            .parse_first()
-    }
-
-    pub async fn get_event_config(
-        &self,
-        event_root_address: MsgAddrStd,
-    ) -> ContractResult<(MsgAddrStd, TonEventConfiguration)> {
-        self.message("getEventConfig")?
-            .arg(event_root_address)
-            .run_local()
-            .await?
-            .parse_all()
-    }
-
-    pub async fn start_voting_for_update_config(
-        &self,
-        new_config: BridgeConfiguration,
-    ) -> ContractResult<MsgAddrStd> {
-        self.message("startVotingForUpdateConfig")?
-            .arg(new_config.add_event_type_required_confirmations_percent)
-            .arg(new_config.remove_event_type_required_confirmations_percent)
-            .arg(new_config.add_relay_required_confirmations_percent)
-            .arg(new_config.remove_relay_required_confirmations_percent)
-            .arg(new_config.update_config_required_confirmations_percent)
-            .arg(new_config.event_root_code)
-            .arg(new_config.ton_to_eth_event_code)
-            .arg(new_config.eth_to_ton_event_code)
-            .send()
-            .await?
-            .parse_first()
-    }
-
-    pub async fn vote_for_update_config(
-        &self,
-        voting_address: MsgAddrStd,
-        high_part: UInt256,
-        low_part: UInt256,
-    ) -> ContractResult<()> {
-        self.message("voteForUpdateConfig")?
-            .arg(voting_address)
-            .arg(high_part)
-            .arg(low_part)
-            .send()
-            .await?
-            .ignore_output()
-    }
-
-    pub async fn update_config(
-        &self,
-        new_config: BridgeConfiguration,
-        voting_set: VotingSet,
-    ) -> ContractResult<()> {
-        self.message("updateConfig")?
-            .arg(new_config.add_event_type_required_confirmations_percent)
-            .arg(new_config.remove_event_type_required_confirmations_percent)
-            .arg(new_config.add_relay_required_confirmations_percent)
-            .arg(new_config.remove_relay_required_confirmations_percent)
-            .arg(new_config.update_config_required_confirmations_percent)
-            .arg(new_config.event_root_code)
-            .arg(new_config.ton_to_eth_event_code)
-            .arg(new_config.eth_to_ton_event_code)
-            .arg(voting_set.change_nonce)
-            .arg(voting_set.signers)
-            .arg(voting_set.signatures_high_parts)
-            .arg(voting_set.signatures_low_parts)
-            .send()
-            .await?
-            .ignore_output()
-    }
-
-    pub async fn start_voting_for_add_event_type(
-        &self,
-        new_event_type: TonEventConfiguration,
-    ) -> ContractResult<MsgAddrStd> {
-        self.message("startVotingForAddEventType")?
-            .arg(new_event_type.eth_address)
-            .arg(new_event_type.eth_event_abi)
-            .arg(new_event_type.event_proxy_address)
-            .arg(new_event_type.min_signs)
-            .arg(new_event_type.min_signs_percent)
-            .arg(new_event_type.ton_to_eth_rate)
-            .arg(new_event_type.eth_to_ton_rate)
-            .send()
-            .await?
-            .parse_first()
-    }
-
-    pub async fn vote_for_event_type(
-        &self,
-        voting_address: MsgAddrStd,
-        high_part: UInt256,
-        low_part: UInt256,
-    ) -> ContractResult<()> {
-        self.message("voteForAddEventType")?
-            .arg(voting_address)
-            .arg(high_part)
-            .arg(low_part)
-            .send()
-            .await?
-            .ignore_output()
-    }
-
-    pub async fn add_event_type(
-        &self,
-        new_event_type: TonEventConfiguration,
-        voting_set: VotingSet,
-    ) -> ContractResult<()> {
-        self.message("addEventType")?
-            .arg(new_event_type.eth_address)
-            .arg(new_event_type.eth_event_abi)
-            .arg(new_event_type.event_proxy_address)
-            .arg(new_event_type.min_signs)
-            .arg(new_event_type.min_signs_percent)
-            .arg(new_event_type.ton_to_eth_rate)
-            .arg(new_event_type.eth_to_ton_rate)
-            .arg(voting_set.change_nonce)
-            .arg(voting_set.signers)
-            .arg(voting_set.signatures_high_parts)
-            .arg(voting_set.signatures_low_parts)
-            .send()
-            .await?
-            .ignore_output()
-    }
-
-    pub async fn start_voting_for_remove_event_type(
-        &self,
-        ton_address: MsgAddrStd,
-    ) -> ContractResult<MsgAddrStd> {
-        self.message("startVotingForRemoveEventType")?
-            .arg(ton_address)
-            .send()
-            .await?
-            .parse_first()
-    }
-
-    pub async fn vote_for_remove_event_type(
-        &self,
-        voting_address: MsgAddrStd,
-        high_part: UInt256,
-        low_part: UInt256,
-    ) -> ContractResult<()> {
-        self.message("startVotingForRemoveEventType")?
-            .arg(voting_address)
-            .arg(high_part)
-            .arg(low_part)
-            .send()
-            .await?
-            .ignore_output()
-    }
-
-    pub async fn remove_event_type(
-        &self,
-        ton_address: MsgAddrStd,
-        voting_set: VotingSet,
-    ) -> ContractResult<()> {
-        self.message("removeEventType")?
-            .arg(ton_address)
-            .arg(voting_set.change_nonce)
-            .arg(voting_set.signers)
-            .arg(voting_set.signatures_high_parts)
-            .arg(voting_set.signatures_low_parts)
+        self.message("confirmEthereumEvent")?
+            .arg(event_transaction)
+            .arg(event_index)
+            .arg(event_data)
+            .arg(ethereum_event_configuration_address)
             .send()
             .await?
             .ignore_output()
@@ -329,33 +148,85 @@ const ABI: &str = include_str!("../../../abi/Bridge.abi.json");
 
 #[cfg(test)]
 mod tests {
-    // use super::*;
-    // use crate::transport::tonlib_transport::config::Config;
-    // use crate::transport::TonlibTransport;
-    //
-    // const LOCAL_SERVER_ADDR: &str = "http://127.0.0.1:80";
-    //
-    // fn bridge_addr() -> MsgAddressInt {
-    //     MsgAddressInt::from_str(
-    //         "0:a3fb29fb5d681820eb8a45714101fccd6ff6e7e742f29549a0a87dbb505c50ba",
-    //     )
-    //     .unwrap()
-    // }
-    //
+    use super::*;
+    use crate::transport::graphql_transport::Config;
+    use crate::transport::GraphQLTransport;
 
-    // #[tokio::test]
-    // async fn get_ethereum_events_configuration() {
-    //     let transport: Arc<dyn Transport> = Arc::new(
-    //         GraphQlTransport::new(ClientConfig {
-    //             server_address: LOCAL_SERVER_ADDR.to_owned(),
-    //             ..Default::default()
-    //         })
-    //         .await
-    //         .unwrap(),
-    //     );
-    //
-    //     let bridge = BridgeContract::new(&transport, &bridge_addr());
-    //     let config = bridge.get_ethereum_events_configuration().await.unwrap();
-    //     println!("Configs: {:?}", config);
-    // }
+    const LOCAL_SERVER_ADDR: &str = "http://127.0.0.1:80/graphql";
+
+    fn bridge_addr() -> MsgAddressInt {
+        MsgAddressInt::from_str(
+            "0:70ed01bed4f04baf12d94154bc3a8d66e920d8857a254ce53dad44113a6e1811",
+        )
+        .unwrap()
+    }
+
+    fn event_proxy_address() -> MsgAddressInt {
+        MsgAddressInt::from_str(
+            "0:d114e6f7cea7bbbb297165ee2a544a81c749766119ec57e8b87df4349669ab73",
+        )
+        .unwrap()
+    }
+
+    async fn make_transport() -> Arc<dyn Transport> {
+        std::env::set_var("RUST_LOG", "relay_ton=debug");
+        env_logger::init();
+
+        let db = sled::Config::new().temporary(true).open().unwrap();
+
+        Arc::new(
+            GraphQLTransport::new(
+                Config {
+                    addr: LOCAL_SERVER_ADDR.to_string(),
+                    next_block_timeout_sec: 60,
+                },
+                db,
+            )
+            .await
+            .unwrap(),
+        )
+    }
+
+    fn keypair() -> Arc<Keypair> {
+        let ton_private_key = ed25519_dalek::SecretKey::from_bytes(
+            &hex::decode("0864b5dfd7a90dbf851a52dac8088b05e18c16df7c4285f177ca72655f6d6370")
+                .unwrap(),
+        )
+        .unwrap();
+        let ton_public_key = ed25519_dalek::PublicKey::from(&ton_private_key);
+
+        Arc::new(ed25519_dalek::Keypair {
+            secret: ton_private_key,
+            public: ton_public_key,
+        })
+    }
+
+    async fn make_bridge() -> BridgeContract {
+        BridgeContract::new(make_transport().await, &bridge_addr(), keypair())
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn get_known_contracts() {
+        let bridge = make_bridge().await;
+        let configs = bridge.get_known_config_contracts().await.unwrap();
+        println!("Configs: {:?}", configs);
+    }
+
+    #[tokio::test]
+    async fn add_ethereum_event_configuration() {
+        let bridge = make_bridge().await;
+
+        let configs_before = bridge.get_known_config_contracts().await.unwrap();
+
+        let event_configuration_address = bridge
+            .add_ethereum_event_configuration("Test ABI", Vec::new(), &event_proxy_address())
+            .await
+            .unwrap();
+
+        let configs_after = bridge.get_known_config_contracts().await.unwrap();
+
+        assert_eq!(configs_after.len(), configs_before.len() + 1);
+    }
 }

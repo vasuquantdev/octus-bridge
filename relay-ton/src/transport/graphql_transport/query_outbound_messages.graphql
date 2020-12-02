@@ -1,0 +1,15 @@
+query QueryOutboundMessages($address: String!, $start_lt: String!, $end_lt: String!, $limit: Int!) {
+    messages(filter: {
+        src: { eq: $address },
+        msg_type: { eq: 2 },
+        created_lt: { ge: $start_lt, lt: $end_lt }
+    }, orderBy: [
+        {
+            path: "created_at",
+            direction: DESC
+        }
+    ], limit: $limit) {
+        created_lt
+        boc
+    }
+}

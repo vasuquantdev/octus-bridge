@@ -6,16 +6,16 @@ use crate::prelude::*;
 use crate::transport::*;
 
 #[derive(Clone)]
-pub struct VotingForUpdateConfig {
+pub struct EthereumEventContract {
     transport: Arc<dyn Transport>,
     contract: Arc<ton_abi::Contract>,
 }
 
-impl VotingForUpdateConfig {
+impl EthereumEventContract {
     pub async fn new(transport: Arc<dyn Transport>) -> ContractResult<Self> {
         let contract = Arc::new(
             ton_abi::Contract::load(Cursor::new(ABI))
-                .expect("failed to load VotingForUpdateConfig contract ABI"),
+                .expect("failed to load bridge EthereumEventContract ABI"),
         );
 
         Ok(Self {
@@ -37,10 +37,7 @@ impl VotingForUpdateConfig {
         )
     }
 
-    pub async fn get_details(
-        &self,
-        addr: MsgAddrStd,
-    ) -> ContractResult<VotingForUpdateConfigDetails> {
+    pub async fn get_details(&self, addr: MsgAddrStd) -> ContractResult<EthereumEventDetails> {
         self.message(addr, "getDetails")?
             .run_local()
             .await?
@@ -52,11 +49,11 @@ impl VotingForUpdateConfig {
     }
 }
 
-impl Contract for VotingForUpdateConfig {
+impl Contract for EthereumEventContract {
     #[inline]
     fn abi(&self) -> &Arc<ton_abi::Contract> {
         &self.contract
     }
 }
 
-const ABI: &str = include_str!("../../../abi/VotingForUpdateConfig.abi.json");
+const ABI: &str = include_str!("../../../abi/EthereumEvent.abi.json");

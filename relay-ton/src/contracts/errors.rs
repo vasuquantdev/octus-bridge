@@ -14,6 +14,8 @@ pub enum ContractError {
     InvalidString,
     #[error("unknown event")]
     UnknownEvent,
+    #[error("invalid event. {reason}")]
+    InvalidEvent { reason: String },
     #[error("transport error")]
     TransportError(#[from] TransportError),
 }

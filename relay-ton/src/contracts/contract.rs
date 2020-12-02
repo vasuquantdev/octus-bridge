@@ -13,22 +13,46 @@ pub trait ContractWithEvents: Contract {
 
     fn subscription(&self) -> &Arc<dyn AccountSubscription>;
 
+    fn events_map(&self) -> HashMap<u32, (Self::EventKind, AbiEvent)> {
+        self.abi()
+            .events()
+            .iter()
+            .map(|(key, event)| {
+                let kind = Self::EventKind::try_from(key.as_str()).unwrap();
+                (event.get_id(), (kind, event.clone()))
+            })
+            .collect::<HashMap<_, _>>()
+    }
+
+    fn parse_event(
+        events_map: &HashMap<u32, (Self::EventKind, AbiEvent)>,
+        body: &SliceData,
+    ) -> ContractResult<Self::Event> {
+        let event_id = body
+            .read_method_id()
+            .map_err(|e| ContractError::InvalidEvent {
+                reason: e.to_string(),
+            })?;
+
+        let (kind, event) = events_map
+            .get(&event_id)
+            .ok_or_else(|| ContractError::UnknownEvent)?;
+
+        event
+            .decode_input(body.clone())
+            .map_err(|e| ContractError::InvalidEvent {
+                reason: e.to_string(),
+            })
+            .and_then(move |data| Self::Event::try_from((*kind, data)))
+    }
+
     fn events(self: &Arc<Self>) -> mpsc::UnboundedReceiver<Self::Event> {
-        let contract = self.abi().clone();
+        let events_map = self.events_map();
 
         let mut events_rx = self.subscription().events();
         let this = Arc::downgrade(self);
         let (tx, rx) = mpsc::unbounded_channel();
         tokio::spawn(async move {
-            let events_map = contract
-                .events()
-                .iter()
-                .map(|(key, event)| {
-                    let kind = Self::EventKind::try_from(key.as_str()).unwrap();
-                    (event.get_id(), (kind, event))
-                })
-                .collect::<HashMap<_, _>>();
-
             while let Some(event) = events_rx.recv().await {
                 let _this = match this.upgrade() {
                     Some(this) => this,
@@ -36,35 +60,15 @@ pub trait ContractWithEvents: Contract {
                 };
 
                 if let AccountEvent::OutboundEvent(body) = event {
-                    let event_id = match body.read_method_id() {
-                        Ok(id) => id,
-                        Err(_) => {
-                            log::error!("got invalid event body");
-                            continue;
-                        }
-                    };
-
-                    let (kind, event) = match events_map.get(&event_id) {
-                        Some(&info) => info,
-                        None => {
-                            log::error!("got unknown event");
-                            continue;
-                        }
-                    };
-
-                    let data = match event
-                        .decode_input(body.as_ref().clone())
-                        .map_err(|_| ContractError::InvalidInput)
-                        .and_then(move |data| Self::Event::try_from((kind, data)))
-                    {
-                        Ok(tokens) => tokens,
+                    let event = match Self::parse_event(&events_map, body.as_ref()) {
+                        Ok(event) => event,
                         Err(e) => {
-                            log::error!("failed to decode event. {}", e);
+                            log::error!("event processing error. {}", e);
                             continue;
                         }
                     };
 
-                    if tx.send(data).is_err() {
+                    if tx.send(event).is_err() {
                         return;
                     }
                 };

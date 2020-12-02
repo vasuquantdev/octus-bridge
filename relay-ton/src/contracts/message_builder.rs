@@ -96,6 +96,7 @@ impl<'a> SignedMessageBuilder<'a> {
             .build(if with_signature { Some(self.0) } else { None })
     }
 
+    #[allow(dead_code)]
     pub async fn run_local(self) -> ContractResult<ContractOutput> {
         let transport = self.1.transport;
         let output = transport
@@ -200,6 +201,15 @@ impl FunctionArg for AccountId {
 impl FunctionArg for MsgAddrStd {
     fn token_value(self) -> TokenValue {
         TokenValue::Address(MsgAddress::AddrStd(self))
+    }
+}
+
+impl FunctionArg for MsgAddressInt {
+    fn token_value(self) -> TokenValue {
+        TokenValue::Address(match self {
+            MsgAddressInt::AddrStd(addr) => MsgAddress::AddrStd(addr),
+            MsgAddressInt::AddrVar(addr) => MsgAddress::AddrVar(addr),
+        })
     }
 }
 
