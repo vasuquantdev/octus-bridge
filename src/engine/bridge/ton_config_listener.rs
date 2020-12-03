@@ -41,7 +41,7 @@ impl MappedData {
 pub struct ConfigListener {
     current_config: Arc<RwLock<MappedData>>,
     initial_data_received: Arc<Notify>,
-    eth_even_config: Arc<RwLock<HashSet<EthereumEventDetails>>>,
+    eth_event_config: Arc<RwLock<HashSet<EthereumEventDetails>>>,
 }
 
 async fn make_config_contract(
@@ -110,14 +110,20 @@ impl ConfigListener {
         Arc::new(Self {
             current_config: Arc::new(RwLock::new(MappedData::new())),
             initial_data_received: Arc::new(Notify::new()),
-            eth_even_config: Arc::new(RwLock::new(HashSet::new())),
+            eth_event_config: Arc::new(RwLock::new(HashSet::new())),
         })
     }
-    pub async fn get_initial_config(&self) -> MappedData {
+    pub async fn get_initial_config_map(&self) -> MappedData {
         self.initial_data_received.notified().await;
         self.current_config.read().await.clone()
     }
+    pub async fn get_config_map(&self) -> MappedData {
+        self.current_config.read().await.clone()
+    }
 
+    pub async fn get_ethereum_event_config(&self) -> HashSet<EthereumEventDetails> {
+        self.eth_event_config.read().await.clone()
+    }
     async fn notify_received(self: Arc<Self>, number: Arc<Mutex<usize>>) {
         loop {
             let number = number.lock().await;
@@ -185,7 +191,7 @@ impl ConfigListener {
                             continue;
                         }
                     };
-                    let event_lock = self.eth_even_config.clone();
+                    let event_lock = self.eth_event_config.clone();
                     let mut guard = event_lock.write().await;
                     guard.insert(ethereum_event_details);
                     let rwlock = self.current_config.clone();
