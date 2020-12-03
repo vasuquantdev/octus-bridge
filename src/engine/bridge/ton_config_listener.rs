@@ -47,11 +47,15 @@ async fn make_config_contract(
     addr: MsgAddrStd,
 ) -> Arc<EthereumEventConfigurationContract> {
     Arc::new(
-        EthereumEventConfigurationContract::new(transport.clone(), MsgAddressInt::AddrStd(addr))
+        EthereumEventConfigurationContract::new(
+            transport.clone(),
+            MsgAddressInt::AddrStd(addr),
+        )
             .await
             .unwrap(),
     )
 }
+
 
 async fn listener(
     transport: Arc<dyn Transport>,
