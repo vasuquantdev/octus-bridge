@@ -21,6 +21,7 @@ use crate::engine::bridge::util::{abi_to_topic_hash, map_eth_ton};
 mod ton_config_listener;
 
 mod util;
+mod persistent_state;
 
 pub struct Bridge {
     eth_signer: EthSigner,
@@ -62,7 +63,7 @@ impl Bridge {
             address_topic_map,
             topic_abi_map,
             eth_proxy_map,
-        } = listener.get_initial_config().await;
+        } = listener.get_initial_config_map().await;
 
         log::info!("Got config for ethereum.");
         log::debug!("Topics: {:?}", &eth_topic);
