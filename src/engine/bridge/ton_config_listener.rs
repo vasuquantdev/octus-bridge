@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
@@ -12,9 +13,11 @@ use relay_ton::contracts::{
     EthereumEventConfigurationContract, EthereumEventConfigurationContractEvent,
     EthereumEventDetails,
 };
+use relay_ton::prelude::Stream;
 use relay_ton::transport::Transport;
 
 use crate::engine::bridge::util::abi_to_topic_hash;
+use tokio::sync::mpsc::{UnboundedSender, UnboundedReceiver};
 
 #[derive(Debug, Clone)]
 pub struct MappedData {
@@ -37,11 +40,12 @@ impl MappedData {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug)]
 pub struct ConfigListener {
     current_config: Arc<RwLock<MappedData>>,
     initial_data_received: Arc<Notify>,
-    eth_event_config: Arc<RwLock<HashSet<EthereumEventDetails>>>,
+    ton_received_events: Arc<Mutex<Option<mpsc::UnboundedReceiver<EthereumEventDetails>>>>,
+    ton_tx: mpsc::UnboundedSender<EthereumEventDetails>,
 }
 
 async fn make_config_contract(
@@ -99,6 +103,7 @@ fn update_mapped_data(mapped_data: &mut MappedData, conf: EthereumEventConfigura
         mapped_data.topic_abi_map.insert(topic.0, topic.1);
     });
 }
+
 /// Listens to config streams and maps them.
 impl ConfigListener {
     pub async fn get_config(&self) -> MappedData {
@@ -107,23 +112,29 @@ impl ConfigListener {
     }
 
     pub fn new() -> Arc<Self> {
+        let (tx, rx) = mpsc::unbounded_channel();
         Arc::new(Self {
             current_config: Arc::new(RwLock::new(MappedData::new())),
             initial_data_received: Arc::new(Notify::new()),
-            eth_event_config: Arc::new(RwLock::new(HashSet::new())),
+            ton_received_events: Arc::new(Mutex::new(Some(rx))),
+            ton_tx: tx,
         })
     }
+
     pub async fn get_initial_config_map(&self) -> MappedData {
         self.initial_data_received.notified().await;
         self.current_config.read().await.clone()
     }
+
     pub async fn get_config_map(&self) -> MappedData {
         self.current_config.read().await.clone()
     }
 
-    pub async fn get_ethereum_event_config(&self) -> HashSet<EthereumEventDetails> {
-        self.eth_event_config.read().await.clone()
+    pub async fn get_events_stream(&self) -> Option<UnboundedReceiver<EthereumEventDetails>> {
+        let mut guard = self.ton_received_events.lock().await;
+        guard.take()
     }
+
     async fn notify_received(self: Arc<Self>, number: Arc<Mutex<usize>>) {
         loop {
             let number = number.lock().await;
@@ -163,6 +174,8 @@ impl ConfigListener {
 
         let ethereum_event_contract =
             Arc::new(EthereumEventContract::new(transport.clone()).await.unwrap());
+
+        let ton_tx = self.ton_tx.clone();
         while let Some(event) = ton_events.next().await {
             match event {
                 EthereumEventConfigurationContractEvent::NewEthereumEventConfirmation {
@@ -191,9 +204,9 @@ impl ConfigListener {
                             continue;
                         }
                     };
-                    let event_lock = self.eth_event_config.clone();
-                    let mut guard = event_lock.write().await;
-                    guard.insert(ethereum_event_details);
+                    if let Err(e) = ton_tx.send(ethereum_event_details) {
+                        log::error!("Failed sending eth event detatils via channel: {}", e);
+                    }
                     let rwlock = self.current_config.clone();
                     let guard = rwlock.write().await;
                     let mut mapped_data = guard;
