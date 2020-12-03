@@ -58,6 +58,19 @@
       ]
     },
     {
+      "name": "rejectEthereumEvent",
+      "inputs": [
+        {"name":"eventTransaction","type":"bytes"},
+        {"name":"eventIndex","type":"uint256"},
+        {"name":"eventData","type":"cell"},
+        {"name":"eventBlockNumber","type":"uint256"},
+        {"name":"eventBlock","type":"bytes"},
+        {"name":"ethereumEventConfigurationAddress","type":"address"}
+      ],
+      "outputs": [
+      ]
+    },
+    {
       "name": "getKeyStatus",
       "inputs": [
         {"name":"key","type":"uint256"}

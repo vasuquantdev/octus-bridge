@@ -138,14 +138,7 @@ mod test {
 
         let mut events = config_contract.events();
         while let Some(event) = events.next().await {
-            match event {
-                EthereumEventConfigurationContractEvent::NewEthereumEventConfirmation {
-                    address,
-                    ..
-                } => {
-                    log::debug!("New event at: {:?}", address);
-                }
-            }
+            log::debug!("New event at: {:?}", event);
         }
     }
 }

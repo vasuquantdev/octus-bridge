@@ -154,6 +154,7 @@ mod tests {
                         let details = ethereum_event_contract.get_details(address).await.unwrap();
                         println!("got ethereum event: {:?}", details);
                     }
+                    _ => {}
                 }
             }
         });

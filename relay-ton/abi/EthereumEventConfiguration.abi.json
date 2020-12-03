@@ -45,6 +45,19 @@
       ]
     },
     {
+      "name": "rejectEvent",
+      "inputs": [
+        {"name":"eventTransaction","type":"bytes"},
+        {"name":"eventIndex","type":"uint256"},
+        {"name":"eventData","type":"cell"},
+        {"name":"eventBlockNumber","type":"uint256"},
+        {"name":"eventBlock","type":"bytes"},
+        {"name":"relayKey","type":"uint256"}
+      ],
+      "outputs": [
+      ]
+    },
+    {
       "name": "getDetails",
       "inputs": [
       ],
@@ -71,6 +84,15 @@
   "events": [
     {
       "name": "NewEthereumEventConfirmation",
+      "inputs": [
+        {"name":"addr","type":"address"},
+        {"name":"relayKey","type":"uint256"}
+      ],
+      "outputs": [
+      ]
+    },
+    {
+      "name": "NewEthereumEventReject",
       "inputs": [
         {"name":"addr","type":"address"},
         {"name":"relayKey","type":"uint256"}

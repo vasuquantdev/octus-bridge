@@ -1,5 +1,4 @@
-use std::hash::{Hasher, Hash};
-
+use std::hash::{Hash, Hasher};
 
 use crate::contracts::errors::*;
 use crate::contracts::prelude::*;
@@ -31,6 +30,10 @@ crate::define_event!(
         NewEthereumEventConfirmation {
             address: MsgAddrStd,
             relay_key: UInt256,
+        },
+        NewEthereumEventReject {
+            address: MsgAddrStd,
+            relay_key: UInt256,
         }
     }
 );
@@ -43,10 +46,17 @@ impl TryFrom<(EthereumEventConfigurationContractEventKind, Vec<Token>)>
     fn try_from(
         (kind, tokens): (EthereumEventConfigurationContractEventKind, Vec<Token>),
     ) -> Result<Self, Self::Error> {
+        let mut tokens = tokens.into_iter();
+
         Ok(match kind {
             EthereumEventConfigurationContractEventKind::NewEthereumEventConfirmation => {
-                let mut tokens = tokens.into_iter();
                 EthereumEventConfigurationContractEvent::NewEthereumEventConfirmation {
+                    address: tokens.next().try_parse()?,
+                    relay_key: tokens.next().try_parse()?,
+                }
+            }
+            EthereumEventConfigurationContractEventKind::NewEthereumEventReject => {
+                EthereumEventConfigurationContractEvent::NewEthereumEventReject {
                     address: tokens.next().try_parse()?,
                     relay_key: tokens.next().try_parse()?,
                 }
@@ -121,6 +131,7 @@ pub struct EthereumEventDetails {
     pub event_block: Vec<u8>,
     pub event_configuration_address: MsgAddrStd,
     pub proxy_callback_executed: bool,
+    pub event_rejected: bool,
     pub confirm_keys: Vec<UInt256>,
     pub reject_keys: Vec<UInt256>,
 }
@@ -153,6 +164,7 @@ impl TryFrom<ContractOutput> for EthereumEventDetails {
             event_block: tuple.parse_next()?,
             event_configuration_address: tuple.parse_next()?,
             proxy_callback_executed: tuple.parse_next()?,
+            event_rejected: tuple.parse_next()?,
             confirm_keys: tuple.parse_next()?,
             reject_keys: tuple.parse_next()?,
         })

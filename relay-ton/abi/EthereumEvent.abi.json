@@ -21,6 +21,14 @@
       ]
     },
     {
+      "name": "reject",
+      "inputs": [
+        {"name":"relayKey","type":"uint256"}
+      ],
+      "outputs": [
+      ]
+    },
+    {
       "name": "getDetails",
       "inputs": [
       ],
@@ -33,6 +41,7 @@
         {"name":"_eventBlock","type":"bytes"},
         {"name":"_ethereumEventConfirguration","type":"address"},
         {"name":"_proxyCallbackExecuted","type":"bool"},
+        {"name":"_eventRejected","type":"bool"},
         {"name":"_confirmKeys","type":"uint256[]"},
         {"name":"_rejectKeys","type":"uint256[]"}
       ]

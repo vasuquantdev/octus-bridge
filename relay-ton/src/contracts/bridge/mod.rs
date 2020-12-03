@@ -135,6 +135,27 @@ impl BridgeContract {
             .await?
             .ignore_output()
     }
+
+    pub async fn reject_ethereum_event(
+        &self,
+        event_transaction: Vec<u8>,
+        event_index: BigUint,
+        event_data: Cell,
+        event_block_number: BigUint,
+        event_block: Vec<u8>,
+        ethereum_event_configuration_address: MsgAddressInt,
+    ) -> ContractResult<()> {
+        self.message("rejectEthereumEvent")?
+            .arg(event_transaction)
+            .arg(event_index)
+            .arg(event_data)
+            .arg(event_block_number)
+            .arg(event_block)
+            .arg(ethereum_event_configuration_address)
+            .send()
+            .await?
+            .ignore_output()
+    }
 }
 
 impl Contract for BridgeContract {

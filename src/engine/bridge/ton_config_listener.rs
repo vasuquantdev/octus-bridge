@@ -7,17 +7,16 @@ use tokio::stream::StreamExt;
 use tokio::sync::{mpsc, Mutex, Notify, RwLock};
 use ton_block::{MsgAddrStd, MsgAddressInt};
 
-use relay_ton::contracts::ethereum_event::EthereumEventContract;
 use relay_ton::contracts::{
     BridgeContract, BridgeContractEvent, ContractWithEvents, EthereumEventConfiguration,
     EthereumEventConfigurationContract, EthereumEventConfigurationContractEvent,
-    EthereumEventDetails,
+    EthereumEventContract, EthereumEventDetails,
 };
 use relay_ton::prelude::Stream;
 use relay_ton::transport::Transport;
 
 use crate::engine::bridge::util::abi_to_topic_hash;
-use tokio::sync::mpsc::{UnboundedSender, UnboundedReceiver};
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 #[derive(Debug, Clone)]
 pub struct MappedData {
@@ -177,44 +176,43 @@ impl ConfigListener {
 
         let ton_tx = self.ton_tx.clone();
         while let Some(event) = ton_events.next().await {
-            match event {
-                EthereumEventConfigurationContractEvent::NewEthereumEventConfirmation {
-                    address,
-                    ..
-                } => {
-                    let details = ethereum_event_contract.get_details(address.clone()).await;
-                    let ethereum_event_configuration_contract =
-                        EthereumEventConfigurationContract::new(
-                            transport.clone(),
-                            ton_block::MsgAddressInt::AddrStd(address),
-                        )
+            if let EthereumEventConfigurationContractEvent::NewEthereumEventConfirmation {
+                address,
+                ..
+            } = event
+            {
+                let details = ethereum_event_contract.get_details(address.clone()).await;
+                let ethereum_event_configuration_contract =
+                    EthereumEventConfigurationContract::new(
+                        transport.clone(),
+                        ton_block::MsgAddressInt::AddrStd(address),
+                    )
+                    .await
+                    .unwrap();
+
+                let ethereum_event_configuration_contract_details =
+                    ethereum_event_configuration_contract
+                        .get_details()
                         .await
                         .unwrap();
 
-                    let ethereum_event_configuration_contract_details =
-                        ethereum_event_configuration_contract
-                            .get_details()
-                            .await
-                            .unwrap();
-
-                    let ethereum_event_details = match details {
-                        Ok(a) => a,
-                        Err(e) => {
-                            log::error!("get_details failed: {}", e);
-                            continue;
-                        }
-                    };
-                    if let Err(e) = ton_tx.send(ethereum_event_details) {
-                        log::error!("Failed sending eth event detatils via channel: {}", e);
+                let ethereum_event_details = match details {
+                    Ok(a) => a,
+                    Err(e) => {
+                        log::error!("get_details failed: {}", e);
+                        continue;
                     }
-                    let rwlock = self.current_config.clone();
-                    let guard = rwlock.write().await;
-                    let mut mapped_data = guard;
-                    update_mapped_data(
-                        &mut mapped_data,
-                        ethereum_event_configuration_contract_details,
-                    );
+                };
+                if let Err(e) = ton_tx.send(ethereum_event_details) {
+                    log::error!("Failed sending eth event detatils via channel: {}", e);
                 }
+                let rwlock = self.current_config.clone();
+                let guard = rwlock.write().await;
+                let mut mapped_data = guard;
+                update_mapped_data(
+                    &mut mapped_data,
+                    ethereum_event_configuration_contract_details,
+                );
             }
         }
     }
