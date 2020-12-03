@@ -35,7 +35,8 @@ pub trait ContractWithEvents: Contract {
             })?;
 
         let (kind, event) = events_map
-            .get(&event_id).ok_or(ContractError::UnknownEvent)?;
+            .get(&event_id)
+            .ok_or(ContractError::UnknownEvent)?;
 
         event
             .decode_input(body.clone())

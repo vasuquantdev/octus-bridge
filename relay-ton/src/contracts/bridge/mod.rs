@@ -16,13 +16,13 @@ pub struct BridgeContract {
 impl BridgeContract {
     pub async fn new(
         transport: Arc<dyn Transport>,
-        account: &MsgAddressInt,
+        account: MsgAddressInt,
         keypair: Arc<Keypair>,
     ) -> ContractResult<Self> {
         let transport = transport.subscribe(&account.to_string()).await?;
 
         let config = ContractConfig {
-            account: account.clone(),
+            account,
             timeout_sec: 60,
         };
 
@@ -76,11 +76,17 @@ impl BridgeContract {
         &self,
         ethereum_event_abi: &str,
         ethereum_address: Vec<u8>,
+        ethereum_event_blocks_to_confirm: BigUint,
+        ethereum_event_required_confirmations: BigUint,
+        ethereum_event_required_rejects: BigUint,
         event_proxy_address: &MsgAddressInt,
     ) -> ContractResult<MsgAddrStd> {
         self.message("addEthereumEventConfiguration")?
             .arg(ethereum_event_abi)
             .arg(ethereum_address)
+            .arg(ethereum_event_blocks_to_confirm)
+            .arg(ethereum_event_required_confirmations)
+            .arg(ethereum_event_required_rejects)
             .arg(event_proxy_address)
             .send()
             .await?
@@ -114,12 +120,16 @@ impl BridgeContract {
         event_transaction: Vec<u8>,
         event_index: BigUint,
         event_data: Cell,
+        event_block_number: BigUint,
+        event_block: Vec<u8>,
         ethereum_event_configuration_address: MsgAddressInt,
     ) -> ContractResult<()> {
         self.message("confirmEthereumEvent")?
             .arg(event_transaction)
             .arg(event_index)
             .arg(event_data)
+            .arg(event_block_number)
+            .arg(event_block)
             .arg(ethereum_event_configuration_address)
             .send()
             .await?
@@ -150,23 +160,21 @@ const ABI: &str = include_str!("../../../abi/Bridge.abi.json");
 mod tests {
     use super::*;
     use crate::transport::graphql_transport::Config;
-    use util::setup;
     use crate::transport::GraphQLTransport;
+    use util::setup;
 
     const LOCAL_SERVER_ADDR: &str = "http://127.0.0.1:80/graphql";
 
-
-
     fn bridge_addr() -> MsgAddressInt {
         MsgAddressInt::from_str(
-            "0:70ed01bed4f04baf12d94154bc3a8d66e920d8857a254ce53dad44113a6e1811",
+            "0:afafb5172cc4423266311712e0b6132cc3800d454c21335ea363eb353acda59c",
         )
         .unwrap()
     }
 
     fn event_proxy_address() -> MsgAddressInt {
         MsgAddressInt::from_str(
-            "0:d114e6f7cea7bbbb297165ee2a544a81c749766119ec57e8b87df4349669ab73",
+            "0:d7997ed240134f63cefce3e5eb6463bcc60a5c92df3bcaaec7264ff10423d4e0",
         )
         .unwrap()
     }
@@ -191,7 +199,7 @@ mod tests {
 
     fn keypair() -> Arc<Keypair> {
         let ton_private_key = ed25519_dalek::SecretKey::from_bytes(
-            &hex::decode("0864b5dfd7a90dbf851a52dac8088b05e18c16df7c4285f177ca72655f6d6370")
+            &hex::decode("90f71be09b86a65791fc0740598849f00066d0ae81ed5f8b2aa8f2e3522a991e")
                 .unwrap(),
         )
         .unwrap();
@@ -204,7 +212,7 @@ mod tests {
     }
 
     async fn make_bridge() -> BridgeContract {
-        BridgeContract::new(make_transport().await, &bridge_addr(), keypair())
+        BridgeContract::new(make_transport().await, bridge_addr(), keypair())
             .await
             .unwrap()
     }
@@ -224,9 +232,20 @@ mod tests {
         let configs_before = bridge.get_known_config_contracts().await.unwrap();
 
         let event_configuration_address = bridge
-            .add_ethereum_event_configuration("Test ABI", Vec::new(), &event_proxy_address())
+            .add_ethereum_event_configuration(
+                "Test ABI",
+                Vec::new(),
+                BigUint::from(10u8),
+                BigUint::from(10u8),
+                BigUint::from(10u8),
+                &event_proxy_address(),
+            )
             .await
             .unwrap();
+        log::debug!(
+            "event_configuration_address: {:?}",
+            event_configuration_address
+        );
 
         let configs_after = bridge.get_known_config_contracts().await.unwrap();
 

@@ -203,6 +203,8 @@ impl GraphQLAccountSubscription {
                     .and_then(|account_blocks| account_blocks.get(&subscription.account_id))
                 {
                     Ok(Some(data)) => {
+                        log::debug!("got account block. {:?}", data);
+
                         let _ = state_notifier.broadcast(AccountEvent::StateChanged);
 
                         for item in data.transactions().iter() {
@@ -254,6 +256,7 @@ impl GraphQLAccountSubscription {
                     }
                     Ok(None) => {
                         log::debug!("account state wasn't changed");
+                        last_block_id = next_block_id;
                         continue 'subscription_loop;
                     }
                     Err(e) => {
@@ -521,7 +524,6 @@ mod tests {
 
     use util::setup;
 
-
     async fn make_transport() -> GraphQLTransport {
         std::env::set_var("RUST_LOG", "relay_ton::transport::graphql_transport=debug");
         setup();
@@ -544,8 +546,7 @@ mod tests {
     const MY_ADDR: &str = "-1:17519bc2a04b6ecf7afa25ba30601a4e16c9402979c236db13e1c6f3c4674e8c";
 
     #[tokio::test]
-    async fn create_transport()
-    {
+    async fn create_transport() {
         setup();
         let _transport = make_transport().await;
     }
