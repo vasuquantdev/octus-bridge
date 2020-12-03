@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 use ethereum_types::{Address, H160, H256};
@@ -10,6 +10,7 @@ use relay_ton::contracts::ethereum_event::EthereumEventContract;
 use relay_ton::contracts::{
     BridgeContract, BridgeContractEvent, ContractWithEvents, EthereumEventConfiguration,
     EthereumEventConfigurationContract, EthereumEventConfigurationContractEvent,
+    EthereumEventDetails,
 };
 use relay_ton::transport::Transport;
 
@@ -40,6 +41,7 @@ impl MappedData {
 pub struct ConfigListener {
     current_config: Arc<RwLock<MappedData>>,
     initial_data_received: Arc<Notify>,
+    eth_even_config: Arc<RwLock<HashSet<EthereumEventDetails>>>,
 }
 
 async fn make_config_contract(
@@ -47,15 +49,11 @@ async fn make_config_contract(
     addr: MsgAddrStd,
 ) -> Arc<EthereumEventConfigurationContract> {
     Arc::new(
-        EthereumEventConfigurationContract::new(
-            transport.clone(),
-            MsgAddressInt::AddrStd(addr),
-        )
+        EthereumEventConfigurationContract::new(transport.clone(), MsgAddressInt::AddrStd(addr))
             .await
             .unwrap(),
     )
 }
-
 
 async fn listener(
     transport: Arc<dyn Transport>,
@@ -112,6 +110,7 @@ impl ConfigListener {
         Arc::new(Self {
             current_config: Arc::new(RwLock::new(MappedData::new())),
             initial_data_received: Arc::new(Notify::new()),
+            eth_even_config: Arc::new(RwLock::new(HashSet::new())),
         })
     }
     pub async fn get_initial_config(&self) -> MappedData {
@@ -186,6 +185,9 @@ impl ConfigListener {
                             continue;
                         }
                     };
+                    let event_lock = self.eth_even_config.clone();
+                    let mut guard = event_lock.write().await;
+                    guard.insert(ethereum_event_details);
                     let rwlock = self.current_config.clone();
                     let guard = rwlock.write().await;
                     let mut mapped_data = guard;
