@@ -1,3 +1,6 @@
+use std::hash::{Hasher, Hash};
+
+
 use crate::contracts::errors::*;
 use crate::contracts::prelude::*;
 use crate::models::*;
@@ -108,7 +111,7 @@ impl TryFrom<ContractOutput> for EthereumEventConfiguration {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq)]
 pub struct EthereumEventDetails {
     pub ethereum_event_transaction: Vec<u8>,
     pub event_index: BigUint,
@@ -122,6 +125,17 @@ pub struct EthereumEventDetails {
     pub reject_keys: Vec<UInt256>,
 }
 
+impl Hash for EthereumEventDetails {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        std::hash::Hash::hash(&self.event_configuration_address, state)
+    }
+}
+impl PartialEq for EthereumEventDetails {
+    fn eq(&self, other: &Self) -> bool {
+        self.event_configuration_address
+            .eq(&other.event_configuration_address)
+    }
+}
 impl StandaloneToken for EthereumEventDetails {}
 
 impl TryFrom<ContractOutput> for EthereumEventDetails {
