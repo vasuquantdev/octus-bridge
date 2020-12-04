@@ -4,10 +4,6 @@ use futures::StreamExt;
 use sled::{Db, Tree};
 use tokio::sync::mpsc::UnboundedReceiver;
 
-use relay_ton::contracts::{
-    ContractWithEvents, EthereumEventConfigurationContract,
-    EthereumEventConfigurationContractEvent, EthereumEventContract, EthereumEventDetails,
-};
 use relay_ton::prelude::{Arc, BigUint};
 use relay_ton::transport::Transport;
 

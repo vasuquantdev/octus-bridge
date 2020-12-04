@@ -1,20 +1,15 @@
 use std::sync::Arc;
-use std::thread::spawn;
 
 use anyhow::Error;
 use bincode::{deserialize, serialize};
-use ethereum_types::{H160, H256};
-use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use log::info;
 use serde::{Deserialize, Serialize};
 use sled::{Db, Tree};
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::time::Duration;
-use warp::filters::sse::event;
+use relay_eth::ws::{EthListener};
 
-use relay_eth::ws::{Address, EthListener};
-use relay_ton::contracts::ethereum_event_configuration::EthereumEventConfigurationContract;
 use relay_ton::contracts::utils::pack_tokens;
 use relay_ton::contracts::*;
 use relay_ton::prelude::{
@@ -25,7 +20,7 @@ use relay_ton::transport::Transport;
 use crate::crypto::key_managment::EthSigner;
 use crate::engine::bridge::persistent_state::TonWatcher;
 use crate::engine::bridge::ton_config_listener::{ConfigListener, MappedData};
-use crate::engine::bridge::util::{abi_to_topic_hash, map_eth_ton};
+use crate::engine::bridge::util::{map_eth_ton};
 
 mod ton_config_listener;
 
@@ -163,7 +158,7 @@ impl Bridge {
         let MappedData {
             eth_addr,
             eth_topic,
-            address_topic_map,
+            address_topic_map: _,
             topic_abi_map,
             eth_proxy_map,
         } = listener.get_initial_config_map().await;

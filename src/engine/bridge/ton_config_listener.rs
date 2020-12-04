@@ -1,23 +1,23 @@
-use std::cell::RefCell;
-use std::collections::{BTreeSet, HashMap, HashSet};
+
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use ethereum_types::{Address, H160, H256};
 use serde::{Deserialize, Serialize};
 use tokio::stream::StreamExt;
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::{UnboundedReceiver};
 use tokio::sync::{mpsc, Mutex, Notify, RwLock};
 use tokio::time::{delay_for, Duration};
-use ton_block::{AnycastInfo, MsgAddrStd, MsgAddressInt};
+use ton_block::{MsgAddrStd, MsgAddressInt};
 
 use relay_ton::contracts::{
     BridgeContract, BridgeContractEvent, ContractWithEvents, EthereumEventConfiguration,
     EthereumEventConfigurationContract, EthereumEventConfigurationContractEvent,
     EthereumEventContract, EthereumEventDetails,
 };
-use relay_ton::models::AccountId;
+
 use relay_ton::prelude::{serde_std_addr, serde_uint256};
-use relay_ton::prelude::{Stream, UInt256};
+use relay_ton::prelude::{UInt256};
 use relay_ton::transport::Transport;
 
 use crate::engine::bridge::util::abi_to_topic_hash;
