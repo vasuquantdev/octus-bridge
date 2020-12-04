@@ -18,15 +18,16 @@ pub use sled::Db;
 pub use tokio::sync::{mpsc, oneshot, watch, RwLock};
 pub use ton_abi::{Contract as AbiContract, Event as AbiEvent, Function as AbiFunction};
 pub use ton_block::{MsgAddrStd, MsgAddressInt};
-pub use ton_types::{BuilderData, SliceData, UInt256};
+pub use ton_types::{BuilderData, SliceData, UInt256, Cell};
+
 
 pub mod serde_int_addr {
     use super::*;
     use ton_block::{Deserializable, Serializable};
 
     pub fn serialize<S>(data: &ton_block::MsgAddressInt, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
+        where
+            S: serde::Serializer,
     {
         use serde::ser::Error;
 
@@ -37,8 +38,8 @@ pub mod serde_int_addr {
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<ton_block::MsgAddressInt, D::Error>
-    where
-        D: serde::Deserializer<'de>,
+        where
+            D: serde::Deserializer<'de>,
     {
         use serde::de::Error;
 

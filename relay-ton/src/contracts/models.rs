@@ -39,7 +39,7 @@ crate::define_event!(
 );
 
 impl TryFrom<(EthereumEventConfigurationContractEventKind, Vec<Token>)>
-    for EthereumEventConfigurationContractEvent
+for EthereumEventConfigurationContractEvent
 {
     type Error = ContractError;
 
