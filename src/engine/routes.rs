@@ -10,7 +10,7 @@ use url::Url;
 use warp::http::StatusCode;
 use warp::{reply, Filter, Reply};
 
-use relay_eth::ws::update_eth_state;
+use relay_eth::ws::{update_eth_state, ETH_HEIGHT_KEY};
 use relay_eth::ws::EthListener;
 use relay_ton::contracts::BridgeContract;
 use relay_ton::prelude::{Arc, RwLock};
@@ -67,7 +67,7 @@ async fn set_eth_block_height(
 ) -> Result<impl Reply, Infallible> {
     let state = state.write().await;
     let db = state.state_manager.clone();
-    Ok(match update_eth_state(&db, height.block) {
+    Ok(match update_eth_state(&db, height.block, ETH_HEIGHT_KEY) {
         Ok(_) => {
             log::info!("Changed  eth scan height to {}", height.block);
             reply::with_status("OK".to_string(), StatusCode::OK)
@@ -245,7 +245,7 @@ pub async fn create_bridge(
     let eth_client = EthListener::new(
         Url::parse(config.eth_node_address.as_str())
             .map_err(|e| Error::new(e).context("Bad url for eth_config provided"))?,
-        state_manager,
+        state_manager.clone(),
     )
     .await?;
 
@@ -254,6 +254,7 @@ pub async fn create_bridge(
         eth_client,
         ton_client,
         transport,
+        state_manager.clone()
     )))
 }
 

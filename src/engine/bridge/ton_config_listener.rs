@@ -15,9 +15,9 @@ use relay_ton::contracts::{
     EthereumEventContract, EthereumEventDetails,
 };
 use relay_ton::models::AccountId;
-use relay_ton::prelude::{Stream, UInt256};
+use relay_ton::prelude::{Stream, UInt256, };
 use relay_ton::transport::Transport;
-
+use relay_ton::prelude::{serde_std_addr, serde_uint256};
 use crate::engine::bridge::util::abi_to_topic_hash;
 
 #[derive(Debug, Clone)]
@@ -31,24 +31,13 @@ pub struct MappedData {
 
 #[derive(Debug, Clone, Hash, Serialize, Deserialize)]
 pub struct ExtendedEventInfo {
-    #[serde(with = "FuckLabsMsgAddrStd")]
+   #[serde(with = "serde_std_addr")]
     pub address: MsgAddrStd,
-    #[serde(with = "FuckLabsUInt256")]
+    #[serde(with = "serde_uint256")]
     pub relay_key: UInt256,
     pub data: EthereumEventDetails,
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(remote = "UInt256")]
-struct FuckLabsUInt256([u8; 32]);
-
-#[derive(Serialize, Deserialize)]
-#[serde(remote = "MsgAddrStd")]
-struct FuckLabsMsgAddrStd {
-    pub anycast: Option<AnycastInfo>,
-    pub workchain_id: i8,
-    pub address: AccountId,
-}
 
 impl MappedData {
     fn new() -> Self {

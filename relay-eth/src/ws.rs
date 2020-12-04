@@ -6,21 +6,26 @@ use anyhow::Error;
 use futures::stream::{Stream, StreamExt};
 use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
-use sled::Db;
+use sled::{Db, Tree};
 use tokio::spawn;
-use tokio::sync::RwLock;
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+use tokio::sync::{Mutex, RwLock};
 use url::Url;
 use web3::transports::ws::WebSocket;
 pub use web3::types::{Address, BlockNumber, H256};
 use web3::types::{BlockHeader, FilterBuilder, Log, U256, U64};
 use web3::Web3;
 
-pub const ETH_PERSISTENT_KEY_NAME: &str = "ethereum_height";
+pub const ETH_HEIGHT_KEY: &str = "height";
+const ETH_TREE_NAME: &str = "ethereum_data";
+const ETH_LAST_MET_HEIGHT: &str = "last_met_height";
 
 #[derive(Clone)]
 pub struct EthListener {
     stream: Web3<WebSocket>,
-    db: Db,
+    db: Tree,
+    blocks_tx: UnboundedSender<u64>,
+    blocks_rx: Arc<Mutex<Option<UnboundedReceiver<u64>>>>,
 }
 
 ///topics: `Keccak256("Method_Signature")`
@@ -34,12 +39,12 @@ pub struct Event {
     pub block_number: u64,
 }
 
-pub fn update_eth_state(db: &Db, height: u64) -> Result<(), Error> {
-    db.insert(ETH_PERSISTENT_KEY_NAME, &height.to_le_bytes())?;
+pub fn update_eth_state(db: &Tree, height: u64, key: &str) -> Result<(), Error> {
+    db.insert(key, &height.to_le_bytes())?;
     Ok(())
 }
 
-async fn monitor_block_number(db: Db, listener: Web3<WebSocket>) {
+async fn monitor_block_number(db: Tree, listener: Web3<WebSocket>, sender: UnboundedSender<u64>) {
     let mut sub = match listener.eth_subscribe().subscribe_new_heads().await {
         Ok(a) => a,
         Err(e) => {
@@ -60,7 +65,10 @@ async fn monitor_block_number(db: Db, listener: Web3<WebSocket>) {
         match head.number {
             Some(a) => {
                 log::info!("Received new head with number: {}", a);
-                if let Err(e) = update_eth_state(&db, a.as_u64()) {
+                if let Err(e) = sender.send(a.as_u64()) {
+                    log::error!("Failed sending current eth height: {}", e)
+                }
+                if let Err(e) = update_eth_state(&db, a.as_u64(), ETH_HEIGHT_KEY) {
                     log::error!("Failed saving state to db: {}", e);
                 }
             }
@@ -72,8 +80,8 @@ async fn monitor_block_number(db: Db, listener: Web3<WebSocket>) {
 }
 
 impl EthListener {
-    async fn get_block_number(&self) -> Result<u64, Error> {
-        Ok(match self.db.get(ETH_PERSISTENT_KEY_NAME)? {
+    pub async fn get_block_number(&self) -> Result<u64, Error> {
+        Ok(match self.db.get(ETH_LAST_MET_HEIGHT)? {
             Some(a) => u64::from_le_bytes(a.as_ref().try_into()?),
             None => {
                 let block = self.stream.eth().block_number().await?.as_u64();
@@ -82,7 +90,12 @@ impl EthListener {
         })
     }
 
-    fn log_to_event(log: Log, db: &Db) -> Result<Event, Error> {
+    pub async fn get_blocks_stream(&self) -> Option<UnboundedReceiver<u64>> {
+        let mut guard = self.blocks_rx.lock().await;
+        guard.take()
+    }
+
+    fn log_to_event(log: Log, db: &Tree) -> Result<Event, Error> {
         let data = log.data.0;
         let hash = match log.transaction_hash {
             Some(a) => a,
@@ -93,7 +106,7 @@ impl EthListener {
         };
         let block_number = match log.block_number {
             Some(a) => {
-                if let Err(e) = update_eth_state(db, a.as_u64()) {
+                if let Err(e) = update_eth_state(db, a.as_u64(), ETH_LAST_MET_HEIGHT) {
                     let err = format!("Critical error: failed saving eth state: {}", e);
                     error!("{}", &err);
                     return Err(Error::msg(err));
@@ -134,7 +147,13 @@ impl EthListener {
             .expect("Failed connecting to ethereum node");
         info!("Connected to: {}", &url);
         let api = Web3::new(connection);
-        Ok(Self { stream: api, db })
+        let (tx, rx) = unbounded_channel();
+        Ok(Self {
+            stream: api,
+            db: db.open_tree(ETH_TREE_NAME)?,
+            blocks_tx: tx,
+            blocks_rx: Arc::new(Mutex::new(Option::Some(rx))),
+        })
     }
 
     pub async fn subscribe(
@@ -151,6 +170,7 @@ impl EthListener {
 
         let filter = self.stream.eth_filter().create_logs_filter(filter).await?;
         let mut stream = filter.stream(Duration::from_secs(1));
+        spawn(monitor_block_number(self.db.clone(), self.stream.clone(), self.blocks_tx.clone()));
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let db = self.db.clone();
         spawn(async move {
