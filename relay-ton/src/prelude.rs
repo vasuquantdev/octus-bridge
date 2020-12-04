@@ -97,7 +97,7 @@ pub mod serde_vec_uint256 {
     use super::*;
     use serde::ser::SerializeSeq;
 
-    pub fn serialize<S>(data: &ton_types::UInt256, serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<S>(data: &[ton_types::UInt256], serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
