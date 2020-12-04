@@ -65,7 +65,7 @@ impl TryFrom<(EthereumEventConfigurationContractEventKind, Vec<Token>)>
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct BridgeConfiguration {
     pub eth_event_configuration_required_confirmations: u8,
     pub eth_event_configuration_required_rejects: u8,
@@ -87,15 +87,18 @@ impl TryFrom<ContractOutput> for BridgeConfiguration {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct EthereumEventConfiguration {
     pub ethereum_event_abi: String,
     pub ethereum_event_address: Vec<u8>,
+    #[serde(with = "serde_std_addr")]
     pub event_proxy_address: MsgAddrStd,
     pub ethereum_event_blocks_to_confirm: BigUint,
     pub required_confirmations: BigUint,
     pub required_rejections: BigUint,
+    #[serde(with = "serde_vec_uint256")]
     pub confirm_keys: Vec<UInt256>,
+    #[serde(with = "serde_vec_uint256")]
     pub reject_keys: Vec<UInt256>,
 }
 
@@ -121,18 +124,23 @@ impl TryFrom<ContractOutput> for EthereumEventConfiguration {
     }
 }
 
-#[derive(Debug, Clone, Eq)]
+#[derive(Debug, Clone, Eq, Serialize, Deserialize)]
 pub struct EthereumEventDetails {
     pub ethereum_event_transaction: Vec<u8>,
     pub event_index: BigUint,
+    #[serde(with = "serde_cells")]
     pub event_data: Cell,
+    #[serde(with = "serde_std_addr")]
     pub proxy_address: MsgAddrStd,
     pub event_block_number: BigUint,
     pub event_block: Vec<u8>,
+    #[serde(with = "serde_std_addr")]
     pub event_configuration_address: MsgAddrStd,
     pub proxy_callback_executed: bool,
     pub event_rejected: bool,
+    #[serde(with = "serde_vec_uint256")]
     pub confirm_keys: Vec<UInt256>,
+    #[serde(with = "serde_vec_uint256")]
     pub reject_keys: Vec<UInt256>,
 }
 
