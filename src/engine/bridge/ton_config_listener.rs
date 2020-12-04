@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use tokio::stream::StreamExt;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::{mpsc, Mutex, Notify, RwLock};
+use tokio::time::{delay_for, Duration};
 use ton_block::{AnycastInfo, MsgAddrStd, MsgAddressInt};
 
 use relay_ton::contracts::{
@@ -15,9 +16,10 @@ use relay_ton::contracts::{
     EthereumEventContract, EthereumEventDetails,
 };
 use relay_ton::models::AccountId;
-use relay_ton::prelude::{Stream, UInt256, };
-use relay_ton::transport::Transport;
 use relay_ton::prelude::{serde_std_addr, serde_uint256};
+use relay_ton::prelude::{Stream, UInt256};
+use relay_ton::transport::Transport;
+
 use crate::engine::bridge::util::abi_to_topic_hash;
 
 #[derive(Debug, Clone)]
@@ -31,13 +33,12 @@ pub struct MappedData {
 
 #[derive(Debug, Clone, Hash, Serialize, Deserialize)]
 pub struct ExtendedEventInfo {
-   #[serde(with = "serde_std_addr")]
+    #[serde(with = "serde_std_addr")]
     pub address: MsgAddrStd,
     #[serde(with = "serde_uint256")]
     pub relay_key: UInt256,
     pub data: EthereumEventDetails,
 }
-
 
 impl MappedData {
     fn new() -> Self {
@@ -57,6 +58,7 @@ pub struct ConfigListener {
     initial_data_received: Arc<Notify>,
     ton_received_events: Arc<Mutex<Option<mpsc::UnboundedReceiver<ExtendedEventInfo>>>>,
     ton_tx: mpsc::UnboundedSender<ExtendedEventInfo>,
+    event_configuration: Arc<RwLock<HashMap<Vec<u8>, EthereumEventConfiguration>>>,
 }
 
 async fn make_config_contract(
@@ -129,7 +131,19 @@ impl ConfigListener {
             initial_data_received: Arc::new(Notify::new()),
             ton_received_events: Arc::new(Mutex::new(Some(rx))),
             ton_tx: tx,
+            event_configuration: Arc::new(RwLock::new(HashMap::new())),
         })
+    }
+
+    ///Gives mapping address in ethereum :EthereumEventConfiguration
+    pub async fn get_event_configuration(&self) -> HashMap<Vec<u8>, EthereumEventConfiguration> {
+        loop {
+            let configuration = self.event_configuration.read().await;
+            if !configuration.is_empty() {
+                return configuration.clone();
+            }
+            delay_for(Duration::from_millis(300)).await;
+        }
     }
 
     pub async fn get_initial_config_map(&self) -> MappedData {
@@ -168,6 +182,7 @@ impl ConfigListener {
             log::debug!("start listening config: {:?}", config);
             tokio::spawn(listener(transport.clone(), tx.clone(), config, None));
         }
+
         tokio::spawn({
             let transport = transport.clone();
             let bridge = Arc::new(bridge.clone());
@@ -228,8 +243,11 @@ impl ConfigListener {
                 let mut mapped_data = guard;
                 update_mapped_data(
                     &mut mapped_data,
-                    ethereum_event_configuration_contract_details,
+                    ethereum_event_configuration_contract_details.clone(),
                 );
+                let lock = self.event_configuration.clone();
+                let mut guard = lock.write().await;
+                guard.insert(ethereum_event_configuration_contract_details.ethereum_event_address.clone(), ethereum_event_configuration_contract_details);
             }
         }
     }

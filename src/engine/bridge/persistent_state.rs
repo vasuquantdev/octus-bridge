@@ -18,41 +18,38 @@ const PERSISTENT_TREE_NAME: &str = "unconfirmed_events";
 
 pub struct TonWatcher {
     db: Tree,
-    contract_configuration: Arc<EthereumEventConfigurationContract>,
     transport: Arc<dyn Transport>,
 }
 
 impl TonWatcher {
     pub fn new(
         db: Db,
-        contract_configuration: Arc<EthereumEventConfigurationContract>,
         transport: Arc<dyn Transport>,
     ) -> Result<Self, Error> {
         Ok(Self {
             db: db.open_tree(PERSISTENT_TREE_NAME)?,
-            contract_configuration,
             transport,
         })
     }
 
-    pub async fn watch(&self, events: UnboundedReceiver<ExtendedEventInfo>) {
+    pub async fn watch(self: Arc<Self>, events: UnboundedReceiver<ExtendedEventInfo>) {
         let db = &self.db;
         let mut events = events;
         while let Some(event) = events.next().await {
             let tx_hash = &event.data.ethereum_event_transaction;
-            db.insert(tx_hash, serialize(&event).expect("Shouldn't fail"));
+            db.insert(tx_hash, serialize(&event).expect("Shouldn't fail")).unwrap();
         }
     }
 
-    pub fn drop_key(&self, key: &[u8]) -> Result<(), Error> {
+    pub fn drop_event_by_hash(&self, key: &[u8]) -> Result<(), Error> {
         self.db.remove(key)?;
         Ok(())
     }
 
-    pub fn get_event(&self, key: &[u8]) -> Result<Option<ExtendedEventInfo>, Error> {
+    pub fn get_event_by_hash(&self, hash: &[u8]) -> Result<Option<ExtendedEventInfo>, Error> {
         Ok(self
             .db
-            .get(key)?
+            .get(hash)?
             .and_then(|x| deserialize(&x).expect("Shouldn't fail")))
     }
 
