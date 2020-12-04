@@ -62,7 +62,8 @@ impl NodeClient {
             .ok_or_else(invalid_response)?
             .into_iter()
             .next()
-            .and_then(|item| item.and_then(|account| account.boc)).ok_or(TransportError::AccountNotFound)?;
+            .and_then(|item| item.and_then(|account| account.boc))
+            .ok_or(TransportError::AccountNotFound)?;
 
         match Account::construct_from_base64(&account_state) {
             Ok(Account::Account(account_stuff)) => Ok(account_stuff),
