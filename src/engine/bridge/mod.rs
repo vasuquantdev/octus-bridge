@@ -22,6 +22,7 @@ mod ton_config_listener;
 
 mod util;
 mod persistent_state;
+mod models;
 
 pub struct Bridge {
     eth_signer: EthSigner,
@@ -88,7 +89,6 @@ impl Bridge {
                 &event.address,
                 &event.tx_hash
             );
-
             let decoded_data: Option<Result<Vec<ethabi::Token>, _>> = event
                 .topics
                 .iter()

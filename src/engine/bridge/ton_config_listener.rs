@@ -3,20 +3,22 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 use ethereum_types::{Address, H160, H256};
+use serde::{Deserialize, Serialize};
 use tokio::stream::StreamExt;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::{mpsc, Mutex, Notify, RwLock};
-use ton_block::{MsgAddrStd, MsgAddressInt};
+use ton_block::{AnycastInfo, MsgAddrStd, MsgAddressInt};
 
 use relay_ton::contracts::{
     BridgeContract, BridgeContractEvent, ContractWithEvents, EthereumEventConfiguration,
     EthereumEventConfigurationContract, EthereumEventConfigurationContractEvent,
     EthereumEventContract, EthereumEventDetails,
 };
-use relay_ton::prelude::Stream;
+use relay_ton::models::AccountId;
+use relay_ton::prelude::{Stream, UInt256};
 use relay_ton::transport::Transport;
 
 use crate::engine::bridge::util::abi_to_topic_hash;
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 #[derive(Debug, Clone)]
 pub struct MappedData {
@@ -25,6 +27,27 @@ pub struct MappedData {
     pub address_topic_map: HashMap<H160, Vec<(H256, Vec<ethabi::ParamType>)>>,
     pub topic_abi_map: HashMap<H256, Vec<ethabi::ParamType>>,
     pub eth_proxy_map: HashMap<H160, MsgAddrStd>,
+}
+
+#[derive(Debug, Clone, Hash, Serialize, Deserialize)]
+pub struct ExtendedEventInfo {
+    #[serde(with = "FuckLabsMsgAddrStd")]
+    pub address: MsgAddrStd,
+    #[serde(with = "FuckLabsUInt256")]
+    pub relay_key: UInt256,
+    pub data: EthereumEventDetails,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(remote = "UInt256")]
+struct FuckLabsUInt256([u8; 32]);
+
+#[derive(Serialize, Deserialize)]
+#[serde(remote = "MsgAddrStd")]
+struct FuckLabsMsgAddrStd {
+    pub anycast: Option<AnycastInfo>,
+    pub workchain_id: i8,
+    pub address: AccountId,
 }
 
 impl MappedData {
@@ -43,8 +66,8 @@ impl MappedData {
 pub struct ConfigListener {
     current_config: Arc<RwLock<MappedData>>,
     initial_data_received: Arc<Notify>,
-    ton_received_events: Arc<Mutex<Option<mpsc::UnboundedReceiver<EthereumEventDetails>>>>,
-    ton_tx: mpsc::UnboundedSender<EthereumEventDetails>,
+    ton_received_events: Arc<Mutex<Option<mpsc::UnboundedReceiver<ExtendedEventInfo>>>>,
+    ton_tx: mpsc::UnboundedSender<ExtendedEventInfo>,
 }
 
 async fn make_config_contract(
@@ -129,7 +152,7 @@ impl ConfigListener {
         self.current_config.read().await.clone()
     }
 
-    pub async fn get_events_stream(&self) -> Option<UnboundedReceiver<EthereumEventDetails>> {
+    pub async fn get_events_stream(&self) -> Option<UnboundedReceiver<ExtendedEventInfo>> {
         let mut guard = self.ton_received_events.lock().await;
         guard.take()
     }
@@ -178,14 +201,14 @@ impl ConfigListener {
         while let Some(event) = ton_events.next().await {
             if let EthereumEventConfigurationContractEvent::NewEthereumEventConfirmation {
                 address,
-                ..
+                relay_key,
             } = event
             {
                 let details = ethereum_event_contract.get_details(address.clone()).await;
                 let ethereum_event_configuration_contract =
                     EthereumEventConfigurationContract::new(
                         transport.clone(),
-                        ton_block::MsgAddressInt::AddrStd(address),
+                        ton_block::MsgAddressInt::AddrStd(address.clone()),
                     )
                     .await
                     .unwrap();
@@ -203,9 +226,14 @@ impl ConfigListener {
                         continue;
                     }
                 };
-                if let Err(e) = ton_tx.send(ethereum_event_details) {
+                if let Err(e) = ton_tx.send(ExtendedEventInfo {
+                    relay_key,
+                    address,
+                    data: ethereum_event_details,
+                }) {
                     log::error!("Failed sending eth event detatils via channel: {}", e);
                 }
+
                 let rwlock = self.current_config.clone();
                 let guard = rwlock.write().await;
                 let mut mapped_data = guard;

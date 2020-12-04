@@ -3,6 +3,7 @@ use futures::Stream;
 use futures::StreamExt;
 use sled::{Db, Tree};
 use tokio::sync::mpsc::UnboundedReceiver;
+use bincode::serialize;
 
 use relay_ton::contracts::{
     ContractWithEvents, EthereumEventConfigurationContract,
@@ -10,8 +11,9 @@ use relay_ton::contracts::{
 };
 use relay_ton::prelude::Arc;
 use relay_ton::transport::Transport;
+use crate::engine::bridge::ton_config_listener::ExtendedEventInfo;
 
-const PERSISTENT_TREE_NAME: &str = "ton_data";
+const PERSISTENT_TREE_NAME: &str = "unconfirmed_transactions";
 
 pub struct TonWatcher {
     db: Tree,
@@ -32,10 +34,13 @@ impl TonWatcher {
         })
     }
 
-    pub async fn watch(&self, events: UnboundedReceiver<EthereumEventDetails>) {
+    pub async fn watch(&self, events: UnboundedReceiver<ExtendedEventInfo>) {
+        let db = &self.db;
         let mut events = events;
         while let Some(event) = events.next().await {
-            println!("{:?}", event);
+            let addr = &event.address;
+                let tx_hash = &event.data.ethereum_event_transaction;
+                db.insert(tx_hash, serialize(&event).expect("Shouldn't fail"));
         }
     }
 }
