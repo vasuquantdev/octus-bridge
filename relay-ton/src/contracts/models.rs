@@ -102,6 +102,8 @@ pub struct EthereumEventConfiguration {
     pub reject_keys: Vec<UInt256>,
 }
 
+
+
 impl StandaloneToken for EthereumEventConfiguration {}
 
 impl TryFrom<ContractOutput> for EthereumEventConfiguration {

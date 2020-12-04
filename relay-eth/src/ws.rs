@@ -4,16 +4,16 @@ use std::time::Duration;
 
 use anyhow::Error;
 use futures::stream::{Stream, StreamExt};
-use log::{error, info, warn};
+use log::{error, info};
 use serde::{Deserialize, Serialize};
 use sled::{Db, Tree};
 use tokio::spawn;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::{Mutex};
 use url::Url;
 use web3::transports::ws::WebSocket;
 pub use web3::types::{Address, BlockNumber, H256};
-use web3::types::{BlockHeader, FilterBuilder, Log, U256, U64};
+use web3::types::{BlockHeader, FilterBuilder, Log};
 use web3::Web3;
 
 pub const ETH_HEIGHT_KEY: &str = "height";
@@ -37,6 +37,7 @@ pub struct Event {
     pub topics: Vec<H256>,
     pub event_index: u64,
     pub block_number: u64,
+    pub block_hash: Vec<u8>,
 }
 
 pub fn update_eth_state(db: &Tree, height: u64, key: &str) -> Result<(), Error> {
@@ -84,8 +85,7 @@ impl EthListener {
         Ok(match self.db.get(ETH_LAST_MET_HEIGHT)? {
             Some(a) => u64::from_le_bytes(a.as_ref().try_into()?),
             None => {
-                let block = self.stream.eth().block_number().await?.as_u64();
-                block
+                self.stream.eth().block_number().await?.as_u64()
             }
         })
     }
@@ -130,6 +130,14 @@ impl EthListener {
                 return Err(Error::msg(err));
             }
         };
+        let block_hash = match log.block_hash {
+            Some(a) => Vec::from(a.0),
+            None => {
+                let err = format!("No hash in log. Tx hash: {}. Block: {}", hash, block_number);
+                error!("{}", err);
+                return Err(Error::msg(err));
+            }
+        };
 
         Ok(Event {
             address: log.address,
@@ -138,6 +146,7 @@ impl EthListener {
             topics: log.topics,
             event_index,
             block_number,
+            block_hash,
         })
     }
 
@@ -170,7 +179,11 @@ impl EthListener {
 
         let filter = self.stream.eth_filter().create_logs_filter(filter).await?;
         let mut stream = filter.stream(Duration::from_secs(1));
-        spawn(monitor_block_number(self.db.clone(), self.stream.clone(), self.blocks_tx.clone()));
+        spawn(monitor_block_number(
+            self.db.clone(),
+            self.stream.clone(),
+            self.blocks_tx.clone(),
+        ));
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let db = self.db.clone();
         spawn(async move {

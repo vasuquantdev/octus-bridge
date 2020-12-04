@@ -74,37 +74,60 @@ impl Bridge {
 
     async fn watch_unsent_eth_ton_transactions(
         stream: UnboundedReceiver<u64>,
-        tree: Tree,
+        eth_tree: Tree,
+        ton_tree: Tree,
         bridge: Arc<BridgeContract>,
     ) {
         let mut stream = stream;
         while let Some(block_number) = stream.next().await {
-            let prepared_data = match tree.get(serialize(&block_number).expect("Shouldn't fail")) {
-                Ok(a) => match a {
-                    Some(a) => {
-                        let data =
-                            deserialize::<Vec<EthTonConfirmationData>>(&a).expect("Shouldn't fail");
-                        log::debug!(
-                            "Found unconfirmed data in block {}: {:#?}",
-                            block_number,
-                            &data
+            let prepared_data =
+                match eth_tree.get(serialize(&block_number).expect("Shouldn't fail")) {
+                    Ok(a) => match a {
+                        Some(a) => {
+                            let data = deserialize::<Vec<EthTonConfirmationData>>(&a)
+                                .expect("Shouldn't fail");
+                            log::debug!(
+                                "Found unconfirmed data in block {}: {:#?}",
+                                block_number,
+                                &data
+                            );
+                            data
+                        }
+                        None => {
+                            log::debug!("No data found for block {}", block_number);
+                            continue;
+                        }
+                    },
+                    Err(e) => {
+                        log::error!(
+                            "CRITICAL ERROR. Failed getting data from {}: {}",
+                            ETH_UNCONFIRMED_TRANSACTIONS_TREE_NAME,
+                            e
                         );
-                        data
-                    }
-                    None => {
-                        log::debug!("No data found for block {}", block_number);
                         continue;
                     }
-                },
-                Err(e) => {
-                    log::error!(
-                        "CRITICAL ERROR. Failed getting data from {}: {}",
-                        ETH_UNCONFIRMED_TRANSACTIONS_TREE_NAME,
-                        e
-                    );
-                    continue;
-                }
-            };
+                };
+
+            for fake_event in TonWatcher::scan_for_block_lower_bound(&ton_tree, block_number.into())
+            {
+                let event = fake_event.data;
+                let bridge = bridge.clone();
+                let ethereum_event_transaction = event.ethereum_event_transaction.clone();
+                tokio::spawn(async move {
+                    bridge
+                        .reject_ethereum_event(
+                            event.ethereum_event_transaction, //not in other order on case of shutdown
+                            event.event_index,
+                            event.event_data,
+                            event.event_block_number,
+                            event.event_block,
+                            MsgAddressInt::AddrStd(event.event_configuration_address),
+                        )
+                        .await
+                    //todo error handling
+                });
+                ton_tree.remove(&ethereum_event_transaction).unwrap();
+            }
 
             for event in prepared_data {
                 let bridge = bridge.clone();
@@ -236,11 +259,12 @@ impl Bridge {
                         continue;
                     }
                 });
+            //if some relay already reported transaction
             match ton_watcher
                 .get_event_by_hash(event.tx_hash.as_ref())
                 .unwrap() // db  error
             {
-                Some(a) => {
+                Some(_) => {
                     ton_client.confirm_ethereum_event(
                         event_transaction,
                         event_index,

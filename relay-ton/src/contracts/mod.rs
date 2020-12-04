@@ -146,15 +146,12 @@ mod tests {
         let ethereum_event_contract = make_ethereum_event_contract(&transport).await;
         tokio::spawn(async move {
             while let Some(event) = ton_events.next().await {
-                match event {
-                    EthereumEventConfigurationContractEvent::NewEthereumEventConfirmation {
+                if let EthereumEventConfigurationContractEvent::NewEthereumEventConfirmation {
                         address,
                         ..
-                    } => {
-                        let details = ethereum_event_contract.get_details(address).await.unwrap();
-                        println!("got ethereum event: {:?}", details);
-                    }
-                    _ => {}
+                    } = event {
+                    let details = ethereum_event_contract.get_details(address).await.unwrap();
+                    println!("got ethereum event: {:?}", details);
                 }
             }
         });

@@ -1,6 +1,5 @@
 use anyhow::Error;
 use bincode::{deserialize, serialize};
-use futures::Stream;
 use futures::StreamExt;
 use sled::{Db, Tree};
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -53,8 +52,8 @@ impl TonWatcher {
             .and_then(|x| deserialize(&x).expect("Shouldn't fail")))
     }
 
-    pub fn scan_for_block(&self, block_number: BigUint) -> Vec<ExtendedEventInfo> {
-        self.db
+    pub fn scan_for_block_lower_bound(tree: &Tree, block_number: BigUint) -> Vec<ExtendedEventInfo> {
+        tree
             .iter()
             .values()
             .filter_map(|x| match x {
