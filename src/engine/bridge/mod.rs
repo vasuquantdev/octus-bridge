@@ -37,7 +37,7 @@ pub struct Bridge {
     ton_client: BridgeContract,
     eth_client: EthListener,
     ton_transport: Arc<dyn Transport>,
-    db: Db
+    db: Db,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -58,14 +58,14 @@ impl Bridge {
         eth_client: EthListener,
         ton_client: BridgeContract,
         ton_transport: Arc<dyn Transport>,
-        db: Db
+        db: Db,
     ) -> Self {
         Self {
             eth_signer,
             ton_client,
             eth_client,
             ton_transport,
-            db
+            db,
         }
     }
 
@@ -92,7 +92,7 @@ impl Bridge {
                     }
                     None => {
                         log::debug!("No data found for block {}", block_number);
-                        continue
+                        continue;
                     }
                 },
                 Err(e) => {
@@ -106,14 +106,18 @@ impl Bridge {
             };
             for event in prepared_data {
                 let bridge = bridge.clone();
-                tokio::spawn(bridge.confirm_ethereum_event(
-                    event.event_transaction,
-                    event.event_index,
-                    event.event_data,
-                    event.event_block_number,
-                    event.event_block,
-                    event.ethereum_event_configuration_address,
-                ));
+                tokio::spawn(async move {
+                    bridge
+                        .confirm_ethereum_event(
+                            event.event_transaction,
+                            event.event_index,
+                            event.event_data,
+                            event.event_block_number,
+                            event.event_block,
+                            event.ethereum_event_configuration_address,
+                        )
+                        .await
+                });
                 //todo error handling
             }
             // bridge.confirm_ethereum_event()
@@ -226,7 +230,7 @@ impl Bridge {
             self.eth_client.clone(),
             self.ton_client.clone(),
             self.ton_transport.clone(),
-            self.db.clone()
+            self.db.clone(),
         ));
         tokio::time::delay_for(Duration::from_secs(8640000)).await;
         Ok(())
