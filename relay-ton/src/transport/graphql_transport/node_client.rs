@@ -325,6 +325,7 @@ impl NodeClient {
             .collect())
     }
 
+    #[allow(dead_code)]
     pub async fn send_message(&self, message: &Message) -> TransportResult<()> {
         let cell = message
             .serialize()

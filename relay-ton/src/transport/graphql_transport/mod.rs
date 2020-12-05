@@ -61,9 +61,10 @@ impl RunLocal for GraphQLTransport {
 
 #[async_trait]
 impl Transport for GraphQLTransport {
-    async fn subscribe(&self, addr: &str) -> TransportResult<Arc<dyn AccountSubscription>> {
-        let addr = MsgAddressInt::from_str(addr).map_err(|_| TransportError::InvalidAddress)?;
-
+    async fn subscribe(
+        &self,
+        addr: MsgAddressInt,
+    ) -> TransportResult<Arc<dyn AccountSubscription>> {
         let subscription: Arc<dyn AccountSubscription> = GraphQLAccountSubscription::new(
             self.db.clone(),
             self.client.clone(),
@@ -78,14 +79,12 @@ impl Transport for GraphQLTransport {
 
     fn rescan_events(
         &self,
-        addr: &str,
+        account: MsgAddressInt,
         since_lt: Option<u64>,
         until_lt: Option<u64>,
     ) -> TransportResult<BoxStream<TransportResult<SliceData>>> {
-        let address = MsgAddressInt::from_str(addr).map_err(|_| TransportError::InvalidAddress)?;
-
         Ok(Box::pin(EventsScanner {
-            address,
+            account,
             client: &self.client,
             since_lt,
             until_lt,
@@ -345,7 +344,7 @@ impl AccountSubscription for GraphQLAccountSubscription {
         until_lt: Option<u64>,
     ) -> TransportResult<BoxStream<TransportResult<SliceData>>> {
         Ok(Box::pin(EventsScanner {
-            address: self.account.clone(),
+            account: self.account.clone(),
             client: &self.client,
             since_lt,
             until_lt,
@@ -365,7 +364,7 @@ struct PendingMessage {
 const MESSAGES_PER_SCAN_ITER: u32 = 50;
 
 struct EventsScanner<'a> {
-    address: MsgAddressInt,
+    account: MsgAddressInt,
     client: &'a NodeClient,
     since_lt: Option<u64>,
     until_lt: Option<u64>,
@@ -441,7 +440,7 @@ where
                 },
                 (None, None) => {
                     let client = self.client.clone();
-                    let address = self.address.clone();
+                    let address = self.account.clone();
                     let since_lt = self.since_lt;
                     let until_lt = self.until_lt;
 
@@ -522,11 +521,9 @@ mod tests {
     use super::*;
     use futures::StreamExt;
 
-    use util::setup;
-
     async fn make_transport() -> GraphQLTransport {
         std::env::set_var("RUST_LOG", "relay_ton::transport::graphql_transport=debug");
-        setup();
+        util::setup();
         let db = sled::Config::new().temporary(true).open().unwrap();
 
         GraphQLTransport::new(
@@ -540,33 +537,39 @@ mod tests {
         .unwrap()
     }
 
-    const ELECTOR_ADDR: &str =
-        "-1:3333333333333333333333333333333333333333333333333333333333333333";
+    fn elector_addr() -> MsgAddressInt {
+        MsgAddressInt::from_str(
+            "-1:3333333333333333333333333333333333333333333333333333333333333333",
+        )
+        .unwrap()
+    }
 
-    const MY_ADDR: &str = "-1:17519bc2a04b6ecf7afa25ba30601a4e16c9402979c236db13e1c6f3c4674e8c";
+    fn my_addr() -> MsgAddressInt {
+        MsgAddressInt::from_str(
+            "-1:17519bc2a04b6ecf7afa25ba30601a4e16c9402979c236db13e1c6f3c4674e8c",
+        )
+        .unwrap()
+    }
 
     #[tokio::test]
     async fn create_transport() {
-        setup();
         let _transport = make_transport().await;
     }
 
     #[tokio::test]
     async fn account_subscription() {
-        setup();
         let transport = make_transport().await;
 
-        let _subscription = transport.subscribe(&ELECTOR_ADDR).await.unwrap();
+        let _subscription = transport.subscribe(elector_addr()).await.unwrap();
 
         tokio::time::delay_for(tokio::time::Duration::from_secs(10)).await;
     }
 
     #[tokio::test]
     async fn rescan_lt() {
-        setup();
         let transport = make_transport().await;
 
-        let mut scanner = transport.rescan_events(MY_ADDR, None, None).unwrap();
+        let mut scanner = transport.rescan_events(my_addr(), None, None).unwrap();
 
         while let Some(item) = scanner.next().await {
             log::info!("Got item: {:?}", item);

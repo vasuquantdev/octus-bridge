@@ -18,7 +18,7 @@ impl EthereumEventConfigurationContract {
         transport: Arc<dyn Transport>,
         account: MsgAddressInt,
     ) -> ContractResult<Self> {
-        let subscription = transport.subscribe(&account.to_string()).await?;
+        let subscription = transport.subscribe(account.clone()).await?;
         let contract = abi();
 
         let config = ContractConfig {

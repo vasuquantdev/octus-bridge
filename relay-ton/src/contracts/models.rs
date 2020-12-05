@@ -39,7 +39,7 @@ crate::define_event!(
 );
 
 impl TryFrom<(EthereumEventConfigurationContractEventKind, Vec<Token>)>
-for EthereumEventConfigurationContractEvent
+    for EthereumEventConfigurationContractEvent
 {
     type Error = ContractError;
 
@@ -101,8 +101,6 @@ pub struct EthereumEventConfiguration {
     #[serde(with = "serde_vec_uint256")]
     pub reject_keys: Vec<UInt256>,
 }
-
-
 
 impl StandaloneToken for EthereumEventConfiguration {}
 

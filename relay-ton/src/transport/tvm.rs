@@ -1,4 +1,7 @@
-use ton_block::{Deserializable, Message, Serializable};
+use ton_block::{
+    AccountStuff, CommonMsgInfo, CurrencyCollection, Deserializable, Message, OutAction,
+    OutActions, Serializable,
+};
 use ton_types::SliceData;
 use ton_vm::executor::gas::gas_state::Gas;
 use ton_vm::stack::integer::IntegerData;
@@ -10,9 +13,9 @@ use crate::transport::errors::*;
 pub fn call(
     utime: u32,
     lt: u64,
-    mut account: ton_block::AccountStuff,
+    mut account: AccountStuff,
     stack: Stack,
-) -> TransportResult<(ton_vm::executor::Engine, ton_block::AccountStuff)> {
+) -> TransportResult<(ton_vm::executor::Engine, AccountStuff)> {
     let mut state = match &mut account.storage.state {
         ton_block::AccountState::AccountActive(state) => Ok(state),
         _ => Err(TransportError::ExecutionError {
@@ -93,9 +96,9 @@ pub fn call(
 pub fn call_msg(
     utime: u32,
     lt: u64,
-    account: ton_block::AccountStuff,
+    account: AccountStuff,
     msg: &Message,
-) -> TransportResult<(Vec<Message>, ton_block::AccountStuff)> {
+) -> TransportResult<(Vec<Message>, AccountStuff)> {
     let msg_cell = msg
         .write_to_new_cell()
         .map_err(|err| TransportError::FailedToSendMessage {
@@ -105,9 +108,9 @@ pub fn call_msg(
     let mut stack = Stack::new();
     let balance = account.storage.balance.grams.value();
     let function_selector = match msg.header() {
-        ton_block::CommonMsgInfo::IntMsgInfo(_) => ton_vm::int!(0),
-        ton_block::CommonMsgInfo::ExtInMsgInfo(_) => ton_vm::int!(-1),
-        ton_block::CommonMsgInfo::ExtOutMsgInfo(_) => {
+        CommonMsgInfo::IntMsgInfo(_) => ton_vm::int!(0),
+        CommonMsgInfo::ExtInMsgInfo(_) => ton_vm::int!(-1),
+        CommonMsgInfo::ExtOutMsgInfo(_) => {
             return Err(TransportError::ExecutionError {
                 reason: "invalid message type".to_owned(),
             })
@@ -130,7 +133,7 @@ pub fn call_msg(
             reason: format!("can not get actions: {}", err),
         })?
         .clone();
-    let mut actions = ton_block::OutActions::construct_from_cell(actions_cell).map_err(|err| {
+    let mut actions = OutActions::construct_from_cell(actions_cell).map_err(|err| {
         TransportError::ExecutionError {
             reason: format!("can not parse actions: {}", err),
         }
@@ -138,9 +141,7 @@ pub fn call_msg(
 
     let mut msgs = vec![];
     for (_, action) in actions.iter_mut().enumerate() {
-        if let ton_block::OutAction::SendMsg { out_msg, .. } =
-            std::mem::replace(action, ton_block::OutAction::None)
-        {
+        if let OutAction::SendMsg { out_msg, .. } = std::mem::replace(action, OutAction::None) {
             msgs.push(out_msg);
         }
     }
@@ -150,8 +151,8 @@ pub fn call_msg(
 }
 
 fn build_contract_info(
-    address: &ton_block::MsgAddressInt,
-    balance: &ton_block::CurrencyCollection,
+    address: &MsgAddressInt,
+    balance: &CurrencyCollection,
     block_unixtime: u32,
     block_lt: u64,
     tr_lt: u64,

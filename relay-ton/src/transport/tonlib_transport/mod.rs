@@ -4,16 +4,14 @@ pub use config::*;
 
 use std::collections::hash_map;
 
-use failure::AsFail;
 use futures::task::{Context, Poll};
 use tokio::time::Duration;
 use ton_abi::Function;
-use ton_api::ton;
 use ton_block::{
     AccountStuff, Deserializable, ExternalInboundMessageHeader, Message, Serializable,
 };
 use ton_types::SliceData;
-use tonlib::{TonlibClient, TonlibError};
+use tonlib::{AccountStats, TonlibClient};
 
 use super::errors::*;
 use super::tvm;
@@ -38,7 +36,7 @@ impl TonlibTransport {
         let max_initial_rescan_gap = config.max_initial_rescan_gap;
         let max_rescan_gap = config.max_rescan_gap;
 
-        let client = tonlib::TonlibClient::new(&config.into())
+        let client = tonlib::TonlibClient::new(&config.tonlib_config())
             .await
             .map_err(to_api_error)?;
 
@@ -59,9 +57,6 @@ impl RunLocal for TonlibTransport {
         abi: &Function,
         message: ExternalMessage,
     ) -> TransportResult<ContractOutput> {
-        let address = tonlib::utils::make_address_from_str(&message.dest.to_string())
-            .map_err(to_api_error)?;
-
         let mut message_header = ExternalInboundMessageHeader::default();
         message_header.dst = message.dest.clone();
 
@@ -70,19 +65,13 @@ impl RunLocal for TonlibTransport {
             msg.set_body(body);
         }
 
-        let account_state = self
+        let (stats, info) = self
             .client
-            .get_account_state(address)
+            .get_account_state(&message.dest)
             .await
             .map_err(to_api_error)?;
-        let info = parse_account_stuff(account_state.data.0.as_slice())?;
 
-        let (messages, _) = tvm::call_msg(
-            account_state.gen_utime as u32,
-            account_state.gen_lt as u64,
-            info,
-            &msg,
-        )?;
+        let (messages, _) = tvm::call_msg(stats.gen_utime, stats.gen_lt, info, &msg)?;
         process_out_messages(
             &messages,
             MessageProcessingParams {
@@ -95,14 +84,17 @@ impl RunLocal for TonlibTransport {
 
 #[async_trait]
 impl Transport for TonlibTransport {
-    async fn subscribe(&self, addr: &str) -> TransportResult<Arc<dyn AccountSubscription>> {
+    async fn subscribe(
+        &self,
+        account: MsgAddressInt,
+    ) -> TransportResult<Arc<dyn AccountSubscription>> {
         let subscription: Arc<dyn AccountSubscription> = TonlibAccountSubscription::new(
             &self.db,
             &self.client,
             &self.subscription_polling_interval,
             self.max_initial_rescan_gap,
             self.max_rescan_gap,
-            addr,
+            account,
         )
         .await?;
 
@@ -111,14 +103,12 @@ impl Transport for TonlibTransport {
 
     fn rescan_events(
         &self,
-        addr: &str,
+        account: MsgAddressInt,
         since_lt: Option<u64>,
         until_lt: Option<u64>,
     ) -> TransportResult<BoxStream<TransportResult<SliceData>>> {
-        let addr = tonlib::utils::make_address_from_str(addr).map_err(to_api_error)?;
-
         Ok(EventsScanner {
-            address: Cow::Owned(addr),
+            address: Cow::Owned(account),
             client: &self.client,
             since_lt,
             until_lt,
@@ -131,8 +121,8 @@ struct TonlibAccountSubscription {
     db: Db,
     client: Arc<tonlib::TonlibClient>,
     event_notifier: watch::Receiver<AccountEvent>,
-    account: ton::lite_server::accountid::AccountId,
-    known_state: RwLock<ton::lite_server::rawaccount::RawAccount>,
+    account: MsgAddressInt,
+    known_state: RwLock<(AccountStats, AccountStuff)>,
     pending_messages: RwLock<HashMap<UInt256, PendingMessage>>,
 }
 
@@ -143,17 +133,16 @@ impl TonlibAccountSubscription {
         polling_interval: &Duration,
         max_initial_rescan_gap: Option<u32>,
         max_rescan_gap: Option<u32>,
-        addr: &str,
+        account: MsgAddressInt,
     ) -> TransportResult<Arc<Self>> {
         let db = db.clone();
         let client = client.clone();
-        let account = tonlib::utils::make_address_from_str(addr).map_err(to_api_error)?;
-        let known_state = client
-            .get_account_state(account.clone())
+        let (stats, known_state) = client
+            .get_account_state(&account)
             .await
             .map_err(to_api_error)?;
 
-        let last_trans_lt = match db.get(account.id.0.as_slice()).map_err(|e| {
+        let last_trans_lt = match db.get(account.address().get_bytestring(0)).map_err(|e| {
             TransportError::FailedToInitialize {
                 reason: e.to_string(),
             }
@@ -165,7 +154,7 @@ impl TonlibAccountSubscription {
                 }
                 lt
             }
-            None => known_state.last_trans_lt as u64,
+            None => stats.last_trans_lt as u64,
         };
 
         let (tx, rx) = watch::channel(AccountEvent::StateChanged);
@@ -175,7 +164,7 @@ impl TonlibAccountSubscription {
             client,
             event_notifier: rx,
             account,
-            known_state: RwLock::new(known_state),
+            known_state: RwLock::new((stats, known_state)),
             pending_messages: RwLock::new(HashMap::new()),
         });
         subscription.start_loop(
@@ -207,9 +196,9 @@ impl TonlibAccountSubscription {
 
                 tokio::time::delay_for(interval).await;
 
-                let account_state = match subscription
+                let (stats, account_state) = match subscription
                     .client
-                    .get_account_state(subscription.account.clone())
+                    .get_account_state(&subscription.account)
                     .await
                 {
                     Ok(state) => state,
@@ -218,21 +207,21 @@ impl TonlibAccountSubscription {
                         continue;
                     }
                 };
-                log::debug!("got account state: {:?}", account_state);
+                log::debug!("got account state: {:?}, {:?}", stats, account_state);
 
-                let new_trans_lt = account_state.last_trans_lt as u64;
+                let new_trans_lt = stats.last_trans_lt;
                 if last_trans_lt >= new_trans_lt {
                     log::debug!("no changes found. skipping");
                     continue;
                 }
 
-                let gen_utime = account_state.gen_utime as u32;
+                let gen_utime = stats.gen_utime;
                 let mut current_trans_lt = new_trans_lt;
-                let mut current_trans_hash = account_state.last_trans_hash.clone();
+                let mut current_trans_hash = stats.last_trans_hash.clone();
 
                 {
                     let mut known_state = subscription.known_state.write().await;
-                    *known_state = account_state;
+                    *known_state = (stats, account_state);
                 }
                 let _ = state_notifier.broadcast(AccountEvent::StateChanged);
 
@@ -243,9 +232,9 @@ impl TonlibAccountSubscription {
                     let transactions = match subscription
                         .client
                         .get_transactions(
-                            subscription.account.clone(),
+                            &subscription.account,
                             16,
-                            current_trans_lt as i64,
+                            current_trans_lt,
                             current_trans_hash.clone(),
                         )
                         .await
@@ -261,18 +250,9 @@ impl TonlibAccountSubscription {
                         }
                     };
 
-                    for transaction in transactions.into_iter() {
-                        let (transaction, hash) =
-                            match parse_transaction(transaction.data.0.as_slice()) {
-                                Ok(transaction) => transaction,
-                                Err(e) => {
-                                    log::error!("error during account subscription loop. {}", e);
-                                    continue 'subscription_loop;
-                                }
-                            };
-
+                    for (hash, transaction) in transactions.into_iter() {
                         current_trans_lt = transaction.lt;
-                        current_trans_hash = ton::bytes(hash.as_slice().to_vec());
+                        current_trans_hash = hash;
 
                         let out_messages = match parse_transaction_messages(&transaction) {
                             Ok(messages) => messages,
@@ -321,7 +301,7 @@ impl TonlibAccountSubscription {
 
                 last_trans_lt = current_trans_lt;
                 if let Err(e) = subscription.db.insert(
-                    subscription.account.id.0.as_slice(),
+                    subscription.account.address().get_bytestring(0),
                     &current_trans_lt.to_le_bytes(),
                 ) {
                     log::error!("failed to save state into db. {}", e);
@@ -341,12 +321,11 @@ impl RunLocal for TonlibAccountSubscription {
         let message = encode_external_message(message);
 
         let account_state = self.known_state.read().await;
-        let info = parse_account_stuff(account_state.data.0.as_slice())?;
 
         let (messages, _) = tvm::call_msg(
-            account_state.gen_utime as u32,
-            account_state.gen_lt as u64,
-            info,
+            account_state.0.gen_utime,
+            account_state.0.gen_lt,
+            account_state.1.clone(),
             &message,
         )?;
 
@@ -390,7 +369,7 @@ impl AccountSubscription for TonlibAccountSubscription {
             let mut pending_messages = self.pending_messages.write().await;
             match pending_messages.entry(hash) {
                 hash_map::Entry::Vacant(entry) => {
-                    let previous_known_lt = self.known_state.read().await.last_trans_lt as u64;
+                    let previous_known_lt = self.known_state.read().await.0.last_trans_lt as u64;
 
                     self.client
                         .send_message(serialized)
@@ -437,7 +416,7 @@ impl AccountSubscription for TonlibAccountSubscription {
 const MESSAGES_PER_SCAN_ITER: u32 = 16;
 
 struct EventsScanner<'a> {
-    address: Cow<'a, ton::lite_server::accountid::AccountId>,
+    address: Cow<'a, MsgAddressInt>,
     client: &'a TonlibClient,
     since_lt: Option<u64>,
     until_lt: Option<u64>,
@@ -476,61 +455,38 @@ fn parse_account_stuff(raw: &[u8]) -> TransportResult<AccountStuff> {
     })
 }
 
-fn to_api_error(e: TonlibError) -> TransportError {
+fn to_api_error(e: failure::Error) -> TransportError {
     TransportError::ApiFailure {
-        reason: e.as_fail().to_string(),
+        reason: e.to_string(),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use util::setup;
 
-
-    const MAINNET_CONFIG: &str = r#"{
-        "lite_servers": [
-            {                
-                "addr": "54.158.97.195:3031",
-                "public_key": "uNRRL+6enQjuiZ/s6Z+vO7yxUUR7uxdfzIy+RxkECrc="
-            }
-        ],
-        "zero_state": {
-            "file_hash": "0nC4eylStbp9qnCq8KjDYb789NjS25L5ZA1UQwcIOOQ=",
-            "root_hash": "WP/KGheNr/cF3lQhblQzyb0ufYUAcNM004mXhHq56EU=",
-            "shard": -9223372036854775808,
-            "seqno": 0,
-            "workchain": -1
-        }
-    }"#;
-
-    const ELECTOR_ADDR: &str =
-        "-1:3333333333333333333333333333333333333333333333333333333333333333";
+    fn elector_addr() -> MsgAddressInt {
+        MsgAddressInt::from_str(
+            "-1:3333333333333333333333333333333333333333333333333333333333333333",
+        )
+        .unwrap()
+    }
 
     async fn make_transport() -> TonlibTransport {
         std::env::set_var("RUST_LOG", "debug");
-        setup();
+        util::setup();
         let db = sled::Config::new().temporary(true).open().unwrap();
 
-        TonlibTransport::new(Config {
-            network_config: serde_json::from_str(MAINNET_CONFIG).unwrap(),
-            network_name: "mainnet".to_string(),
-            verbosity: 1,
-            keystore: KeystoreType::InMemory,
-            last_block_threshold_sec: 1,
-            subscription_polling_interval_sec: 1,
-            max_initial_rescan_gap: None,
-            max_rescan_gap: None,
-        })
-        .await
-        .unwrap()
+        TonlibTransport::new(default_mainnet_config(), db)
+            .await
+            .unwrap()
     }
 
     #[tokio::test]
     async fn test_subscription() {
         let transport = make_transport().await;
 
-        let _subscription = transport.subscribe(ELECTOR_ADDR).await.unwrap();
+        let _subscription = transport.subscribe(elector_addr()).await.unwrap();
 
         tokio::time::delay_for(Duration::from_secs(10)).await;
     }

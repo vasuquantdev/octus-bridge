@@ -27,11 +27,14 @@ pub trait RunLocal: Send + Sync + 'static {
 
 #[async_trait]
 pub trait Transport: RunLocal {
-    async fn subscribe(&self, addr: &str) -> TransportResult<Arc<dyn AccountSubscription>>;
+    async fn subscribe(
+        &self,
+        account: MsgAddressInt,
+    ) -> TransportResult<Arc<dyn AccountSubscription>>;
 
     fn rescan_events(
         &self,
-        addr: &str,
+        account: MsgAddressInt,
         since_lt: Option<u64>,
         until_lt: Option<u64>,
     ) -> TransportResult<BoxStream<TransportResult<SliceData>>>;

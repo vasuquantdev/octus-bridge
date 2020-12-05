@@ -19,7 +19,7 @@ impl BridgeContract {
         account: MsgAddressInt,
         keypair: Arc<Keypair>,
     ) -> ContractResult<Self> {
-        let transport = transport.subscribe(&account.to_string()).await?;
+        let transport = transport.subscribe(account.clone()).await?;
 
         let config = ContractConfig {
             account,
