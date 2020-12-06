@@ -82,8 +82,8 @@ impl Transport for GraphQLTransport {
         account: MsgAddressInt,
         since_lt: Option<u64>,
         until_lt: Option<u64>,
-    ) -> TransportResult<BoxStream<TransportResult<SliceData>>> {
-        Ok(Box::pin(EventsScanner {
+    ) -> BoxStream<TransportResult<SliceData>> {
+        EventsScanner {
             account,
             client: &self.client,
             since_lt,
@@ -91,7 +91,8 @@ impl Transport for GraphQLTransport {
             request_fut: None,
             messages: None,
             current_message: 0,
-        }))
+        }
+        .boxed()
     }
 }
 
@@ -342,8 +343,8 @@ impl AccountSubscription for GraphQLAccountSubscription {
         &self,
         since_lt: Option<u64>,
         until_lt: Option<u64>,
-    ) -> TransportResult<BoxStream<TransportResult<SliceData>>> {
-        Ok(Box::pin(EventsScanner {
+    ) -> BoxStream<TransportResult<SliceData>> {
+        EventsScanner {
             account: self.account.clone(),
             client: &self.client,
             since_lt,
@@ -351,7 +352,8 @@ impl AccountSubscription for GraphQLAccountSubscription {
             request_fut: None,
             messages: None,
             current_message: 0,
-        }))
+        }
+        .boxed()
     }
 }
 
@@ -389,16 +391,7 @@ where
     }
 
     fn handle_state<'c>(&mut self, cx: &mut Context<'c>) -> Poll<Option<<Self as Stream>::Item>> {
-        enum Action<T> {
-            Skip,
-            Clear,
-            Set(T),
-        }
-
         'outer: loop {
-            let mut new_messages = Action::Skip;
-            let mut new_fut = Action::Skip;
-
             match (&mut self.messages, &mut self.request_fut) {
                 (Some(messages), _) if self.current_message < messages.len() => {
                     let (lt, result) = &messages[self.current_message];
@@ -415,7 +408,7 @@ where
                             message
                                 .body()
                                 .ok_or_else(|| TransportError::FailedToParseMessage {
-                                    reason: "event message has not body".to_string(),
+                                    reason: "event message has no body".to_owned(),
                                 })
                         }
                         _ => Err(TransportError::ApiFailure {
@@ -425,12 +418,13 @@ where
 
                     return Poll::Ready(Some(result));
                 }
-                (Some(_), _) => new_messages = Action::Clear,
+                (Some(_), _) => self.messages = None,
                 (None, Some(fut)) => match Self::poll_request_fut(fut.as_mut(), cx) {
                     Poll::Ready(response) if !response.is_empty() => {
                         log::debug!("got messages: {:?}", response);
-                        new_messages = Action::Set(response);
-                        new_fut = Action::Clear;
+                        self.current_message = 0;
+                        self.messages = Some(response);
+                        self.request_fut = None;
                     }
                     Poll::Ready(_) => {
                         log::debug!("got empty response");
@@ -444,7 +438,7 @@ where
                     let since_lt = self.since_lt;
                     let until_lt = self.until_lt;
 
-                    new_fut = Action::Set(
+                    self.request_fut = Some(
                         async move {
                             client
                                 .get_outbound_messages(
@@ -458,23 +452,6 @@ where
                         .boxed(),
                     );
                 }
-            }
-
-            match new_messages {
-                Action::Set(new_messages) => {
-                    self.current_message = 0;
-                    self.messages = Some(new_messages);
-                }
-                Action::Clear => self.messages = None,
-                _ => {}
-            }
-
-            match new_fut {
-                Action::Set(new_fut) => {
-                    self.request_fut = Some(new_fut);
-                }
-                Action::Clear => self.request_fut = None,
-                _ => {}
             }
         }
     }
@@ -569,10 +546,13 @@ mod tests {
     async fn rescan_lt() {
         let transport = make_transport().await;
 
-        let mut scanner = transport.rescan_events(my_addr(), None, None).unwrap();
+        let mut scanner = transport.rescan_events(my_addr(), None, None);
 
+        let mut i = 0;
         while let Some(item) = scanner.next().await {
-            log::info!("Got item: {:?}", item);
+            println!("Data: {:?}", item);
+            println!("Event: {}", i);
+            i += 1;
         }
     }
 }

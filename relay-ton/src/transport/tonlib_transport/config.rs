@@ -21,7 +21,7 @@ pub struct Config {
 impl Config {
     pub fn tonlib_config(&self) -> tonlib::Config {
         tonlib::Config {
-            server_address: self.server_address.clone(),
+            server_address: self.server_address,
             server_key: self.server_key.clone(),
             last_block_threshold: Duration::from_secs(self.last_block_threshold_sec),
         }

@@ -37,7 +37,7 @@ pub trait Transport: RunLocal {
         account: MsgAddressInt,
         since_lt: Option<u64>,
         until_lt: Option<u64>,
-    ) -> TransportResult<BoxStream<TransportResult<SliceData>>>;
+    ) -> BoxStream<TransportResult<SliceData>>;
 }
 
 #[async_trait]
@@ -54,7 +54,7 @@ pub trait AccountSubscription: RunLocal {
         &self,
         since_lt: Option<u64>,
         until_lt: Option<u64>,
-    ) -> TransportResult<BoxStream<TransportResult<SliceData>>>;
+    ) -> BoxStream<TransportResult<SliceData>>;
 }
 
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]

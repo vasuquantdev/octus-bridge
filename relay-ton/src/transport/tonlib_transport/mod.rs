@@ -8,7 +8,7 @@ use futures::task::{Context, Poll};
 use tokio::time::Duration;
 use ton_abi::Function;
 use ton_block::{
-    AccountStuff, Deserializable, ExternalInboundMessageHeader, Message, Serializable,
+    AccountStuff, CommonMsgInfo, ExternalInboundMessageHeader, Message, Serializable, Transaction,
 };
 use ton_types::SliceData;
 use tonlib::{AccountStats, TonlibClient};
@@ -106,14 +106,8 @@ impl Transport for TonlibTransport {
         account: MsgAddressInt,
         since_lt: Option<u64>,
         until_lt: Option<u64>,
-    ) -> TransportResult<BoxStream<TransportResult<SliceData>>> {
-        Ok(EventsScanner {
-            address: Cow::Owned(account),
-            client: &self.client,
-            since_lt,
-            until_lt,
-        }
-        .boxed())
+    ) -> BoxStream<TransportResult<SliceData>> {
+        EventsScanner::new(Cow::Owned(account), &self.client, since_lt, until_lt).boxed()
     }
 }
 
@@ -402,31 +396,189 @@ impl AccountSubscription for TonlibAccountSubscription {
         &self,
         since_lt: Option<u64>,
         until_lt: Option<u64>,
-    ) -> TransportResult<BoxStream<TransportResult<SliceData>>> {
-        Ok(EventsScanner {
-            address: Cow::Borrowed(&self.account),
-            client: &self.client,
+    ) -> BoxStream<TransportResult<SliceData>> {
+        EventsScanner::new(
+            Cow::Borrowed(&self.account),
+            &self.client,
             since_lt,
             until_lt,
-        }
-        .boxed())
+        )
+        .boxed()
     }
 }
 
-const MESSAGES_PER_SCAN_ITER: u32 = 16;
+const MESSAGES_PER_SCAN_ITER: u8 = 16;
+
+type AccountStateResponse = Result<(AccountStats, AccountStuff), failure::Error>;
+type TransactionsResponse = Result<Vec<(UInt256, Transaction)>, failure::Error>;
 
 struct EventsScanner<'a> {
-    address: Cow<'a, MsgAddressInt>,
-    client: &'a TonlibClient,
+    account: Cow<'a, MsgAddressInt>,
+    client: Arc<tonlib::TonlibClient>,
     since_lt: Option<u64>,
     until_lt: Option<u64>,
+    latest_lt: u64,
+    latest_hash: UInt256,
+    account_state_fut: Option<BoxFuture<'a, AccountStateResponse>>,
+    request_fut: Option<BoxFuture<'a, TransactionsResponse>>,
+    transactions: Option<Vec<(UInt256, Transaction)>>,
+    current_transaction: usize,
+    messages: Option<Vec<Message>>,
+    current_message: usize,
+}
+
+impl<'a> EventsScanner<'a>
+where
+    Self: Stream<Item = TransportResult<SliceData>>,
+{
+    fn new(
+        account: Cow<'a, MsgAddressInt>,
+        client: &'a Arc<TonlibClient>,
+        since_lt: Option<u64>,
+        until_lt: Option<u64>,
+    ) -> Self {
+        let account_state_fut = Some({
+            let client = client.clone();
+            let account = account.clone();
+
+            async move { client.get_account_state(account.as_ref()).await }.boxed()
+        });
+
+        EventsScanner {
+            account,
+            client: client.clone(),
+            since_lt,
+            until_lt,
+            latest_lt: 0,
+            latest_hash: UInt256::default(),
+            account_state_fut,
+            request_fut: None,
+            transactions: None,
+            current_transaction: 0,
+            messages: None,
+            current_message: 0,
+        }
+    }
+
+    fn get_transactions(&self) -> BoxFuture<'a, TransactionsResponse> {
+        let client = self.client.clone();
+        let account = self.account.as_ref().clone();
+        let latest_lt = self.latest_lt;
+        let latest_hash = self.latest_hash.clone();
+
+        async move {
+            client
+                .get_transactions(&account, MESSAGES_PER_SCAN_ITER, latest_lt, latest_hash)
+                .await
+        }
+        .boxed()
+    }
+
+    fn handle_state<'c>(&mut self, cx: &mut Context<'c>) -> Poll<Option<<Self as Stream>::Item>> {
+        'outer: loop {
+            match (
+                &mut self.transactions,
+                &mut self.messages,
+                &mut self.request_fut,
+                &mut self.account_state_fut,
+            ) {
+                (None, None, None, None) => return Poll::Ready(None),
+                (_, Some(messages), _, _) if self.current_message < messages.len() => {
+                    let message = &messages[self.current_message];
+                    self.current_message += 1;
+
+                    match message.header() {
+                        CommonMsgInfo::ExtOutMsgInfo(_) => {
+                            let result = message.body().ok_or_else(|| {
+                                TransportError::FailedToParseMessage {
+                                    reason: "event message has no body".to_owned(),
+                                }
+                            });
+                            return Poll::Ready(Some(result));
+                        }
+                        _ => {
+                            continue 'outer;
+                        }
+                    }
+                }
+                (_, Some(_), _, _) => {
+                    self.messages = None;
+                    self.current_transaction += 1
+                }
+                (Some(transactions), _, _, _) if self.current_transaction < transactions.len() => {
+                    let (_, transaction) = &transactions[self.current_transaction];
+                    self.latest_lt = transaction.prev_trans_lt;
+                    self.latest_hash = transaction.prev_trans_hash.clone();
+
+                    match (self.since_lt, self.until_lt) {
+                        (Some(since_lt), _) if transaction.lt < since_lt => {
+                            self.current_transaction += 1;
+                            continue 'outer;
+                        }
+                        (_, Some(until_lt)) if transaction.lt > until_lt => {
+                            self.current_transaction += 1;
+                            continue 'outer;
+                        }
+                        _ => match parse_transaction_messages(transaction) {
+                            Ok(messages) => {
+                                self.messages = Some(messages);
+                                self.current_message = 0;
+                            }
+                            Err(e) => {
+                                self.transactions = None;
+                                self.messages = None;
+                                return Poll::Ready(Some(Err(e)));
+                            }
+                        },
+                    }
+                }
+                (Some(_), _, _, _) => {
+                    self.transactions = None;
+                    if !matches!(self.since_lt, Some(since_lt) if self.latest_lt < since_lt) {
+                        self.request_fut = Some(self.get_transactions());
+                    }
+                }
+                (_, _, Some(fut), _) => match fut.as_mut().poll(cx) {
+                    Poll::Ready(Ok(transactions)) if !transactions.is_empty() => {
+                        self.request_fut = None;
+
+                        self.transactions = Some(transactions);
+                        self.current_transaction = 0;
+                        self.current_message = 0;
+                    }
+                    Poll::Ready(Ok(_)) => {
+                        return Poll::Ready(None);
+                    }
+                    Poll::Ready(Err(e)) => {
+                        self.request_fut = None;
+                        return Poll::Ready(Some(Err(to_api_error(e))));
+                    }
+                    Poll::Pending => return Poll::Pending,
+                },
+                (_, _, _, Some(fut)) => match fut.as_mut().poll(cx) {
+                    Poll::Ready(Ok((stats, _))) => {
+                        self.account_state_fut = None;
+
+                        self.latest_lt = stats.last_trans_lt;
+                        self.latest_hash = stats.last_trans_hash;
+                        self.request_fut = Some(self.get_transactions());
+                    }
+                    Poll::Ready(Err(e)) => {
+                        self.account_state_fut = None;
+                        return Poll::Ready(Some(Err(to_api_error(e))));
+                    }
+                    Poll::Pending => return Poll::Pending,
+                },
+            }
+        }
+    }
 }
 
 impl<'a> Stream for EventsScanner<'a> {
     type Item = TransportResult<SliceData>;
 
-    fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        todo!()
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.get_mut().handle_state(cx)
     }
 }
 
@@ -435,24 +587,6 @@ struct PendingMessage {
     _previous_known_lt: u64,
     abi: Arc<Function>,
     tx: oneshot::Sender<TransportResult<ContractOutput>>,
-}
-
-fn parse_account_stuff(raw: &[u8]) -> TransportResult<AccountStuff> {
-    let mut slice = ton_types::deserialize_tree_of_cells(&mut std::io::Cursor::new(raw))
-        .and_then(|cell| {
-            let mut slice: SliceData = cell.into();
-            slice.move_by(1)?;
-            Ok(slice)
-        })
-        .map_err(|e| TransportError::FailedToParseAccountState {
-            reason: e.to_string(),
-        })?;
-
-    AccountStuff::construct_from(&mut slice).map_err(|e| {
-        TransportError::FailedToParseAccountState {
-            reason: e.to_string(),
-        }
-    })
 }
 
 fn to_api_error(e: failure::Error) -> TransportError {
@@ -468,6 +602,13 @@ mod tests {
     fn elector_addr() -> MsgAddressInt {
         MsgAddressInt::from_str(
             "-1:3333333333333333333333333333333333333333333333333333333333333333",
+        )
+        .unwrap()
+    }
+
+    fn my_addr() -> MsgAddressInt {
+        MsgAddressInt::from_str(
+            "-1:17519bc2a04b6ecf7afa25ba30601a4e16c9402979c236db13e1c6f3c4674e8c",
         )
         .unwrap()
     }
@@ -489,5 +630,19 @@ mod tests {
         let _subscription = transport.subscribe(elector_addr()).await.unwrap();
 
         tokio::time::delay_for(Duration::from_secs(10)).await;
+    }
+
+    #[tokio::test]
+    async fn test_rescan() {
+        let transport = make_transport().await;
+
+        let mut events = transport.rescan_events(my_addr(), None, None);
+
+        let mut i = 0;
+        while let Some(event) = events.next().await {
+            println!("Data: {:?}", event);
+            println!("Event: {}", i);
+            i += 1;
+        }
     }
 }
