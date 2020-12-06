@@ -3,5 +3,3 @@
 /.idea
 /.cargo
 Dockerfile.local
-Cargo.lock
-*.json
