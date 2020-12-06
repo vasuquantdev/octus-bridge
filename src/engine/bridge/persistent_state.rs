@@ -9,7 +9,7 @@ use relay_ton::transport::Transport;
 
 use crate::engine::bridge::ton_config_listener::ExtendedEventInfo;
 
-const PERSISTENT_TREE_NAME: &str = "unconfirmed_events";
+pub const PERSISTENT_TREE_NAME: &str = "unconfirmed_events";
 
 pub struct TonWatcher {
     db: Tree,

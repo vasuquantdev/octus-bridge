@@ -177,7 +177,15 @@ impl Bridge {
         let eth_queue = db
             .open_tree(ETH_UNCONFIRMED_TRANSACTIONS_TREE_NAME)
             .unwrap();
-
+        {
+            let eth_queue = eth_queue.clone();
+            let eht_blocks_stream = eth_client.get_blocks_stream().await.expect("Shouldn't fail");
+            let ton_tree= db.open_tree(persistent_state::PERSISTENT_TREE_NAME).unwrap();
+            let ton_client = Arc::new(ton_client.clone());
+            tokio::spawn(async move{
+                Bridge::watch_unsent_eth_ton_transactions(eht_blocks_stream, eth_queue, ton_tree, ton_client).await;
+            });
+        }
         let mut stream = eth_client
             .subscribe(
                 eth_addr.into_iter().collect(),
