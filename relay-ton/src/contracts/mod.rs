@@ -25,21 +25,28 @@ mod tests {
 
     const LOCAL_SERVER_ADDR: &str = "http://127.0.0.1:80/graphql";
 
-    fn bridge_addr() -> MsgAddressInt {
+    pub fn bridge_addr() -> MsgAddressInt {
         MsgAddressInt::from_str(
-            "0:afafb5172cc4423266311712e0b6132cc3800d454c21335ea363eb353acda59c",
+            "0:f188a42b19defd61ba3f462117ee557b3957f7ba279fe8b923b871d5dddcf64c",
         )
         .unwrap()
     }
 
-    fn event_proxy_address() -> MsgAddressInt {
+    pub fn event_proxy_address() -> MsgAddressInt {
         MsgAddressInt::from_str(
             "0:d7997ed240134f63cefce3e5eb6463bcc60a5c92df3bcaaec7264ff10423d4e0",
         )
         .unwrap()
     }
 
-    async fn make_transport() -> Arc<dyn Transport> {
+    pub fn ethereum_event_configuration_addr() -> MsgAddressInt {
+        MsgAddressInt::from_str(
+            "0:a001a219ceb310c73a42fd56e9d849411df786d3c9ea92bb61ae2679460f8c9c",
+        )
+        .unwrap()
+    }
+
+    pub async fn make_transport() -> Arc<dyn Transport> {
         std::env::set_var("RUST_LOG", "relay_ton=debug");
         util::setup();
         let db = sled::Config::new().temporary(true).open().unwrap();
@@ -57,7 +64,7 @@ mod tests {
         )
     }
 
-    fn keypair() -> Arc<Keypair> {
+    pub fn keypair() -> Arc<Keypair> {
         let ton_private_key = ed25519_dalek::SecretKey::from_bytes(
             &hex::decode("90f71be09b86a65791fc0740598849f00066d0ae81ed5f8b2aa8f2e3522a991e")
                 .unwrap(),
@@ -147,9 +154,10 @@ mod tests {
         tokio::spawn(async move {
             while let Some(event) = ton_events.next().await {
                 if let EthereumEventConfigurationContractEvent::NewEthereumEventConfirmation {
-                        address,
-                        ..
-                    } = event {
+                    address,
+                    ..
+                } = event
+                {
                     let details = ethereum_event_contract.get_details(address).await.unwrap();
                     println!("got ethereum event: {:?}", details);
                 }

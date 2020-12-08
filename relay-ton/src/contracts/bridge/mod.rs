@@ -184,57 +184,9 @@ const ABI: &str = include_str!("../../../abi/Bridge.abi.json");
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::contracts::tests::*;
     use crate::transport::graphql_transport::Config;
     use crate::transport::GraphQLTransport;
-    use util::setup;
-
-    const LOCAL_SERVER_ADDR: &str = "http://127.0.0.1:80/graphql";
-
-    fn bridge_addr() -> MsgAddressInt {
-        MsgAddressInt::from_str(
-            "0:afafb5172cc4423266311712e0b6132cc3800d454c21335ea363eb353acda59c",
-        )
-        .unwrap()
-    }
-
-    fn event_proxy_address() -> MsgAddressInt {
-        MsgAddressInt::from_str(
-            "0:d7997ed240134f63cefce3e5eb6463bcc60a5c92df3bcaaec7264ff10423d4e0",
-        )
-        .unwrap()
-    }
-
-    async fn make_transport() -> Arc<dyn Transport> {
-        std::env::set_var("RUST_LOG", "relay_ton=debug");
-        setup();
-        let db = sled::Config::new().temporary(true).open().unwrap();
-
-        Arc::new(
-            GraphQLTransport::new(
-                Config {
-                    addr: LOCAL_SERVER_ADDR.to_string(),
-                    next_block_timeout_sec: 60,
-                },
-                db,
-            )
-            .await
-            .unwrap(),
-        )
-    }
-
-    fn keypair() -> Arc<Keypair> {
-        let ton_private_key = ed25519_dalek::SecretKey::from_bytes(
-            &hex::decode("90f71be09b86a65791fc0740598849f00066d0ae81ed5f8b2aa8f2e3522a991e")
-                .unwrap(),
-        )
-        .unwrap();
-        let ton_public_key = ed25519_dalek::PublicKey::from(&ton_private_key);
-
-        Arc::new(ed25519_dalek::Keypair {
-            secret: ton_private_key,
-            public: ton_public_key,
-        })
-    }
 
     async fn make_bridge() -> BridgeContract {
         BridgeContract::new(make_transport().await, bridge_addr(), keypair())
@@ -244,7 +196,7 @@ mod tests {
 
     #[tokio::test]
     async fn get_known_contracts() {
-        setup();
+        util::setup();
         let bridge = make_bridge().await;
         let configs = bridge.get_known_config_contracts().await.unwrap();
         println!("Configs: {:?}", configs);

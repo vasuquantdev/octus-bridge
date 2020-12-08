@@ -85,36 +85,10 @@ const JSON_ABI: &str = include_str!("../../../abi/EthereumEventConfiguration.abi
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::contracts::tests::*;
     use crate::transport::graphql_transport::Config;
     use crate::transport::GraphQLTransport;
     use tokio::stream::StreamExt;
-
-    const LOCAL_SERVER_ADDR: &str = "http://127.0.0.1:80/graphql";
-
-    fn ethereum_event_configuration_addr() -> MsgAddressInt {
-        MsgAddressInt::from_str(
-            "0:b739b86aa55d3016beb44b9ac97edfa4f8221b09320a622c9a0ead70eddf4a02",
-        )
-        .unwrap()
-    }
-
-    async fn make_transport() -> Arc<dyn Transport> {
-        std::env::set_var("RUST_LOG", "relay_ton=debug");
-        util::setup();
-        let db = sled::Config::new().temporary(true).open().unwrap();
-
-        Arc::new(
-            GraphQLTransport::new(
-                Config {
-                    addr: LOCAL_SERVER_ADDR.to_string(),
-                    next_block_timeout_sec: 60,
-                },
-                db,
-            )
-            .await
-            .unwrap(),
-        )
-    }
 
     async fn make_config_contract() -> EthereumEventConfigurationContract {
         EthereumEventConfigurationContract::new(
@@ -136,9 +110,13 @@ mod test {
     async fn subscribe() {
         let config_contract = Arc::new(make_config_contract().await);
 
-        let mut events = config_contract.events();
-        while let Some(event) = events.next().await {
-            log::debug!("New event at: {:?}", event);
-        }
+        tokio::spawn(async move {
+            let mut events = config_contract.events();
+            while let Some(event) = events.next().await {
+                log::debug!("New event at: {:?}", event);
+            }
+        });
+
+        tokio::time::delay_for(tokio::time::Duration::from_secs(10)).await;
     }
 }
