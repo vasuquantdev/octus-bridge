@@ -16,18 +16,10 @@ pub fn validate_ethereum_event_configuration(
 ) -> Result<(), Error> {
     let EthereumEventConfiguration {
         ethereum_event_abi,
-        ethereum_event_address,
         ..
     } = config;
     serde_json::from_str::<serde_json::Value>(&ethereum_event_abi)
         .map_err(|e| Error::new(e).context("Bad abi"))?;
-    if ethereum_event_address.len() != 42 {
-        return Err(anyhow!(
-            "Bad ethereum address length: {}",
-            ethereum_event_address.len()
-        ));
-    }
-    String::from_utf8(ethereum_event_address.clone())?;
     Ok(())
 }
 
