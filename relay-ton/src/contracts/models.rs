@@ -90,7 +90,7 @@ impl TryFrom<ContractOutput> for BridgeConfiguration {
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct EthereumEventConfiguration {
     pub ethereum_event_abi: String,
-    pub ethereum_event_address: Vec<u8>,
+    pub ethereum_event_address: ethereum_types::Address,
     #[serde(with = "serde_std_addr")]
     pub event_proxy_address: MsgAddrStd,
     pub ethereum_event_blocks_to_confirm: BigUint,
@@ -113,7 +113,12 @@ impl TryFrom<ContractOutput> for EthereumEventConfiguration {
         Ok(EthereumEventConfiguration {
             ethereum_event_abi: String::from_utf8(tuple.parse_next()?)
                 .map_err(|_| ContractError::InvalidString)?,
-            ethereum_event_address: tuple.parse_next()?,
+            ethereum_event_address: ethereum_types::Address::from_str(
+                String::from_utf8(tuple.parse_next()?)
+                    .map_err(|_| ContractError::InvalidString)?
+                    .trim_start_matches("0x"),
+            )
+            .map_err(|_| ContractError::InvalidAddress)?,
             event_proxy_address: tuple.parse_next()?,
             ethereum_event_blocks_to_confirm: tuple.parse_next()?,
             required_confirmations: tuple.parse_next()?,

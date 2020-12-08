@@ -31,7 +31,7 @@ ton_abi = { git = "https://github.com/tonlabs/ton-labs-abi.git", branch = "1.0.0
 ton_vm = { git = "https://github.com/tonlabs/ton-labs-vm.git", default-features = false }
 ton_types = { git = "https://github.com/tonlabs/ton-labs-types.git" }
 ton_block = { git = "https://github.com/tonlabs/ton-labs-block.git" }
-
+ethereum-types = "0.9.2"
 tonlib = { git = "https://github.com/broxus/tonlib-rs.git", optional = true }
 
 [dev-dependencies]
