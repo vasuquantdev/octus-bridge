@@ -92,7 +92,7 @@ impl EthListener {
                     "No transaction_log_index in log. Tx hash: {}. Block: {}",
                     hash, block_number
                 );
-                error!("{}", &err);
+                log::warn!("{}", &err);
                 // return Err(Error::msg(err));
                 0
             }

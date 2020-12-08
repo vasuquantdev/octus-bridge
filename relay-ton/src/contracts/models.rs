@@ -119,7 +119,7 @@ impl TryFrom<ContractOutput> for EthereumEventConfiguration {
                     .map_err(|_| ContractError::InvalidString)?
                     .trim_start_matches("0x"),
             )
-            .map_err(|_| ContractError::InvalidAddress)?,
+            .map_err(|_| ContractError::InvalidEthAddress)?,
             event_proxy_address: tuple.parse_next()?,
             ethereum_event_blocks_to_confirm: tuple.parse_next()?,
             required_confirmations: tuple.parse_next()?,

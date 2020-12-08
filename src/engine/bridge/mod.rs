@@ -13,9 +13,7 @@ use tokio::time::Duration;
 use relay_eth::ws::EthListener;
 use relay_ton::contracts::utils::pack_tokens;
 use relay_ton::contracts::*;
-use relay_ton::prelude::{
-    serde_cells, serde_int_addr, BigUint, Cell, MsgAddressInt,
-};
+use relay_ton::prelude::{serde_cells, serde_int_addr, BigUint, Cell, MsgAddressInt};
 use relay_ton::transport::Transport;
 
 use crate::crypto::key_managment::EthSigner;
@@ -140,7 +138,7 @@ impl Bridge {
                     {
                         Ok(_) => log::info!("Confirmed tx in ton with hash {}", hash),
                         Err(e) => {
-                            log::error!("Failed confirming tx with hash: {} in ton: {}", hash, e)
+                            log::error!("Failed confirming tx with hash: {} in ton: {:?}", hash, e)
                         }
                     }
                 });
@@ -296,20 +294,27 @@ impl Bridge {
                     }
                 });
             //if some relay already reported transaction
-           if ton_watcher
+            if ton_watcher
                 .get_event_by_hash(event.tx_hash.as_ref())
-                .unwrap().is_some() {
-                ton_client.confirm_ethereum_event(
-                    event_transaction,
-                    event_index,
-                    event_data,
-                    event_block_number.clone(),
-                    event_block,
-                    ethereum_event_configuration_address
-                ).await.unwrap();
+                .unwrap()
+                .is_some()
+            {
+                ton_client
+                    .confirm_ethereum_event(
+                        event_transaction,
+                        event_index,
+                        event_data,
+                        event_block_number.clone(),
+                        event_block,
+                        ethereum_event_configuration_address,
+                    )
+                    .await
+                    .unwrap();
                 log::info!("Confirmed met transaction: {}", event.tx_hash);
-                ton_watcher.drop_event_by_hash(event.tx_hash.as_ref()).unwrap();
-                continue
+                ton_watcher
+                    .drop_event_by_hash(event.tx_hash.as_ref())
+                    .unwrap();
+                continue;
             }
 
             let prepared_data = EthTonConfirmationData {

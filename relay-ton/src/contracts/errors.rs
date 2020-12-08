@@ -18,6 +18,8 @@ pub enum ContractError {
     InvalidEvent { reason: String },
     #[error("transport error")]
     TransportError(#[from] TransportError),
+    #[error("invalid eth address")]
+    InvalidEthAddress
 }
 
 pub type ContractResult<T> = Result<T, ContractError>;
