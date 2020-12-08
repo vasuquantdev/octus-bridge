@@ -100,6 +100,7 @@ pub struct EthereumEventConfiguration {
     pub confirm_keys: Vec<UInt256>,
     #[serde(with = "serde_vec_uint256")]
     pub reject_keys: Vec<UInt256>,
+    pub active: bool,
 }
 
 impl StandaloneToken for EthereumEventConfiguration {}
@@ -125,6 +126,7 @@ impl TryFrom<ContractOutput> for EthereumEventConfiguration {
             required_rejections: tuple.parse_next()?,
             confirm_keys: tuple.parse_next()?,
             reject_keys: tuple.parse_next()?,
+            active: tuple.parse_next()?,
         })
     }
 }
