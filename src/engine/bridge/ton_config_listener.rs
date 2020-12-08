@@ -1,11 +1,14 @@
-
 use std::collections::{HashMap, HashSet};
+use std::ops::Deref;
+use std::str::FromStr;
 use std::sync::Arc;
 
+use anyhow::Error;
 use ethereum_types::{Address, H160, H256};
+use futures::TryFutureExt;
 use serde::{Deserialize, Serialize};
 use tokio::stream::StreamExt;
-use tokio::sync::mpsc::{UnboundedReceiver};
+use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::{mpsc, Mutex, Notify, RwLock};
 use tokio::time::{delay_for, Duration};
 use ton_block::{MsgAddrStd, MsgAddressInt};
@@ -15,18 +18,17 @@ use relay_ton::contracts::{
     EthereumEventConfigurationContract, EthereumEventConfigurationContractEvent,
     EthereumEventContract, EthereumEventDetails,
 };
-
+use relay_ton::prelude::UInt256;
 use relay_ton::prelude::{serde_std_addr, serde_uint256};
-use relay_ton::prelude::{UInt256};
 use relay_ton::transport::Transport;
 
-use crate::engine::bridge::util::abi_to_topic_hash;
+use crate::engine::bridge::util::{abi_to_topic_hash, validate_ethereum_event_configuration};
 
 #[derive(Debug, Clone)]
 pub struct MappedData {
     pub eth_addr: HashSet<ethereum_types::Address>,
     pub eth_topic: HashSet<H256>,
-    pub address_topic_map: HashMap<H160, Vec<(H256, Vec<ethabi::ParamType>)>>,
+    pub address_topic_map: HashMap<H160, (H256, Vec<ethabi::ParamType>)>,
     pub topic_abi_map: HashMap<H256, Vec<ethabi::ParamType>>,
     pub eth_proxy_map: HashMap<H160, MsgAddrStd>,
 }
@@ -76,7 +78,6 @@ async fn listener(
     transport: Arc<dyn Transport>,
     tx: mpsc::UnboundedSender<EthereumEventConfigurationContractEvent>,
     config: MsgAddrStd,
-    initial_config_number: Option<Arc<Mutex<u64>>>,
 ) {
     log::debug!("start listening config: {:?}", config);
 
@@ -84,9 +85,6 @@ async fn listener(
     let mut eth_events = configuration_contract.events();
     while let Some(event) = eth_events.next().await {
         log::debug!("got event configuration config event: {:?}", event);
-        if let Some(a) = &initial_config_number {
-            *a.lock().await -= 1;
-        }
         if tx.send(event).is_err() {
             return;
         }
@@ -94,27 +92,64 @@ async fn listener(
 }
 
 fn update_mapped_data(mapped_data: &mut MappedData, conf: EthereumEventConfiguration) {
-    let address = Address::from_slice(conf.ethereum_event_address.as_slice());
+    if let Err(e) = validate_ethereum_event_configuration(&conf) {
+        log::error!("Got bad EthereumEventConfiguration: {}", e);
+        return;
+    }
+    let address = String::from_utf8(conf.ethereum_event_address).unwrap(); //checked upper
+    let address = match address.strip_prefix("0x") {
+        None => address,
+        Some(a) => a.to_string(),
+    };
+
+    let address = match Address::from_str(&address) {
+        Ok(a) => a,
+        Err(e) => {
+            log::error!(
+                "Failed parsing ethereum_event_address ({}) as H160: {}",
+                address,
+                e
+            );
+            return;
+        }
+    };
     mapped_data.eth_addr.insert(address);
     mapped_data
         .eth_proxy_map
         .insert(address, conf.event_proxy_address);
-    let topics = match abi_to_topic_hash(&conf.ethereum_event_abi) {
+    let topic = match abi_to_topic_hash(&conf.ethereum_event_abi) {
         Ok(a) => a,
         Err(e) => {
             log::error!("Failed parsing abi: {}", e);
             return;
         }
     };
-    topics.iter().for_each(|x| {
-        mapped_data.eth_topic.insert(x.0);
-    });
+
+    mapped_data.eth_topic.insert(topic.0);
     mapped_data
         .address_topic_map
-        .insert(address, topics.clone());
-    topics.into_iter().for_each(|topic| {
-        mapped_data.topic_abi_map.insert(topic.0, topic.1);
-    });
+        .insert(address, topic.clone());
+    mapped_data.topic_abi_map.insert(topic.0, topic.1);
+}
+
+async fn get_initial_configs(
+    transport: Arc<dyn Transport>,
+    configs: &[MsgAddrStd],
+) -> Result<Vec<EthereumEventConfiguration>, Error> {
+    async fn get_config(
+        config: MsgAddrStd,
+        transport: &Arc<dyn Transport>,
+    ) -> Result<EthereumEventConfiguration, Error> {
+        let contract = make_config_contract(&transport, config).await;
+        Ok(contract.get_details().await?)
+    }
+    let futures = configs
+        .into_iter()
+        .map(|x| get_config(x.clone(), &transport));
+    futures::future::join_all(futures)
+        .await
+        .into_iter()
+        .collect()
 }
 
 /// Listens to config streams and maps them.
@@ -163,10 +198,12 @@ impl ConfigListener {
     async fn notify_received(self: Arc<Self>, number: Arc<Mutex<usize>>) {
         loop {
             let number = number.lock().await;
+            log::error!("Got congig {}", *number);
             if *number == 0 {
                 self.initial_data_received.notify();
                 return;
             }
+            drop(number);
             tokio::time::delay_for(tokio::time::Duration::from_millis(300)).await;
         }
     }
@@ -175,12 +212,42 @@ impl ConfigListener {
         let known_configs = bridge.get_known_config_contracts().await.unwrap();
         let (tx, mut ton_events) = mpsc::unbounded_channel();
 
-        let initial_config_count = Arc::new(Mutex::new(known_configs.len()));
-        tokio::spawn(self.clone().notify_received(initial_config_count.clone()));
-
+        log::error!("Known configs: {:?}", &known_configs);
+        let initial_configs: Vec<_> = get_initial_configs(transport.clone(), &known_configs)
+            .await
+            .unwrap()
+            .into_iter()
+            .filter_map(|x| match validate_ethereum_event_configuration(&x) {
+                Ok(_) => Some(x),
+                Err(e) => {
+                    log::error!("Got bad ethereum config: {}", e);
+                    None
+                }
+            })
+            .collect();
+        {
+            let rwlock = self.current_config.clone();
+            let guard = rwlock.write().await;
+            let mut mapped_data = guard;
+            initial_configs
+                .iter()
+                .cloned()
+                .for_each(|x| update_mapped_data(&mut mapped_data, x));
+            log::info!(
+                "Parsed initial configs. Mapping: {:#?}",
+                mapped_data.deref()
+            );
+            let rwlock = self.event_configuration.clone();
+            let mut guard = rwlock.write().await;
+            initial_configs.into_iter().for_each(|config| {
+                guard.insert(config.ethereum_event_address.clone(), config);
+            });
+            log::info!("EthereumEventConfiguration: {:#?}", guard);
+        }
+        self.initial_data_received.notify();
         for config in known_configs.into_iter() {
-            log::debug!("start listening config: {:?}", config);
-            tokio::spawn(listener(transport.clone(), tx.clone(), config, None));
+            log::info!("start listening config: {:?}", config);
+            tokio::spawn(listener(transport.clone(), tx.clone(), config));
         }
 
         tokio::spawn({
@@ -191,7 +258,7 @@ impl ConfigListener {
                 while let Some(event) = bridge_events.next().await {
                     match event {
                         BridgeContractEvent::NewEthereumEventConfiguration { address } => {
-                            tokio::spawn(listener(transport.clone(), tx.clone(), address, None));
+                            tokio::spawn(listener(transport.clone(), tx.clone(), address));
                         }
                     }
                 }
@@ -235,7 +302,7 @@ impl ConfigListener {
                     address,
                     data: ethereum_event_details,
                 }) {
-                    log::error!("Failed sending eth event detatils via channel: {}", e);
+                    log::error!("Failed sending eth event details via channel: {}", e);
                 }
 
                 let rwlock = self.current_config.clone();
@@ -247,7 +314,12 @@ impl ConfigListener {
                 );
                 let lock = self.event_configuration.clone();
                 let mut guard = lock.write().await;
-                guard.insert(ethereum_event_configuration_contract_details.ethereum_event_address.clone(), ethereum_event_configuration_contract_details);
+                guard.insert(
+                    ethereum_event_configuration_contract_details
+                        .ethereum_event_address
+                        .clone(),
+                    ethereum_event_configuration_contract_details,
+                );
             }
         }
     }

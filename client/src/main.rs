@@ -3,7 +3,7 @@ use anyhow::Error;
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::{Input, Password, Select};
 use reqwest::Url;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use structopt::StructOpt;
 
@@ -19,13 +19,13 @@ struct Arguments {
 
 #[derive(Serialize, Debug)]
 struct InitData {
-    ton_seed: Vec<String>,
+    ton_seed: String,
     eth_seed: String,
     password: String,
     language: String,
 }
 
-fn provide_ton_seed() -> Result<Vec<String>, Error> {
+fn provide_ton_seed() -> Result<String, Error> {
     let input: String = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("Provide ton seed words. 12 words are needed.")
         .interact_text()?;
@@ -33,7 +33,7 @@ fn provide_ton_seed() -> Result<Vec<String>, Error> {
     if words.len() != 12 {
         return Err(anyhow!("{} words for ton seed are provided", words.len()));
     }
-    Ok(words)
+    Ok(words.join(" "))
 }
 
 fn provide_eth_seed() -> Result<String, Error> {
@@ -78,6 +78,13 @@ fn unlock_node() -> Result<String, Error> {
     Ok(password)
 }
 
+fn rescan_eth() -> Result<u64, Error> {
+    let input: u64 = Input::with_theme(&ColorfulTheme::default())
+        .with_prompt("Give block number")
+        .interact_text()?;
+    Ok(input)
+}
+
 fn init() -> Result<InitData, Error> {
     let ton_seed = provide_ton_seed()?;
     let language = provide_language()?;
@@ -102,9 +109,14 @@ struct Status {
     password_needed: bool,
 }
 
+#[derive(Deserialize, Serialize)]
+pub struct RescanEthData {
+    pub block: u64,
+}
+
 fn main() -> Result<(), Error> {
     let args: Arguments = Arguments::from_args();
-    const ACTIONS: &[&str; 3] = &["Init", "Provide password", "Get status"];
+    const ACTIONS: &[&str; 4] = &["Init", "Provide password", "Get status", "Set block"];
     let selection = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("What do you want?")
         .default(0)
@@ -124,11 +136,12 @@ fn main() -> Result<(), Error> {
     } else if selection == 2 {
         let url = args.server_addr.join("status")?;
         let response: Status = client.get(url).send()?.json()?;
-        println!(
-            "Status:\n {}",
-            serde_json::to_string_pretty(&response)?
-        );
+        println!("Status:\n {}", serde_json::to_string_pretty(&response)?);
         return Ok(());
+    } else if selection == 3 {
+        let url = args.server_addr.join("rescan_eth")?;
+        let block = rescan_eth()?;
+        (url, json!(RescanEthData { block }))
     } else {
         unreachable!()
     };

@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use anyhow::Error;
+use ethabi::ParamType;
 use ethabi::Token as EthTokenValue;
-use ethabi::{ParamType};
 use num_bigint::{BigInt, BigUint};
 use serde::{Deserialize, Serialize};
 use sha3::digest::Digest;
@@ -9,6 +9,27 @@ use sha3::Keccak256;
 use ton_abi::TokenValue as TonTokenValue;
 
 use relay_eth::ws::H256;
+use relay_ton::contracts::EthereumEventConfiguration;
+
+pub fn validate_ethereum_event_configuration(
+    config: &EthereumEventConfiguration,
+) -> Result<(), Error> {
+    let EthereumEventConfiguration {
+        ethereum_event_abi,
+        ethereum_event_address,
+        ..
+    } = config;
+    serde_json::from_str::<serde_json::Value>(&ethereum_event_abi)
+        .map_err(|e| Error::new(e).context("Bad abi"))?;
+    if ethereum_event_address.len() != 42 {
+        return Err(anyhow!(
+            "Bad ethereum address length: {}",
+            ethereum_event_address.len()
+        ));
+    }
+    String::from_utf8(ethereum_event_address.clone())?;
+    Ok(())
+}
 
 pub fn from_str(token: &str) -> Result<ParamType, Error> {
     Ok(match token.to_lowercase().as_str() {
@@ -85,8 +106,7 @@ pub fn map_ton_eth(ton: TonTokenValue) -> EthTokenValue {
 }
 
 ///returns signature and its hash.
-pub fn abi_to_topic_hash(abi: &str) -> Result<Vec<(H256, Vec<ParamType>)>, Error> {
-    //todo list of hashes?
+pub fn abi_to_topic_hash(abi: &str) -> Result<(H256, Vec<ParamType>), Error> {
     #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct Abi {
@@ -118,29 +138,25 @@ pub fn abi_to_topic_hash(abi: &str) -> Result<Vec<(H256, Vec<ParamType>)>, Error
         #[serde(rename = "type")]
         pub type_field: String,
     }
-    let abi_list: Vec<Abi> = serde_json::from_str(abi)?;
-    let abi_list = abi_list.into_iter().filter(|x| x.type_field == "event");
-    let mut result = Vec::new();
-    for abi in abi_list {
-        let fn_name = abi.name;
-        let input_types: String = abi
-            .inputs
-            .iter()
-            .map(|x| x.type_field.clone())
-            .collect::<Vec<String>>()
-            .join(",");
-        let abi_types: Result<Vec<ParamType>, Error> = abi
-            .inputs
-            .iter()
-            .map(|x| from_str(x.internal_type.as_str()))
-            .collect();
-        let signature = format!("{}({})", fn_name, input_types);
-        result.push((
-            H256::from_slice(&*Keccak256::digest(signature.as_bytes())),
-            abi_types?,
-        ))
-    }
-    Ok(result)
+    let abi: Abi = serde_json::from_str(abi)?;
+    let fn_name = abi.name;
+    let input_types: String = abi
+        .inputs
+        .iter()
+        .map(|x| x.type_field.clone())
+        .collect::<Vec<String>>()
+        .join(",");
+    let abi_types: Result<Vec<ParamType>, Error> = abi
+        .inputs
+        .iter()
+        .map(|x| from_str(x.internal_type.as_str()))
+        .collect();
+    let signature = format!("{}({})", fn_name, input_types);
+    Ok((
+        H256::from_slice(&*Keccak256::digest(signature.as_bytes())),
+        abi_types?,
+    ))
+
 }
 
 #[cfg(test)]
@@ -157,7 +173,6 @@ mod test {
     use crate::engine::bridge::util::{abi_to_topic_hash, from_str, map_eth_ton, map_ton_eth};
 
     const ABI: &str = r#"
-[
   {
     "anonymous": false,
     "inputs": [
@@ -176,46 +191,16 @@ mod test {
     ],
     "name": "StateChange",
     "type": "event"
-  },
-  {
-    "inputs": [],
-    "name": "currentState",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "newState",
-        "type": "uint256"
-      }
-    ],
-    "name": "setState",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
   }
-]
   "#;
 
     #[test]
     fn test_event_contract_abi() {
-        let hash: Vec<_> = abi_to_topic_hash(ABI)
-            .unwrap()
-            .into_iter()
-            .map(|x| x.0)
-            .collect();
-        let expected = vec![H256::from_slice(&*Keccak256::digest(
+        let hash = abi_to_topic_hash(ABI)
+            .unwrap().0;
+        let expected = H256::from_slice(&*Keccak256::digest(
             b"StateChange(uint256,address)",
-        ))];
+        ));
         assert_eq!(expected, hash);
     }
     //todo test abi parsing
@@ -246,8 +231,6 @@ mod test {
         let got = from_str("address").unwrap();
         assert_eq!(expected, got);
     }
-
-
 
     #[test]
     fn test_conversion_uint() {

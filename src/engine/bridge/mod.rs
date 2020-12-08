@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use sled::{Db, Tree};
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::time::Duration;
-use relay_eth::ws::{EthListener};
 
+use relay_eth::ws::EthListener;
 use relay_ton::contracts::utils::pack_tokens;
 use relay_ton::contracts::*;
 use relay_ton::prelude::{
@@ -20,7 +20,7 @@ use relay_ton::transport::Transport;
 use crate::crypto::key_managment::EthSigner;
 use crate::engine::bridge::persistent_state::TonWatcher;
 use crate::engine::bridge::ton_config_listener::{ConfigListener, MappedData};
-use crate::engine::bridge::util::{map_eth_ton};
+use crate::engine::bridge::util::map_eth_ton;
 
 mod ton_config_listener;
 
@@ -73,8 +73,10 @@ impl Bridge {
         ton_tree: Tree,
         bridge: Arc<BridgeContract>,
     ) {
+        log::debug!("Started watch_unsent_eth_ton_transactions");
         let mut stream = stream;
         while let Some(block_number) = stream.next().await {
+            log::debug!("New block: {}", block_number);
             let prepared_data =
                 match eth_tree.get(serialize(&block_number).expect("Shouldn't fail")) {
                     Ok(a) => match a {
@@ -179,11 +181,22 @@ impl Bridge {
             .unwrap();
         {
             let eth_queue = eth_queue.clone();
-            let eht_blocks_stream = eth_client.get_blocks_stream().await.expect("Shouldn't fail");
-            let ton_tree= db.open_tree(persistent_state::PERSISTENT_TREE_NAME).unwrap();
+            let eht_blocks_stream = eth_client
+                .get_blocks_stream()
+                .await
+                .expect("Shouldn't fail");
+            let ton_tree = db
+                .open_tree(persistent_state::PERSISTENT_TREE_NAME)
+                .unwrap();
             let ton_client = Arc::new(ton_client.clone());
-            tokio::spawn(async move{
-                Bridge::watch_unsent_eth_ton_transactions(eht_blocks_stream, eth_queue, ton_tree, ton_client).await;
+            tokio::spawn(async move {
+                Bridge::watch_unsent_eth_ton_transactions(
+                    eht_blocks_stream,
+                    eth_queue,
+                    ton_tree,
+                    ton_client,
+                )
+                .await;
             });
         }
         let mut stream = eth_client
@@ -192,7 +205,7 @@ impl Bridge {
                 eth_topic.into_iter().collect(),
             )
             .await?;
-
+        log::info!("Subscribed on eth logs");
         while let Some(a) = stream.next().await {
             let event: relay_eth::ws::Event = match a {
                 Ok(a) => a,
@@ -226,7 +239,6 @@ impl Bridge {
                 .filter_map(|x| x)
                 .map(|x| ethabi::decode(x, &event.data))
                 .next();
-
             //taking first element, cause topics and abi shouldn't overlap more than once
             let tokens = match decoded_data {
                 None => {
@@ -252,7 +264,7 @@ impl Bridge {
                     continue;
                 }
             };
-            let event_block_number = event.block_number.into();
+            let event_block_number: BigUint = event.block_number.into();
             let event_block = event.block_hash;
             let ethereum_event_configuration_address =
                 MsgAddressInt::AddrStd(match eth_proxy_map.get(&event.address) {
@@ -272,7 +284,7 @@ impl Bridge {
                         event_transaction,
                         event_index,
                         event_data,
-                        event_block_number,
+                        event_block_number.clone(),
                         event_block,
                         ethereum_event_configuration_address
                     ).await.unwrap();
@@ -287,7 +299,7 @@ impl Bridge {
                 event_transaction,
                 event_index,
                 event_data,
-                event_block_number,
+                event_block_number: event_block_number.clone(),
                 event_block,
                 ethereum_event_configuration_address,
             };
@@ -306,6 +318,7 @@ impl Bridge {
                     None => vec![prepared_data],
                 })
                 .expect("Shouldn't fail");
+            log::info!("Inserting transaction for {}", event_block_number);
             eth_queue
                 .insert(queued_block_number, transactions_in_block)
                 .unwrap();
