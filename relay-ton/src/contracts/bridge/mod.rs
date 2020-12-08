@@ -50,6 +50,10 @@ impl BridgeContract {
         )
     }
 
+    pub fn pubkey(&self) -> UInt256 {
+        UInt256::from(self.keypair.public.to_bytes())
+    }
+
     pub async fn get_known_config_contracts(&self) -> ContractResult<Vec<MsgAddrStd>> {
         let events = self.events_map();
         let mut scanner = self.transport.rescan_events(None, None);
