@@ -174,7 +174,7 @@ impl Bridge {
         log::debug!("Ethereum address: {:?}", eth_topic);
 
         //
-        let ton_watcher = Arc::new(TonWatcher::new(db.clone()).unwrap());
+        let ton_watcher = Arc::new(TonWatcher::new(db.clone(), ton_client.pubkey()).unwrap());
         {
             let ton_watcher = ton_watcher.clone();
             tokio::spawn(async move { ton_watcher.watch(events_rx).await });
