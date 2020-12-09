@@ -169,8 +169,9 @@ async fn wait_for_init(
     };
 
     if let Err(e) = state.finalize(config, key_data).await {
-        let error = format!("Failed finalize relay state: {}", &e);
-        log::error!("{}", &error);
+        log::error!("Failed finalize relay state: {:?}", e);
+
+        let error = format!("Failed finalize relay state: {}", e);
         return Ok(reply::with_status(error, StatusCode::BAD_REQUEST));
     };
 
@@ -215,8 +216,9 @@ async fn wait_for_password(
     };
 
     if let Err(e) = state.finalize(config, key_data).await {
-        let error = format!("Failed finalize relay state: {}", &e);
-        log::error!("{}", &error);
+        log::error!("Failed finalize relay state: {:?}", e);
+
+        let error = format!("Failed finalize relay state: {}", e);
         return Ok(reply::with_status(error, StatusCode::BAD_REQUEST));
     };
 

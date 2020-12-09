@@ -63,7 +63,7 @@ pub trait ContractWithEvents: Contract {
                     let event = match Self::parse_event(&events_map, body.as_ref()) {
                         Ok(event) => event,
                         Err(e) => {
-                            log::error!("event processing error. {}", e);
+                            log::error!("event processing error. {:?}", e);
                             continue;
                         }
                     };

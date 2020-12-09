@@ -117,14 +117,17 @@ impl ConfigListener {
                 Err(e) => {
                     try_notify(semaphore).await;
                     known_config_contracts.remove(&address);
-                    log::error!("got bad ethereum config: {}", e);
+                    log::error!("got bad ethereum config: {:?}", e);
                     return;
                 }
             },
             Err(e) => {
                 try_notify(semaphore).await;
                 known_config_contracts.remove(&address);
-                log::error!("failed to get events configuration contract details: {}", e);
+                log::error!(
+                    "failed to get events configuration contract details: {:?}",
+                    e
+                );
                 return;
             }
         };
@@ -161,7 +164,7 @@ impl ConfigListener {
                     event_addr,
                     data: ethereum_event_details,
                 }) {
-                    log::error!("Failed sending eth event details via channel: {}", e);
+                    log::error!("Failed sending eth event details via channel: {:?}", e);
                 }
 
                 // TODO: update config
@@ -209,7 +212,7 @@ impl ConfigsState {
         configuration: EthereumEventConfiguration,
     ) {
         if let Err(e) = validate_ethereum_event_configuration(&configuration) {
-            log::error!("Got bad EthereumEventConfiguration: {}", e);
+            log::error!("Got bad EthereumEventConfiguration: {:?}", e);
             return;
         }
 
@@ -217,7 +220,7 @@ impl ConfigsState {
         {
             Ok(a) => a,
             Err(e) => {
-                log::error!("Failed parsing abi: {}", e);
+                log::error!("Failed parsing abi: {:?}", e);
                 return;
             }
         };

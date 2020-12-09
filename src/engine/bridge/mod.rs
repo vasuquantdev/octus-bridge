@@ -217,7 +217,7 @@ impl Bridge {
             let event: relay_eth::ws::Event = match event {
                 Ok(event) => event,
                 Err(e) => {
-                    log::error!("Failed parsing data from ethereum stream: {}", e);
+                    log::error!("Failed parsing data from ethereum stream: {:?}", e);
                     continue;
                 }
             };

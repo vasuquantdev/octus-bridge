@@ -156,7 +156,14 @@ impl GraphQLAccountSubscription {
         log::debug!("started polling account {}", self.account);
 
         tokio::spawn(async move {
+            let mut next_iteration_time = tokio::time::Instant::now();
             'subscription_loop: loop {
+                tokio::time::delay_until(next_iteration_time.clone()).await;
+
+                // Debounce api calls
+                next_iteration_time =
+                    tokio::time::Instant::now() + tokio::time::Duration::from_millis(100);
+
                 let subscription = match subscription.upgrade() {
                     Some(s) => s,
                     None => return,
@@ -169,7 +176,11 @@ impl GraphQLAccountSubscription {
                 {
                     Ok(id) => id,
                     Err(e) => {
-                        log::error!("failed to get next block id. {}", e);
+                        log::error!("failed to get next block id. {:?}", e);
+                        if let TransportError::ApiFailure { .. } = e {
+                            next_iteration_time =
+                                tokio::time::Instant::now() + tokio::time::Duration::from_secs(1);
+                        }
                         continue 'subscription_loop;
                     }
                 };
@@ -190,7 +201,7 @@ impl GraphQLAccountSubscription {
                     }) {
                     Ok(block) => block,
                     Err(e) => {
-                        log::error!("failed to get next block data. {}", e);
+                        log::error!("failed to get next block data. {:?}", e);
                         continue 'subscription_loop;
                     }
                 };
@@ -215,7 +226,7 @@ impl GraphQLAccountSubscription {
                                 Ok(transaction) => transaction.0,
                                 Err(e) => {
                                     log::error!(
-                                        "failed to parse account transaction. {}",
+                                        "failed to parse account transaction. {:?}",
                                         e.to_string()
                                     );
                                     continue 'subscription_loop;
@@ -225,7 +236,7 @@ impl GraphQLAccountSubscription {
                             let out_messages = match parse_transaction_messages(&transaction) {
                                 Ok(messages) => messages,
                                 Err(e) => {
-                                    log::error!("error during transaction processing. {}", e);
+                                    log::error!("error during transaction processing. {:?}", e);
                                     continue 'subscription_loop;
                                 }
                             };
@@ -255,7 +266,7 @@ impl GraphQLAccountSubscription {
                                         events_tx: Some(&state_notifier),
                                     },
                                 ) {
-                                    log::error!("error during out messages processing. {}", e);
+                                    log::error!("error during out messages processing. {:?}", e);
                                     // Just ignore
                                 }
                             }
@@ -267,7 +278,7 @@ impl GraphQLAccountSubscription {
                         continue 'subscription_loop;
                     }
                     Err(e) => {
-                        log::error!("failed to parse block data. {}", e.to_string());
+                        log::error!("failed to parse block data. {:?}", e.to_string());
                         continue 'subscription_loop;
                     }
                 };

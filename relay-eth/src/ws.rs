@@ -179,7 +179,7 @@ async fn scan_blocks(
         let mut current_height = match w3.eth().block_number().await {
             Ok(a) => a.as_u64(),
             Err(e) => {
-                log::error!("Failed getting block number: {}", e);
+                log::error!("Failed getting block number: {:?}", e);
                 return;
             }
         };
@@ -197,13 +197,13 @@ async fn scan_blocks(
             .await;
 
             if let Err(e) = blocks_tx.send(block_number) {
-                log::error!("Failed sending event via channel: {}", e);
+                log::error!("Failed sending event via channel: {:?}", e);
             }
 
             current_height = match w3.eth().block_number().await {
                 Ok(height) => height.as_u64(),
                 Err(e) => {
-                    log::error!("Failed getting block number: {}", e);
+                    log::error!("Failed getting block number: {:?}", e);
                     continue;
                 }
             };
@@ -225,7 +225,7 @@ async fn scan_blocks(
             let head: BlockHeader = match block {
                 Ok(a) => a,
                 Err(e) => {
-                    log::error!("Got bad data from stream: {}", e);
+                    log::error!("Got bad data from stream: {:?}", e);
                     continue;
                 }
             };
@@ -237,7 +237,7 @@ async fn scan_blocks(
                 }
             };
             if let Err(e) = blocks_tx.send(block_number) {
-                log::error!("Failed sending event via channel: {}", e);
+                log::error!("Failed sending event via channel: {:?}", e);
             }
             process_block(
                 &db,
@@ -278,13 +278,13 @@ async fn process_block(
                 match event {
                     Ok(a) => {
                         if let Err(e) = events_tx.send(Ok(a)) {
-                            log::error!("Failed sending event: {}", e);
+                            log::error!("Failed sending event: {:?}", e);
                         }
                     }
                     Err(e) => {
-                        log::error!("Failed parsing log to event: {}", e);
+                        log::error!("Failed parsing log to event: {:?}", e);
                         if let Err(e) = events_tx.send(Err(e)) {
-                            log::error!("Failed sending event: {}", e);
+                            log::error!("Failed sending event: {:?}", e);
                         }
                         continue;
                     }
@@ -292,7 +292,7 @@ async fn process_block(
             }
         }
         Err(e) => {
-            log::error!("Failed fetching logs: {}", e);
+            log::error!("Failed fetching logs: {:?}", e);
         }
     };
 }

@@ -197,7 +197,7 @@ impl TonlibAccountSubscription {
                 {
                     Ok(state) => state,
                     Err(e) => {
-                        log::error!("error during account subscription loop. {}", e);
+                        log::error!("error during account subscription loop. {:?}", e);
                         continue;
                     }
                 };
@@ -239,7 +239,7 @@ impl TonlibAccountSubscription {
                             break 'process_transactions;
                         }
                         Err(e) => {
-                            log::error!("error during account subscription loop. {}", e);
+                            log::error!("error during account subscription loop. {:?}", e);
                             continue 'subscription_loop;
                         }
                     };
@@ -251,7 +251,7 @@ impl TonlibAccountSubscription {
                         let out_messages = match parse_transaction_messages(&transaction) {
                             Ok(messages) => messages,
                             Err(e) => {
-                                log::error!("error during transaction processing. {}", e);
+                                log::error!("error during transaction processing. {:?}", e);
                                 continue 'subscription_loop;
                             }
                         };
