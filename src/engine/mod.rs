@@ -2,13 +2,12 @@ mod bridge;
 mod models;
 mod routes;
 
-
-use std::sync::Arc;
 use anyhow::Error;
-use tokio::sync::RwLock;
-use crate::config::RelayConfig;
 use models::*;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
+use crate::config::RelayConfig;
 
 pub async fn run(config: RelayConfig) -> Result<(), Error> {
     let state_manager = sled::open(&config.storage_path)?;
@@ -40,6 +39,6 @@ pub async fn run(config: RelayConfig) -> Result<(), Error> {
             bridge_state,
         })),
     )
-        .await;
+    .await;
     Ok(())
 }

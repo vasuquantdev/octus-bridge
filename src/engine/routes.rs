@@ -10,7 +10,7 @@ use url::Url;
 use warp::http::StatusCode;
 use warp::{reply, Filter, Reply};
 
-use relay_eth::ws::{ update_height};
+use relay_eth::ws::update_height;
 use relay_eth::ws::EthListener;
 use relay_ton::contracts::BridgeContract;
 use relay_ton::prelude::{Arc, RwLock};
@@ -254,7 +254,7 @@ pub async fn create_bridge(
         eth_client,
         ton_client,
         transport,
-        state_manager.clone()
+        state_manager.clone(),
     )))
 }
 

@@ -1,9 +1,9 @@
 use anyhow::Error;
-use bincode::{deserialize, serialize};
 use futures::StreamExt;
+use relay_ton::prelude::{Arc, BigUint};
 use sled::{Db, Tree};
 use tokio::sync::mpsc::UnboundedReceiver;
-use relay_ton::prelude::{Arc, BigUint};
+
 use crate::engine::bridge::ton_config_listener::ExtendedEventInfo;
 
 pub const PERSISTENT_TREE_NAME: &str = "unconfirmed_events";
@@ -19,19 +19,19 @@ impl TonWatcher {
         })
     }
 
-    pub async fn watch(self: Arc<Self>, events: UnboundedReceiver<ExtendedEventInfo>) {
+    pub async fn watch(self: Arc<Self>, mut events_rx: UnboundedReceiver<ExtendedEventInfo>) {
         log::info!("Started watching other relay events");
+
         let db = &self.db;
-        let mut events = events;
-        while let Some(event) = events.next().await {
+        while let Some(event) = events_rx.next().await {
             log::error!("Recieved event!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
             let tx_hash = &event.data.ethereum_event_transaction;
-            db.insert(tx_hash, serialize(&event).expect("Shouldn't fail"))
+            db.insert(tx_hash, bincode::serialize(&event).expect("Shouldn't fail"))
                 .unwrap();
         }
     }
 
-    pub fn drop_event_by_hash(&self, key: &[u8]) -> Result<(), Error> {
+    pub fn remove_event_by_hash(&self, key: &[u8]) -> Result<(), Error> {
         self.db.remove(key)?;
         Ok(())
     }
@@ -40,9 +40,10 @@ impl TonWatcher {
         Ok(self
             .db
             .get(hash)?
-            .and_then(|x| deserialize(&x).expect("Shouldn't fail")))
+            .and_then(|x| bincode::deserialize(&x).expect("Shouldn't fail")))
     }
 
+    /// Get all blocks before specified block number
     pub fn scan_for_block_lower_bound(
         tree: &Tree,
         block_number: BigUint,
@@ -56,7 +57,7 @@ impl TonWatcher {
                     None
                 }
             })
-            .map(|x| deserialize::<ExtendedEventInfo>(&x))
+            .map(|x| bincode::deserialize::<ExtendedEventInfo>(&x))
             .filter_map(|x| x.ok()) // shouldn't fail
             .filter(|x| x.data.event_block_number == block_number)
             .collect()

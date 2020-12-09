@@ -44,6 +44,10 @@ impl EthereumEventConfigurationContract {
         )
     }
 
+    pub fn address(&self) -> &MsgAddressInt {
+        &self.config.account
+    }
+
     pub async fn get_details(&self) -> ContractResult<EthereumEventConfiguration> {
         self.message("getDetails")?.run_local().await?.parse_all()
     }
