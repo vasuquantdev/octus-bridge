@@ -136,126 +136,131 @@ impl EthListener {
         &self,
         addresses: Vec<Address>,
         topics: Vec<H256>,
-    ) -> Result<impl Stream<Item=Result<Event, Error>>, Error> {
-        let height = self.get_block_number().await?;
+    ) -> Result<impl Stream<Item = Result<Event, Error>>, Error> {
+        let from_height = self.get_block_number().await?;
         log::info!(
             "Subscribing on addresses: {:?}, topics: {:?}",
             addresses,
             topics
         );
+
         // spawn(monitor_block_number(
         //     self.db.clone(),
         //     self.stream.clone(),
         //     self.blocks_tx.clone(),
         // ));
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
 
         let addresses = addresses.clone();
         let topics = topics.clone();
-        Self::scan_blocks(
-            addresses,
-            topics,
-            height,
-            self.stream.clone(),
-            tx,
-            rx,
+
+        scan_blocks(
             self.db.clone(),
+            self.stream.clone(),
+            topics,
+            addresses,
+            from_height,
             self.blocks_tx.clone(),
         )
-            .await
-    }
-
-    async fn scan_blocks(
-        addresses: Vec<Address>,
-        topics: Vec<H256>,
-        mut from: u64,
-        w3: Web3<WebSocket>,
-        tx: UnboundedSender<Result<Event, Error>>,
-        rx: UnboundedReceiver<Result<Event, Error>>,
-        db: Tree,
-        ticker: UnboundedSender<u64>,
-    ) -> Result<impl Stream<Item=Result<Event, Error>>, Error> {
-        tokio::spawn(async move {
-            let mut current_height = match w3.eth().block_number().await {
-                Ok(a) => a.as_u64(),
-                Err(e) => {
-                    log::error!("Failed getting block number: {}", e);
-                    return;
-                }
-            };
-
-            while from != current_height {
-                get_event_from_block(
-                    addresses.clone(),
-                    topics.clone(),
-                    &tx,
-                    &db,
-                    from.into(),
-                    &w3,
-                )
-                    .await;
-                if let Err(e) = ticker.send(from) {
-                    log::error!("Failed sending event via channel: {}", e);
-                }
-                current_height = match w3.eth().block_number().await {
-                    Ok(a) => a.as_u64(),
-                    Err(e) => {
-                        log::error!("Failed getting block number: {}", e);
-                        continue;
-                    }
-                };
-                from += 1;
-            }
-            log::info!("Synchronized with ehtereum");
-            log::info!("Now subscribing instead of polling");
-            let mut blocks_stream = match w3.eth_subscribe().subscribe_new_heads().await {
-                Ok(a) => a,
-                Err(e) => {
-                    error!("Failed subscribing on eth logs: {}", e);
-                    return;
-                }
-            };
-
-            while let Some(block) = blocks_stream.next().await {
-                let head: BlockHeader = match block {
-                    Ok(a) => a,
-                    Err(e) => {
-                        log::error!("Got bad data from stream: {}", e);
-                        continue;
-                    }
-                };
-                let block_number = match head.number {
-                    Some(a) => a.as_u64(),
-                    None => {
-                        log::error!("Block is pending");
-                        continue;
-                    }
-                };
-                if let Err(e) = ticker.send(block_number) {
-                    log::error!("Failed sending event via channel: {}", e);
-                }
-                get_event_from_block(
-                    addresses.clone(),
-                    topics.clone(),
-                    &tx,
-                    &db,
-                    block_number.into(),
-                    &w3,
-                )
-                    .await;
-            }
-        });
-        Ok(rx)
+        .await
     }
 }
 
-async fn get_event_from_block(
-    addresses: Vec<Address>,
+async fn scan_blocks(
+    db: Tree,
+    w3: Web3<WebSocket>,
     topics: Vec<H256>,
-    tx: &UnboundedSender<Result<Event, Error>>,
+    addresses: Vec<Address>,
+    from_height: u64,
+    blocks_tx: UnboundedSender<u64>,
+) -> Result<impl Stream<Item = Result<Event, Error>>, Error> {
+    let (events_tx, events_rx) = unbounded_channel();
+
+    tokio::spawn(async move {
+        let mut current_height = match w3.eth().block_number().await {
+            Ok(a) => a.as_u64(),
+            Err(e) => {
+                log::error!("Failed getting block number: {}", e);
+                return;
+            }
+        };
+
+        let mut block_number = from_height;
+        while block_number < current_height {
+            process_block(
+                &db,
+                &w3,
+                topics.clone(),
+                addresses.clone(),
+                block_number.into(),
+                &events_tx,
+            )
+            .await;
+
+            if let Err(e) = blocks_tx.send(block_number) {
+                log::error!("Failed sending event via channel: {}", e);
+            }
+
+            current_height = match w3.eth().block_number().await {
+                Ok(height) => height.as_u64(),
+                Err(e) => {
+                    log::error!("Failed getting block number: {}", e);
+                    continue;
+                }
+            };
+
+            block_number += 1;
+        }
+
+        log::info!("Synchronized with ethereum");
+        log::info!("Now subscribing instead of polling");
+        let mut blocks_stream = match w3.eth_subscribe().subscribe_new_heads().await {
+            Ok(a) => a,
+            Err(e) => {
+                error!("Failed subscribing on eth logs: {}", e);
+                return;
+            }
+        };
+
+        while let Some(block) = blocks_stream.next().await {
+            let head: BlockHeader = match block {
+                Ok(a) => a,
+                Err(e) => {
+                    log::error!("Got bad data from stream: {}", e);
+                    continue;
+                }
+            };
+            let block_number = match head.number {
+                Some(a) => a.as_u64(),
+                None => {
+                    log::error!("Block is pending");
+                    continue;
+                }
+            };
+            if let Err(e) = blocks_tx.send(block_number) {
+                log::error!("Failed sending event via channel: {}", e);
+            }
+            process_block(
+                &db,
+                &w3,
+                topics.clone(),
+                addresses.clone(),
+                block_number.into(),
+                &events_tx,
+            )
+            .await;
+        }
+    });
+
+    Ok(events_rx)
+}
+
+async fn process_block(
     db: &Tree,
-    block_number: BlockNumber,
     w3: &Web3<WebSocket>,
+    topics: Vec<H256>,
+    addresses: Vec<Address>,
+    block_number: BlockNumber,
+    events_tx: &UnboundedSender<Result<Event, Error>>,
 ) {
     let filter = FilterBuilder::default()
         .address(addresses)
@@ -272,13 +277,13 @@ async fn get_event_from_block(
                 let event = EthListener::log_to_event(log, &db);
                 match event {
                     Ok(a) => {
-                        if let Err(e) = tx.send(Ok(a)) {
+                        if let Err(e) = events_tx.send(Ok(a)) {
                             log::error!("Failed sending event: {}", e);
                         }
                     }
                     Err(e) => {
                         log::error!("Failed parsing log to event: {}", e);
-                        if let Err(e) = tx.send(Err(e)) {
+                        if let Err(e) = events_tx.send(Err(e)) {
                             log::error!("Failed sending event: {}", e);
                         }
                         continue;
@@ -291,6 +296,7 @@ async fn get_event_from_block(
         }
     };
 }
+
 // while let Some(a) = stream.next().await {
 // match a {
 // Err(e) => {

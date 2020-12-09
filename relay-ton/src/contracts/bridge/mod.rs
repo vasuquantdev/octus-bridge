@@ -128,6 +128,14 @@ impl BridgeContract {
         event_block: Vec<u8>,
         ethereum_event_configuration_address: MsgAddressInt,
     ) -> ContractResult<()> {
+        log::info!(
+            "CONFIRMING: {:?}, {}, {}, {}",
+            hex::encode(&event_transaction),
+            event_index,
+            event_block_number,
+            ethereum_event_configuration_address
+        );
+
         self.message("confirmEthereumEvent")?
             .arg(event_transaction)
             .arg(event_index)
@@ -149,6 +157,14 @@ impl BridgeContract {
         event_block: Vec<u8>,
         ethereum_event_configuration_address: MsgAddressInt,
     ) -> ContractResult<()> {
+        log::info!(
+            "REJECTING: {:?}, {}, {}, {}",
+            hex::encode(&event_transaction),
+            event_index,
+            event_block_number,
+            ethereum_event_configuration_address
+        );
+
         self.message("rejectEthereumEvent")?
             .arg(event_transaction)
             .arg(event_index)

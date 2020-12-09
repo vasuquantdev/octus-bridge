@@ -43,7 +43,7 @@ impl ConfigListener {
         transport: Arc<dyn Transport>,
         bridge: Arc<BridgeContract>,
     ) -> mpsc::UnboundedReceiver<ExtendedEventInfo> {
-        let (events_tx, mut events_rx) = mpsc::unbounded_channel();
+        let (events_tx, events_rx) = mpsc::unbounded_channel();
 
         let ethereum_event_contract = EthereumEventContract::new(transport.clone()).await.unwrap();
 
@@ -139,7 +139,7 @@ impl ConfigListener {
 
         let mut eth_events = config_contract.events();
         while let Some(event) = eth_events.next().await {
-            log::debug!("got event configuration config event: {:?}", event);
+            log::debug!("got event confirmation event: {:?}", event);
 
             if let EthereumEventConfigurationContractEvent::NewEthereumEventConfirmation {
                 address: event_addr,
@@ -147,12 +147,11 @@ impl ConfigListener {
             } = event
             {
                 let details = event_contract.get_details(event_addr.clone()).await;
-                log::info!("RECEIVED DETAILS: {:?}", details);
 
                 let ethereum_event_details = match details {
                     Ok(details) => details,
                     Err(e) => {
-                        log::error!("get_details failed: {}", e);
+                        log::error!("get_details failed: {:?}", e);
                         continue;
                     }
                 };

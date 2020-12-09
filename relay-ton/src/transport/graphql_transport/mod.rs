@@ -10,7 +10,8 @@ use reqwest::header::{self, HeaderMap, HeaderValue};
 use reqwest::ClientBuilder;
 use ton_abi::Function;
 use ton_block::{
-    CommonMsgInfo, Deserializable, HashmapAugType, InRefValue, Message, Serializable, Transaction,
+    CommonMsgInfo, Deserializable, GetRepresentationHash, HashmapAugType, InRefValue, Message,
+    Serializable, Transaction,
 };
 use ton_types::HashmapType;
 
@@ -173,7 +174,7 @@ impl GraphQLAccountSubscription {
                     }
                 };
 
-                log::debug!("current_block: {}", next_block_id);
+                log::trace!("current_block: {}", next_block_id);
 
                 let (block, block_info) = match subscription
                     .client
@@ -203,7 +204,7 @@ impl GraphQLAccountSubscription {
                     .and_then(|account_blocks| account_blocks.get(&subscription.account_id))
                 {
                     Ok(Some(data)) => {
-                        log::debug!("got account block. {:?}", data);
+                        log::trace!("got account block. {:?}", data);
 
                         let _ = state_notifier.broadcast(AccountEvent::StateChanged);
 
@@ -233,6 +234,12 @@ impl GraphQLAccountSubscription {
                                 if let Some(pending_message) =
                                     pending_messages.remove(&in_msg.hash())
                                 {
+                                    log::debug!(
+                                        "got message response for {} IN {}",
+                                        pending_message.abi.name,
+                                        subscription.account
+                                    );
+
                                     let result = process_out_messages(
                                         &out_messages,
                                         MessageProcessingParams {
@@ -240,7 +247,7 @@ impl GraphQLAccountSubscription {
                                             events_tx: Some(&state_notifier),
                                         },
                                     );
-                                    let _ = pending_message.tx.send(result);
+                                    pending_message.set_result(result);
                                 } else if let Err(e) = process_out_messages(
                                     &out_messages,
                                     MessageProcessingParams {
@@ -255,7 +262,7 @@ impl GraphQLAccountSubscription {
                         }
                     }
                     Ok(None) => {
-                        log::debug!("account state wasn't changed");
+                        log::trace!("account state wasn't changed");
                         last_block_id = next_block_id;
                         continue 'subscription_loop;
                     }
@@ -318,11 +325,7 @@ impl AccountSubscription for GraphQLAccountSubscription {
                 hash_map::Entry::Vacant(entry) => {
                     self.client.send_message_raw(&hash, &serialized).await?;
 
-                    entry.insert(PendingMessage {
-                        expires_at,
-                        abi,
-                        tx,
-                    })
+                    entry.insert(PendingMessage::new(expires_at, abi, tx))
                 }
                 _ => {
                     return Err(TransportError::FailedToSendMessage {
@@ -360,7 +363,35 @@ impl AccountSubscription for GraphQLAccountSubscription {
 struct PendingMessage {
     expires_at: u32,
     abi: Arc<Function>,
-    tx: oneshot::Sender<TransportResult<ContractOutput>>,
+    tx: Option<oneshot::Sender<TransportResult<ContractOutput>>>,
+}
+
+impl PendingMessage {
+    fn new(
+        expires_at: u32,
+        abi: Arc<Function>,
+        tx: oneshot::Sender<TransportResult<ContractOutput>>,
+    ) -> Self {
+        Self {
+            expires_at,
+            abi,
+            tx: Some(tx),
+        }
+    }
+
+    fn set_result(mut self, result: TransportResult<ContractOutput>) {
+        if let Some(tx) = self.tx.take() {
+            let _ = tx.send(result);
+        }
+    }
+}
+
+impl Drop for PendingMessage {
+    fn drop(&mut self) {
+        if let Some(tx) = self.tx.take() {
+            let _ = tx.send(Err(TransportError::MessageUnreached));
+        }
+    }
 }
 
 const MESSAGES_PER_SCAN_ITER: u32 = 50;

@@ -24,7 +24,7 @@ impl TonWatcher {
 
         let db = &self.db;
         while let Some(event) = events_rx.next().await {
-            log::error!("Recieved event!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+            log::warn!("Recieved event");
             let tx_hash = &event.data.ethereum_event_transaction;
             db.insert(tx_hash, bincode::serialize(&event).expect("Shouldn't fail"))
                 .unwrap();
