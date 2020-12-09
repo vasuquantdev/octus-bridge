@@ -10,8 +10,7 @@ use reqwest::header::{self, HeaderMap, HeaderValue};
 use reqwest::ClientBuilder;
 use ton_abi::Function;
 use ton_block::{
-    CommonMsgInfo, Deserializable, GetRepresentationHash, HashmapAugType, InRefValue, Message,
-    Serializable, Transaction,
+    CommonMsgInfo, Deserializable, HashmapAugType, InRefValue, Message, Serializable, Transaction,
 };
 use ton_types::HashmapType;
 
@@ -103,7 +102,7 @@ struct GraphQLAccountSubscription {
     event_notifier: watch::Receiver<AccountEvent>,
     account: MsgAddressInt,
     account_id: UInt256,
-    pending_messages: RwLock<HashMap<UInt256, PendingMessage>>,
+    pending_messages: RwLock<HashMap<UInt256, PendingMessage<u32>>>,
 }
 
 impl GraphQLAccountSubscription {
@@ -158,7 +157,7 @@ impl GraphQLAccountSubscription {
         tokio::spawn(async move {
             let mut next_iteration_time = tokio::time::Instant::now();
             'subscription_loop: loop {
-                tokio::time::delay_until(next_iteration_time.clone()).await;
+                tokio::time::delay_until(next_iteration_time).await;
 
                 // Debounce api calls
                 next_iteration_time =
@@ -247,14 +246,14 @@ impl GraphQLAccountSubscription {
                                 {
                                     log::debug!(
                                         "got message response for {} IN {}",
-                                        pending_message.abi.name,
+                                        pending_message.abi().name,
                                         subscription.account
                                     );
 
                                     let result = process_out_messages(
                                         &out_messages,
                                         MessageProcessingParams {
-                                            abi_function: Some(pending_message.abi.as_ref()),
+                                            abi_function: Some(pending_message.abi()),
                                             events_tx: Some(&state_notifier),
                                         },
                                     );
@@ -284,7 +283,7 @@ impl GraphQLAccountSubscription {
                 };
 
                 pending_messages
-                    .retain(|_, message| message.expires_at <= block_info.gen_utime().0);
+                    .retain(|_, message| message.expires_at() <= block_info.gen_utime().0);
 
                 last_block_id = next_block_id;
             }
@@ -371,37 +370,9 @@ impl AccountSubscription for GraphQLAccountSubscription {
     }
 }
 
-struct PendingMessage {
-    expires_at: u32,
-    abi: Arc<Function>,
-    tx: Option<oneshot::Sender<TransportResult<ContractOutput>>>,
-}
-
-impl PendingMessage {
-    fn new(
-        expires_at: u32,
-        abi: Arc<Function>,
-        tx: oneshot::Sender<TransportResult<ContractOutput>>,
-    ) -> Self {
-        Self {
-            expires_at,
-            abi,
-            tx: Some(tx),
-        }
-    }
-
-    fn set_result(mut self, result: TransportResult<ContractOutput>) {
-        if let Some(tx) = self.tx.take() {
-            let _ = tx.send(result);
-        }
-    }
-}
-
-impl Drop for PendingMessage {
-    fn drop(&mut self) {
-        if let Some(tx) = self.tx.take() {
-            let _ = tx.send(Err(TransportError::MessageUnreached));
-        }
+impl PendingMessage<u32> {
+    pub fn expires_at(&self) -> u32 {
+        *self.data()
     }
 }
 

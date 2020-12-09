@@ -117,7 +117,7 @@ struct TonlibAccountSubscription {
     event_notifier: watch::Receiver<AccountEvent>,
     account: MsgAddressInt,
     known_state: RwLock<(AccountStats, AccountStuff)>,
-    pending_messages: RwLock<HashMap<UInt256, PendingMessage>>,
+    pending_messages: RwLock<HashMap<UInt256, PendingMessage<(u32, u64)>>>,
 }
 
 impl TonlibAccountSubscription {
@@ -261,11 +261,11 @@ impl TonlibAccountSubscription {
                                 let result = process_out_messages(
                                     &out_messages,
                                     MessageProcessingParams {
-                                        abi_function: Some(pending_message.abi.as_ref()),
+                                        abi_function: Some(pending_message.abi()),
                                         events_tx: Some(&state_notifier),
                                     },
                                 );
-                                let _ = pending_message.tx.send(result);
+                                pending_message.set_result(result);
                             } else if let Err(e) = process_out_messages(
                                 &out_messages,
                                 MessageProcessingParams {
@@ -291,7 +291,7 @@ impl TonlibAccountSubscription {
                     }
                 }
 
-                pending_messages.retain(|_, message| message.expires_at <= gen_utime);
+                pending_messages.retain(|_, message| message.expires_at() <= gen_utime);
 
                 last_trans_lt = current_trans_lt;
                 if let Err(e) = subscription.db.insert(
@@ -370,12 +370,11 @@ impl AccountSubscription for TonlibAccountSubscription {
                         .await
                         .map_err(to_api_error)?;
 
-                    entry.insert(PendingMessage {
-                        expires_at,
-                        _previous_known_lt: previous_known_lt,
+                    entry.insert(PendingMessage::new(
+                        (expires_at, previous_known_lt),
                         abi,
                         tx,
-                    })
+                    ))
                 }
                 _ => {
                     return Err(TransportError::FailedToSendMessage {
@@ -404,6 +403,17 @@ impl AccountSubscription for TonlibAccountSubscription {
             until_lt,
         )
         .boxed()
+    }
+}
+
+impl PendingMessage<(u32, u64)> {
+    pub fn expires_at(&self) -> u32 {
+        self.data().0
+    }
+
+    #[allow(dead_code)]
+    pub fn latest_transaction_lt(&self) -> u64 {
+        self.data().1
     }
 }
 
@@ -580,13 +590,6 @@ impl<'a> Stream for EventsScanner<'a> {
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         self.get_mut().handle_state(cx)
     }
-}
-
-struct PendingMessage {
-    expires_at: u32,
-    _previous_known_lt: u64,
-    abi: Arc<Function>,
-    tx: oneshot::Sender<TransportResult<ContractOutput>>,
 }
 
 fn to_api_error(e: failure::Error) -> TransportError {

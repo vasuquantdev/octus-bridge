@@ -8,6 +8,48 @@ use crate::models::*;
 use crate::prelude::*;
 use crate::transport::AccountEvent;
 
+pub struct PendingMessage<T> {
+    data: T,
+    abi: Arc<Function>,
+    tx: Option<oneshot::Sender<TransportResult<ContractOutput>>>,
+}
+
+impl<T> PendingMessage<T> {
+    pub fn new(
+        data: T,
+        abi: Arc<Function>,
+        tx: oneshot::Sender<TransportResult<ContractOutput>>,
+    ) -> Self {
+        Self {
+            data,
+            abi,
+            tx: Some(tx),
+        }
+    }
+
+    pub fn abi(&self) -> &Function {
+        self.abi.as_ref()
+    }
+
+    pub fn data(&self) -> &T {
+        &self.data
+    }
+
+    pub fn set_result(mut self, result: TransportResult<ContractOutput>) {
+        if let Some(tx) = self.tx.take() {
+            let _ = tx.send(result);
+        }
+    }
+}
+
+impl<T> Drop for PendingMessage<T> {
+    fn drop(&mut self) {
+        if let Some(tx) = self.tx.take() {
+            let _ = tx.send(Err(TransportError::MessageUnreached));
+        }
+    }
+}
+
 pub fn encode_external_message(message: ExternalMessage) -> Message {
     let mut message_header = ExternalInboundMessageHeader::default();
     message_header.dst = message.dest.clone();
