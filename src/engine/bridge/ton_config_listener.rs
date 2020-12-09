@@ -104,7 +104,7 @@ impl ConfigListener {
         let address = MsgAddressInt::AddrStd(address);
 
         let mut known_config_contracts = self.known_config_contracts.lock().await;
-        if known_config_contracts.insert(address.clone()) {
+        if !known_config_contracts.insert(address.clone()) {
             try_notify(semaphore).await;
             return;
         }

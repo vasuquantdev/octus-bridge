@@ -12,14 +12,19 @@ impl From<ExternalMessageHeader> for HashMap<String, TokenValue> {
         let mut result = HashMap::with_capacity(2);
         result.insert("time".to_string(), TokenValue::Time(header.time));
         result.insert("expire".to_string(), TokenValue::Expire(header.expire));
+        result.insert("pubkey".to_string(), TokenValue::PublicKey(header.pubkey));
         result
     }
 }
 
-pub fn make_header(timeout_sec: u32) -> ExternalMessageHeader {
+pub fn make_header(timeout_sec: u32, keypair: Option<&Keypair>) -> ExternalMessageHeader {
     let time = Utc::now().timestamp_millis() as u64;
     let expire = ((time / 1000) + timeout_sec as u64) as u32;
-    ExternalMessageHeader { time, expire }
+    ExternalMessageHeader {
+        time,
+        expire,
+        pubkey: keypair.map(|pair| pair.public.clone()),
+    }
 }
 
 pub struct MessageBuilder<'a>(MessageBuilderImpl<'a, dyn Transport>);
@@ -164,7 +169,7 @@ where
     }
 
     pub fn build(self, keypair: Option<&Keypair>) -> ContractResult<ExternalMessage> {
-        let header = make_header(self.config.timeout_sec);
+        let header = make_header(self.config.timeout_sec, keypair);
         let encoded_input = self
             .function
             .encode_input(&header.clone().into(), &self.input, false, keypair)

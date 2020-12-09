@@ -18,7 +18,7 @@ checksum = "ee2a4ec343196209d6594e19543ae87a39f96d5534d7174822a3ad825dd6ed7e"
 [[package]]
 name = "adnl"
 version = "0.0.5"
-source = "git+https://github.com/broxus/ton-labs-adnl.git#cfd03cff4afd6dd2f64522d3f1924d529752c32f"
+source = "git+https://github.com/broxus/ton-labs-adnl.git#52f5fa663fa00af95739789b9455e99a47f4d8f6"
 dependencies = [
  "aes-ctr",
  "arrayref",
@@ -37,7 +37,7 @@ dependencies = [
  "sha2 0.8.2",
  "socket2",
  "stream-cancel",
- "tokio 0.2.23",
+ "tokio 0.2.24",
  "tokio-io-timeout",
  "ton_api",
  "ton_types",
@@ -128,7 +128,7 @@ checksum = "9e9e7a929bd34c68a82d58a4de7f86fffdaf97fb2af850162a7bb19dd7269b33"
 dependencies = [
  "native-tls",
  "thiserror",
- "tokio 0.2.23",
+ "tokio 0.2.24",
  "url",
 ]
 
@@ -140,7 +140,7 @@ checksum = "8d3a45e77e34375a7923b1e8febb049bb011f064714a8e17a1a616fef01da13d"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.7",
- "syn 1.0.53",
+ "syn 1.0.54",
 ]
 
 [[package]]
@@ -428,7 +428,7 @@ dependencies = [
  "proc-macro-error",
  "proc-macro2 1.0.24",
  "quote 1.0.7",
- "syn 1.0.53",
+ "syn 1.0.54",
 ]
 
 [[package]]
@@ -518,9 +518,9 @@ dependencies = [
 
 [[package]]
 name = "const_fn"
-version = "0.4.3"
+version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c478836e029dcef17fb47c89023448c64f781a046e0300e257ad8225ae59afab"
+checksum = "cd51eab21ab4fd6a3bf889e2d0958c0a6e3a61ad04260325e919e652a2a62826"
 
 [[package]]
 name = "constant_time_eq"
@@ -636,7 +636,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7fbaabec2c953050352311293be5c6aba8e141ba19d6811862b232d6fd020484"
 dependencies = [
  "quote 1.0.7",
- "syn 1.0.53",
+ "syn 1.0.54",
 ]
 
 [[package]]
@@ -659,7 +659,7 @@ dependencies = [
  "digest 0.8.1",
  "rand_core 0.5.1",
  "subtle 2.3.0",
- "zeroize 1.1.1",
+ "zeroize 1.2.0",
 ]
 
 [[package]]
@@ -672,7 +672,7 @@ dependencies = [
  "digest 0.9.0",
  "rand_core 0.5.1",
  "subtle 2.3.0",
- "zeroize 1.1.1",
+ "zeroize 1.2.0",
 ]
 
 [[package]]
@@ -693,7 +693,7 @@ checksum = "41cb0e6161ad61ed084a36ba71fbba9e3ac5aee3606fb607fe08da6acbcf3d8c"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.7",
- "syn 1.0.53",
+ "syn 1.0.54",
 ]
 
 [[package]]
@@ -773,7 +773,7 @@ dependencies = [
  "rand 0.7.3",
  "serde 1.0.118",
  "sha2 0.9.2",
- "zeroize 1.1.1",
+ "zeroize 1.2.0",
 ]
 
 [[package]]
@@ -884,7 +884,7 @@ checksum = "aa4da3c766cd7a0db8242e326e9e4e081edd567072893ed320008189715366a4"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.7",
- "syn 1.0.53",
+ "syn 1.0.54",
  "synstructure",
 ]
 
@@ -1032,7 +1032,7 @@ dependencies = [
  "proc-macro-hack",
  "proc-macro2 1.0.24",
  "quote 1.0.7",
- "syn 1.0.53",
+ "syn 1.0.54",
 ]
 
 [[package]]
@@ -1177,7 +1177,7 @@ dependencies = [
  "quote 1.0.7",
  "serde 1.0.118",
  "serde_json",
- "syn 1.0.53",
+ "syn 1.0.54",
 ]
 
 [[package]]
@@ -1189,7 +1189,7 @@ dependencies = [
  "failure",
  "graphql_client_codegen",
  "proc-macro2 1.0.24",
- "syn 1.0.53",
+ "syn 1.0.54",
 ]
 
 [[package]]
@@ -1206,7 +1206,7 @@ dependencies = [
  "http",
  "indexmap",
  "slab",
- "tokio 0.2.23",
+ "tokio 0.2.24",
  "tokio-util 0.3.1",
  "tracing",
  "tracing-futures",
@@ -1372,7 +1372,7 @@ dependencies = [
  "itoa",
  "pin-project 1.0.2",
  "socket2",
- "tokio 0.2.23",
+ "tokio 0.2.24",
  "tower-service",
  "tracing",
  "want",
@@ -1390,7 +1390,7 @@ dependencies = [
  "hyper",
  "hyper-tls",
  "native-tls",
- "tokio 0.2.23",
+ "tokio 0.2.24",
  "tokio-tls",
  "tower-service",
  "typed-headers",
@@ -1405,7 +1405,7 @@ dependencies = [
  "bytes",
  "hyper",
  "native-tls",
- "tokio 0.2.23",
+ "tokio 0.2.24",
  "tokio-tls",
 ]
 
@@ -1781,9 +1781,9 @@ dependencies = [
 
 [[package]]
 name = "net2"
-version = "0.2.36"
+version = "0.2.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7cf75f38f16cb05ea017784dc6dbfd354f76c223dba37701734c4f5a9337d02"
+checksum = "391630d12b68002ae1e25e8f974306474966550ad82dac6886fb8910c19568ae"
 dependencies = [
  "cfg-if 0.1.10",
  "libc",
@@ -1885,7 +1885,7 @@ checksum = "876a53fff98e03a936a674b29568b0e605f06b29372c2489ff4de23f1949743d"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.7",
- "syn 1.0.53",
+ "syn 1.0.54",
 ]
 
 [[package]]
@@ -2144,7 +2144,7 @@ checksum = "65ad2ae56b6abe3a1ee25f15ee605bacadb9a764edaba9c2bf4103800d4a1895"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.7",
- "syn 1.0.53",
+ "syn 1.0.54",
 ]
 
 [[package]]
@@ -2155,7 +2155,7 @@ checksum = "f8e8d2bf0b23038a4424865103a4df472855692821aab4e4f5c3312d461d9e5f"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.7",
- "syn 1.0.53",
+ "syn 1.0.54",
 ]
 
 [[package]]
@@ -2238,7 +2238,7 @@ dependencies = [
  "proc-macro-error-attr",
  "proc-macro2 1.0.24",
  "quote 1.0.7",
- "syn 1.0.53",
+ "syn 1.0.54",
  "version_check",
 ]
 
@@ -2540,7 +2540,7 @@ dependencies = [
  "thiserror",
  "tiny-bip39",
  "tiny-hderive",
- "tokio 0.2.23",
+ "tokio 0.2.24",
  "ton_abi",
  "ton_block",
  "url",
@@ -2560,7 +2560,7 @@ dependencies = [
  "serde_json",
  "sha3",
  "sled",
- "tokio 0.2.23",
+ "tokio 0.2.24",
  "url",
  "web3",
 ]
@@ -2591,7 +2591,7 @@ dependencies = [
  "serde_json",
  "sled",
  "thiserror",
- "tokio 0.2.23",
+ "tokio 0.2.24",
  "ton_abi",
  "ton_block",
  "ton_types",
@@ -2636,7 +2636,7 @@ dependencies = [
  "serde 1.0.118",
  "serde_json",
  "serde_urlencoded 0.7.0",
- "tokio 0.2.23",
+ "tokio 0.2.24",
  "tokio-tls",
  "url",
  "wasm-bindgen",
@@ -2816,7 +2816,7 @@ checksum = "c84d3526699cd55261af4b941e4e725444df67aa4f9e6a3564f18030d12672df"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.7",
- "syn 1.0.53",
+ "syn 1.0.54",
 ]
 
 [[package]]
@@ -3040,7 +3040,7 @@ dependencies = [
  "futures-core",
  "futures-util",
  "pin-project 0.4.27",
- "tokio 0.2.23",
+ "tokio 0.2.24",
 ]
 
 [[package]]
@@ -3085,7 +3085,7 @@ dependencies = [
  "proc-macro-error",
  "proc-macro2 1.0.24",
  "quote 1.0.7",
- "syn 1.0.53",
+ "syn 1.0.54",
 ]
 
 [[package]]
@@ -3113,9 +3113,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "1.0.53"
+version = "1.0.54"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8833e20724c24de12bbaba5ad230ea61c3eafb05b881c7c9d3cfe8638b187e68"
+checksum = "9a2af957a63d6bd42255c359c93d9bfdb97076bd3b820897ce55ffbfbf107f44"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.7",
@@ -3130,7 +3130,7 @@ checksum = "b834f2d66f734cb897113e34aaff2f1ab4719ca946f9a7358dba8f8064148701"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.7",
- "syn 1.0.53",
+ "syn 1.0.54",
  "unicode-xid 0.2.1",
 ]
 
@@ -3202,7 +3202,7 @@ checksum = "9ba20f23e85b10754cd195504aebf6a27e2e6cbe28c17778a0c930724628dd56"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.7",
- "syn 1.0.53",
+ "syn 1.0.54",
 ]
 
 [[package]]
@@ -3240,7 +3240,7 @@ dependencies = [
  "sha2 0.9.2",
  "thiserror",
  "unicode-normalization",
- "zeroize 1.1.1",
+ "zeroize 1.2.0",
 ]
 
 [[package]]
@@ -3291,9 +3291,9 @@ checksum = "cda74da7e1a664f795bb1f8a87ec406fb89a02522cf6e50620d016add6dbbf5c"
 
 [[package]]
 name = "tokio"
-version = "0.2.23"
+version = "0.2.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6d7ad61edd59bfcc7e80dababf0f4aed2e6d5e0ba1659356ae889752dfc12ff"
+checksum = "099837d3464c16a808060bb3f02263b412f6fafcb5d01c533d309985fbeebe48"
 dependencies = [
  "bytes",
  "fnv",
@@ -3330,7 +3330,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9390a43272c8a6ac912ed1d1e2b6abeafd5047e05530a2fa304deee041a06215"
 dependencies = [
  "bytes",
- "tokio 0.2.23",
+ "tokio 0.2.24",
 ]
 
 [[package]]
@@ -3341,7 +3341,7 @@ checksum = "e44da00bfc73a25f814cd8d7e57a68a5c31b74b3152a0a1d1f590c97ed06265a"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.7",
- "syn 1.0.53",
+ "syn 1.0.54",
 ]
 
 [[package]]
@@ -3351,7 +3351,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9a70f4fcd7b3b24fb194f837560168208f669ca8cb70d0c4b862944452396343"
 dependencies = [
  "native-tls",
- "tokio 0.2.23",
+ "tokio 0.2.24",
 ]
 
 [[package]]
@@ -3363,7 +3363,7 @@ dependencies = [
  "futures-util",
  "log",
  "pin-project 0.4.27",
- "tokio 0.2.23",
+ "tokio 0.2.24",
  "tungstenite",
 ]
 
@@ -3378,7 +3378,7 @@ dependencies = [
  "futures-sink",
  "log",
  "pin-project-lite 0.1.11",
- "tokio 0.2.23",
+ "tokio 0.2.24",
 ]
 
 [[package]]
@@ -3451,7 +3451,7 @@ dependencies = [
 [[package]]
 name = "ton_block"
 version = "1.0.0"
-source = "git+https://github.com/tonlabs/ton-labs-block.git#0e4f7c1fa5b392ec93bfd6212e848fddf73b8e24"
+source = "git+https://github.com/tonlabs/ton-labs-block.git#4bb672ba51f7bb74ac2f8ed0203768c7a1108140"
 dependencies = [
  "base64 0.10.1",
  "clear_on_drop",
@@ -3471,7 +3471,7 @@ dependencies = [
 [[package]]
 name = "ton_labs_assembler"
 version = "1.0.0"
-source = "git+https://github.com/tonlabs/ton-labs-assembler.git#0553a7103ff98f32f2ee52aec93f06a35eff3194"
+source = "git+https://github.com/tonlabs/ton-labs-assembler.git#3e25f00bf703095605c9d8ecc251054165fcf71f"
 dependencies = [
  "failure",
  "hex 0.4.2",
@@ -3531,7 +3531,7 @@ dependencies = [
 [[package]]
 name = "tonlib"
 version = "0.1.0"
-source = "git+https://github.com/broxus/tonlib-rs.git#d3a396748f3f542c5eed1ce85914b48308833193"
+source = "git+https://github.com/broxus/tonlib-rs.git#7b07e273f7fedebe121fe1d942e791510e0bcfad"
 dependencies = [
  "adnl",
  "base64 0.13.0",
@@ -3539,7 +3539,7 @@ dependencies = [
  "futures 0.3.8",
  "serde 1.0.118",
  "serde_json",
- "tokio 0.2.23",
+ "tokio 0.2.24",
  "ton_api",
  "ton_block",
  "ton_types",
@@ -3798,7 +3798,7 @@ dependencies = [
  "serde 1.0.118",
  "serde_json",
  "serde_urlencoded 0.6.1",
- "tokio 0.2.23",
+ "tokio 0.2.24",
  "tokio-tungstenite",
  "tower-service",
  "tracing",
@@ -3841,7 +3841,7 @@ dependencies = [
  "log",
  "proc-macro2 1.0.24",
  "quote 1.0.7",
- "syn 1.0.53",
+ "syn 1.0.54",
  "wasm-bindgen-shared",
 ]
 
@@ -3875,7 +3875,7 @@ checksum = "b5a48c72f299d80557c7c62e37e7225369ecc0c963964059509fbafe917c7549"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.7",
- "syn 1.0.53",
+ "syn 1.0.54",
  "wasm-bindgen-backend",
  "wasm-bindgen-shared",
 ]
@@ -3947,7 +3947,7 @@ dependencies = [
  "serde_json",
  "soketto",
  "tiny-keccak 2.0.2",
- "tokio 0.2.23",
+ "tokio 0.2.24",
  "tokio-util 0.4.0",
  "typed-headers",
  "url",
@@ -4023,7 +4023,7 @@ checksum = "637ff90c9540fa3073bb577e65033069e4bae7c79d49d74aa3ffdf5342a53217"
 dependencies = [
  "curve25519-dalek 2.1.0",
  "rand_core 0.5.1",
- "zeroize 1.1.1",
+ "zeroize 1.2.0",
 ]
 
 [[package]]
@@ -4043,9 +4043,9 @@ checksum = "45af6a010d13e4cf5b54c94ba5a2b2eba5596b9e46bf5875612d332a1f2b3f86"
 
 [[package]]
 name = "zeroize"
-version = "1.1.1"
+version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05f33972566adbd2d3588b0491eb94b98b43695c4ef897903470ede4f3f5a28a"
+checksum = "81a974bcdd357f0dca4d41677db03436324d45a4c9ed2d0b873a5a360ce41c36"
 dependencies = [
  "zeroize_derive",
 ]
@@ -4058,6 +4058,6 @@ checksum = "c3f369ddb18862aba61aa49bf31e74d29f0f162dec753063200e1dc084345d16"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.7",
- "syn 1.0.53",
+ "syn 1.0.54",
  "synstructure",
 ]

@@ -49,6 +49,7 @@ pub struct TransactionId {
 pub struct ExternalMessageHeader {
     pub time: u64,
     pub expire: u32,
+    pub pubkey: Option<ed25519_dalek::PublicKey>,
 }
 
 #[derive(Debug, Clone)]
