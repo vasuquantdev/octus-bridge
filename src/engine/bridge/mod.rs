@@ -3,6 +3,7 @@ use std::iter::FromIterator;
 use std::sync::Arc;
 
 use anyhow::Error;
+use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use log::info;
 use num_traits::cast::ToPrimitive;
@@ -89,6 +90,7 @@ impl Bridge {
                 let bridge = bridge.clone();
                 let ethereum_event_transaction =
                     H256::from_slice(event.ethereum_event_transaction.as_slice());
+
                 tokio::spawn(async move {
                     bridge
                         .reject_ethereum_event(
@@ -102,24 +104,32 @@ impl Bridge {
                         .await
                     //todo error handling
                 });
+
                 ton_queue
                     .remove_event_by_hash(&ethereum_event_transaction)
                     .unwrap();
             }
 
-            for event in prepared_data {
-                let hash = H256::from_slice(&*event.event_transaction);
-                match bridge
-                    .confirm_ethereum_event(
-                        event.event_transaction,
-                        event.event_index,
-                        event.event_data,
-                        event.event_block_number,
-                        event.event_block,
-                        event.ethereum_event_configuration_address,
-                    )
-                    .await
-                {
+            let mut confirmations =
+                FuturesUnordered::from_iter(prepared_data.into_iter().map(|event| async {
+                    let hash = H256::from_slice(&*event.event_transaction);
+
+                    let result = bridge
+                        .confirm_ethereum_event(
+                            event.event_transaction,
+                            event.event_index,
+                            event.event_data,
+                            event.event_block_number,
+                            event.event_block,
+                            event.ethereum_event_configuration_address,
+                        )
+                        .await;
+
+                    (hash, result)
+                }));
+
+            while let Some((hash, result)) = confirmations.next().await {
+                match result {
                     Ok(_) => {
                         log::info!("Confirmed tx in ton with hash {}", hash);
                         eth_queue.remove(block_number).unwrap()
@@ -128,7 +138,6 @@ impl Bridge {
                         log::error!("Failed confirming tx with hash: {} in ton: {:?}", hash, e)
                     }
                 }
-                //todo error handling
             }
         }
     }
@@ -252,7 +261,7 @@ impl Bridge {
 
             // if some relay has already reported transaction
             if ton_watcher
-                .get_event_by_hash(event.tx_hash.as_ref())
+                .get_event_by_hash(&event.tx_hash)
                 .unwrap()
                 .is_some()
             {
@@ -269,9 +278,7 @@ impl Bridge {
                     .unwrap();
 
                 log::info!("Confirmed other relay transaction: {}", event.tx_hash);
-                ton_watcher
-                    .remove_event_by_hash(event.tx_hash.as_ref())
-                    .unwrap();
+                ton_watcher.remove_event_by_hash(&event.tx_hash).unwrap();
                 continue;
             }
 

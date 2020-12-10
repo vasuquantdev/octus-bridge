@@ -28,6 +28,13 @@ impl TonWatcher {
         log::info!("Started watching other relay events");
         let db = &self.db;
         while let Some(event) = events_rx.next().await {
+            self.stats
+                .update_relay_stats(
+                    &event.relay_key,
+                    H256::from_slice(&event.data.ethereum_event_transaction),
+                )
+                .unwrap();
+
             log::info!("Received event");
             if event.relay_key == self.relay_key {
                 log::info!(
@@ -36,30 +43,26 @@ impl TonWatcher {
                 );
                 continue;
             }
+
             log::info!(
                 "Received other relay event. Relay key: {}",
                 hex::encode(&event.relay_key)
             );
-            self.stats
-                .update_relay_stats(
-                    &event.relay_key,
-                    H256::from_slice(&event.data.ethereum_event_transaction),
-                )
-                .unwrap();
+
             db.insert(
-                H256::from_slice(&*event.data.ethereum_event_transaction),
+                H256::from_slice(&event.data.ethereum_event_transaction),
                 &event,
             )
             .unwrap();
         }
     }
 
-    pub fn remove_event_by_hash(&self, key: &[u8]) -> Result<(), Error> {
-        self.db.remove_event_by_hash(&H256::from_slice(key))?;
+    pub fn remove_event_by_hash(&self, hash: &H256) -> Result<(), Error> {
+        self.db.remove_event_by_hash(hash)?;
         Ok(())
     }
 
-    pub fn get_event_by_hash(&self, hash: &[u8]) -> Result<Option<ExtendedEventInfo>, Error> {
-        Ok(self.db.get_event_by_hash(&H256::from_slice(&hash))?)
+    pub fn get_event_by_hash(&self, hash: &H256) -> Result<Option<ExtendedEventInfo>, Error> {
+        Ok(self.db.get_event_by_hash(hash)?)
     }
 }

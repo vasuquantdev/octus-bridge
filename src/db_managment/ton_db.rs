@@ -4,9 +4,9 @@ use sled::{Db, Tree};
 
 use relay_ton::prelude::BigUint;
 
+use super::constants::TON_EVENTS_TREE_NAME;
 use crate::db_managment::Table;
 use crate::engine::bridge::models::ExtendedEventInfo;
-use super::constants::TON_EVENTS_TREE_NAME;
 
 pub struct TonTree {
     inner: Tree,
@@ -19,21 +19,23 @@ impl TonTree {
     }
 
     pub fn insert(&self, key: H256, value: &ExtendedEventInfo) -> Result<(), Error> {
-        let key = bincode::serialize(&key).expect("Shouldn't fail");
         let value = bincode::serialize(&value).expect("Shouldn't fail");
-        self.inner.insert(key, value)?;
+        log::warn!("WRITING: {:?}", key);
+        self.inner.insert(key.as_fixed_bytes(), value)?;
         Ok(())
     }
 
     pub fn remove_event_by_hash(&self, key: &H256) -> Result<(), Error> {
-        self.inner.remove(bincode::serialize(key).unwrap())?;
+        log::warn!("REMOVING: {:?}", key);
+        self.inner.remove(key.as_fixed_bytes())?;
         Ok(())
     }
 
-    pub fn get_event_by_hash(&self, hash: &H256) -> Result<Option<ExtendedEventInfo>, Error> {
+    pub fn get_event_by_hash(&self, key: &H256) -> Result<Option<ExtendedEventInfo>, Error> {
+        log::warn!("GETTING: {:?}", key);
         Ok(self
             .inner
-            .get(hash)?
+            .get(key.as_fixed_bytes())?
             .and_then(|x| bincode::deserialize(&x).expect("Shouldn't fail")))
     }
 
@@ -66,7 +68,7 @@ impl Table for TonTree {
             .filter_map(|x| x.ok())
             .map(|(k, v)| {
                 (
-                    bincode::deserialize(&k).expect("Shouldn't fail"),
+                    H256::from_slice(&k),
                     bincode::deserialize(&v).expect("Shouldn't fail"),
                 )
             })

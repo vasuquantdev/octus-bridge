@@ -25,11 +25,13 @@ impl Hash for EthTonConfirmationData {
         self.event_transaction.hash(state)
     }
 }
+
 impl PartialEq for EthTonConfirmationData {
     fn eq(&self, other: &Self) -> bool {
         self.event_transaction.eq(&other.event_transaction)
     }
 }
+
 impl Eq for EthTonConfirmationData {}
 
 #[derive(Deserialize, Serialize)]

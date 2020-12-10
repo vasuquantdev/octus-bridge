@@ -16,24 +16,26 @@ impl EthQueue {
             db: db.open_tree(super::constants::ETH_QUEUE_TREE_NAME)?,
         })
     }
+
     pub fn get(&self, key: u64) -> Result<Option<HashSet<EthTonConfirmationData>>, Error> {
-        match self.db.get(bincode::serialize(&key).unwrap())? {
+        match self.db.get(key.to_be_bytes())? {
             Some(data) => Ok(Some(bincode::deserialize(&data)?)),
             None => Ok(None),
         }
     }
-    pub fn remove(&self, block: u64) -> Result<(), Error> {
-        self.db.remove(bincode::serialize(&block).unwrap())?;
+
+    pub fn remove(&self, key: u64) -> Result<(), Error> {
+        self.db.remove(key.to_be_bytes())?;
         Ok(())
     }
+
     pub fn insert(&self, key: &u64, value: &HashSet<EthTonConfirmationData>) -> Result<(), Error> {
-        self.db.insert(
-            bincode::serialize(&key).unwrap(),
-            bincode::serialize(&value).unwrap(),
-        )?;
+        self.db
+            .insert(key.to_be_bytes(), bincode::serialize(&value).unwrap())?;
         Ok(())
     }
 }
+
 impl Table for EthQueue {
     type Key = u64;
     type Value = HashSet<EthTonConfirmationData>;
@@ -43,8 +45,10 @@ impl Table for EthQueue {
             .iter()
             .filter_map(|x| x.ok())
             .map(|(k, v)| {
+                let mut key = [0; 8];
+                key.copy_from_slice(&k);
                 (
-                    bincode::deserialize(&k).expect("Shouldn't fail"),
+                    u64::from_be_bytes(key),
                     bincode::deserialize(&v).expect("Shouldn't fail"),
                 )
             })

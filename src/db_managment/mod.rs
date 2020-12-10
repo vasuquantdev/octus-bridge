@@ -1,16 +1,15 @@
-use std::io::Write;
-
-use crate::db_managment::eth_queue::EthQueue;
-use crate::db_managment::ton_db::TonTree;
-
-use super::db_managment::prelude::*;
-
 pub mod constants;
 pub mod eth_queue;
 pub mod models;
 mod prelude;
 pub mod stats;
 pub mod ton_db;
+
+use std::io::Write;
+
+use super::db_managment::prelude::*;
+use crate::db_managment::eth_queue::EthQueue;
+use crate::db_managment::ton_db::TonTree;
 
 pub trait Table {
     type Key;
