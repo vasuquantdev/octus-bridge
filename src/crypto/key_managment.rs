@@ -18,8 +18,9 @@ use sodiumoxide::crypto::secretbox::{Key, Nonce};
 
 const CREDENTIAL_LEN: usize = digest::SHA256_OUTPUT_LEN;
 
-///Change it to tune number of iterations in pbkdf2 function. Higher number - password bruteforce becomes slower.
-/// Initial value is optimal for the current machine, so you maybe want to change it.
+#[cfg(debug_assertions)]
+const N_ITER: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(1) };
+#[cfg(not(debug_assertions))]
 const N_ITER: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(5_000_000) };
 
 #[derive(Eq, PartialEq, Debug)]
