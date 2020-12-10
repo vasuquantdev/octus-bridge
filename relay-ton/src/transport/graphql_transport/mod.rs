@@ -283,7 +283,7 @@ impl GraphQLAccountSubscription {
                 };
 
                 pending_messages
-                    .retain(|_, message| message.expires_at() <= block_info.gen_utime().0);
+                    .retain(|_, message| block_info.gen_utime().0 <= message.expires_at());
 
                 last_block_id = next_block_id;
             }

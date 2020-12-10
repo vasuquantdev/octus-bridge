@@ -1,16 +1,13 @@
 use anyhow::Error;
-use ethereum_types::H160;
+use ethereum_types::H256;
 use futures::StreamExt;
-use sled::{Db};
+use sled::Db;
 use tokio::sync::mpsc::UnboundedReceiver;
 
 use relay_ton::prelude::{Arc, UInt256};
 
 use crate::db_managment::ton_db::TonTree;
 use crate::engine::bridge::models::ExtendedEventInfo;
-
-
-
 
 pub struct TonWatcher {
     db: TonTree,
@@ -44,7 +41,7 @@ impl TonWatcher {
             );
 
             db.insert(
-                H160::from_slice(&*event.data.ethereum_event_transaction),
+                H256::from_slice(&*event.data.ethereum_event_transaction),
                 &event,
             )
             .unwrap();
@@ -52,11 +49,11 @@ impl TonWatcher {
     }
 
     pub fn remove_event_by_hash(&self, key: &[u8]) -> Result<(), Error> {
-        self.db.remove_event_by_hash(&H160::from_slice(key))?;
+        self.db.remove_event_by_hash(&H256::from_slice(key))?;
         Ok(())
     }
 
     pub fn get_event_by_hash(&self, hash: &[u8]) -> Result<Option<ExtendedEventInfo>, Error> {
-        Ok(self.db.get_event_by_hash(&H160::from_slice(&hash))?)
+        Ok(self.db.get_event_by_hash(&H256::from_slice(&hash))?)
     }
 }

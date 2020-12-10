@@ -1,26 +1,16 @@
-
 use std::collections::{HashMap, HashSet};
-
 use std::sync::Arc;
-
 
 use ethereum_types::{H160, H256};
 use futures::StreamExt;
-
-
 use tokio::sync::{mpsc, Mutex, Notify, RwLock, RwLockReadGuard};
-
 use ton_block::{MsgAddrStd, MsgAddressInt};
 
-
 use relay_ton::contracts::*;
-
-
 use relay_ton::transport::Transport;
 
-use crate::engine::bridge::util::{abi_to_topic_hash, validate_ethereum_event_configuration};
-
 use super::models::ExtendedEventInfo;
+use crate::engine::bridge::util::{abi_to_topic_hash, validate_ethereum_event_configuration};
 
 /// Listens to config streams and maps them.
 #[derive(Debug)]

@@ -291,7 +291,7 @@ impl TonlibAccountSubscription {
                     }
                 }
 
-                pending_messages.retain(|_, message| message.expires_at() <= gen_utime);
+                pending_messages.retain(|_, message| gen_utime <= message.expires_at());
 
                 last_trans_lt = current_trans_lt;
                 if let Err(e) = subscription.db.insert(

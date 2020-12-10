@@ -3,18 +3,17 @@ use std::iter::FromIterator;
 use std::sync::Arc;
 
 use anyhow::Error;
-use ethereum_types::H160;
 use futures::StreamExt;
 use log::info;
 use num_traits::cast::ToPrimitive;
-use sled::{Db};
+use sled::Db;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::time::Duration;
 
-use relay_eth::ws::EthListener;
-use relay_ton::contracts::*;
+use relay_eth::ws::{EthListener, H256};
 use relay_ton::contracts::utils::pack_tokens;
-use relay_ton::prelude::{BigUint, MsgAddressInt, serde_cells, serde_int_addr};
+use relay_ton::contracts::*;
+use relay_ton::prelude::{serde_cells, serde_int_addr, BigUint, MsgAddressInt};
 use relay_ton::transport::Transport;
 
 use crate::crypto::key_managment::EthSigner;
@@ -80,10 +79,7 @@ impl Bridge {
                     }
                 },
                 Err(e) => {
-                    log::error!(
-                        "CRITICAL ERROR. Failed getting data from eth_queue: {}",
-                        e
-                    );
+                    log::error!("CRITICAL ERROR. Failed getting data from eth_queue: {}", e);
                     continue;
                 }
             };
@@ -92,7 +88,7 @@ impl Bridge {
                 let event = fake_event.data;
                 let bridge = bridge.clone();
                 let ethereum_event_transaction =
-                    H160::from_slice(event.ethereum_event_transaction.as_slice());
+                    H256::from_slice(event.ethereum_event_transaction.as_slice());
                 tokio::spawn(async move {
                     bridge
                         .reject_ethereum_event(
@@ -112,7 +108,7 @@ impl Bridge {
             }
 
             for event in prepared_data {
-                let hash = H160::from_slice(&*event.event_transaction);
+                let hash = H256::from_slice(&*event.event_transaction);
                 match bridge
                     .confirm_ethereum_event(
                         event.event_transaction,

@@ -1,14 +1,12 @@
 use anyhow::Error;
-use ethereum_types::H160;
+use ethereum_types::H256;
 use futures::StreamExt;
 use sled::{Db, Tree};
 
+use relay_ton::prelude::BigUint;
 
-use relay_ton::prelude::{BigUint};
 use crate::db_managment::Table;
 use crate::engine::bridge::models::ExtendedEventInfo;
-
-
 
 pub const PERSISTENT_TREE_NAME: &str = "unconfirmed_events";
 
@@ -22,19 +20,19 @@ impl TonTree {
         Ok(Self { inner: tree })
     }
 
-    pub fn insert(&self, key: H160, value: &ExtendedEventInfo) -> Result<(), Error> {
+    pub fn insert(&self, key: H256, value: &ExtendedEventInfo) -> Result<(), Error> {
         let key = bincode::serialize(&key).expect("Shouldn't fail");
         let value = bincode::serialize(&value).expect("Shouldn't fail");
         self.inner.insert(key, value)?;
         Ok(())
     }
 
-    pub fn remove_event_by_hash(&self, key: &H160) -> Result<(), Error> {
+    pub fn remove_event_by_hash(&self, key: &H256) -> Result<(), Error> {
         self.inner.remove(key.0)?;
         Ok(())
     }
 
-    pub fn get_event_by_hash(&self, hash: &H160) -> Result<Option<ExtendedEventInfo>, Error> {
+    pub fn get_event_by_hash(&self, hash: &H256) -> Result<Option<ExtendedEventInfo>, Error> {
         Ok(self
             .inner
             .get(hash)?
@@ -61,7 +59,7 @@ impl TonTree {
 }
 
 impl Table for TonTree {
-    type Key = H160;
+    type Key = H256;
     type Value = ExtendedEventInfo;
 
     fn dump_elements(&self) -> Vec<(Self::Key, Self::Value)> {
