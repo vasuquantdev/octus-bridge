@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use crate::db_managment::models::EthTonConfirmationData;
+use crate::db_managment::Table;
 
 use super::prelude::*;
 
@@ -31,5 +32,22 @@ impl EthQueue {
             bincode::serialize(&value).unwrap(),
         )?;
         Ok(())
+    }
+}
+impl Table for EthQueue {
+    type Key = u64;
+    type Value = HashSet<EthTonConfirmationData>;
+
+    fn dump_elements(&self) -> Vec<(Self::Key, Self::Value)> {
+        self.db
+            .iter()
+            .filter_map(|x| x.ok())
+            .map(|(k, v)| {
+                (
+                    bincode::deserialize(&k).expect("Shouldn't fail"),
+                    bincode::deserialize(&v).expect("Shouldn't fail"),
+                )
+            })
+            .collect()
     }
 }

@@ -1,6 +1,6 @@
-use relay_ton::contracts::EthereumEventDetails;
-use relay_ton::prelude::{MsgAddrStd, UInt256, serde_std_addr,serde_uint256};
 use super::prelude::*;
+use relay_ton::contracts::EthereumEventDetails;
+use relay_ton::prelude::{serde_std_addr, serde_uint256, MsgAddrStd, UInt256};
 
 /// Event received from TON
 #[derive(Debug, Clone, Hash, Serialize, Deserialize)]

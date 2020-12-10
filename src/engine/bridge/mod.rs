@@ -13,7 +13,7 @@ use tokio::time::Duration;
 use relay_eth::ws::{EthListener, H256};
 use relay_ton::contracts::utils::pack_tokens;
 use relay_ton::contracts::*;
-use relay_ton::prelude::{serde_cells, serde_int_addr, BigUint, MsgAddressInt};
+use relay_ton::prelude::{BigUint, MsgAddressInt};
 use relay_ton::transport::Transport;
 
 use crate::crypto::key_managment::EthSigner;

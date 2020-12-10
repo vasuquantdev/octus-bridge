@@ -1,14 +1,9 @@
-use std::panic::PanicInfo;
-use std::sync::Arc;
-use std::{panic, process, thread, time};
-
 use anyhow::Error;
-use futures::FutureExt;
+use std::sync::Arc;
 use tokio::signal::ctrl_c;
 use tokio::sync::RwLock;
 
 use models::*;
-use relay_ton::prelude::Db;
 
 use crate::config::RelayConfig;
 use crate::engine::handle_panic::setup_panic_handler;

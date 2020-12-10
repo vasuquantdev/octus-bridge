@@ -1,3 +1,10 @@
+pub use bridge::*;
+pub use bridge_configuration_update::*;
+pub use contract::{Contract, ContractWithEvents};
+pub use ethereum_event::*;
+pub use ethereum_event_configuration::*;
+pub use models::*;
+
 pub mod bridge;
 pub mod bridge_configuration_update;
 pub mod ethereum_event;
@@ -10,20 +17,15 @@ pub mod models;
 mod prelude;
 pub mod utils;
 
-pub use bridge::*;
-pub use bridge_configuration_update::*;
-pub use contract::{Contract, ContractWithEvents};
-pub use ethereum_event::*;
-pub use ethereum_event_configuration::*;
-pub use models::*;
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use tokio::stream::StreamExt;
+
     use crate::prelude::*;
     use crate::transport::graphql_transport::Config;
     use crate::transport::{GraphQLTransport, Transport};
-    use tokio::stream::StreamExt;
+
+    use super::*;
 
     const LOCAL_SERVER_ADDR: &str = "http://127.0.0.1:80/graphql";
 
@@ -145,7 +147,7 @@ mod tests {
                     match event {
                         BridgeContractEvent::NewEthereumEventConfiguration { address } => {
                             tokio::spawn(listener(transport.clone(), tx.clone(), address));
-                        }
+                        } //fixme check it
                     }
                 }
             }

@@ -19,7 +19,7 @@ pub enum ContractError {
     #[error("transport error")]
     TransportError(#[from] TransportError),
     #[error("invalid eth address")]
-    InvalidEthAddress
+    InvalidEthAddress,
 }
 
 pub type ContractResult<T> = Result<T, ContractError>;

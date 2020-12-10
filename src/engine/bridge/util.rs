@@ -15,8 +15,7 @@ pub fn validate_ethereum_event_configuration(
     config: &EthereumEventConfiguration,
 ) -> Result<(), Error> {
     let EthereumEventConfiguration {
-        ethereum_event_abi,
-        ..
+        ethereum_event_abi, ..
     } = config;
     serde_json::from_str::<serde_json::Value>(&ethereum_event_abi)
         .map_err(|e| Error::new(e).context("Bad abi"))?;
@@ -148,7 +147,6 @@ pub fn abi_to_topic_hash(abi: &str) -> Result<(H256, Vec<ParamType>), Error> {
         H256::from_slice(&*Keccak256::digest(signature.as_bytes())),
         abi_types?,
     ))
-
 }
 
 #[cfg(test)]
@@ -188,11 +186,8 @@ mod test {
 
     #[test]
     fn test_event_contract_abi() {
-        let hash = abi_to_topic_hash(ABI)
-            .unwrap().0;
-        let expected = H256::from_slice(&*Keccak256::digest(
-            b"StateChange(uint256,address)",
-        ));
+        let hash = abi_to_topic_hash(ABI).unwrap().0;
+        let expected = H256::from_slice(&*Keccak256::digest(b"StateChange(uint256,address)"));
         assert_eq!(expected, hash);
     }
     //todo test abi parsing

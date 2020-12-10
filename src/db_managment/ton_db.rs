@@ -1,6 +1,5 @@
 use anyhow::Error;
 use ethereum_types::H256;
-use futures::StreamExt;
 use sled::{Db, Tree};
 
 use relay_ton::prelude::BigUint;

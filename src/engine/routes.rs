@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::convert::Infallible;
 use std::str::FromStr;
 
@@ -11,8 +12,8 @@ use url::Url;
 use warp::http::StatusCode;
 use warp::{reply, Filter, Reply};
 
-use relay_eth::ws::update_height;
 use relay_eth::ws::EthListener;
+use relay_eth::ws::{update_height, H256};
 use relay_ton::contracts::BridgeContract;
 use relay_ton::prelude::{Arc, RwLock};
 use relay_ton::transport::Transport;
@@ -20,6 +21,8 @@ use relay_ton::transport::Transport;
 use crate::config::{RelayConfig, TonConfig};
 use crate::crypto::key_managment::KeyData;
 use crate::crypto::recovery::*;
+use crate::db_managment::stats::{StatsProvider, TonPubKey};
+use crate::db_managment::Table;
 use crate::engine::bridge::Bridge;
 use crate::engine::models::{BridgeState, InitData, Password, RescanEthData, State};
 
@@ -60,11 +63,9 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
 
     let routes = init.or(password).or(status).or(rescan_from_block_eth);
     let server = warp::serve(routes);
-    let (_,server) =
-    server
-        .bind_with_graceful_shutdown(serve_address, async {
-            signal_handler.await.ok();
-        });
+    let (_, server) = server.bind_with_graceful_shutdown(serve_address, async {
+        signal_handler.await.ok();
+    });
     server.await;
 }
 
@@ -95,23 +96,28 @@ async fn get_status(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible>
         password_needed: bool,
         init_data_needed: bool,
         is_working: bool,
+        relay_stats: Vec<(TonPubKey, HashSet<H256>)>,
     }
-
+    let provider = StatsProvider::new(&state.state_manager).unwrap();
+    let relay_stats = provider.dump_elements();
     let result = match &state.bridge_state {
         BridgeState::Uninitialized => Status {
             password_needed: true,
             init_data_needed: true,
             is_working: false,
+            relay_stats,
         },
         BridgeState::Locked => Status {
             password_needed: true,
             init_data_needed: true,
             is_working: false,
+            relay_stats,
         },
         BridgeState::Running(_) => Status {
             password_needed: false,
             init_data_needed: false,
             is_working: true,
+            relay_stats,
         },
     };
 
