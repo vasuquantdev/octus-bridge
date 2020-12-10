@@ -7,6 +7,7 @@ use crate::prelude::*;
 
 crate::define_event!(BridgeContractEvent, BridgeContractEventKind, {
     NewEthereumEventConfiguration { address: MsgAddrStd },
+    NewBridgeConfigurationUpdate { address: MsgAddrStd },
 });
 
 impl TryFrom<(BridgeContractEventKind, Vec<Token>)> for BridgeContractEvent {
@@ -16,6 +17,11 @@ impl TryFrom<(BridgeContractEventKind, Vec<Token>)> for BridgeContractEvent {
         Ok(match kind {
             BridgeContractEventKind::NewEthereumEventConfiguration => {
                 BridgeContractEvent::NewEthereumEventConfiguration {
+                    address: tokens.into_iter().next().try_parse()?,
+                }
+            }
+            BridgeContractEventKind::NewBridgeConfigurationUpdate => {
+                BridgeContractEvent::NewBridgeConfigurationUpdate {
                     address: tokens.into_iter().next().try_parse()?,
                 }
             }

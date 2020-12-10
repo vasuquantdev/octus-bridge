@@ -33,7 +33,7 @@ impl PackIntoCell for Vec<TokenValue> {
         let tokens = self
             .into_iter()
             .map(|value| Token {
-                name: "fuck tonlabs".to_string(),
+                name: String::new(),
                 value,
             })
             .collect::<Vec<_>>();
