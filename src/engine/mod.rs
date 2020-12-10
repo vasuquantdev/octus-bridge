@@ -1,17 +1,26 @@
+use std::panic::PanicInfo;
+use std::sync::Arc;
+use std::{panic, process, thread, time};
+
+use anyhow::Error;
+use futures::FutureExt;
+use tokio::signal::ctrl_c;
+use tokio::sync::RwLock;
+
+use models::*;
+use relay_ton::prelude::Db;
+
+use crate::config::RelayConfig;
+use crate::engine::handle_panic::setup_panic_handler;
+
 pub mod bridge;
+mod handle_panic;
 pub mod models;
 mod routes;
 
-use anyhow::Error;
-use models::*;
-use std::sync::Arc;
-use tokio::sync::RwLock;
-
-use crate::config::RelayConfig;
-
 pub async fn run(config: RelayConfig) -> Result<(), Error> {
     let state_manager = sled::open(&config.storage_path)?;
-
+    setup_panic_handler(state_manager.clone());
     let crypto_data_metadata = std::fs::File::open(&config.encrypted_data);
     let file_size = match crypto_data_metadata {
         Err(e) => {
@@ -20,7 +29,6 @@ pub async fn run(config: RelayConfig) -> Result<(), Error> {
         }
         Ok(a) => a.metadata()?.len(),
     };
-
     let bridge_state = match file_size {
         0 => {
             log::info!("started in uninitialized state");
@@ -32,13 +40,31 @@ pub async fn run(config: RelayConfig) -> Result<(), Error> {
         }
     };
 
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    {
+        let db = state_manager.clone();
+        tokio::spawn(async move {
+            ctrl_c().await.expect("Failed subscribing on unix signals");
+            log::info!("Received ctrl-c event.");
+            tx.send(()).expect("Failed sending notification");
+            log::info!("Flushing db...");
+            match db.flush() {
+                Ok(a) => log::info!("Flushed db before panic... Bytes written: {:?}", a),
+                Err(e) => log::error!("Failed flushing db before panic: {}", e),
+            }
+            std::process::exit(0);
+        })
+    };
+
     routes::serve(
         config,
         Arc::new(RwLock::new(State {
-            state_manager,
+            state_manager: state_manager.clone(),
             bridge_state,
         })),
+        rx,
     )
     .await;
+
     Ok(())
 }

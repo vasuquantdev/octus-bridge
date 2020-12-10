@@ -5,6 +5,7 @@ use anyhow::Error;
 use bip39::Language;
 use serde::Serialize;
 use sled::Db;
+use tokio::sync::oneshot::Receiver;
 use ton_block::MsgAddressInt;
 use url::Url;
 use warp::http::StatusCode;
@@ -22,7 +23,7 @@ use crate::crypto::recovery::*;
 use crate::engine::bridge::Bridge;
 use crate::engine::models::{BridgeState, InitData, Password, RescanEthData, State};
 
-pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>) {
+pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handler: Receiver<()>) {
     log::info!("Starting server");
     let serve_address = config.listen_address;
     fn json_data<T>() -> impl Filter<Extract = (T,), Error = warp::Rejection> + Clone
@@ -58,13 +59,20 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>) {
         .and_then(|data, (state, _)| set_eth_block_height(state, data));
 
     let routes = init.or(password).or(status).or(rescan_from_block_eth);
-    warp::serve(routes).run(serve_address).await;
+    let server = warp::serve(routes);
+    let (_,server) =
+    server
+        .bind_with_graceful_shutdown(serve_address, async {
+            signal_handler.await.ok();
+        });
+    server.await;
 }
 
 async fn set_eth_block_height(
     state: Arc<RwLock<State>>,
     height: RescanEthData,
 ) -> Result<impl Reply, Infallible> {
+    panic!("lol");
     let state = state.write().await;
     let db = state.state_manager.clone();
     Ok(match update_height(&db, height.block) {

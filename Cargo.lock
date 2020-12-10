@@ -2510,6 +2510,7 @@ name = "relay"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "backtrace",
  "base64 0.13.0",
  "bincode",
  "clap 3.0.0-beta.2",
@@ -2541,6 +2542,7 @@ dependencies = [
  "tiny-bip39",
  "tiny-hderive",
  "tokio 0.2.24",
+ "toml",
  "ton_abi",
  "ton_block",
  "url",
