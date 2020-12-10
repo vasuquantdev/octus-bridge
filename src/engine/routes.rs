@@ -72,7 +72,6 @@ async fn set_eth_block_height(
     state: Arc<RwLock<State>>,
     height: RescanEthData,
 ) -> Result<impl Reply, Infallible> {
-    panic!("lol");
     let state = state.write().await;
     let db = state.state_manager.clone();
     Ok(match update_height(&db, height.block) {
