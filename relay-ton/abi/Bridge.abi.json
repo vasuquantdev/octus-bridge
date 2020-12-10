@@ -5,11 +5,25 @@
     {
       "name": "constructor",
       "inputs": [
-        {"name":"_ethereumEventConfigurationCode","type":"cell"},
-        {"name":"_ethereumEventCode","type":"cell"},
         {"name":"_relayKeys","type":"uint256[]"},
-        {"name":"_ethereumEventConfigurationRequiredConfirmations","type":"uint256"},
-        {"name":"_ethereumEventConfigurationRequiredRejects","type":"uint256"}
+        {"components":[{"name":"ethereumEventConfigurationCode","type":"cell"},{"name":"ethereumEventConfigurationRequiredConfirmations","type":"uint256"},{"name":"ethereumEventConfigurationRequiredRejects","type":"uint256"},{"name":"ethereumEventConfigurationInitialBalance","type":"uint128"},{"name":"ethereumEventCode","type":"cell"},{"name":"bridgeConfigurationUpdateCode","type":"cell"},{"name":"bridgeConfigurationUpdateRequiredConfirmations","type":"uint256"},{"name":"bridgeConfigurationUpdateRequiredRejects","type":"uint256"},{"name":"bridgeConfigurationUpdateInitialBalance","type":"uint128"},{"name":"active","type":"bool"}],"name":"_bridgeConfiguration","type":"tuple"}
+      ],
+      "outputs": [
+      ]
+    },
+    {
+      "name": "confirmBridgeConfigurationUpdate",
+      "inputs": [
+        {"components":[{"name":"ethereumEventConfigurationCode","type":"cell"},{"name":"ethereumEventConfigurationRequiredConfirmations","type":"uint256"},{"name":"ethereumEventConfigurationRequiredRejects","type":"uint256"},{"name":"ethereumEventConfigurationInitialBalance","type":"uint128"},{"name":"ethereumEventCode","type":"cell"},{"name":"bridgeConfigurationUpdateCode","type":"cell"},{"name":"bridgeConfigurationUpdateRequiredConfirmations","type":"uint256"},{"name":"bridgeConfigurationUpdateRequiredRejects","type":"uint256"},{"name":"bridgeConfigurationUpdateInitialBalance","type":"uint128"},{"name":"active","type":"bool"}],"name":"_bridgeConfiguration","type":"tuple"}
+      ],
+      "outputs": [
+        {"name":"value0","type":"address"}
+      ]
+    },
+    {
+      "name": "updateBridgeConfiguration",
+      "inputs": [
+        {"components":[{"name":"ethereumEventConfigurationCode","type":"cell"},{"name":"ethereumEventConfigurationRequiredConfirmations","type":"uint256"},{"name":"ethereumEventConfigurationRequiredRejects","type":"uint256"},{"name":"ethereumEventConfigurationInitialBalance","type":"uint128"},{"name":"ethereumEventCode","type":"cell"},{"name":"bridgeConfigurationUpdateCode","type":"cell"},{"name":"bridgeConfigurationUpdateRequiredConfirmations","type":"uint256"},{"name":"bridgeConfigurationUpdateRequiredRejects","type":"uint256"},{"name":"bridgeConfigurationUpdateInitialBalance","type":"uint128"},{"name":"active","type":"bool"}],"name":"_bridgeConfiguration","type":"tuple"}
       ],
       "outputs": [
       ]
@@ -71,6 +85,15 @@
       ]
     },
     {
+      "name": "getDetails",
+      "inputs": [
+      ],
+      "outputs": [
+        {"components":[{"name":"ethereumEventConfigurationCode","type":"cell"},{"name":"ethereumEventConfigurationRequiredConfirmations","type":"uint256"},{"name":"ethereumEventConfigurationRequiredRejects","type":"uint256"},{"name":"ethereumEventConfigurationInitialBalance","type":"uint128"},{"name":"ethereumEventCode","type":"cell"},{"name":"bridgeConfigurationUpdateCode","type":"cell"},{"name":"bridgeConfigurationUpdateRequiredConfirmations","type":"uint256"},{"name":"bridgeConfigurationUpdateRequiredRejects","type":"uint256"},{"name":"bridgeConfigurationUpdateInitialBalance","type":"uint128"},{"name":"active","type":"bool"}],"name":"_bridgeConfiguration","type":"tuple"},
+        {"components":[{"name":"ethereumEventConfiguration","type":"uint256"},{"name":"bridgeConfigurationUpdateVoting","type":"uint256"}],"name":"_sequentialIndex","type":"tuple"}
+      ]
+    },
+    {
       "name": "getKeyStatus",
       "inputs": [
         {"name":"key","type":"uint256"}
@@ -86,6 +109,14 @@
   "events": [
     {
       "name": "NewEthereumEventConfiguration",
+      "inputs": [
+        {"name":"addr","type":"address"}
+      ],
+      "outputs": [
+      ]
+    },
+    {
+      "name": "NewBridgeConfigurationUpdate",
       "inputs": [
         {"name":"addr","type":"address"}
       ],

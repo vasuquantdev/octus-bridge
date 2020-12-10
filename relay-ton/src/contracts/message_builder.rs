@@ -23,7 +23,7 @@ pub fn make_header(timeout_sec: u32, keypair: Option<&Keypair>) -> ExternalMessa
     ExternalMessageHeader {
         time,
         expire,
-        pubkey: keypair.map(|pair| pair.public.clone()),
+        pubkey: keypair.map(|pair| pair.public),
     }
 }
 
@@ -47,6 +47,14 @@ impl<'a> MessageBuilder<'a> {
         A: FunctionArg,
     {
         Self(self.0.arg(value))
+    }
+
+    #[allow(dead_code)]
+    pub fn args<A>(self, values: A) -> Self
+    where
+        A: FunctionArgsGroup,
+    {
+        Self(self.0.args(values))
     }
 
     #[allow(dead_code)]
@@ -89,6 +97,14 @@ impl<'a> SignedMessageBuilder<'a> {
         A: FunctionArg,
     {
         Self(self.0, self.1.arg(value))
+    }
+
+    #[allow(dead_code)]
+    pub fn args<A>(self, values: A) -> Self
+    where
+        A: FunctionArgsGroup,
+    {
+        Self(self.0, self.1.args(values))
     }
 
     #[allow(dead_code)]
@@ -162,6 +178,25 @@ where
         self
     }
 
+    pub fn args<A>(mut self, values: A) -> Self
+    where
+        A: FunctionArgsGroup,
+    {
+        let token_values = values.token_values();
+        let args_from = self.input.len();
+        let args_to = args_from + token_values.len();
+
+        let inputs = &self.function.inputs;
+        self.input.extend(
+            (args_from..args_to)
+                .into_iter()
+                .map(|i| inputs[i].name.as_ref())
+                .zip(token_values.into_iter())
+                .map(|(name, value)| Token::new(name, value)),
+        );
+        self
+    }
+
     #[allow(dead_code)]
     pub fn mark_local(mut self) -> Self {
         self.run_local = true;
@@ -182,6 +217,12 @@ where
             header,
             run_local: self.run_local,
         })
+    }
+}
+
+impl FunctionArg for bool {
+    fn token_value(self) -> TokenValue {
+        TokenValue::Bool(self)
     }
 }
 
@@ -220,15 +261,34 @@ impl FunctionArg for MsgAddressInt {
 
 impl FunctionArg for UInt256 {
     fn token_value(self) -> TokenValue {
-        num_bigint::BigUint::from_bytes_be(self.as_slice()).token_value()
+        BigUint256(num_bigint::BigUint::from_bytes_be(self.as_slice())).token_value()
     }
 }
 
-impl FunctionArg for BigUint {
+impl FunctionArg for UInt128 {
+    fn token_value(self) -> TokenValue {
+        BigUint128(num_bigint::BigUint::from_bytes_be(self.as_slice())).token_value()
+    }
+}
+
+pub struct BigUint256(pub BigUint);
+
+impl FunctionArg for BigUint256 {
     fn token_value(self) -> TokenValue {
         TokenValue::Uint(ton_abi::Uint {
-            number: self,
+            number: self.0,
             size: 256,
+        })
+    }
+}
+
+pub struct BigUint128(pub BigUint);
+
+impl FunctionArg for BigUint128 {
+    fn token_value(self) -> TokenValue {
+        TokenValue::Uint(ton_abi::Uint {
+            number: self.0,
+            size: 128,
         })
     }
 }
@@ -278,6 +338,19 @@ where
     }
 }
 
+impl<T> FunctionArgsGroup for &T
+where
+    T: Clone + FunctionArgsGroup,
+{
+    fn token_values(self) -> Vec<TokenValue> {
+        self.clone().token_values()
+    }
+}
+
 pub trait FunctionArg {
     fn token_value(self) -> TokenValue;
+}
+
+pub trait FunctionArgsGroup {
+    fn token_values(self) -> Vec<TokenValue>;
 }

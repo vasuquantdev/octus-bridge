@@ -3,7 +3,9 @@ pub use ton_abi::{Token, TokenValue};
 pub use ton_types::Cell;
 
 use super::errors::*;
-pub use super::message_builder::{FunctionArg, MessageBuilder, SignedMessageBuilder};
+pub use super::message_builder::{
+    BigUint128, BigUint256, FunctionArg, FunctionArgsGroup, MessageBuilder, SignedMessageBuilder,
+};
 use super::utils::*;
 pub use super::{Contract, ContractWithEvents};
 use crate::models::*;
@@ -101,10 +103,20 @@ impl ParseToken<UInt256> for TokenValue {
     }
 }
 
+impl ParseToken<UInt128> for TokenValue {
+    fn try_parse(self) -> ContractResult<UInt128> {
+        match self {
+            TokenValue::Uint(data) => Ok(data.number.to_bytes_be().into()),
+            _ => Err(ContractError::InvalidAbi),
+        }
+    }
+}
+
 impl ParseToken<u8> for TokenValue {
     fn try_parse(self) -> ContractResult<u8> {
         ParseToken::<BigUint>::try_parse(self)?
-            .to_u8().ok_or(ContractError::InvalidAbi)
+            .to_u8()
+            .ok_or(ContractError::InvalidAbi)
     }
 }
 
@@ -170,6 +182,7 @@ pub trait StandaloneToken {}
 impl StandaloneToken for MsgAddrStd {}
 impl StandaloneToken for AccountId {}
 impl StandaloneToken for UInt256 {}
+impl StandaloneToken for UInt128 {}
 impl StandaloneToken for BigUint {}
 impl StandaloneToken for bool {}
 impl StandaloneToken for Vec<u8> {}

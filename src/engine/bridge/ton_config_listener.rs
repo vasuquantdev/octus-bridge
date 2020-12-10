@@ -50,7 +50,7 @@ impl ConfigListener {
         // Subscribe to bridge events
         tokio::spawn({
             let transport = transport.clone();
-            let mut listener = self.clone();
+            let listener = self.clone();
             let events_tx = events_tx.clone();
             let event_contract = ethereum_event_contract.clone();
             let mut bridge_events = bridge.events();
@@ -232,7 +232,7 @@ impl ConfigsState {
         );
         self.topic_abi_map.insert(topic_hash, topic_params);
         self.eth_configs_map.insert(
-            configuration.ethereum_event_address.clone(),
+            configuration.ethereum_event_address,
             (contract_addr, configuration),
         );
     }

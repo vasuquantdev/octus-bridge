@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use super::errors::*;
 use super::models::*;
 use super::prelude::*;
@@ -76,6 +78,17 @@ impl BridgeContract {
         Ok(configs)
     }
 
+    pub async fn confirm_bridge_configuration_update(
+        &self,
+        configuration: BridgeConfiguration,
+    ) -> ContractResult<MsgAddrStd> {
+        self.message("confirmBridgeConfigurationUpdate")?
+            .args(configuration)
+            .send()
+            .await?
+            .parse_first()
+    }
+
     pub async fn add_ethereum_event_configuration(
         &self,
         ethereum_event_abi: &str,
@@ -88,9 +101,9 @@ impl BridgeContract {
         self.message("addEthereumEventConfiguration")?
             .arg(ethereum_event_abi)
             .arg(ethereum_address)
-            .arg(ethereum_event_blocks_to_confirm)
-            .arg(ethereum_event_required_confirmations)
-            .arg(ethereum_event_required_rejects)
+            .arg(BigUint256(ethereum_event_blocks_to_confirm))
+            .arg(BigUint256(ethereum_event_required_confirmations))
+            .arg(BigUint256(ethereum_event_required_rejects))
             .arg(event_proxy_address)
             .send()
             .await?
@@ -138,9 +151,9 @@ impl BridgeContract {
 
         self.message("confirmEthereumEvent")?
             .arg(event_transaction)
-            .arg(event_index)
+            .arg(BigUint256(event_index))
             .arg(event_data)
-            .arg(event_block_number)
+            .arg(BigUint256(event_block_number))
             .arg(event_block)
             .arg(ethereum_event_configuration_address)
             .send()
@@ -167,14 +180,18 @@ impl BridgeContract {
 
         self.message("rejectEthereumEvent")?
             .arg(event_transaction)
-            .arg(event_index)
+            .arg(BigUint256(event_index))
             .arg(event_data)
-            .arg(event_block_number)
+            .arg(BigUint256(event_block_number))
             .arg(event_block)
             .arg(ethereum_event_configuration_address)
             .send()
             .await?
             .ignore_output()
+    }
+
+    pub async fn get_details(&self) -> ContractResult<(BridgeConfiguration, SequentialIndex)> {
+        self.message("getDetails")?.run_local().await?.parse_all()
     }
 }
 

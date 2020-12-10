@@ -1,4 +1,5 @@
 pub mod bridge;
+pub mod bridge_configuration_update;
 pub mod ethereum_event;
 pub mod ethereum_event_configuration;
 
@@ -10,6 +11,7 @@ mod prelude;
 pub mod utils;
 
 pub use bridge::*;
+pub use bridge_configuration_update::*;
 pub use contract::{Contract, ContractWithEvents};
 pub use ethereum_event::*;
 pub use ethereum_event_configuration::*;

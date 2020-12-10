@@ -17,7 +17,7 @@ use relay_ton::transport::Transport;
 
 use crate::crypto::key_managment::EthSigner;
 use crate::engine::bridge::persistent_state::TonWatcher;
-use crate::engine::bridge::ton_config_listener::{ConfigListener, ConfigsState};
+use crate::engine::bridge::ton_config_listener::ConfigListener;
 use crate::engine::bridge::util::map_eth_ton;
 
 mod ton_config_listener;
