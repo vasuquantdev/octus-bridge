@@ -18,14 +18,14 @@ pub trait Table {
     fn dump_elements(&self) -> Vec<(Self::Key, Self::Value)>;
 }
 
-pub fn dump_all_trees<W>(db: &Db, writer: W)
+pub fn dump_all_trees<W>(db: &Db, ton_writer: W, eth_writer: W)
 where
-    W: Write + Clone,
+    W: Write,
 {
     let ton_queue = TonTree::new(&db).unwrap();
     let eth_queue = EthQueue::new(db).unwrap();
     let eth_elements = eth_queue.dump_elements();
     let ton_elemnts = ton_queue.dump_elements();
-    serde_json::to_writer_pretty(writer.clone(), &eth_elements).unwrap();
-    serde_json::to_writer_pretty(writer, &ton_elemnts).unwrap();
+    serde_json::to_writer_pretty(eth_writer, &eth_elements).unwrap();
+    serde_json::to_writer_pretty(ton_writer, &ton_elemnts).unwrap();
 }

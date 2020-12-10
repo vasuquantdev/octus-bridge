@@ -6,8 +6,7 @@ use relay_ton::prelude::BigUint;
 
 use crate::db_managment::Table;
 use crate::engine::bridge::models::ExtendedEventInfo;
-
-pub const PERSISTENT_TREE_NAME: &str = "unconfirmed_events";
+use super::constants::TON_EVENTS_TREE_NAME;
 
 pub struct TonTree {
     inner: Tree,
@@ -27,7 +26,7 @@ impl TonTree {
     }
 
     pub fn remove_event_by_hash(&self, key: &H256) -> Result<(), Error> {
-        self.inner.remove(key.0)?;
+        self.inner.remove(bincode::serialize(key).unwrap())?;
         Ok(())
     }
 
@@ -46,7 +45,7 @@ impl TonTree {
             .filter_map(|x| match x {
                 Ok(a) => Some(a),
                 Err(e) => {
-                    log::error!("Bad value in {}: {}", PERSISTENT_TREE_NAME, e);
+                    log::error!("Bad value in {}: {}", TON_EVENTS_TREE_NAME, e);
                     None
                 }
             })
