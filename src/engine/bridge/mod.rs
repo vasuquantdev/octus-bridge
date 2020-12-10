@@ -1,32 +1,36 @@
+use std::collections::HashSet;
+use std::iter::FromIterator;
 use std::sync::Arc;
 
 use anyhow::Error;
+use ethereum_types::H160;
 use futures::StreamExt;
 use log::info;
 use num_traits::cast::ToPrimitive;
-use serde::{Deserialize, Serialize};
-use sled::{Db, Tree};
+use sled::{Db};
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::time::Duration;
 
 use relay_eth::ws::EthListener;
-use relay_ton::contracts::utils::pack_tokens;
 use relay_ton::contracts::*;
-use relay_ton::prelude::{serde_cells, serde_int_addr, BigUint, Cell, MsgAddressInt};
+use relay_ton::contracts::utils::pack_tokens;
+use relay_ton::prelude::{BigUint, MsgAddressInt, serde_cells, serde_int_addr};
 use relay_ton::transport::Transport;
 
 use crate::crypto::key_managment::EthSigner;
+use crate::db_managment::eth_queue::EthQueue;
+use crate::db_managment::models::EthTonConfirmationData;
+use crate::db_managment::ton_db::TonTree;
 use crate::engine::bridge::persistent_state::TonWatcher;
 use crate::engine::bridge::ton_config_listener::ConfigListener;
 use crate::engine::bridge::util::map_eth_ton;
 
-mod ton_config_listener;
+pub(crate) mod ton_config_listener;
 
-mod models;
+pub mod models;
 mod persistent_state;
+mod prelude;
 mod util;
-
-const ETH_UNCONFIRMED_TRANSACTIONS_TREE_NAME: &str = "eth_unconfirmed";
 
 pub struct Bridge {
     eth_signer: EthSigner,
@@ -34,18 +38,6 @@ pub struct Bridge {
     eth_client: EthListener,
     ton_transport: Arc<dyn Transport>,
     db: Db,
-}
-
-#[derive(Deserialize, Serialize, Debug)]
-struct EthTonConfirmationData {
-    event_transaction: Vec<u8>,
-    event_index: BigUint,
-    #[serde(with = "serde_cells")]
-    event_data: Cell,
-    event_block_number: BigUint,
-    event_block: Vec<u8>,
-    #[serde(with = "serde_int_addr")]
-    ethereum_event_configuration_address: MsgAddressInt,
 }
 
 impl Bridge {
@@ -67,25 +59,20 @@ impl Bridge {
 
     async fn watch_unsent_eth_ton_transactions(
         mut new_ethereum_blocks_rx: UnboundedReceiver<u64>,
-        eth_queue: Tree,
-        ton_queue: Tree,
+        eth_queue: EthQueue,
+        ton_queue: TonTree,
         bridge: Arc<BridgeContract>,
     ) {
         log::debug!("Started watch_unsent_eth_ton_transactions");
 
         while let Some(block_number) = new_ethereum_blocks_rx.next().await {
             log::debug!("New block: {}", block_number);
-            let key = bincode::serialize(&block_number).expect("Shouldn't fail");
 
-            let prepared_data = match eth_queue.get(key) {
+            let prepared_data = match eth_queue.get(block_number) {
                 Ok(value) => match value {
                     Some(data) => {
-                        let confirmation =
-                            bincode::deserialize::<Vec<EthTonConfirmationData>>(&data)
-                                .expect("Shouldn't fail");
-
                         log::debug!("Found unconfirmed data in block {}", block_number);
-                        confirmation
+                        data
                     }
                     None => {
                         log::debug!("No data found for block {}", block_number);
@@ -94,20 +81,18 @@ impl Bridge {
                 },
                 Err(e) => {
                     log::error!(
-                        "CRITICAL ERROR. Failed getting data from {}: {}",
-                        ETH_UNCONFIRMED_TRANSACTIONS_TREE_NAME,
+                        "CRITICAL ERROR. Failed getting data from eth_queue: {}",
                         e
                     );
                     continue;
                 }
             };
 
-            for fake_event in
-                TonWatcher::scan_for_block_lower_bound(&ton_queue, block_number.into())
-            {
+            for fake_event in ton_queue.scan_for_block_lower_bound(BigUint::from(block_number)) {
                 let event = fake_event.data;
                 let bridge = bridge.clone();
-                let ethereum_event_transaction = event.ethereum_event_transaction.clone();
+                let ethereum_event_transaction =
+                    H160::from_slice(event.ethereum_event_transaction.as_slice());
                 tokio::spawn(async move {
                     bridge
                         .reject_ethereum_event(
@@ -121,30 +106,32 @@ impl Bridge {
                         .await
                     //todo error handling
                 });
-                ton_queue.remove(&ethereum_event_transaction).unwrap();
+                ton_queue
+                    .remove_event_by_hash(&ethereum_event_transaction)
+                    .unwrap();
             }
 
             for event in prepared_data {
-                let bridge = bridge.clone();
-                tokio::spawn(async move {
-                    let hash = hex::encode(&event.event_transaction);
-                    match bridge
-                        .confirm_ethereum_event(
-                            event.event_transaction,
-                            event.event_index,
-                            event.event_data,
-                            event.event_block_number,
-                            event.event_block,
-                            event.ethereum_event_configuration_address,
-                        )
-                        .await
-                    {
-                        Ok(_) => log::info!("Confirmed tx in ton with hash {}", hash),
-                        Err(e) => {
-                            log::error!("Failed confirming tx with hash: {} in ton: {:?}", hash, e)
-                        }
+                let hash = H160::from_slice(&*event.event_transaction);
+                match bridge
+                    .confirm_ethereum_event(
+                        event.event_transaction,
+                        event.event_index,
+                        event.event_data,
+                        event.event_block_number,
+                        event.event_block,
+                        event.ethereum_event_configuration_address,
+                    )
+                    .await
+                {
+                    Ok(_) => {
+                        log::info!("Confirmed tx in ton with hash {}", hash);
+                        eth_queue.remove(block_number).unwrap()
                     }
-                });
+                    Err(e) => {
+                        log::error!("Failed confirming tx with hash: {} in ton: {:?}", hash, e)
+                    }
+                }
                 //todo error handling
             }
         }
@@ -174,17 +161,13 @@ impl Bridge {
         log::debug!("Ethereum address: {:?}", eth_topic);
 
         //
-        let ton_watcher = Arc::new(TonWatcher::new(db.clone(), ton_client.pubkey()).unwrap());
+        let ton_watcher = Arc::new(TonWatcher::new(&db, ton_client.pubkey()).unwrap());
         {
             let ton_watcher = ton_watcher.clone();
             tokio::spawn(async move { ton_watcher.watch(events_rx).await });
         }
-
         //
-        let eth_queue = db
-            .open_tree(ETH_UNCONFIRMED_TRANSACTIONS_TREE_NAME)
-            .unwrap();
-
+        let eth_queue = EthQueue::new(&db).unwrap();
         //
         {
             let eth_queue = eth_queue.clone();
@@ -192,9 +175,7 @@ impl Bridge {
                 .get_blocks_stream()
                 .await
                 .expect("Shouldn't fail");
-            let ton_queue = db
-                .open_tree(persistent_state::PERSISTENT_TREE_NAME)
-                .unwrap();
+            let ton_queue = TonTree::new(&db).unwrap();
             let bridge = ton_client.clone();
 
             tokio::spawn(async move {
@@ -207,7 +188,6 @@ impl Bridge {
                 .await;
             });
         }
-
         //
         let mut stream = eth_client.subscribe(eth_addr, eth_topic).await?;
         log::info!("Subscribed on eth logs");
@@ -308,37 +288,28 @@ impl Bridge {
                 ethereum_event_configuration_address,
             };
 
-            let queued_block_number = bincode::serialize(
-                &(event.block_number
-                    + event_config
-                        .ethereum_event_blocks_to_confirm
-                        .clone()
-                        .to_u64()
-                        .unwrap()),
-            )
-            .expect("Shouldn't fail");
+            let queued_block_number = event.block_number
+                + event_config
+                    .ethereum_event_blocks_to_confirm
+                    .clone()
+                    .to_u64()
+                    .unwrap();
 
-            let queued_block_number_display =
-                event.block_number + event_config.ethereum_event_blocks_to_confirm.clone();
-            let transactions_in_block =
-                bincode::serialize(&match eth_queue.get(&queued_block_number).unwrap() {
-                    Some(a) => {
-                        let mut transactions_list: Vec<EthTonConfirmationData> =
-                            bincode::deserialize(&*a).expect("Shouldn't fail");
-                        transactions_list.push(prepared_data);
-                        transactions_list
-                    }
-                    None => vec![prepared_data],
-                })
-                .expect("Shouldn't fail");
+            let transactions_in_block = match eth_queue.get(queued_block_number).unwrap() {
+                Some(mut transactions_list) => {
+                    transactions_list.insert(prepared_data);
+                    transactions_list
+                }
+                None => HashSet::from_iter(vec![prepared_data]),
+            };
 
             log::info!(
                 "Inserting transaction for block {} with queue number: {}",
                 event.block_number,
-                queued_block_number_display
+                queued_block_number
             );
             eth_queue
-                .insert(queued_block_number, transactions_in_block)
+                .insert(&queued_block_number, &transactions_in_block)
                 .unwrap();
         }
         Ok(())

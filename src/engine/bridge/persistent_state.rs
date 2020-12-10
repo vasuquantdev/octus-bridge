@@ -1,23 +1,26 @@
 use anyhow::Error;
+use ethereum_types::H160;
 use futures::StreamExt;
-use sled::{Db, Tree};
+use sled::{Db};
 use tokio::sync::mpsc::UnboundedReceiver;
 
-use relay_ton::prelude::{Arc, BigUint, UInt256};
+use relay_ton::prelude::{Arc, UInt256};
 
-use crate::engine::bridge::ton_config_listener::ExtendedEventInfo;
+use crate::db_managment::ton_db::TonTree;
+use crate::engine::bridge::models::ExtendedEventInfo;
 
-pub const PERSISTENT_TREE_NAME: &str = "unconfirmed_events";
+
+
 
 pub struct TonWatcher {
-    db: Tree,
+    db: TonTree,
     relay_key: UInt256,
 }
 
 impl TonWatcher {
-    pub fn new(db: Db, relay_key: UInt256) -> Result<Self, Error> {
+    pub fn new(db: &Db, relay_key: UInt256) -> Result<Self, Error> {
         Ok(Self {
-            db: db.open_tree(PERSISTENT_TREE_NAME)?,
+            db: TonTree::new(&db)?,
             relay_key,
         })
     }
@@ -39,42 +42,21 @@ impl TonWatcher {
                 "Received other relay event. Relay key: {}",
                 hex::encode(&event.relay_key)
             );
-            
-            let tx_hash = &event.data.ethereum_event_transaction;
-            db.insert(tx_hash, bincode::serialize(&event).expect("Shouldn't fail"))
-                .unwrap();
+
+            db.insert(
+                H160::from_slice(&*event.data.ethereum_event_transaction),
+                &event,
+            )
+            .unwrap();
         }
     }
 
     pub fn remove_event_by_hash(&self, key: &[u8]) -> Result<(), Error> {
-        self.db.remove(key)?;
+        self.db.remove_event_by_hash(&H160::from_slice(key))?;
         Ok(())
     }
 
     pub fn get_event_by_hash(&self, hash: &[u8]) -> Result<Option<ExtendedEventInfo>, Error> {
-        Ok(self
-            .db
-            .get(hash)?
-            .and_then(|x| bincode::deserialize(&x).expect("Shouldn't fail")))
-    }
-
-    /// Get all blocks before specified block number
-    pub fn scan_for_block_lower_bound(
-        tree: &Tree,
-        block_number: BigUint,
-    ) -> Vec<ExtendedEventInfo> {
-        tree.iter()
-            .values()
-            .filter_map(|x| match x {
-                Ok(a) => Some(a),
-                Err(e) => {
-                    log::error!("Bad value in {}: {}", PERSISTENT_TREE_NAME, e);
-                    None
-                }
-            })
-            .map(|x| bincode::deserialize::<ExtendedEventInfo>(&x))
-            .filter_map(|x| x.ok()) // shouldn't fail
-            .filter(|x| x.data.event_block_number == block_number)
-            .collect()
+        Ok(self.db.get_event_by_hash(&H160::from_slice(&hash))?)
     }
 }

@@ -1,24 +1,26 @@
-use std::borrow::BorrowMut;
+
 use std::collections::{HashMap, HashSet};
-use std::ops::Deref;
+
 use std::sync::Arc;
 
-use anyhow::Error;
+
 use ethereum_types::{H160, H256};
 use futures::StreamExt;
-use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc::UnboundedReceiver;
+
+
 use tokio::sync::{mpsc, Mutex, Notify, RwLock, RwLockReadGuard};
-use tokio::time::{delay_for, Duration};
+
 use ton_block::{MsgAddrStd, MsgAddressInt};
 
-use relay_ton::contracts::errors::ContractError;
+
 use relay_ton::contracts::*;
-use relay_ton::prelude::UInt256;
-use relay_ton::prelude::{serde_std_addr, serde_uint256};
+
+
 use relay_ton::transport::Transport;
 
 use crate::engine::bridge::util::{abi_to_topic_hash, validate_ethereum_event_configuration};
+
+use super::models::ExtendedEventInfo;
 
 /// Listens to config streams and maps them.
 #[derive(Debug)]
@@ -176,16 +178,6 @@ impl ConfigListener {
     pub async fn get_state(&self) -> RwLockReadGuard<'_, ConfigsState> {
         self.configs_state.read().await
     }
-}
-
-/// Event received from TON
-#[derive(Debug, Clone, Hash, Serialize, Deserialize)]
-pub struct ExtendedEventInfo {
-    #[serde(with = "serde_std_addr")]
-    pub event_addr: MsgAddrStd,
-    #[serde(with = "serde_uint256")]
-    pub relay_key: UInt256,
-    pub data: EthereumEventDetails,
 }
 
 #[derive(Debug, Clone)]
