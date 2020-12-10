@@ -1,5 +1,5 @@
-mod bridge;
-mod models;
+pub mod bridge;
+pub mod models;
 mod routes;
 
 use anyhow::Error;
