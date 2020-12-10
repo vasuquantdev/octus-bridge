@@ -65,11 +65,11 @@ impl BridgeContract {
                 .map_err(ContractError::TransportError)
                 .and_then(|body| Self::parse_event(&events, &body))
             {
-                Ok(event) => match event {
-                    BridgeContractEvent::NewEthereumEventConfiguration { address } => {
+                Ok(event) => {
+                    if let BridgeContractEvent::NewEthereumEventConfiguration { address } = event {
                         configs.push(address);
                     }
-                },
+                }
                 Err(e) => {
                     log::warn!("skipping outbound message. {:?}", e);
                 }

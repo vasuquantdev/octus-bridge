@@ -71,6 +71,9 @@ impl ConfigListener {
                                 ),
                             );
                         }
+                        BridgeContractEvent::NewBridgeConfigurationUpdate { .. } => {
+                            //TODO: handle new bridge configuration
+                        }
                     }
                 }
             }
