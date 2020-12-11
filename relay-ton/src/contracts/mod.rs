@@ -31,7 +31,7 @@ mod tests {
 
     pub fn bridge_addr() -> MsgAddressInt {
         MsgAddressInt::from_str(
-            "0:f188a42b19defd61ba3f462117ee557b3957f7ba279fe8b923b871d5dddcf64c",
+            "0:22f351d691040450417f429c12d89dd1f1559eeafa19cb92125466ab4bb1b0f6",
         )
         .unwrap()
     }
@@ -144,10 +144,8 @@ mod tests {
             async move {
                 let mut bridge_events = bridge.events();
                 while let Some(event) = bridge_events.next().await {
-                    match event {
-                        BridgeContractEvent::NewEthereumEventConfiguration { address } => {
-                            tokio::spawn(listener(transport.clone(), tx.clone(), address));
-                        } //fixme check it
+                    if let BridgeContractEvent::NewEthereumEventConfiguration { address } = event {
+                        tokio::spawn(listener(transport.clone(), tx.clone(), address));
                     }
                 }
             }

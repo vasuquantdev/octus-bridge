@@ -71,6 +71,7 @@ impl ConfigListener {
 
         // Get all configs before now
         let known_configs = bridge.get_known_config_contracts().await.unwrap();
+        log::info!("Known configs: {:?}", known_configs);
         let semaphore = Semaphore::new(known_configs.len());
 
         for address in known_configs {

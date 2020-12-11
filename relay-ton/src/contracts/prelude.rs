@@ -180,6 +180,7 @@ where
 
 pub trait StandaloneToken {}
 impl StandaloneToken for MsgAddrStd {}
+impl StandaloneToken for ethereum_types::Address {}
 impl StandaloneToken for AccountId {}
 impl StandaloneToken for UInt256 {}
 impl StandaloneToken for UInt128 {}

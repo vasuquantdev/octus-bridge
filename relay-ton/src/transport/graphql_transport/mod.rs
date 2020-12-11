@@ -287,13 +287,17 @@ impl GraphQLAccountSubscription {
                         "CURRENT: {}, {}, {}",
                         block_info.gen_utime().0,
                         message.expires_at(),
-                        message.expires_at() - block_info.gen_utime().0
+                        message.expires_at() as i64 - block_info.gen_utime().0 as i64
                     );
                 }
 
                 pending_messages
                     .retain(|_, message| block_info.gen_utime().0 <= message.expires_at());
                 log::error!("PENDING: {}", pending_messages.len());
+                log::info!(
+                    "TIME DIFF: {}",
+                    block_info.gen_utime().0 as i64 - Utc::now().timestamp()
+                );
 
                 last_block_id = next_block_id;
             }

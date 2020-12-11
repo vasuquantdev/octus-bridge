@@ -1,15 +1,11 @@
 use anyhow::anyhow;
 use anyhow::Error;
-use dialoguer::theme::ColorfulTheme;
+use dialoguer::theme::{ColorfulTheme, Theme};
 use dialoguer::{Input, Password, Select};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use structopt::StructOpt;
-
-fn parse_url(url: &str) -> Result<Url, Error> {
-    Ok(Url::parse(url)?)
-}
 
 #[derive(StructOpt)]
 struct Arguments {
@@ -17,12 +13,167 @@ struct Arguments {
     server_addr: Url,
 }
 
-#[derive(Serialize, Debug)]
-struct InitData {
-    ton_seed: String,
-    eth_seed: String,
-    password: String,
-    language: String,
+fn main() -> Result<(), Error> {
+    let args: Arguments = Arguments::from_args();
+
+    let theme = ColorfulTheme::default();
+
+    Prompt::new(&theme, "Select action", args.server_addr)
+        .item("Get status", Client::get_status)
+        .item("Init", Client::init_bridge)
+        .item("Provide password", Client::unlock_bridge)
+        .item("Set eth block", Client::set_eth_block)
+        .item("Add event configuration", Client::add_event_configuration)
+        .item(
+            "Vote for event configuration",
+            Client::vote_event_configuration,
+        )
+        .execute()
+}
+
+struct Client {
+    url: Url,
+    client: reqwest::blocking::Client,
+}
+
+impl Client {
+    pub fn new(url: Url) -> Self {
+        let client = reqwest::blocking::Client::new();
+        Self { url, client }
+    }
+
+    pub fn get_status(&self) -> Result<(), Error> {
+        let status: Status = self.get("status")?;
+
+        println!("Status: {}", serde_json::to_string_pretty(&status)?);
+        return Ok(());
+    }
+
+    pub fn init_bridge(&self) -> Result<(), Error> {
+        let ton_seed = provide_ton_seed()?;
+        let language = provide_language()?;
+        let eth_seed = provide_eth_seed()?;
+        let password = provide_password()?;
+
+        let _ = self.post_raw(
+            "init",
+            &InitData {
+                password,
+                eth_seed,
+                ton_seed,
+                language,
+            },
+        )?;
+
+        println!("Success!");
+        Ok(())
+    }
+
+    pub fn unlock_bridge(&self) -> Result<(), Error> {
+        let password = Password::with_theme(&ColorfulTheme::default())
+            .with_prompt("Password:")
+            .interact()?;
+
+        let _ = self.post_raw("unlock", &PasswordData { password })?;
+
+        println!("Success!");
+        Ok(())
+    }
+
+    pub fn set_eth_block(&self) -> Result<(), Error> {
+        let block: u64 = Input::with_theme(&ColorfulTheme::default())
+            .with_prompt("Give block number")
+            .interact_text()?;
+
+        let _ = self.post_raw("rescan_eth", &RescanEthData { block })?;
+
+        println!("Success!");
+        Ok(())
+    }
+
+    pub fn add_event_configuration(&self) -> Result<(), Error> {
+        todo!()
+    }
+
+    pub fn vote_event_configuration(&self) -> Result<(), Error> {
+        let theme = ColorfulTheme::default();
+
+        let known_configs: Vec<EventConfiguration> = self.get("event_configurations")?;
+
+        let mut selection = Select::with_theme(&theme);
+        selection.with_prompt("Select config to vote").default(0);
+
+        for (i, config) in known_configs.iter().enumerate() {
+            selection.item(format!("Config #{}: {}", i, config));
+        }
+
+        let selected_config = selection.interact()?;
+        let config_address = known_configs[selected_config].address.clone();
+
+        let selected_vote = Select::with_theme(&theme)
+            .with_prompt("Voting for event configuration contract")
+            .item("Confirm")
+            .item("Reject")
+            .interact_opt()?
+            .ok_or_else(|| anyhow!("You must confirm or reject selection"))?;
+
+        let voting = match selected_vote {
+            0 => Voting::Confirm(config_address),
+            1 => Voting::Reject(config_address),
+            _ => unreachable!(),
+        };
+
+        let _ = self.post_raw("event_configurations/vote", &voting)?;
+
+        println!("Success!");
+        Ok(())
+    }
+
+    fn get<T>(&self, url: &str) -> Result<T, Error>
+    where
+        for<'de> T: Deserialize<'de>,
+    {
+        let url = self.url.join(url)?;
+        let response = self.client.get(url).send()?.prepare()?;
+        Ok(response.json()?)
+    }
+
+    fn post_json<T, B>(&self, url: &str, body: &B) -> Result<T, Error>
+    where
+        for<'de> T: Deserialize<'de>,
+        B: Serialize,
+    {
+        let url = self.url.join(url)?;
+        let response = self.client.post(url).json(body).send()?.prepare()?;
+        Ok(response.json()?)
+    }
+
+    fn post_raw<B>(&self, url: &str, body: &B) -> Result<String, Error>
+    where
+        B: Serialize,
+    {
+        let url = self.url.join(url)?;
+        let response = self.client.post(url).json(body).send()?.prepare()?;
+        Ok(response.text()?)
+    }
+}
+
+trait ResponseExt: Sized {
+    fn prepare(self) -> Result<Self, Error>;
+}
+
+impl ResponseExt for reqwest::blocking::Response {
+    fn prepare(self) -> Result<Self, Error> {
+        if self.status().is_success() {
+            Ok(self)
+        } else {
+            Err(anyhow!(
+                "{}: {}",
+                self.status().canonical_reason().unwrap_or("Unknown error"),
+                self.text()?
+            ))
+        }
+    }
 }
 
 fn provide_ton_seed() -> Result<String, Error> {
@@ -71,32 +222,14 @@ fn provide_password() -> Result<String, Error> {
     Ok(password)
 }
 
-fn unlock_node() -> Result<String, Error> {
-    let password = Password::with_theme(&ColorfulTheme::default())
-        .with_prompt("Password:")
-        .interact()?;
-    Ok(password)
+#[derive(Serialize, Debug)]
+struct InitData {
+    ton_seed: String,
+    eth_seed: String,
+    password: String,
+    language: String,
 }
 
-fn rescan_eth() -> Result<u64, Error> {
-    let input: u64 = Input::with_theme(&ColorfulTheme::default())
-        .with_prompt("Give block number")
-        .interact_text()?;
-    Ok(input)
-}
-
-fn init() -> Result<InitData, Error> {
-    let ton_seed = provide_ton_seed()?;
-    let language = provide_language()?;
-    let eth_seed = provide_eth_seed()?;
-    let password = provide_password()?;
-    Ok(InitData {
-        password,
-        eth_seed,
-        ton_seed,
-        language,
-    })
-}
 #[derive(Serialize)]
 struct PasswordData {
     password: String,
@@ -114,43 +247,94 @@ pub struct RescanEthData {
     pub block: u64,
 }
 
-fn main() -> Result<(), Error> {
-    let args: Arguments = Arguments::from_args();
-    const ACTIONS: &[&str; 4] = &["Init", "Provide password", "Get status", "Set block"];
-    let selection = Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("What do you want?")
-        .default(0)
-        .items(&ACTIONS[..])
-        .interact()
-        .unwrap();
-    let client = reqwest::blocking::Client::new();
-    let (url, data) = if selection == 0 {
-        let init_data = init()?;
-        (args.server_addr.join("init")?, json!(init_data))
-    } else if selection == 1 {
-        let password = unlock_node()?;
-        (
-            args.server_addr.join("unlock")?,
-            json!(PasswordData { password }),
-        )
-    } else if selection == 2 {
-        let url = args.server_addr.join("status")?;
-        let response: Status = client.get(url).send()?.json()?;
-        println!("Status:\n {}", serde_json::to_string_pretty(&response)?);
-        return Ok(());
-    } else if selection == 3 {
-        let url = args.server_addr.join("rescan_eth")?;
-        let block = rescan_eth()?;
-        (url, json!(RescanEthData { block }))
-    } else {
-        unreachable!()
-    };
-    dbg!(&data);
-    let response = client.post(url).json(&data).send()?;
-    if response.status().is_success() {
-        println!("Success");
-    } else {
-        println!("Failed: {}", response.text()?);
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "lowercase", tag = "vote", content = "address")]
+pub enum Voting {
+    Confirm(String),
+    Reject(String),
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct EventConfiguration {
+    pub address: String,
+
+    pub ethereum_event_abi: String,
+    pub ethereum_event_address: String,
+    pub ethereum_address: String,
+    pub event_proxy_address: String,
+    pub ethereum_event_blocks_to_confirm: u64,
+    pub required_confirmations: u64,
+    pub required_rejections: u64,
+
+    pub confirm_keys: Vec<String>,
+    pub reject_keys: Vec<String>,
+    pub active: bool,
+}
+
+impl std::fmt::Display for EventConfiguration {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let addr_len = self.address.len();
+
+        f.write_fmt(format_args!(
+            "ETH 0x{} -> TON {}...{}, confirms {}/{}, rejects {}/{}",
+            self.ethereum_event_address,
+            &self.address[0..6],
+            &self.address[addr_len - 4..addr_len],
+            self.confirm_keys.len(),
+            self.required_confirmations,
+            self.reject_keys.len(),
+            self.required_rejections
+        ))
     }
-    Ok(())
+}
+
+fn parse_url(url: &str) -> Result<Url, Error> {
+    Ok(Url::parse(url)?)
+}
+
+struct Prompt<'a> {
+    client: Client,
+    select: Select<'a>,
+    items: Vec<Box<dyn FnMut(&Client) -> Result<(), Error>>>,
+}
+
+impl<'a> Prompt<'a> {
+    pub fn new(theme: &'a dyn Theme, title: &str, url: Url) -> Self {
+        let client = Client::new(url);
+        let mut select = Select::with_theme(theme);
+        select.with_prompt(title).default(0);
+
+        Self {
+            client,
+            select,
+            items: Vec::new(),
+        }
+    }
+
+    pub fn item<F>(&mut self, name: &'static str, f: F) -> &mut Self
+    where
+        F: FnMut(&Client) -> Result<(), Error> + 'static,
+    {
+        self.select.item(name);
+        self.items.push(Box::new(f));
+        self
+    }
+
+    pub fn execute(&mut self) -> Result<(), Error> {
+        let selection = self.select.interact()?;
+        self.items[selection](&self.client)
+    }
+}
+
+trait PrepareRequest {
+    fn prepare(self) -> Result<(Url, serde_json::Value), Error>;
+}
+
+impl<T> PrepareRequest for Result<(Url, T), Error>
+where
+    T: Serialize,
+{
+    fn prepare(self) -> Result<(Url, serde_json::Value), Error> {
+        self.map(|(url, value)| (url, json!(value)))
+    }
 }

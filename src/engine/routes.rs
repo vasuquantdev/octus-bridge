@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::convert::Infallible;
+use std::convert::{Infallible, TryFrom};
 use std::str::FromStr;
 
 use anyhow::Error;
@@ -14,8 +14,8 @@ use warp::{reply, Filter, Reply};
 
 use relay_eth::ws::EthListener;
 use relay_eth::ws::{update_height, H256};
-use relay_ton::contracts::BridgeContract;
-use relay_ton::prelude::{Arc, HashMap, RwLock};
+use relay_ton::contracts::{self, BridgeContract};
+use relay_ton::prelude::{Arc, HashMap, RwLock, TryInto};
 use relay_ton::transport::Transport;
 
 use crate::config::{RelayConfig, TonConfig};
@@ -25,7 +25,10 @@ use crate::db_managment::models::TxStat;
 use crate::db_managment::stats::StatsProvider;
 use crate::db_managment::Table;
 use crate::engine::bridge::Bridge;
-use crate::engine::models::{BridgeState, InitData, Password, RescanEthData, State};
+use crate::engine::models::{
+    BridgeState, EventConfiguration, InitData, NewEventConfiguration, Password, RescanEthData,
+    State, Voting, VotingAddress,
+};
 
 pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handler: Receiver<()>) {
     log::info!("Starting server");
@@ -40,34 +43,176 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
     let state = warp::any().map(move || (Arc::clone(&state), config.clone()));
 
     let password = warp::path!("unlock")
-        .and(warp::path::end())
+        .and(warp::post())
         .and(json_data::<Password>())
         .and(state.clone())
         .and_then(|data, (state, config)| wait_for_password(data, config, state));
 
     let status = warp::path!("status")
-        .and(warp::path::end())
+        .and(warp::get())
         .and(state.clone())
         .and_then(|(state, _)| get_status(state));
 
     let init = warp::path!("init")
-        .and(warp::path::end())
+        .and(warp::post())
         .and(json_data::<InitData>())
         .and(state.clone())
         .and_then(|data, (state, config)| wait_for_init(data, config, state));
 
     let rescan_from_block_eth = warp::path!("rescan_eth")
-        .and(warp::path::end())
+        .and(warp::post())
         .and(json_data::<RescanEthData>())
         .and(state.clone())
         .and_then(|data, (state, _)| set_eth_block_height(state, data));
 
-    let routes = init.or(password).or(status).or(rescan_from_block_eth);
+    let get_event_configuration = warp::path!("event_configurations")
+        .and(warp::get())
+        .and(state.clone())
+        .and_then(|(state, _)| get_event_configurations(state));
+
+    let add_event_configuration = warp::path!("event_configurations")
+        .and(warp::post())
+        .and(json_data::<NewEventConfiguration>())
+        .and(state.clone())
+        .and_then(|data, (state, _)| start_voting_for_event_configuration(state, data));
+
+    let vote_for_event_configuration = warp::path!("event_configurations" / "vote")
+        .and(warp::post())
+        .and(json_data::<Voting>())
+        .and(state.clone())
+        .and_then(|data, (state, _)| vote_for_event_configuration(state, data));
+
+    let routes = init
+        .or(password)
+        .or(status)
+        .or(rescan_from_block_eth)
+        .or(get_event_configuration)
+        .or(add_event_configuration)
+        .or(vote_for_event_configuration);
+
     let server = warp::serve(routes);
     let (_, server) = server.bind_with_graceful_shutdown(serve_address, async {
         signal_handler.await.ok();
     });
     server.await;
+}
+
+async fn vote_for_event_configuration(
+    state: Arc<RwLock<State>>,
+    voting: Voting,
+) -> Result<impl Reply, Infallible> {
+    let (address, voting) = match <(_, _)>::try_from(voting) {
+        Ok(voting) => voting,
+        Err(err) => {
+            log::error!("{}", err);
+            return Ok(reply::with_status(err.to_string(), StatusCode::BAD_REQUEST));
+        }
+    };
+
+    let state = state.write().await;
+    let bridge = match &state.bridge_state {
+        BridgeState::Running(bridge) => bridge,
+        _ => {
+            let err = "Bridge was not initialized";
+            log::error!("{}", err);
+            return Ok(reply::with_status(err.to_string(), StatusCode::BAD_REQUEST));
+        }
+    };
+
+    Ok(
+        match bridge
+            .vote_for_new_event_configuration(&address, voting)
+            .await
+        {
+            Ok(_) => reply::with_status(String::new(), StatusCode::OK),
+            Err(err) => {
+                let err = format!("Failed voting for new configuration event: {}", err);
+                log::error!("{}", err);
+                reply::with_status(err, StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        },
+    )
+}
+
+async fn get_event_configurations(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {
+    let state = state.read().await;
+    let bridge = match &state.bridge_state {
+        BridgeState::Running(bridge) => bridge,
+        _ => {
+            let err = "Bridge was not initialized".to_owned();
+            log::error!("{}", err);
+            return Ok(reply::with_status(err, StatusCode::BAD_REQUEST));
+        }
+    };
+
+    Ok(
+        match bridge
+            .get_event_configurations()
+            .await
+            .map(|configurations| {
+                configurations
+                    .into_iter()
+                    .map(EventConfiguration::from)
+                    .collect::<Vec<_>>()
+            }) {
+            Ok(event_configurations) => reply::with_status(
+                serde_json::to_string(&event_configurations).expect("shouldn't fail"),
+                StatusCode::OK,
+            ),
+            Err(err) => {
+                let err = format!("Failed getting configuration events: {}", err);
+                log::error!("{}", err);
+                reply::with_status(err, StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        },
+    )
+}
+
+async fn start_voting_for_event_configuration(
+    state: Arc<RwLock<State>>,
+    new_configuration: NewEventConfiguration,
+) -> Result<impl Reply, Infallible> {
+    let new_configuration: contracts::models::NewEventConfiguration =
+        match new_configuration.try_into() {
+            Ok(configuration) => configuration,
+            Err(err) => {
+                log::error!("{}", err);
+                return Ok(reply::with_status(err.to_string(), StatusCode::BAD_REQUEST));
+            }
+        };
+
+    let state = state.write().await;
+    let bridge = match &state.bridge_state {
+        BridgeState::Running(bridge) => bridge,
+        _ => {
+            let err = "Bridge was not initialized".to_owned();
+            log::error!("{}", err);
+            return Ok(reply::with_status(err, StatusCode::BAD_REQUEST));
+        }
+    };
+
+    Ok(
+        match bridge
+            .start_voting_for_new_event_configuration(new_configuration)
+            .await
+        {
+            Ok(address) => reply::with_status(
+                serde_json::to_string(&VotingAddress {
+                    address: address.to_string(),
+                })
+                .expect("shouldn't fail"),
+                StatusCode::OK,
+            ),
+            Err(err) => {
+                let err = format!(
+                    "Failed starting voting for new configuration event: {}",
+                    err
+                );
+                log::error!("{}", err);
+                reply::with_status(err, StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        },
+    )
 }
 
 async fn set_eth_block_height(
@@ -82,8 +227,8 @@ async fn set_eth_block_height(
             reply::with_status("OK".to_string(), StatusCode::OK)
         }
         Err(e) => {
-            let err = format!("Failed changeging eth scan height: {}", e);
-            log::error!("{}", &err);
+            let err = format!("Failed changing eth scan height: {}", e);
+            log::error!("{}", err);
             reply::with_status(err, StatusCode::INTERNAL_SERVER_ERROR)
         }
     })
@@ -137,7 +282,7 @@ async fn wait_for_init(
 
     if !matches!(&state.bridge_state, BridgeState::Uninitialized) {
         let err = "Already initialized".to_string();
-        log::error!("{}", &err);
+        log::error!("{}", err);
         return Ok(reply::with_status(err, StatusCode::METHOD_NOT_ALLOWED));
     }
 
@@ -145,7 +290,7 @@ async fn wait_for_init(
         Some(a) => a,
         None => {
             let error = format!("Bad language code provided: {}.", &data.language);
-            log::error!("{}", &error);
+            log::error!("{}", error);
             return Ok(reply::with_status(error, StatusCode::BAD_REQUEST));
         }
     };
@@ -154,7 +299,7 @@ async fn wait_for_init(
         Ok(a) => a,
         Err(e) => {
             let error = format!("Failed deriving from eth seed: {}", e);
-            log::error!("{}", &error);
+            log::error!("{}", error);
             return Ok(reply::with_status(error, StatusCode::BAD_REQUEST));
         }
     };
@@ -163,7 +308,7 @@ async fn wait_for_init(
         Ok(a) => a,
         Err(e) => {
             let error = format!("Failed deriving from ton seed: {}", e);
-            log::error!("{}", &error);
+            log::error!("{}", error);
             return Ok(reply::with_status(error, StatusCode::BAD_REQUEST));
         }
     };
@@ -177,7 +322,7 @@ async fn wait_for_init(
         Ok(key_data) => key_data,
         Err(e) => {
             let error = format!("Failed initializing: {}", e);
-            log::error!("{}", &error);
+            log::error!("{}", error);
             return Ok(reply::with_status(error, StatusCode::BAD_REQUEST));
         }
     };
@@ -224,7 +369,7 @@ async fn wait_for_password(
         Ok(key_data) => key_data,
         Err(e) => {
             let error = format!("Failed unlocking relay: {}", &e);
-            log::error!("{}", &error);
+            log::error!("{}", error);
             return Ok(reply::with_status(error, StatusCode::BAD_REQUEST));
         }
     };
@@ -255,8 +400,9 @@ pub async fn create_bridge(
     let contract_address = MsgAddressInt::from_str(&*config.ton_contract_address.0)
         .map_err(|e| Error::msg(e.to_string()))?;
 
-    let ton_client =
-        BridgeContract::new(transport.clone(), contract_address, key_data.ton.keypair()).await?;
+    let ton_client = Arc::new(
+        BridgeContract::new(transport.clone(), contract_address, key_data.ton.keypair()).await?,
+    );
 
     let eth_client = EthListener::new(
         Url::parse(config.eth_node_address.as_str())

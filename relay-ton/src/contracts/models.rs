@@ -176,6 +176,30 @@ impl TryFrom<ContractOutput> for (BridgeConfiguration, SequentialIndex) {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct NewEventConfiguration {
+    pub ethereum_event_abi: String,
+    pub ethereum_event_address: ethereum_types::Address,
+    pub ethereum_event_blocks_to_confirm: BigUint,
+    pub required_confirmations: BigUint,
+    pub required_rejections: BigUint,
+    #[serde(with = "serde_int_addr")]
+    pub event_proxy_address: MsgAddressInt,
+}
+
+impl FunctionArgsGroup for NewEventConfiguration {
+    fn token_values(self) -> Vec<TokenValue> {
+        vec![
+            self.ethereum_event_abi.token_value(),
+            self.ethereum_event_address.token_value(),
+            BigUint256(self.ethereum_event_blocks_to_confirm).token_value(),
+            BigUint256(self.required_confirmations).token_value(),
+            BigUint256(self.required_rejections).token_value(),
+            self.event_proxy_address.token_value(),
+        ]
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct EthereumEventConfiguration {
     pub ethereum_event_abi: String,
     pub ethereum_event_address: ethereum_types::Address,
@@ -304,4 +328,10 @@ impl TryFrom<ContractOutput> for EthereumEventDetails {
             reject_keys: tuple.parse_next()?,
         })
     }
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+pub enum Voting {
+    Confirm,
+    Reject,
 }

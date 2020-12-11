@@ -91,20 +91,10 @@ impl BridgeContract {
 
     pub async fn add_ethereum_event_configuration(
         &self,
-        ethereum_event_abi: &str,
-        ethereum_address: Vec<u8>,
-        ethereum_event_blocks_to_confirm: BigUint,
-        ethereum_event_required_confirmations: BigUint,
-        ethereum_event_required_rejects: BigUint,
-        event_proxy_address: &MsgAddressInt,
+        new_config: NewEventConfiguration,
     ) -> ContractResult<MsgAddrStd> {
         self.message("addEthereumEventConfiguration")?
-            .arg(ethereum_event_abi)
-            .arg(ethereum_address)
-            .arg(BigUint256(ethereum_event_blocks_to_confirm))
-            .arg(BigUint256(ethereum_event_required_confirmations))
-            .arg(BigUint256(ethereum_event_required_rejects))
-            .arg(event_proxy_address)
+            .args(new_config)
             .send()
             .await?
             .parse_first()
