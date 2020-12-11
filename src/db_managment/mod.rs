@@ -10,11 +10,12 @@ use std::io::Write;
 use super::db_managment::prelude::*;
 use crate::db_managment::eth_queue::EthQueue;
 use crate::db_managment::ton_db::TonTree;
+use relay_ton::prelude::HashMap;
 
 pub trait Table {
     type Key;
     type Value;
-    fn dump_elements(&self) -> Vec<(Self::Key, Self::Value)>;
+    fn dump_elements(&self) -> HashMap<Self::Key, Self::Value>;
 }
 
 pub fn dump_all_trees<W>(db: &Db, ton_writer: W, eth_writer: W)

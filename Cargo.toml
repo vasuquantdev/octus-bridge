@@ -54,6 +54,7 @@ ton_abi = { git = "https://github.com/tonlabs/ton-labs-abi.git", branch = "1.0.0
 num-bigint = "0.2.6"
 ethabi = "12.0.0"
 num-traits = "0.2.14"
+chrono = {version="0.4",features = ["serde"]}
 [dev-dependencies]
 pretty_assertions = "0.6.1"
 

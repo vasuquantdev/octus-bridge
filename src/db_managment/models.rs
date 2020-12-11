@@ -1,12 +1,63 @@
 use std::hash::{Hash, Hasher};
 
+use chrono::{DateTime, Utc};
 use ethereum_types::H160;
 use ton_block::MsgAddressInt;
 
+use relay_eth::ws::H256;
 use relay_ton::prelude::{serde_cells, serde_int_addr};
 use relay_ton::prelude::{BigUint, Cell};
 
 use super::prelude::*;
+
+pub mod buf_to_hex {
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    /// Serializes `buffer` to a lowercase hex string.
+    pub fn serialize<T, S>(buffer: &T, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        T: AsRef<[u8]> + ?Sized,
+        S: Serializer,
+    {
+        serializer.serialize_str(&*hex::encode(&buffer.as_ref()))
+    }
+
+    /// Deserializes a lowercase hex string to a `Vec<u8>`.
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde::de::Error;
+        String::deserialize(deserializer)
+            .and_then(|string| hex::decode(string).map_err(|e| D::Error::custom(e.to_string())))
+    }
+}
+
+pub mod h256_to_hex {
+    use ethereum_types::H256;
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<T, S>(buffer: &T, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        T: AsRef<[u8]> + ?Sized,
+        S: Serializer,
+    {
+        serializer.serialize_str(&*hex::encode(&buffer.as_ref()))
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<H256, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde::de::Error;
+
+        String::deserialize(deserializer).and_then(|string| {
+            hex::decode(string)
+                .map_err(|e| D::Error::custom(e.to_string()))
+                .map(|x| H256::from_slice(&*x))
+        })
+    }
+}
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct EthTonConfirmationData {
@@ -34,8 +85,10 @@ impl PartialEq for EthTonConfirmationData {
 
 impl Eq for EthTonConfirmationData {}
 
+
 #[derive(Deserialize, Serialize)]
-pub struct Stats {
-    pub times_voted: u64,
-    pub eth_ton_delivered_transactions: Vec<H160>,
+pub struct TxStat {
+    #[serde(with = "h256_to_hex")]
+    pub tx_hash: H256,
+    pub met: DateTime<Utc>,
 }

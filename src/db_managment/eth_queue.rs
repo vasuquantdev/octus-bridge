@@ -4,6 +4,7 @@ use crate::db_managment::models::EthTonConfirmationData;
 use crate::db_managment::Table;
 
 use super::prelude::*;
+use relay_ton::prelude::HashMap;
 
 #[derive(Clone)]
 pub struct EthQueue {
@@ -40,7 +41,7 @@ impl Table for EthQueue {
     type Key = u64;
     type Value = HashSet<EthTonConfirmationData>;
 
-    fn dump_elements(&self) -> Vec<(Self::Key, Self::Value)> {
+    fn dump_elements(&self) -> HashMap<Self::Key, Self::Value> {
         self.db
             .iter()
             .filter_map(|x| x.ok())

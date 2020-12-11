@@ -15,13 +15,14 @@ use warp::{reply, Filter, Reply};
 use relay_eth::ws::EthListener;
 use relay_eth::ws::{update_height, H256};
 use relay_ton::contracts::BridgeContract;
-use relay_ton::prelude::{Arc, RwLock};
+use relay_ton::prelude::{Arc, HashMap, RwLock};
 use relay_ton::transport::Transport;
 
 use crate::config::{RelayConfig, TonConfig};
 use crate::crypto::key_managment::KeyData;
 use crate::crypto::recovery::*;
-use crate::db_managment::stats::{StatsProvider, TonPubKey};
+use crate::db_managment::models::TxStat;
+use crate::db_managment::stats::StatsProvider;
 use crate::db_managment::Table;
 use crate::engine::bridge::Bridge;
 use crate::engine::models::{BridgeState, InitData, Password, RescanEthData, State};
@@ -96,7 +97,7 @@ async fn get_status(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible>
         password_needed: bool,
         init_data_needed: bool,
         is_working: bool,
-        relay_stats: Vec<(TonPubKey, HashSet<H256>)>,
+        relay_stats: HashMap<String, Vec<TxStat>>,
     }
     let provider = StatsProvider::new(&state.state_manager).unwrap();
     let relay_stats = provider.dump_elements();

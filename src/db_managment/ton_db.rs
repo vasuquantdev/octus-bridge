@@ -2,7 +2,7 @@ use anyhow::Error;
 use ethereum_types::H256;
 use sled::{Db, Tree};
 
-use relay_ton::prelude::BigUint;
+use relay_ton::prelude::{BigUint, HashMap};
 
 use super::constants::TON_EVENTS_TREE_NAME;
 use crate::db_managment::Table;
@@ -62,7 +62,7 @@ impl Table for TonTree {
     type Key = H256;
     type Value = ExtendedEventInfo;
 
-    fn dump_elements(&self) -> Vec<(Self::Key, Self::Value)> {
+    fn dump_elements(&self) ->  HashMap<Self::Key, Self::Value> {
         self.inner
             .iter()
             .filter_map(|x| x.ok())
