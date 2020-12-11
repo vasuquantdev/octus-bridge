@@ -157,7 +157,7 @@ impl GraphQLAccountSubscription {
         tokio::spawn(async move {
             let mut next_iteration_time = tokio::time::Instant::now();
             'subscription_loop: loop {
-                tokio::time::delay_until(next_iteration_time).await;
+                //tokio::time::delay_until(next_iteration_time).await;
 
                 // Debounce api calls
                 next_iteration_time =
@@ -282,8 +282,18 @@ impl GraphQLAccountSubscription {
                     }
                 };
 
+                for (_, message) in pending_messages.iter() {
+                    log::error!(
+                        "CURRENT: {}, {}, {}",
+                        block_info.gen_utime().0,
+                        message.expires_at(),
+                        message.expires_at() - block_info.gen_utime().0
+                    );
+                }
+
                 pending_messages
                     .retain(|_, message| block_info.gen_utime().0 <= message.expires_at());
+                log::error!("PENDING: {}", pending_messages.len());
 
                 last_block_id = next_block_id;
             }
