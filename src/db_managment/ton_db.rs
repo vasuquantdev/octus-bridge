@@ -4,9 +4,10 @@ use sled::{Db, Tree};
 
 use relay_ton::prelude::{BigUint, HashMap};
 
-use super::constants::TON_EVENTS_TREE_NAME;
 use crate::db_managment::Table;
 use crate::engine::bridge::models::ExtendedEventInfo;
+
+use super::constants::TON_EVENTS_TREE_NAME;
 
 pub struct TonTree {
     inner: Tree,
@@ -36,7 +37,7 @@ impl TonTree {
         Ok(self
             .inner
             .get(key.as_fixed_bytes())?
-            .and_then(|x| bincode::deserialize(&x).expect("Shouldn't fail")))
+            .map(|x| bincode::deserialize::<ExtendedEventInfo>(&x).unwrap()))
     }
 
     /// Get all blocks before specified block number
@@ -62,7 +63,7 @@ impl Table for TonTree {
     type Key = H256;
     type Value = ExtendedEventInfo;
 
-    fn dump_elements(&self) ->  HashMap<Self::Key, Self::Value> {
+    fn dump_elements(&self) -> HashMap<Self::Key, Self::Value> {
         self.inner
             .iter()
             .filter_map(|x| x.ok())
