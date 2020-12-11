@@ -14,23 +14,34 @@ use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use num_traits::cast::ToPrimitive;
 use sled::Db;
+use tokio::sync;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::time::Duration;
 use ton_block::MsgAddrStd;
 
 use relay_eth::ws::{EthListener, H256};
+use relay_ton::contracts::errors::ContractError;
 use relay_ton::contracts::utils::pack_tokens;
 use relay_ton::contracts::*;
-use relay_ton::prelude::{BigUint, MsgAddressInt};
+use relay_ton::prelude::{BigUint, Future, MsgAddressInt};
 use relay_ton::transport::Transport;
 
 use crate::crypto::key_managment::EthSigner;
 use crate::db_managment::eth_queue::EthQueue;
 use crate::db_managment::models::EthTonConfirmationData;
 use crate::db_managment::ton_db::TonTree;
+use crate::engine::bridge::models::ExtendedEventInfo;
 use crate::engine::bridge::persistent_state::TonWatcher;
 use crate::engine::bridge::ton_config_listener::ConfigListener;
 use crate::engine::bridge::util::map_eth_ton;
+
+pub(crate) mod ton_config_listener;
+
+pub mod models;
+mod persistent_state;
+mod prelude;
+mod transactions_monitoring;
+mod util;
 
 pub struct Bridge {
     eth_signer: EthSigner,
@@ -81,10 +92,13 @@ impl Bridge {
         log::debug!("Topics: {:?}", eth_addr);
         log::debug!("Ethereum address: {:?}", eth_topic);
 
-        //
-        let ton_watcher = Arc::new(TonWatcher::new(&self.db, self.ton_client.pubkey()).unwrap());
-        tokio::spawn(ton_watcher.clone().watch(events_rx));
+        let (confirmed_events_tx, confirmed_events_rx) = sync::broadcast::channel(255);
 
+        let ton_watcher = Arc::new(TonWatcher::new(&db, ton_client.pubkey()).unwrap());
+        {
+            let ton_watcher = ton_watcher.clone();
+            tokio::spawn(async move { ton_watcher.watch(events_rx, confirmed_events_tx).await });
+        }
         //
         let eth_queue = EthQueue::new(&self.db).unwrap();
         {

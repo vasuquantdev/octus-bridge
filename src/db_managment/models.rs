@@ -59,7 +59,7 @@ pub mod h256_to_hex {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct EthTonConfirmationData {
     pub event_transaction: Vec<u8>,
     pub event_index: BigUint,
@@ -69,6 +69,21 @@ pub struct EthTonConfirmationData {
     pub event_block: Vec<u8>,
     #[serde(with = "serde_int_addr")]
     pub ethereum_event_configuration_address: MsgAddressInt,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub enum EthTonTransaction {
+    Confirm(EthTonConfirmationData),
+    Reject(EthTonConfirmationData),
+}
+
+impl EthTonTransaction {
+    pub fn get_hash(&self) -> H256 {
+        match self {
+            EthTonTransaction::Confirm(a) => H256::from_slice(&*a.event_transaction),
+            EthTonTransaction::Reject(a) => H256::from_slice(&*a.event_transaction),
+        }
+    }
 }
 
 impl Hash for EthTonConfirmationData {
@@ -84,7 +99,6 @@ impl PartialEq for EthTonConfirmationData {
 }
 
 impl Eq for EthTonConfirmationData {}
-
 
 #[derive(Deserialize, Serialize)]
 pub struct TxStat {

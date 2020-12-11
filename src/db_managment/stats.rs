@@ -1,4 +1,4 @@
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashMap, HashSet};
 
 use relay_eth::ws::H256;
 use relay_ton::prelude::serde_uint256;
@@ -48,7 +48,7 @@ impl Table for StatsProvider {
     type Key = String;
     type Value = Vec<TxStat>;
 
-    fn dump_elements(&self) ->  HashMap<Self::Key, Self::Value> {
+    fn dump_elements(&self) -> HashMap<Self::Key, Self::Value> {
         self.tree
             .iter()
             .filter_map(|x| x.ok())

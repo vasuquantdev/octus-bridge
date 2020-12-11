@@ -292,7 +292,7 @@ async fn process_block(
             }
         }
         Err(e) => {
-            log::error!("Failed fetching logs: {:?}", e);
+            panic!("Critical error in eth subscriber: {}", e);
         }
     };
 }

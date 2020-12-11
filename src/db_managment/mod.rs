@@ -4,6 +4,7 @@ pub mod models;
 mod prelude;
 pub mod stats;
 pub mod ton_db;
+pub mod tx_monitor;
 
 use std::io::Write;
 

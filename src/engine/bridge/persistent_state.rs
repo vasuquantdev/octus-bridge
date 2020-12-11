@@ -1,9 +1,11 @@
 use anyhow::Error;
 use ethereum_types::H256;
 use futures::StreamExt;
-use relay_ton::prelude::{Arc, UInt256};
 use sled::Db;
-use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+
+use relay_ton::prelude::{Arc, UInt256};
 
 use crate::db_managment::stats::StatsProvider;
 use crate::db_managment::ton_db::TonTree;
@@ -24,7 +26,11 @@ impl TonWatcher {
         })
     }
 
-    pub async fn watch(self: Arc<Self>, mut events_rx: UnboundedReceiver<ExtendedEventInfo>) {
+    pub async fn watch(
+        self: Arc<Self>,
+        mut events_rx: UnboundedReceiver<ExtendedEventInfo>,
+        events_confirmation_tx: sync::broadcast::Sender<ExtendedEventInfo>,
+    ) {
         log::info!("Started watching other relay events");
         let db = &self.db;
         while let Some(event) = events_rx.next().await {
@@ -41,6 +47,9 @@ impl TonWatcher {
                     "Met event for our transaction. Eth hash: {}",
                     hex::encode(&event.data.ethereum_event_transaction)
                 );
+                if let Err(e) = events_confirmation_tx.send(event) {
+                    log::error!("Failed sending notification: {:?}", e);
+                }
                 continue;
             }
 
