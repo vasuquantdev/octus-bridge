@@ -190,7 +190,7 @@ impl FunctionArgsGroup for NewEventConfiguration {
     fn token_values(self) -> Vec<TokenValue> {
         vec![
             self.ethereum_event_abi.token_value(),
-            self.ethereum_event_address.token_value(),
+            hex::encode(&self.ethereum_event_address.to_fixed_bytes()).token_value(),
             BigUint256(self.ethereum_event_blocks_to_confirm).token_value(),
             BigUint256(self.required_confirmations).token_value(),
             BigUint256(self.required_rejections).token_value(),

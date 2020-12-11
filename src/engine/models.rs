@@ -64,7 +64,6 @@ pub struct RescanEthData {
 pub struct NewEventConfiguration {
     pub ethereum_event_abi: String,
     pub ethereum_event_address: String,
-    pub ethereum_address: String,
     pub event_proxy_address: String,
     pub ethereum_event_blocks_to_confirm: u64,
     pub required_confirmations: u64,
@@ -104,7 +103,6 @@ pub struct EventConfiguration {
 
     pub ethereum_event_abi: String,
     pub ethereum_event_address: String,
-    pub ethereum_address: String,
     pub event_proxy_address: String,
     pub ethereum_event_blocks_to_confirm: u64,
     pub required_confirmations: u64,
@@ -120,8 +118,7 @@ impl From<(MsgAddressInt, contracts::models::EthereumEventConfiguration)> for Ev
         Self {
             address: address.to_string(),
             ethereum_event_abi: c.ethereum_event_abi,
-            ethereum_event_address: c.ethereum_event_address.to_string(),
-            ethereum_address: c.ethereum_event_address.to_string(),
+            ethereum_event_address: hex::encode(c.ethereum_event_address.to_fixed_bytes()),
             event_proxy_address: c.event_proxy_address.to_string(),
             ethereum_event_blocks_to_confirm: c
                 .ethereum_event_blocks_to_confirm
