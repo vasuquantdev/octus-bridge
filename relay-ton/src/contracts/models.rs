@@ -208,6 +208,9 @@ pub struct EthereumEventConfiguration {
     pub ethereum_event_blocks_to_confirm: BigUint,
     pub required_confirmations: BigUint,
     pub required_rejections: BigUint,
+    pub event_required_confirmations: BigUint,
+    pub event_required_rejects: BigUint,
+
     #[serde(with = "serde_vec_uint256")]
     pub confirm_keys: Vec<UInt256>,
     #[serde(with = "serde_vec_uint256")]
@@ -236,6 +239,9 @@ impl TryFrom<ContractOutput> for EthereumEventConfiguration {
             ethereum_event_blocks_to_confirm: tuple.parse_next()?,
             required_confirmations: tuple.parse_next()?,
             required_rejections: tuple.parse_next()?,
+            event_required_confirmations: tuple.parse_next()?,
+            event_required_rejects: tuple.parse_next()?,
+
             confirm_keys: tuple.parse_next()?,
             reject_keys: tuple.parse_next()?,
             active: tuple.parse_next()?,

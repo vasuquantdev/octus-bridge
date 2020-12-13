@@ -204,11 +204,14 @@ async fn start_voting_for_event_configuration(
                 StatusCode::OK,
             ),
             Err(err) => {
+                log::error!(
+                    "Failed starting voting for new configuration event: {:?}",
+                    err
+                );
                 let err = format!(
                     "Failed starting voting for new configuration event: {}",
                     err
                 );
-                log::error!("{}", err);
                 reply::with_status(err, StatusCode::INTERNAL_SERVER_ERROR)
             }
         },

@@ -322,6 +322,8 @@ pub struct EventConfiguration {
     pub ethereum_event_blocks_to_confirm: u64,
     pub required_confirmations: u64,
     pub required_rejections: u64,
+    pub event_required_confirmations: u64,
+    pub event_required_rejects: u64,
 
     pub confirm_keys: Vec<String>,
     pub reject_keys: Vec<String>,

@@ -107,6 +107,8 @@ pub struct EventConfiguration {
     pub ethereum_event_blocks_to_confirm: u64,
     pub required_confirmations: u64,
     pub required_rejections: u64,
+    pub event_required_confirmations: u64,
+    pub event_required_rejects: u64,
 
     pub confirm_keys: Vec<String>,
     pub reject_keys: Vec<String>,
@@ -129,6 +131,14 @@ impl From<(MsgAddressInt, contracts::models::EthereumEventConfiguration)> for Ev
                 .to_u64()
                 .unwrap_or(u64::max_value()),
             required_rejections: c.required_rejections.to_u64().unwrap_or(u64::max_value()),
+            event_required_confirmations: c
+                .event_required_confirmations
+                .to_u64()
+                .unwrap_or(u64::max_value()),
+            event_required_rejects: c
+                .event_required_rejects
+                .to_u64()
+                .unwrap_or(u64::max_value()),
             confirm_keys: c
                 .confirm_keys
                 .iter()
