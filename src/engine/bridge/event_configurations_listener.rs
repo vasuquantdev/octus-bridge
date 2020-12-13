@@ -7,21 +7,22 @@ use tokio::sync::{mpsc, Mutex, Notify, RwLock, RwLockReadGuard};
 use ton_block::{MsgAddrStd, MsgAddressInt};
 
 use relay_ton::contracts::*;
-use relay_ton::transport::Transport;
+use relay_ton::prelude::UInt256;
+use relay_ton::transport::{Transport, TransportError};
 
 use super::models::ExtendedEventInfo;
 use crate::engine::bridge::util::{abi_to_topic_hash, validate_ethereum_event_configuration};
 
 /// Listens to config streams and maps them.
 #[derive(Debug)]
-pub struct ConfigListener {
+pub struct EventConfigurationsListener {
     configs_state: Arc<RwLock<ConfigsState>>,
     known_config_contracts: Arc<Mutex<HashSet<MsgAddressInt>>>,
 
     initial_data_received: Arc<Notify>,
 }
 
-impl ConfigListener {
+impl EventConfigurationsListener {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
             configs_state: Arc::new(RwLock::new(ConfigsState::new())),
@@ -37,7 +38,8 @@ impl ConfigListener {
     ) -> mpsc::UnboundedReceiver<ExtendedEventInfo> {
         let (events_tx, events_rx) = mpsc::unbounded_channel();
 
-        let ethereum_event_contract = EthereumEventContract::new(transport.clone()).await.unwrap();
+        let ethereum_event_contract =
+            Arc::new(EthereumEventContract::new(transport.clone()).await.unwrap());
 
         // Subscribe to bridge events
         tokio::spawn({
@@ -92,7 +94,7 @@ impl ConfigListener {
     async fn subscribe_to_events_configuration_contract(
         self: Arc<Self>,
         transport: Arc<dyn Transport>,
-        event_contract: EthereumEventContract,
+        event_contract: Arc<EthereumEventContract>,
         address: MsgAddrStd,
         events_tx: mpsc::UnboundedSender<ExtendedEventInfo>,
         semaphore: Option<Semaphore>,
@@ -141,30 +143,16 @@ impl ConfigListener {
             log::debug!("got event confirmation event: {:?}", event);
 
             if let EthereumEventConfigurationContractEvent::NewEthereumEventConfirmation {
-                address: event_addr,
+                address,
                 relay_key,
             } = event
             {
-                let details = event_contract.get_details(event_addr.clone()).await;
-
-                let ethereum_event_details = match details {
-                    Ok(details) => details,
-                    Err(e) => {
-                        log::error!("get_details failed: {:?}", e);
-                        continue;
-                    }
-                };
-
-                if let Err(e) = events_tx.send(ExtendedEventInfo {
+                tokio::spawn(handle_event_confirmation(
+                    event_contract.clone(),
+                    events_tx.clone(),
+                    address,
                     relay_key,
-                    event_addr,
-                    data: ethereum_event_details,
-                }) {
-                    log::error!("Failed sending eth event details via channel: {:?}", e);
-                }
-
-                // TODO: update config
-                // let mut states = self.configs_state.write().await;
+                ));
             }
         }
     }
@@ -172,6 +160,51 @@ impl ConfigListener {
     pub async fn get_state(&self) -> RwLockReadGuard<'_, ConfigsState> {
         self.configs_state.read().await
     }
+}
+
+async fn handle_event_confirmation(
+    event_contract: Arc<EthereumEventContract>,
+    events_tx: mpsc::UnboundedSender<ExtendedEventInfo>,
+    event_addr: MsgAddrStd,
+    relay_key: UInt256,
+) {
+    // TODO: move into config
+    let mut retries_count = 3;
+    let retries_interval = tokio::time::Duration::from_secs(1); // 1 sec ~= time before next block in masterchain.
+                                                                // Should be greater then account polling interval
+
+    //
+    let data = loop {
+        match event_contract.get_details(event_addr.clone()).await {
+            Ok(details) => break details,
+            Err(ContractError::TransportError(TransportError::AccountNotFound))
+                if retries_count > 0 =>
+            {
+                retries_count -= 1;
+                log::error!(
+                    "Failed to get event details for {}. Retrying ({} left)",
+                    event_addr,
+                    retries_count
+                );
+                tokio::time::delay_for(retries_interval).await;
+            }
+            e => {
+                log::error!("get_details failed: {:?}", e);
+                return;
+            }
+        };
+    };
+
+    if let Err(e) = events_tx.send(ExtendedEventInfo {
+        event_addr,
+        relay_key,
+        data,
+    }) {
+        log::error!("Failed sending eth event details via channel: {:?}", e);
+    }
+
+    // TODO: update config
+    // let mut states = self.configs_state.write().await;
 }
 
 #[derive(Debug, Clone)]

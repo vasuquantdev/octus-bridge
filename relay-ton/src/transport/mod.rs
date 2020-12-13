@@ -12,8 +12,8 @@ pub use graphql_transport::GraphQLTransport;
 #[cfg(feature = "tonlib-transport")]
 pub use tonlib_transport::TonlibTransport;
 
-use self::errors::*;
-use crate::models::*;
+pub use self::errors::*;
+pub use crate::models::*;
 use crate::prelude::*;
 
 #[async_trait]

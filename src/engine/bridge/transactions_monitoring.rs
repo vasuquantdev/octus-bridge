@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use anyhow::Error;
 use ethereum_types::H256;
+use futures::future::Either;
 use futures::StreamExt;
 use sled::Db;
 use tokio::sync;
@@ -22,6 +23,7 @@ struct TxMonitor {
     notifier_rx: sync::mpsc::Receiver<Status>,
     confirmed_events_rx: Arc<sync::broadcast::Receiver<ExtendedEventInfo>>,
 }
+
 impl TxMonitor {
     pub fn new(
         db: &Db,
@@ -36,23 +38,39 @@ impl TxMonitor {
         })
     }
 
-    async fn send_ton_tx<F>(
-        bridge_future: F,
+    fn send_ton_tx(
+        bridge: Arc<BridgeContract>,
         hash: H256,
+        data: EthTonTransaction,
         mut notify: sync::mpsc::Sender<Status>,
-        confirmed_events_stream: Arc<sync::broadcast::Receiver<ExtendedEventInfo>>,
         retries_number: usize,
         retry_sleep_time: Duration,
-    ) where
-        F: Future<Output = Result<(), ContractError>> + Send + 'static,
-    {
+    ) {
         tokio::spawn(async move {
+            let bridge_future = move || match data {
+                EthTonTransaction::Confirm(a) => bridge.confirm_ethereum_event(
+                    a.event_transaction,
+                    a.event_index,
+                    a.event_data,
+                    a.event_block_number,
+                    a.event_block,
+                    a.ethereum_event_configuration_address,
+                ),
+                EthTonTransaction::Reject(a) => bridge.reject_ethereum_event(
+                    a.event_transaction,
+                    a.event_index,
+                    a.event_data,
+                    a.event_block_number,
+                    a.event_block,
+                    a.ethereum_event_configuration_address,
+                ),
+            };
+
             for _ in 0..retries_number {
-                let res = &bridge_future.await;
-                match res {
+                match bridge_future().await {
                     Err(e) => log::error!("Failed sending tx to ton: {}. Retrying", e),
                     Ok(_) => {
-                        while let Some(event) = confirmed_events_stream.next().await {
+                        while let Some(event) = tx.subscribe().next().await {
                             let event = match event {
                                 Ok(a) => a,
                                 Err(e) => {
@@ -71,6 +89,7 @@ impl TxMonitor {
                 }
                 tokio::time::delay_for(retry_sleep_time).await;
             }
+
             log::error!("Retries are exhausted. Confirming fail. Tx: {}", hash);
             if let Err(e) = notify
                 .send(Status {
@@ -84,37 +103,18 @@ impl TxMonitor {
         });
     }
 
-    pub async fn enqueue(&self, data: EthTonTransaction, bridge: Arc<BridgeContract>) {
+    pub fn enqueue(&self, data: EthTonTransaction, bridge: Arc<BridgeContract>) {
         let hash = data.get_hash();
         self.tx_table.insert(&hash, &data).unwrap();
-        let fut = match data {
-            EthTonTransaction::Confirm(a) => bridge.confirm_ethereum_event(
-                a.event_transaction,
-                a.event_index,
-                a.event_data,
-                a.event_block_number,
-                a.event_block,
-                a.ethereum_event_configuration_address,
-            ),
-            EthTonTransaction::Reject(a) => bridge.reject_ethereum_event(
-                a.event_transaction,
-                a.event_index,
-                a.event_data,
-                a.event_block_number,
-                a.event_block,
-                a.ethereum_event_configuration_address,
-            ),
-        };
 
         Self::send_ton_tx(
-            fut,
+            bridge,
             hash,
+            data,
             self.notifier_tx.clone(),
-            self.confirmed_events_rx.clone(),
             5,
             Duration::from_secs(10), //fixme
-        )
-        .await;
+        );
     }
 
     async fn monitor_transactions_status(self) {

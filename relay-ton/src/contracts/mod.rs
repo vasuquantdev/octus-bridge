@@ -1,6 +1,7 @@
 pub use bridge::*;
 pub use bridge_configuration_update::*;
 pub use contract::{Contract, ContractWithEvents};
+pub use errors::*;
 pub use ethereum_event::*;
 pub use ethereum_event_configuration::*;
 pub use models::*;

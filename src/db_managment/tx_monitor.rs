@@ -1,10 +1,11 @@
+use anyhow::Error;
+
 use relay_eth::ws::H256;
 use relay_ton::prelude::Db;
 
 use crate::db_managment::models::EthTonTransaction;
 
 use super::constants::TX_TABLE_TREE_NAME;
-use super::Error;
 
 pub struct TxTable {
     inner: super::Tree,
