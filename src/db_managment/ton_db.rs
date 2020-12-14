@@ -55,8 +55,37 @@ impl TonTree {
             })
             .map(|x| bincode::deserialize::<ExtendedEventInfo>(&x))
             .filter_map(|x| x.ok()) // shouldn't fail
-            .filter(|x| x.data.event_block_number == block_number)
+            .filter(|x| x.data.event_block_number < block_number)
             .collect()
+    }
+
+    /// removes blocks, older then `block_number`
+    pub fn gc_old_blocks(&self, block_number: BigUint) -> Result<(), Error> {
+        let mut batch = sled::Batch::default();
+
+        self.inner
+            .iter()
+            .filter_map(|x| match x {
+                Ok(a) => Some(a),
+                Err(e) => {
+                    log::error!("Bad value in {}: {}", TON_EVENTS_TREE_NAME, e);
+                    None
+                }
+            })
+            .map(|(k, v)| {
+                (
+                    H256::from_slice(&*k),
+                    bincode::deserialize::<ExtendedEventInfo>(&v),
+                )
+            })
+            .map(|(k, v)| v.map(|v| (k, v)))
+            .filter_map(|x| x.ok())
+            .filter(|(_, v)| v.data.event_block_number < block_number)
+            .map(|(k, _)| k)
+            .for_each(|key| batch.remove(key.as_fixed_bytes()));
+
+        self.inner.apply_batch(batch)?;
+        Ok(())
     }
 }
 

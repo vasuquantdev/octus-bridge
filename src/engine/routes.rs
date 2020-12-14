@@ -1,4 +1,4 @@
-use std::collections::{HashMap};
+use std::collections::HashMap;
 use std::convert::{Infallible, TryFrom, TryInto};
 use std::str::FromStr;
 use std::sync::Arc;

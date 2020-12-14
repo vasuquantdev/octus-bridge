@@ -1,10 +1,3 @@
-pub(crate) mod event_configurations_listener;
-
-mod event_votes_listener;
-pub mod models;
-mod prelude;
-mod util;
-
 use std::collections::HashSet;
 use std::iter::FromIterator;
 use std::sync::Arc;
@@ -14,13 +7,10 @@ use futures::StreamExt;
 use num_bigint::BigUint;
 use num_traits::cast::ToPrimitive;
 use sled::Db;
-
 use tokio::sync::mpsc::UnboundedReceiver;
-
 use ton_block::MsgAddrStd;
 
 use relay_eth::ws::{EthListener, H256};
-
 use relay_ton::contracts::utils::pack_tokens;
 use relay_ton::contracts::*;
 use relay_ton::prelude::MsgAddressInt;
@@ -32,8 +22,14 @@ use crate::db_managment::models::{EthTonConfirmationData, EthTonTransaction};
 use crate::db_managment::ton_db::TonTree;
 use crate::engine::bridge::event_configurations_listener::EventConfigurationsListener;
 use crate::engine::bridge::event_votes_listener::EventVotesListener;
-
 use crate::engine::bridge::util::map_eth_ton;
+
+pub(crate) mod event_configurations_listener;
+
+mod event_votes_listener;
+pub mod models;
+mod prelude;
+mod util;
 
 pub struct Bridge {
     _eth_signer: EthSigner,
@@ -110,14 +106,18 @@ impl Bridge {
             let ton_queue = TonTree::new(&self.db).unwrap();
             let event_votes_listener = self.event_votes_listener.clone();
 
-            tokio::spawn(async move {
-                Self::watch_unsent_eth_ton_transactions(
-                    new_ethereum_blocks_rx,
-                    eth_queue,
-                    ton_queue,
-                    event_votes_listener,
-                )
-                .await;
+            tokio::spawn({
+                let w3 = self.eth_client.clone();
+                async move {
+                    Self::watch_unsent_eth_ton_transactions(
+                        new_ethereum_blocks_rx,
+                        eth_queue,
+                        ton_queue,
+                        event_votes_listener,
+                        w3,
+                    )
+                    .await;
+                }
             });
         }
 
@@ -295,6 +295,7 @@ impl Bridge {
         eth_queue: EthQueue,
         ton_queue: TonTree,
         event_votes_listener: Arc<EventVotesListener>,
+        web3_client: EthListener,
     ) {
         log::debug!("Started watch_unsent_eth_ton_transactions");
 
@@ -325,7 +326,35 @@ impl Bridge {
 
                 tokio::spawn({
                     let event_votes_listener = event_votes_listener.clone();
-
+                    if web3_client.transaction_exists(hash.clone()).await {
+                        log::info!("transaction exists. Confirming it.");
+                        let result = event_votes_listener
+                            .vote(EthTonTransaction::Confirm(EthTonConfirmationData {
+                                event_transaction: event.ethereum_event_transaction, // not in other order on case of shutdown
+                                event_index: event.event_index,
+                                event_data: event.event_data,
+                                event_block_number: event.event_block_number,
+                                event_block: event.event_block,
+                                ethereum_event_configuration_address: MsgAddressInt::AddrStd(
+                                    event.event_configuration_address,
+                                ),
+                            }))
+                            .await;
+                        match result {
+                            Ok(_) => {
+                                log::info!("Rejected tx in ton with hash {}", hash);
+                                eth_queue.remove(block_number).await.unwrap()
+                            }
+                            Err(e) => {
+                                log::error!(
+                                    "Failed rejecting tx with hash: {} in ton: {:?}",
+                                    hash,
+                                    e
+                                )
+                            }
+                        };
+                        continue;
+                    }
                     async move {
                         let result = event_votes_listener
                             .vote(EthTonTransaction::Reject(EthTonConfirmationData {
@@ -342,12 +371,12 @@ impl Bridge {
 
                         match result {
                             Ok(_) => {
-                                log::info!("Rejected tx in ton with hash {}", hash);
+                                log::info!("Confirmed tx in ton with hash {}", hash);
                                 eth_queue.remove(block_number).await.unwrap()
                             }
                             Err(e) => {
                                 log::error!(
-                                    "Failed rejecting tx with hash: {} in ton: {:?}",
+                                    "Failed confirming tx with hash: {} in ton: {:?}",
                                     hash,
                                     e
                                 )
@@ -356,7 +385,7 @@ impl Bridge {
                     }
                 });
             }
-
+            ton_queue.gc_old_blocks(block_number.into()).unwrap();
             tokio::spawn({
                 let event_votes_listener = event_votes_listener.clone();
                 let eth_queue = eth_queue.clone();

@@ -5,7 +5,7 @@ use anyhow::{anyhow, Error};
 use ethereum_types::H256;
 use futures::{future, StreamExt};
 use sled::Db;
-use tokio::sync::mpsc::{UnboundedReceiver};
+use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::{oneshot, Mutex};
 
 use relay_ton::contracts::{BridgeContract, ContractResult};
