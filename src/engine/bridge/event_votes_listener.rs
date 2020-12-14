@@ -123,7 +123,7 @@ impl EventVotesListener {
                 );
 
                 retries_count -= 1;
-                if retries_count <= 0 {
+                if retries_count < 0 {
                     break Err(e.into());
                 }
 
@@ -150,7 +150,7 @@ impl EventVotesListener {
                         );
 
                         retries_count -= 1;
-                        if retries_count <= 0 {
+                        if retries_count < 0 {
                             break Err(anyhow!("Failed to vote for event, no retries left"));
                         }
 

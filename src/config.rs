@@ -48,7 +48,8 @@ pub struct RelayConfig {
     pub eth_node_address: String,
     /// Addresss of bridge contract
     pub ton_contract_address: TonAddress,
-    /// Path to db, where all persistent data is stored.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ton_derivation_path: Option<String>,
     pub storage_path: PathBuf,
     /// Listen address of relay. Used by the client to perform all maintains actions.
     pub listen_address: SocketAddr,
@@ -63,6 +64,7 @@ impl Default for RelayConfig {
             storage_path: PathBuf::from("./persistent_storage"),
             eth_node_address: "ws://localhost:12345".into(),
             ton_contract_address: TonAddress("".into()),
+            ton_derivation_path: None,
             listen_address: "127.0.0.1:12345".parse().unwrap(),
             ton_config: TonConfig::default(),
         }
