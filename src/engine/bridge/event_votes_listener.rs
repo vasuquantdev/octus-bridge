@@ -5,7 +5,7 @@ use anyhow::{anyhow, Error};
 use ethereum_types::H256;
 use futures::{future, StreamExt};
 use sled::Db;
-use tokio::sync::mpsc::{UnboundedReceiver};
+use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::{oneshot, Mutex};
 
 use relay_ton::contracts::{BridgeContract, ContractResult};
@@ -123,7 +123,7 @@ impl EventVotesListener {
                 );
 
                 retries_count -= 1;
-                if retries_count <= 0 {
+                if retries_count < 0 {
                     break Err(e.into());
                 }
 
@@ -150,7 +150,7 @@ impl EventVotesListener {
                         );
 
                         retries_count -= 1;
-                        if retries_count <= 0 {
+                        if retries_count < 0 {
                             break Err(anyhow!("Failed to vote for event, no retries left"));
                         }
 

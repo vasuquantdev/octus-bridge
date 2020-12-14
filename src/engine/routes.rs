@@ -1,4 +1,4 @@
-use std::collections::{HashMap};
+use std::collections::HashMap;
 use std::convert::{Infallible, TryFrom, TryInto};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -307,7 +307,11 @@ async fn wait_for_init(
         }
     };
 
-    let ton_key_pair = match derive_from_words_ton(language, &data.ton_seed) {
+    let ton_key_pair = match derive_from_words_ton(
+        language,
+        &data.ton_seed,
+        config.ton_derivation_path.as_deref(),
+    ) {
         Ok(a) => a,
         Err(e) => {
             let error = format!("Failed deriving from ton seed: {}", e);

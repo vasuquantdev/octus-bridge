@@ -17,12 +17,13 @@ pub fn derive_from_words_eth(lang: Language, phrase: &str) -> Result<SecretKey, 
 pub fn derive_from_words_ton(
     lang: Language,
     phrase: &str,
+    derivation_path: Option<&str>,
 ) -> Result<ed25519_dalek::Keypair, Error> {
     let mnemonic = bip39::Mnemonic::from_phrase(phrase, lang)?;
     let hd = Seed::new(&mnemonic, "");
     let seed_bytes = hd.as_bytes();
 
-    let path = "m/44'/396'/0'/0/0";
+    let path = derivation_path.unwrap_or("m/44'/396'/0'/0/0");
     let derived =
         ExtendedPrivKey::derive(seed_bytes, path).map_err(|e| Error::msg(format!("{:#?}", e)))?;
 
@@ -73,6 +74,7 @@ mod test {
         let key = derive_from_words_ton(
             Language::English,
             "pioneer fever hazard scan install wise reform corn bubble leisure amazing note",
+            None,
         )
         .unwrap();
         let secret = key.secret;

@@ -92,6 +92,10 @@ impl Bridge {
         log::info!("Got configs for ethereum.");
         log::debug!("Topics: {:?}", eth_addr);
         log::debug!("Ethereum address: {:?}", eth_topic);
+        log::debug!(
+            "Bridge pubkey: {}",
+            self.ton_client.pubkey().to_hex_string()
+        );
 
         {
             let ton_watcher = self.event_votes_listener.clone();
