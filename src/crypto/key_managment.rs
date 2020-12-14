@@ -65,6 +65,7 @@ impl Debug for EthSigner {
     }
 }
 
+///Data, stored on disk in `encrypted_data` filed of config.
 #[derive(Serialize, Deserialize)]
 struct CryptoData {
     #[serde(serialize_with = "buffer_to_hex", deserialize_with = "hex_to_buffer")]
@@ -259,6 +260,7 @@ impl KeyData {
         })
     }
 
+    ///Calculates symmetric key from user password, using pbkdf2
     fn symmetric_key_from_password(password: SecStr, salt: &[u8]) -> Key {
         let mut pbkdf2_hash = SecVec::new(vec![0; CREDENTIAL_LEN]);
         pbkdf2::derive(

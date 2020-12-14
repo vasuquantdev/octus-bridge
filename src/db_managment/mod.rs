@@ -12,7 +12,8 @@ use super::db_managment::prelude::*;
 use crate::db_managment::eth_queue::EthQueue;
 use crate::db_managment::ton_db::TonTree;
 use relay_ton::prelude::HashMap;
-
+/// This module contains all db related operations.
+/// We are using `sled` as kv storage and `bincode` for encoding in the binary format.
 pub trait Table {
     type Key;
     type Value;

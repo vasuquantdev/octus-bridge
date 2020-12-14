@@ -42,11 +42,17 @@ impl Method {
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct RelayConfig {
+    /// path to json, where ton and eth private keys will be stored in encrypted way.
     pub encrypted_data: PathBuf,
+    /// Address of ethereum node. Only ws is supported right now
     pub eth_node_address: String,
+    /// Addresss of bridge contract
     pub ton_contract_address: TonAddress,
+    /// Path to db, where all persistent data is stored.
     pub storage_path: PathBuf,
+    /// Listen address of relay. Used by the client to perform all maintains actions.
     pub listen_address: SocketAddr,
+    /// Config for the ton part.
     pub ton_config: TonConfig,
 }
 
