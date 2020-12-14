@@ -1,8 +1,9 @@
+use std::collections::HashMap;
+
 use anyhow::Error;
 use ethereum_types::H256;
+use num_bigint::BigUint;
 use sled::{Db, Tree};
-
-use relay_ton::prelude::{BigUint, HashMap};
 
 use crate::db_managment::Table;
 use crate::engine::bridge::models::ExtendedEventInfo;

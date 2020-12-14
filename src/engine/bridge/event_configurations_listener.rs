@@ -10,7 +10,7 @@ use relay_ton::contracts::*;
 use relay_ton::prelude::UInt256;
 use relay_ton::transport::{Transport, TransportError};
 
-use super::models::ExtendedEventInfo;
+use super::models::{EventVote, ExtendedEventInfo};
 use crate::engine::bridge::util::{abi_to_topic_hash, validate_ethereum_event_configuration};
 
 /// Listens to config streams and maps them.
@@ -35,7 +35,7 @@ impl EventConfigurationsListener {
         self: &Arc<Self>,
         transport: Arc<dyn Transport>,
         bridge: Arc<BridgeContract>,
-    ) -> mpsc::UnboundedReceiver<ExtendedEventInfo> {
+    ) -> mpsc::UnboundedReceiver<(EventVote, ExtendedEventInfo)> {
         let (events_tx, events_rx) = mpsc::unbounded_channel();
 
         let ethereum_event_contract =
@@ -96,7 +96,7 @@ impl EventConfigurationsListener {
         transport: Arc<dyn Transport>,
         event_contract: Arc<EthereumEventContract>,
         address: MsgAddrStd,
-        events_tx: mpsc::UnboundedSender<ExtendedEventInfo>,
+        events_tx: mpsc::UnboundedSender<(EventVote, ExtendedEventInfo)>,
         semaphore: Option<Semaphore>,
     ) {
         let address = MsgAddressInt::AddrStd(address);
@@ -142,18 +142,24 @@ impl EventConfigurationsListener {
         while let Some(event) = eth_events.next().await {
             log::debug!("got event confirmation event: {:?}", event);
 
-            if let EthereumEventConfigurationContractEvent::NewEthereumEventConfirmation {
-                address,
-                relay_key,
-            } = event
-            {
-                tokio::spawn(handle_event_confirmation(
-                    event_contract.clone(),
-                    events_tx.clone(),
+            let (address, relay_key, vote) = match event {
+                EthereumEventConfigurationContractEvent::NewEthereumEventConfirmation {
                     address,
                     relay_key,
-                ));
-            }
+                } => (address, relay_key, EventVote::Confirm),
+                EthereumEventConfigurationContractEvent::NewEthereumEventReject {
+                    address,
+                    relay_key,
+                } => (address, relay_key, EventVote::Reject),
+            };
+
+            tokio::spawn(handle_event(
+                event_contract.clone(),
+                events_tx.clone(),
+                address,
+                relay_key,
+                vote,
+            ));
         }
     }
 
@@ -162,11 +168,12 @@ impl EventConfigurationsListener {
     }
 }
 
-async fn handle_event_confirmation(
+async fn handle_event(
     event_contract: Arc<EthereumEventContract>,
-    events_tx: mpsc::UnboundedSender<ExtendedEventInfo>,
+    events_tx: mpsc::UnboundedSender<(EventVote, ExtendedEventInfo)>,
     event_addr: MsgAddrStd,
     relay_key: UInt256,
+    vote: EventVote,
 ) {
     // TODO: move into config
     let mut retries_count = 3;
@@ -195,11 +202,14 @@ async fn handle_event_confirmation(
         };
     };
 
-    if let Err(e) = events_tx.send(ExtendedEventInfo {
-        event_addr,
-        relay_key,
-        data,
-    }) {
+    if let Err(e) = events_tx.send((
+        vote,
+        ExtendedEventInfo {
+            event_addr,
+            relay_key,
+            data,
+        },
+    )) {
         log::error!("Failed sending eth event details via channel: {:?}", e);
     }
 

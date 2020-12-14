@@ -1,21 +1,21 @@
-use std::collections::HashSet;
-use std::convert::{Infallible, TryFrom};
+use std::collections::{HashMap};
+use std::convert::{Infallible, TryFrom, TryInto};
 use std::str::FromStr;
+use std::sync::Arc;
 
 use anyhow::Error;
 use bip39::Language;
 use serde::Serialize;
 use sled::Db;
 use tokio::sync::oneshot::Receiver;
+use tokio::sync::RwLock;
 use ton_block::MsgAddressInt;
 use url::Url;
 use warp::http::StatusCode;
 use warp::{reply, Filter, Reply};
 
-use relay_eth::ws::EthListener;
-use relay_eth::ws::{update_height, H256};
+use relay_eth::ws::{update_height, EthListener};
 use relay_ton::contracts::{self, BridgeContract};
-use relay_ton::prelude::{Arc, HashMap, RwLock, TryInto};
 use relay_ton::transport::Transport;
 
 use crate::config::{RelayConfig, TonConfig};

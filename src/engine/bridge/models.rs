@@ -16,5 +16,11 @@ pub struct ExtendedEventInfo {
 
 pub struct Status {
     pub hash: H256,
-    pub sucess: bool,
+    pub success: bool,
+}
+
+#[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq)]
+pub enum EventVote {
+    Confirm,
+    Reject,
 }

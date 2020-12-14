@@ -1,3 +1,5 @@
+#![allow(unused_imports)]
+
 pub(crate) use std::borrow::Cow;
 pub(crate) use std::collections::HashMap;
 pub(crate) use std::convert::{TryFrom, TryInto};

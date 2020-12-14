@@ -1,12 +1,11 @@
 use std::hash::{Hash, Hasher};
 
 use chrono::{DateTime, Utc};
-use ethereum_types::H160;
+use num_bigint::BigUint;
 use ton_block::MsgAddressInt;
 
 use relay_eth::ws::H256;
-use relay_ton::prelude::{serde_cells, serde_int_addr};
-use relay_ton::prelude::{BigUint, Cell};
+use relay_ton::prelude::{serde_cells, serde_int_addr, Cell};
 
 use super::prelude::*;
 
@@ -78,10 +77,10 @@ pub enum EthTonTransaction {
 }
 
 impl EthTonTransaction {
-    pub fn get_hash(&self) -> H256 {
+    pub fn get_event_transaction(&self) -> H256 {
         match self {
-            EthTonTransaction::Confirm(a) => H256::from_slice(&*a.event_transaction),
-            EthTonTransaction::Reject(a) => H256::from_slice(&*a.event_transaction),
+            EthTonTransaction::Confirm(a) => H256::from_slice(&a.event_transaction),
+            EthTonTransaction::Reject(a) => H256::from_slice(&a.event_transaction),
         }
     }
 }

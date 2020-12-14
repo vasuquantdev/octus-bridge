@@ -6,12 +6,12 @@ pub mod stats;
 pub mod ton_db;
 pub mod tx_monitor;
 
+use std::collections::HashMap;
 use std::io::Write;
 
 use super::db_managment::prelude::*;
 use crate::db_managment::eth_queue::EthQueue;
 use crate::db_managment::ton_db::TonTree;
-use relay_ton::prelude::HashMap;
 
 pub trait Table {
     type Key;

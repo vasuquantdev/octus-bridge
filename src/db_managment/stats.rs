@@ -1,14 +1,14 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use relay_eth::ws::H256;
-use relay_ton::prelude::serde_uint256;
+
 use relay_ton::prelude::UInt256;
 
 use crate::db_managment::constants::STATS_TREE_NAME;
 use crate::db_managment::models::TxStat;
 use crate::db_managment::Table;
 
-use super::prelude::{Deserialize, Error, Serialize, Tree};
+use super::prelude::{Error, Tree};
 use super::Db;
 
 pub struct StatsProvider {

@@ -1,7 +1,7 @@
 use anyhow::Error;
+use sled::Db;
 
 use relay_eth::ws::H256;
-use relay_ton::prelude::Db;
 
 use crate::db_managment::models::EthTonTransaction;
 

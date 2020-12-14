@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use anyhow::Error;
 use dialoguer::theme::{ColorfulTheme, Theme};
-use dialoguer::{Editor, Input, Password, Select};
+use dialoguer::{Input, Password, Select};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -46,7 +46,7 @@ impl Client {
         let status: Status = self.get("status")?;
 
         println!("Status: {}", serde_json::to_string_pretty(&status)?);
-        return Ok(());
+        Ok(())
     }
 
     pub fn init_bridge(&self) -> Result<(), Error> {
@@ -353,10 +353,12 @@ fn parse_url(url: &str) -> Result<Url, Error> {
     Ok(Url::parse(url)?)
 }
 
+type CommandHandler = Box<dyn FnMut(&Client) -> Result<(), Error>>;
+
 struct Prompt<'a> {
     client: Client,
     select: Select<'a>,
-    items: Vec<Box<dyn FnMut(&Client) -> Result<(), Error>>>,
+    items: Vec<CommandHandler>,
 }
 
 impl<'a> Prompt<'a> {

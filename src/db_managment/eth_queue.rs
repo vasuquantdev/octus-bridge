@@ -1,8 +1,6 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use tokio::sync::Mutex;
-
-use relay_ton::prelude::HashMap;
 
 use crate::db_managment::models::EthTonConfirmationData;
 use crate::db_managment::Table;
@@ -24,7 +22,7 @@ impl EthQueue {
     }
 
     pub async fn get(&self, key: u64) -> Result<Option<HashSet<EthTonConfirmationData>>, Error> {
-        let guard = self.table_lock.lock().await;
+        let _guard = self.table_lock.lock().await;
         match self.db.get(key.to_be_bytes())? {
             Some(data) => Ok(Some(bincode::deserialize(&data)?)),
             None => Ok(None),
@@ -32,7 +30,7 @@ impl EthQueue {
     }
 
     pub async fn remove(&self, key: u64) -> Result<(), Error> {
-        let guard = self.table_lock.lock().await;
+        let _guard = self.table_lock.lock().await;
         self.db.remove(key.to_be_bytes())?;
         Ok(())
     }
@@ -42,7 +40,7 @@ impl EthQueue {
         key: &u64,
         value: &HashSet<EthTonConfirmationData>,
     ) -> Result<(), Error> {
-        let guard = self.table_lock.lock().await;
+        let _guard = self.table_lock.lock().await;
         self.db
             .insert(key.to_be_bytes(), bincode::serialize(&value).unwrap())?;
         Ok(())
