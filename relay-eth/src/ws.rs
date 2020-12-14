@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::convert::TryInto;
 use std::sync::Arc;
 
@@ -7,7 +8,7 @@ use log::{error, info};
 use serde::{Deserialize, Serialize};
 use sled::{Db, Tree};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use url::Url;
 use web3::transports::ws::WebSocket;
 pub use web3::types::{Address, BlockNumber, H256};
@@ -23,6 +24,8 @@ pub struct EthListener {
     db: Tree,
     blocks_tx: UnboundedSender<u64>,
     blocks_rx: Arc<Mutex<Option<UnboundedReceiver<u64>>>>,
+    addresses: Arc<RwLock<HashSet<Address>>>,
+    topics: Arc<RwLock<HashSet<H256>>>,
 }
 
 ///topics: `Keccak256("Method_Signature")`
@@ -47,8 +50,24 @@ pub fn update_height(db: &Db, height: u64) -> Result<(), Error> {
     update_eth_state(&tree, height, ETH_LAST_MET_HEIGHT)?;
     Ok(())
 }
-
 impl EthListener {
+    pub async fn new(url: Url, db: Db) -> Result<Self, Error> {
+        let connection = WebSocket::new(url.as_str())
+            .await
+            .expect("Failed connecting to ethereum node");
+        info!("Connected to: {}", &url);
+        let api = Web3::new(connection);
+        let (tx, rx) = unbounded_channel();
+        Ok(Self {
+            stream: api,
+            db: db.open_tree(ETH_TREE_NAME)?,
+            blocks_tx: tx,
+            blocks_rx: Arc::new(Mutex::new(Option::Some(rx))),
+            addresses: Arc::new(Default::default()),
+            topics: Arc::new(Default::default()),
+        })
+    }
+
     pub async fn get_block_number(&self) -> Result<u64, Error> {
         Ok(match self.db.get(ETH_LAST_MET_HEIGHT)? {
             Some(a) => u64::from_le_bytes(a.as_ref().try_into()?),
@@ -59,6 +78,16 @@ impl EthListener {
     pub async fn get_blocks_stream(&self) -> Option<UnboundedReceiver<u64>> {
         let mut guard = self.blocks_rx.lock().await;
         guard.take()
+    }
+
+    pub async fn transaction_exists(&self, hash: H256) -> bool {
+        match self.stream.eth().transaction_receipt(hash).await {
+            Ok(_) => true,
+            Err(e) => {
+                log::error!("Failed checking transaction: {}", e);
+                false
+            }
+        }
     }
 
     fn log_to_event(log: Log, db: &Tree) -> Result<Event, Error> {
@@ -117,19 +146,14 @@ impl EthListener {
         })
     }
 
-    pub async fn new(url: Url, db: Db) -> Result<Self, Error> {
-        let connection = WebSocket::new(url.as_str())
-            .await
-            .expect("Failed connecting to ethereum node");
-        info!("Connected to: {}", &url);
-        let api = Web3::new(connection);
-        let (tx, rx) = unbounded_channel();
-        Ok(Self {
-            stream: api,
-            db: db.open_tree(ETH_TREE_NAME)?,
-            blocks_tx: tx,
-            blocks_rx: Arc::new(Mutex::new(Option::Some(rx))),
-        })
+    pub async fn add_topic(&self, topic: H256) {
+        let mut guard = self.topics.write().await;
+        guard.insert(topic);
+    }
+
+    pub async fn add_address(&self, address: Address) {
+        let mut guard = self.addresses.write().await;
+        guard.insert(address);
     }
 
     pub async fn subscribe(
@@ -144,20 +168,18 @@ impl EthListener {
             topics
         );
 
-        // spawn(monitor_block_number(
-        //     self.db.clone(),
-        //     self.stream.clone(),
-        //     self.blocks_tx.clone(),
-        // ));
-
-        let addresses = addresses.clone();
-        let topics = topics.clone();
+        for address in addresses {
+            self.add_address(address).await;
+        }
+        for topic in topics {
+            self.add_topic(topic).await;
+        }
 
         scan_blocks(
             self.db.clone(),
             self.stream.clone(),
-            topics,
-            addresses,
+            self.topics.clone(),
+            self.addresses.clone(),
             from_height,
             self.blocks_tx.clone(),
         )
@@ -168,14 +190,16 @@ impl EthListener {
 async fn scan_blocks(
     db: Tree,
     w3: Web3<WebSocket>,
-    topics: Vec<H256>,
-    addresses: Vec<Address>,
+    topics: Arc<RwLock<HashSet<H256>>>,
+    addresses: Arc<RwLock<HashSet<Address>>>,
     from_height: u64,
     blocks_tx: UnboundedSender<u64>,
 ) -> Result<impl Stream<Item = Result<Event, Error>>, Error> {
     let (events_tx, events_rx) = unbounded_channel();
 
     tokio::spawn(async move {
+        //
+        //
         let mut current_height = match w3.eth().block_number().await {
             Ok(a) => a.as_u64(),
             Err(e) => {
@@ -257,11 +281,13 @@ async fn scan_blocks(
 async fn process_block(
     db: &Tree,
     w3: &Web3<WebSocket>,
-    topics: Vec<H256>,
-    addresses: Vec<Address>,
+    topics: Arc<RwLock<HashSet<H256>>>,
+    addresses: Arc<RwLock<HashSet<Address>>>,
     block_number: BlockNumber,
     events_tx: &UnboundedSender<Result<Event, Error>>,
 ) {
+    let addresses = addresses.read().await.iter().cloned().collect();
+    let topics = topics.read().await.iter().cloned().collect();
     let filter = FilterBuilder::default()
         .address(addresses)
         .topics(Some(topics), None, None, None)
@@ -296,20 +322,3 @@ async fn process_block(
         }
     };
 }
-
-// while let Some(a) = stream.next().await {
-// match a {
-// Err(e) => {
-// if let Err(e) = tx.send(Err(e.into())) {
-// error!("Error while transmitting value via channel: {}", e);
-// }
-// }
-// Ok(a) => {
-// let event = EthListener::log_to_event(a, &db);
-// log::trace!("Received event: {:#?}", &event);
-// if let Err(e) = tx.send(event) {
-// error!("Error while transmitting value via channel: {}", e);
-// }
-// }
-// }
-// }
