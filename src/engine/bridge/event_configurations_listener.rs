@@ -6,12 +6,14 @@ use futures::StreamExt;
 use tokio::sync::{mpsc, Mutex, Notify, RwLock, RwLockReadGuard};
 use ton_block::{MsgAddrStd, MsgAddressInt};
 
+use ethabi::ParamType as EthParamType;
 use relay_ton::contracts::*;
 use relay_ton::prelude::UInt256;
 use relay_ton::transport::{Transport, TransportError};
+use ton_abi::ParamType as TonParamType;
 
 use super::models::{EventVote, ExtendedEventInfo};
-use crate::engine::bridge::util::{abi_to_topic_hash, validate_ethereum_event_configuration};
+use crate::engine::bridge::util::{parse_eth_abi, validate_ethereum_event_configuration};
 
 /// Listens to config streams and maps them.
 #[derive(Debug)]
@@ -220,8 +222,8 @@ async fn handle_event(
 #[derive(Debug, Clone)]
 pub struct ConfigsState {
     pub eth_addr: HashSet<ethereum_types::Address>,
-    pub address_topic_map: HashMap<H160, (H256, Vec<ethabi::ParamType>)>,
-    pub topic_abi_map: HashMap<H256, Vec<ethabi::ParamType>>,
+    pub address_topic_map: HashMap<H160, (H256, Vec<EthParamType>, Vec<TonParamType>)>,
+    pub topic_abi_map: HashMap<H256, Vec<EthParamType>>,
     pub eth_configs_map: HashMap<H160, (MsgAddressInt, EthereumEventConfiguration)>,
 }
 
@@ -245,7 +247,7 @@ impl ConfigsState {
             return;
         }
 
-        let (topic_hash, topic_params) = match abi_to_topic_hash(&configuration.ethereum_event_abi)
+        let (topic_hash, eth_abi, ton_abi) = match parse_eth_abi(&configuration.ethereum_event_abi)
         {
             Ok(a) => a,
             Err(e) => {
@@ -257,9 +259,9 @@ impl ConfigsState {
         self.eth_addr.insert(configuration.ethereum_event_address);
         self.address_topic_map.insert(
             configuration.ethereum_event_address,
-            (topic_hash, topic_params.clone()),
+            (topic_hash, eth_abi.clone(), ton_abi),
         );
-        self.topic_abi_map.insert(topic_hash, topic_params);
+        self.topic_abi_map.insert(topic_hash, eth_abi);
         self.eth_configs_map.insert(
             configuration.ethereum_event_address,
             (contract_addr, configuration),

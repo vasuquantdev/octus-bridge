@@ -1,15 +1,74 @@
 use anyhow::anyhow;
 use anyhow::Error;
-use ethabi::ParamType;
-use ethabi::Token as EthTokenValue;
+use ethabi::{ParamType as EthParamType, Token as EthTokenValue};
 use num_bigint::{BigInt, BigUint};
 use serde::{Deserialize, Serialize};
 use sha3::digest::Digest;
 use sha3::Keccak256;
-use ton_abi::TokenValue as TonTokenValue;
+use ton_abi::{ParamType as TonParamType, TokenValue as TonTokenValue, TokenValue};
 
 use relay_eth::ws::H256;
 use relay_ton::contracts::EthereumEventConfiguration;
+use relay_ton::prelude::{Cell, SliceData};
+
+/// Returns topic hash and abi for ETH and TON
+pub fn parse_eth_abi(abi: &str) -> Result<(H256, Vec<EthParamType>, Vec<TonParamType>), Error> {
+    #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Abi {
+        pub anonymous: Option<bool>,
+        pub inputs: Vec<Input>,
+        pub name: String,
+        #[serde(rename = "type")]
+        pub type_field: String,
+        #[serde(default)]
+        pub outputs: Vec<Output>,
+        pub state_mutability: Option<String>,
+    }
+
+    #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Input {
+        pub indexed: Option<bool>,
+        pub internal_type: String,
+        pub name: String,
+        #[serde(rename = "type")]
+        pub type_field: String,
+    }
+
+    #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Output {
+        pub internal_type: String,
+        pub name: String,
+        #[serde(rename = "type")]
+        pub type_field: String,
+    }
+    let abi: Abi = serde_json::from_str(abi)?;
+    let fn_name = abi.name;
+
+    let input_types: String = abi
+        .inputs
+        .iter()
+        .map(|x| x.type_field.clone())
+        .collect::<Vec<String>>()
+        .join(",");
+
+    let eth_abi_params = abi
+        .inputs
+        .iter()
+        .map(|x| eth_param_from_str(x.internal_type.as_str()))
+        .collect::<Result<Vec<_>, Error>>()?;
+
+    let ton_abi_params = map_eth_abi(&eth_abi_params)?;
+
+    let signature = format!("{}({})", fn_name, input_types);
+    Ok((
+        H256::from_slice(&*Keccak256::digest(signature.as_bytes())),
+        eth_abi_params,
+        ton_abi_params,
+    ))
+}
 
 pub fn validate_ethereum_event_configuration(
     config: &EthereumEventConfiguration,
@@ -22,30 +81,79 @@ pub fn validate_ethereum_event_configuration(
     Ok(())
 }
 
-pub fn from_str(token: &str) -> Result<ParamType, Error> {
+pub fn eth_param_from_str(token: &str) -> Result<EthParamType, Error> {
     Ok(match token.to_lowercase().as_str() {
         str if str.starts_with("uint") => {
             let num = str.trim_start_matches(char::is_alphabetic).parse()?;
             if num % 8 != 0 {
                 return Err(anyhow!("Bad int size: {}", num));
             }
-            ParamType::Uint(num)
+            EthParamType::Uint(num)
         }
         str if str.starts_with("int") => {
             let num = str.trim_start_matches(char::is_alphabetic).parse()?;
             if num % 8 != 0 {
                 return Err(anyhow!("Bad uint size: {}", num));
             }
-            ParamType::Int(num)
+            EthParamType::Int(num)
         }
-        str if str.starts_with("address") => ParamType::Address,
-        str if str.starts_with("bool") => ParamType::Bool,
-        str if str.starts_with("string") => ParamType::String,
+        str if str.starts_with("address") => EthParamType::Address,
+        str if str.starts_with("bool") => EthParamType::Bool,
+        str if str.starts_with("string") => EthParamType::String,
         str if str.starts_with("bytes") => {
             let num = str.trim_start_matches(char::is_alphabetic).parse()?;
-            ParamType::FixedBytes(num)
+            EthParamType::FixedBytes(num)
         }
         _ => unimplemented!(),
+    })
+}
+
+pub fn parse_ton_event_data(abi: &[TonParamType], data: Cell) -> Result<Vec<EthTokenValue>, Error> {
+    let abi_version = 2;
+    let mut cursor = data.into();
+    let mut tokens = Vec::with_capacity(abi.len());
+
+    for param_type in abi {
+        let last = Some(param_type) == abi.last();
+
+        let (token_value, new_cursor) =
+            TokenValue::read_from(param_type, cursor, last, abi_version)?;
+
+        cursor = new_cursor;
+
+        tokens.push(map_ton_eth(token_value));
+    }
+
+    if cursor.remaining_references() != 0 || cursor.remaining_bits() != 0 {
+        Err(anyhow!("incomplete event data deserialization"))
+    } else {
+        Ok(tokens)
+    }
+}
+
+pub fn map_eth_abi(abi: &[EthParamType]) -> Result<Vec<TonParamType>, Error> {
+    abi.iter().map(map_eth_abi_param).collect()
+}
+
+pub fn map_eth_abi_param(param: &EthParamType) -> Result<TonParamType, Error> {
+    Ok(match param {
+        EthParamType::Address => TonParamType::Bytes,
+        EthParamType::Bytes => TonParamType::Bytes,
+        EthParamType::Int(&size) => TonParamType::Int(size),
+        EthParamType::Uint(&size) => TonParamType::Uint(size),
+        EthParamType::Bool => TonParamType::Bool,
+        EthParamType::String => TonParamType::Bytes,
+        EthParamType::Array(param) => map_eth_abi_param(param.as_ref()),
+        EthParamType::FixedBytes(&size) => TonParamType::FixedBytes(size),
+        EthParamType::FixedArray(param, &size) => {
+            TonParamType::FixedArray(Box::new(map_eth_abi_param(param.as_ref())?), size)
+        }
+        EthParamType::Tuple(params) => TonParamType::Tuple(
+            params
+                .iter()
+                .map(|item| map_eth_abi_param(item.as_ref()))
+                .collect::<Result<_, _>>()?,
+        ),
     })
 }
 
@@ -96,59 +204,6 @@ pub fn map_ton_eth(ton: TonTokenValue) -> EthTokenValue {
     }
 }
 
-///returns signature and its hash.
-pub fn abi_to_topic_hash(abi: &str) -> Result<(H256, Vec<ParamType>), Error> {
-    #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct Abi {
-        pub anonymous: Option<bool>,
-        pub inputs: Vec<Input>,
-        pub name: String,
-        #[serde(rename = "type")]
-        pub type_field: String,
-        #[serde(default)]
-        pub outputs: Vec<Output>,
-        pub state_mutability: Option<String>,
-    }
-
-    #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct Input {
-        pub indexed: Option<bool>,
-        pub internal_type: String,
-        pub name: String,
-        #[serde(rename = "type")]
-        pub type_field: String,
-    }
-
-    #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct Output {
-        pub internal_type: String,
-        pub name: String,
-        #[serde(rename = "type")]
-        pub type_field: String,
-    }
-    let abi: Abi = serde_json::from_str(abi)?;
-    let fn_name = abi.name;
-    let input_types: String = abi
-        .inputs
-        .iter()
-        .map(|x| x.type_field.clone())
-        .collect::<Vec<String>>()
-        .join(",");
-    let abi_types: Result<Vec<ParamType>, Error> = abi
-        .inputs
-        .iter()
-        .map(|x| from_str(x.internal_type.as_str()))
-        .collect();
-    let signature = format!("{}({})", fn_name, input_types);
-    Ok((
-        H256::from_slice(&*Keccak256::digest(signature.as_bytes())),
-        abi_types?,
-    ))
-}
-
 #[cfg(test)]
 mod test {
     use ethabi::ParamType;
@@ -160,7 +215,9 @@ mod test {
 
     use relay_eth::ws::H256;
 
-    use crate::engine::bridge::util::{abi_to_topic_hash, from_str, map_eth_ton, map_ton_eth};
+    use crate::engine::bridge::util::{
+        eth_param_from_str, map_eth_ton, map_ton_eth, parse_eth_abi,
+    };
 
     const ABI: &str = r#"
   {
@@ -186,7 +243,7 @@ mod test {
 
     #[test]
     fn test_event_contract_abi() {
-        let hash = abi_to_topic_hash(ABI).unwrap().0;
+        let hash = parse_eth_abi(ABI).unwrap().0;
         let expected = H256::from_slice(&*Keccak256::digest(b"StateChange(uint256,address)"));
         assert_eq!(expected, hash);
     }
@@ -195,27 +252,27 @@ mod test {
     #[test]
     fn test_u256() {
         let expected = ParamType::Uint(256);
-        let got = from_str("uint256").unwrap();
+        let got = eth_param_from_str("uint256").unwrap();
         assert_eq!(expected, got);
     }
     #[test]
     fn test_i64() {
         let expected = ParamType::Int(64);
-        let got = from_str("Int64").unwrap();
+        let got = eth_param_from_str("Int64").unwrap();
         assert_eq!(expected, got);
     }
 
     #[test]
     fn test_bytes() {
         let expected = ParamType::FixedBytes(32);
-        let got = from_str("bytes32").unwrap();
+        let got = eth_param_from_str("bytes32").unwrap();
         assert_eq!(expected, got);
     }
 
     #[test]
     fn test_addr() {
         let expected = ParamType::Address;
-        let got = from_str("address").unwrap();
+        let got = eth_param_from_str("address").unwrap();
         assert_eq!(expected, got);
     }
 
