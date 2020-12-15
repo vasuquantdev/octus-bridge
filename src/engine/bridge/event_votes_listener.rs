@@ -81,15 +81,6 @@ impl EventVotesListener {
         }
     }
 
-    pub fn remove_event_by_hash(&self, hash: &H256) -> Result<(), Error> {
-        self.db.remove_event_by_hash(hash)?;
-        Ok(())
-    }
-
-    pub fn get_event_by_hash(&self, hash: &H256) -> Result<Option<HashSet<ExtendedEventInfo>>, Error> {
-        Ok(self.db.get_event_by_hash(hash)?)
-    }
-
     pub async fn vote(self: Arc<Self>, data: EthTonTransaction) -> Result<(), Error> {
         let hash = data.get_event_transaction();
         self.tx_table.insert(&hash, &data).unwrap();
@@ -135,7 +126,6 @@ impl EventVotesListener {
                             data.get_event_transaction(),
                             event
                         );
-                        self.remove_event_by_hash(&hash).unwrap();
                         self.tx_table.remove(&hash).unwrap();
                         break Ok(());
                     }

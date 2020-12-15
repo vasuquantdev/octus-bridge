@@ -24,7 +24,7 @@ impl TonTree {
         let reduced_info = ReducedEventInfo::from(key);
         let key = bincode::serialize(&reduced_info).expect("Shouldn't fail");
         log::warn!("WRITING: {:?}", key);
-        self.inner.insert(key, ())?;
+        self.inner.insert(key, &[0; 0])?;
         Ok(())
     }
 
@@ -42,7 +42,7 @@ impl TonTree {
             })
             .map(|x| bincode::deserialize::<ReducedEventInfo>(&x))
             .filter_map(|x| x.ok()) // shouldn't fail
-            .filter(|v| v.data.event_block_number < block_number && !v.data.event_rejected)
+            .filter(|v| v.event_block_number < block_number && !v.event_rejected)
             .collect()
     }
 
@@ -59,7 +59,7 @@ impl TonTree {
                     None
                 }
             })
-            .map(|x| bincode::deserialize::<ReducedEventInfo>(x))
+            .map(|x| bincode::deserialize::<ReducedEventInfo>(&x))
             .filter_map(|x| match x {
                 Ok(a) => Some(a),
                 Err(e) => {
@@ -67,8 +67,9 @@ impl TonTree {
                     None
                 }
             })
-            .filter(|x| x.event_block < block_number && !x.event_rejected)
-            .for_each(batch.remove);
+            .filter(|x| x.event_block_number < block_number && !x.event_rejected)
+            .map(|x| bincode::serialize(&x).unwrap())
+            .for_each(|x| batch.remove(x));
         self.inner.apply_batch(batch)?;
         Ok(())
     }

@@ -1,7 +1,9 @@
 use num_bigint::BigUint;
+
 use relay_eth::ws::H256;
 use relay_ton::contracts::EthereumEventDetails;
 use relay_ton::prelude::{serde_cells, serde_std_addr, serde_uint256, Cell, MsgAddrStd, UInt256};
+
 use super::prelude::*;
 
 /// Event received from TON
@@ -14,19 +16,21 @@ pub struct ExtendedEventInfo {
     pub data: EthereumEventDetails,
 }
 
-#[derive(Debug, Clone, Hash, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone,  Serialize, Deserialize, Eq, PartialEq)]
 pub struct ReducedEventInfo {
     #[serde(with = "serde_std_addr")]
     pub event_addr: MsgAddrStd,
+    #[serde(with = "serde_uint256")]
     relay_key: UInt256,
     pub ethereum_event_transaction: Vec<u8>,
     pub event_index: BigUint,
     #[serde(with = "serde_cells")]
     pub event_data: Cell,
-    #[serde(with = "serde_std_addr")]
     pub event_block_number: BigUint,
     pub event_block: Vec<u8>,
     pub event_rejected: bool,
+    #[serde(with = "serde_std_addr")]
+    pub event_configuration_address: MsgAddrStd,
 }
 
 impl From<ExtendedEventInfo> for ReducedEventInfo {
@@ -41,6 +45,7 @@ impl From<ExtendedEventInfo> for ReducedEventInfo {
             event_block_number: data.event_block_number,
             event_block: data.event_block,
             event_rejected: data.event_rejected,
+            event_configuration_address: data.event_configuration_address,
         }
     }
 }
