@@ -19,10 +19,11 @@ use relay_ton::transport::Transport;
 use crate::crypto::key_managment::EthSigner;
 use crate::db_managment::eth_queue::EthQueue;
 use crate::db_managment::models::{EthTonConfirmationData, EthTonTransaction};
-use crate::db_managment::ton_db::TonTree;
+use crate::db_managment::ton_event_db::TonTree;
 use crate::engine::bridge::event_configurations_listener::EventConfigurationsListener;
 use crate::engine::bridge::event_votes_listener::EventVotesListener;
 use crate::engine::bridge::util::map_eth_ton;
+use ethabi::Address;
 
 pub(crate) mod event_configurations_listener;
 
@@ -218,41 +219,25 @@ impl Bridge {
             ethereum_event_configuration_address,
         };
 
-        // if some relay has already reported transaction
-        if self
-            .event_votes_listener
-            .get_event_by_hash(&event.tx_hash)
-            .unwrap()
-            .is_some()
-        {
-            tokio::spawn(
-                self.event_votes_listener
-                    .clone()
-                    .vote(EthTonTransaction::Confirm(prepared_data)),
-            );
-            return;
-        } else {
-            let queued_block_number = event.block_number + ethereum_event_blocks_to_confirm;
+        let queued_block_number = event.block_number + ethereum_event_blocks_to_confirm;
 
-            let transactions_in_block = match self.eth_queue.get(queued_block_number).await.unwrap()
-            {
-                Some(mut transactions_list) => {
-                    transactions_list.insert(prepared_data);
-                    transactions_list
-                }
-                None => HashSet::from_iter(vec![prepared_data]),
-            };
+        let transactions_in_block = match self.eth_queue.get(queued_block_number).await.unwrap() {
+            Some(mut transactions_list) => {
+                transactions_list.insert(prepared_data);
+                transactions_list
+            }
+            None => HashSet::from_iter(vec![prepared_data]),
+        };
 
-            log::info!(
-                "Inserting transaction for block {} with queue number: {}",
-                event.block_number,
-                queued_block_number
-            );
-            self.eth_queue
-                .insert(&queued_block_number, &transactions_in_block)
-                .await
-                .unwrap();
-        }
+        log::info!(
+            "Inserting transaction for block {} with queue number: {}",
+            event.block_number,
+            queued_block_number
+        );
+        self.eth_queue
+            .insert(&queued_block_number, &transactions_in_block)
+            .await
+            .unwrap();
     }
 
     pub async fn get_event_configurations(
@@ -324,13 +309,14 @@ impl Bridge {
             };
 
             for fake_event in ton_queue.scan_for_block_lower_bound(BigUint::from(block_number)) {
-                let event = fake_event.data;
-                let hash = H256::from_slice(&event.ethereum_event_transaction);
+                let event = fake_event;
+                let hash = H256::from_slice(&fake_event.ethereum_event_transaction);
                 let eth_queue = eth_queue.clone();
 
                 tokio::spawn({
                     let event_votes_listener = event_votes_listener.clone();
-                    if web3_client.transaction_exists(hash.clone()).await {
+
+                    if web3_client.transaction_exists(hash.clone(), ).await {
                         log::info!("transaction exists. Confirming it.");
                         let result = event_votes_listener
                             .vote(EthTonTransaction::Confirm(EthTonConfirmationData {

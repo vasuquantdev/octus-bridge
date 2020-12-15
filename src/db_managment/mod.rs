@@ -1,17 +1,27 @@
+use std::collections::HashMap;
+use std::io::Write;
+use std::iter::FromIterator;
+
+use crate::db_managment::eth_queue::EthQueue;
+use crate::db_managment::ton_event_db::TonTree;
+
+use super::db_managment::prelude::*;
+
 pub mod constants;
+/// This tables stores met ethereum transactions
+/// For example, we have 10 blocks to confirm. On block 123 we 've met tx
+/// Then we will enqueue it in the table with block number 133 and on block 133 we will confirm all met transactions
+/// On the current block - 10
 pub mod eth_queue;
 pub mod models;
 mod prelude;
+/// Here all lifetime stats are stored. key is relay pubkey, hash is Stats
 pub mod stats;
-pub mod ton_db;
+///Here all met ton events are stored. Key is hash in ethereum. Value is ExtendedEventInfo
+pub mod ton_event_db;
+///
 pub mod tx_monitor;
 
-use std::collections::HashMap;
-use std::io::Write;
-
-use super::db_managment::prelude::*;
-use crate::db_managment::eth_queue::EthQueue;
-use crate::db_managment::ton_db::TonTree;
 /// This module contains all db related operations.
 /// We are using `sled` as kv storage and `bincode` for encoding in the binary format.
 pub trait Table {
@@ -27,7 +37,11 @@ where
     let ton_queue = TonTree::new(&db).unwrap();
     let eth_queue = EthQueue::new(db).unwrap();
     let eth_elements = eth_queue.dump_elements();
-    let ton_elemnts = ton_queue.dump_elements();
+    let ton_elements: HashMap<_, _> = ton_queue
+        .dump_elements()
+        .into_iter()
+        .map(|(k, v)| (k, Vec::from_iter(v)))
+        .collect();
     serde_json::to_writer_pretty(eth_writer, &eth_elements).unwrap();
-    serde_json::to_writer_pretty(ton_writer, &ton_elemnts).unwrap();
+    serde_json::to_writer_pretty(ton_writer, &ton_elements).unwrap();
 }

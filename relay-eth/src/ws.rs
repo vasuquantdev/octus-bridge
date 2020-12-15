@@ -50,6 +50,7 @@ pub fn update_height(db: &Db, height: u64) -> Result<(), Error> {
     update_eth_state(&tree, height, ETH_LAST_MET_HEIGHT)?;
     Ok(())
 }
+
 impl EthListener {
     pub async fn new(url: Url, db: Db) -> Result<Self, Error> {
         let connection = WebSocket::new(url.as_str())
@@ -80,9 +81,41 @@ impl EthListener {
         guard.take()
     }
 
-    pub async fn transaction_exists(&self, hash: H256) -> bool {
+    pub async fn transaction_exists(&self, hash: H256, data: Vec<u8>) -> bool {
         match self.stream.eth().transaction_receipt(hash).await {
-            Ok(_) => true,
+            //if not transport error
+            Ok(a) => match a {
+                //if not tx with this hash
+                None => false,
+                Some(a) => {
+                    // if tx status is failed, then no such tx exists
+                    match a.status {
+                        Some(a) => {
+                            if a.as_u64() == 0 {
+                                return false;
+                            }
+                        }
+                        None => return false,
+                    };
+
+                    let logs = a.logs;
+                    //parsing logs into events
+                    let events: Result<Vec<_>, _> =
+                        logs.into_iter().map(EthListener::log_to_event).collect();
+
+                    let events = match events {
+                        Ok(a) => a,
+                        Err(e) => {
+                            log::error!("No events for tx. Assuming confirmation is fake.: {}", e);
+                            return false;
+                        }
+                    };
+                    // if any event matches
+                    events
+                        .into_iter()
+                        .any(|x| x.tx_hash == hash && x.data == data)
+                }
+            },
             Err(e) => {
                 log::error!("Failed checking transaction: {}", e);
                 false
@@ -90,7 +123,7 @@ impl EthListener {
         }
     }
 
-    fn log_to_event(log: Log, db: &Tree) -> Result<Event, Error> {
+    fn log_to_event(log: Log) -> Result<Event, Error> {
         let data = log.data.0;
         let hash = match log.transaction_hash {
             Some(a) => a,
@@ -100,14 +133,7 @@ impl EthListener {
             }
         };
         let block_number = match log.block_number {
-            Some(a) => {
-                if let Err(e) = update_eth_state(db, a.as_u64(), ETH_LAST_MET_HEIGHT) {
-                    let err = format!("Critical error: failed saving eth state: {}", e);
-                    error!("{}", &err);
-                    return Err(Error::msg(err));
-                }
-                a.as_u64()
-            }
+            Some(a) => a.as_u64(),
             None => {
                 let err = "No block number in log!".to_string();
                 error!("{}", &err);
@@ -210,8 +236,11 @@ async fn scan_blocks(
 
         let mut block_number = from_height;
         while block_number < current_height {
+            if let Err(e) = update_eth_state(&db, block_number, ETH_LAST_MET_HEIGHT) {
+                let err = format!("Critical error: failed saving eth state: {}", e);
+                error!("{}", &err);
+            };
             process_block(
-                &db,
                 &w3,
                 topics.clone(),
                 addresses.clone(),
@@ -260,11 +289,16 @@ async fn scan_blocks(
                     continue;
                 }
             };
+
+            if let Err(e) = update_eth_state(&db, block_number, ETH_LAST_MET_HEIGHT) {
+                let err = format!("Critical error: failed saving eth state: {}", e);
+                error!("{}", &err);
+            };
+
             if let Err(e) = blocks_tx.send(block_number) {
                 log::error!("Failed sending event via channel: {:?}", e);
             }
             process_block(
-                &db,
                 &w3,
                 topics.clone(),
                 addresses.clone(),
@@ -279,7 +313,6 @@ async fn scan_blocks(
 }
 
 async fn process_block(
-    db: &Tree,
     w3: &Web3<WebSocket>,
     topics: Arc<RwLock<HashSet<H256>>>,
     addresses: Arc<RwLock<HashSet<Address>>>,
@@ -300,7 +333,7 @@ async fn process_block(
                 log::info!("There some logs in block: {:?}", block_number);
             }
             for log in a {
-                let event = EthListener::log_to_event(log, &db);
+                let event = EthListener::log_to_event(log);
                 match event {
                     Ok(a) => {
                         if let Err(e) = events_tx.send(Ok(a)) {

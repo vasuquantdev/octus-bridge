@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use anyhow::{anyhow, Error};
@@ -13,7 +13,7 @@ use relay_ton::prelude::UInt256;
 
 use crate::db_managment::models::EthTonTransaction;
 use crate::db_managment::stats::StatsProvider;
-use crate::db_managment::ton_db::TonTree;
+use crate::db_managment::ton_event_db::TonTree;
 use crate::db_managment::tx_monitor::TxTable;
 use crate::engine::bridge::models::{EventVote, ExtendedEventInfo};
 
@@ -74,8 +74,7 @@ impl EventVotesListener {
                 // TODO: check how to handle events from multiple relays
                 self.db
                     .insert(
-                        H256::from_slice(&event.data.ethereum_event_transaction),
-                        &event,
+                        event,
                     )
                     .unwrap();
             }
@@ -87,7 +86,7 @@ impl EventVotesListener {
         Ok(())
     }
 
-    pub fn get_event_by_hash(&self, hash: &H256) -> Result<Option<ExtendedEventInfo>, Error> {
+    pub fn get_event_by_hash(&self, hash: &H256) -> Result<Option<HashSet<ExtendedEventInfo>>, Error> {
         Ok(self.db.get_event_by_hash(hash)?)
     }
 
