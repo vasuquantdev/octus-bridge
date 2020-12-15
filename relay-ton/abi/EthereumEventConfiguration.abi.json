@@ -80,8 +80,9 @@
     {"key":3,"name":"eventRequiredConfirmations","type":"uint256"},
     {"key":4,"name":"eventRequiredRejects","type":"uint256"},
     {"key":5,"name":"ethereumEventBlocksToConfirm","type":"uint256"},
-    {"key":6,"name":"proxyAddress","type":"address"},
-    {"key":7,"name":"bridgeAddress","type":"address"}
+    {"key":6,"name":"eventInitialBalance","type":"uint128"},
+    {"key":7,"name":"proxyAddress","type":"address"},
+    {"key":8,"name":"bridgeAddress","type":"address"}
   ],
   "events": [
     {

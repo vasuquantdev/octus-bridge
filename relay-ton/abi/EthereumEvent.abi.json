@@ -43,7 +43,9 @@
         {"name":"_proxyCallbackExecuted","type":"bool"},
         {"name":"_eventRejected","type":"bool"},
         {"name":"_confirmKeys","type":"uint256[]"},
-        {"name":"_rejectKeys","type":"uint256[]"}
+        {"name":"_rejectKeys","type":"uint256[]"},
+        {"name":"_requiredConfirmations","type":"uint256"},
+        {"name":"_requiredRejects","type":"uint256"}
       ]
     }
   ],
