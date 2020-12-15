@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::convert::TryInto;
 use std::sync::Arc;
 
-use anyhow::Error;
+use anyhow::{anyhow, Error};
 use futures::stream::{Stream, StreamExt};
 use log::{error, info};
 use serde::{Deserialize, Serialize};
@@ -81,44 +81,47 @@ impl EthListener {
         guard.take()
     }
 
-    pub async fn transaction_exists(&self, hash: H256, data: Vec<u8>) -> bool {
-        match self.stream.eth().transaction_receipt(hash).await {
-            //if not transport error
-            Ok(a) => match a {
-                //if not tx with this hash
-                None => false,
-                Some(a) => {
-                    // if tx status is failed, then no such tx exists
-                    match a.status {
-                        Some(a) => {
-                            if a.as_u64() == 0 {
-                                return false;
-                            }
+    pub async fn transaction_exists(&self, hash: H256, data: Vec<u8>) -> Result<Address, Error> {
+        match self.stream.eth().transaction_receipt(hash).await? {
+            //if not tx with this hash
+            None => Err(anyhow!("No transactions found by hash. Auming it's fake")),
+            Some(a) => {
+                // if tx status is failed, then no such tx exists
+                match a.status {
+                    Some(a) => {
+                        if a.as_u64() == 0 {
+                            return Err(anyhow!("Tx has failed status"));
                         }
-                        None => return false,
-                    };
+                    }
+                    None => return Err(anyhow!("No status field ins eth node answer")),
+                };
 
-                    let logs = a.logs;
-                    //parsing logs into events
-                    let events: Result<Vec<_>, _> =
-                        logs.into_iter().map(EthListener::log_to_event).collect();
+                let logs = a.logs;
+                //parsing logs into events
+                let events: Result<Vec<_>, _> =
+                    logs.into_iter().map(EthListener::log_to_event).collect();
 
-                    let events = match events {
-                        Ok(a) => a,
-                        Err(e) => {
-                            log::error!("No events for tx. Assuming confirmation is fake.: {}", e);
-                            return false;
-                        }
-                    };
-                    // if any event matches
-                    events
-                        .into_iter()
-                        .any(|x| x.tx_hash == hash && x.data == data)
+                let events = match events {
+                    Ok(a) => a,
+                    Err(e) => {
+                        log::error!("No events for tx. Assuming confirmation is fake.: {}", e);
+                        return Err(anyhow!(
+                            "No events for tx. Assuming confirmation is fake.: {}",
+                            e
+                        ));
+                    }
+                };
+                // if any event matches
+                let event: Option<_> = events
+                    .into_iter()
+                    .filter(|x| x.tx_hash == hash && x.data == data)
+                    .next();
+                match event {
+                    Some(a) => Ok(a.address),
+                    None => Err(anyhow!(
+                        "No events for tx. Assuming confirmation is fake.: {}"
+                    )),
                 }
-            },
-            Err(e) => {
-                log::error!("Failed checking transaction: {}", e);
-                false
             }
         }
     }
