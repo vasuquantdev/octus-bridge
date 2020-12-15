@@ -182,6 +182,7 @@ pub struct NewEventConfiguration {
     pub ethereum_event_blocks_to_confirm: BigUint,
     pub required_confirmations: BigUint,
     pub required_rejections: BigUint,
+    pub ethereum_event_initial_balance: BigUint,
     #[serde(with = "serde_int_addr")]
     pub event_proxy_address: MsgAddressInt,
 }
@@ -194,6 +195,7 @@ impl FunctionArgsGroup for NewEventConfiguration {
             BigUint256(self.ethereum_event_blocks_to_confirm).token_value(),
             BigUint256(self.required_confirmations).token_value(),
             BigUint256(self.required_rejections).token_value(),
+            BigUint128(self.ethereum_event_initial_balance).token_value(),
             self.event_proxy_address.token_value(),
         ]
     }
@@ -297,6 +299,8 @@ pub struct EthereumEventDetails {
     pub confirm_keys: Vec<UInt256>,
     #[serde(with = "serde_vec_uint256")]
     pub reject_keys: Vec<UInt256>,
+    pub required_confirmations: BigUint,
+    pub required_rejections: BigUint,
 }
 
 impl Hash for EthereumEventDetails {
@@ -332,6 +336,8 @@ impl TryFrom<ContractOutput> for EthereumEventDetails {
             event_rejected: tuple.parse_next()?,
             confirm_keys: tuple.parse_next()?,
             reject_keys: tuple.parse_next()?,
+            required_confirmations: tuple.parse_next()?,
+            required_rejections: tuple.parse_next()?,
         })
     }
 }

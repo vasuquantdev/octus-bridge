@@ -230,7 +230,6 @@ impl Bridge {
                     .clone()
                     .vote(EthTonTransaction::Confirm(prepared_data)),
             );
-            return;
         } else {
             let queued_block_number = event.block_number + ethereum_event_blocks_to_confirm;
 
@@ -328,67 +327,59 @@ impl Bridge {
                 let hash = H256::from_slice(&event.ethereum_event_transaction);
                 let eth_queue = eth_queue.clone();
 
-                tokio::spawn({
-                    let event_votes_listener = event_votes_listener.clone();
-                    if web3_client.transaction_exists(hash.clone()).await {
-                        log::info!("transaction exists. Confirming it.");
-                        let result = event_votes_listener
-                            .vote(EthTonTransaction::Confirm(EthTonConfirmationData {
-                                event_transaction: event.ethereum_event_transaction, // not in other order on case of shutdown
-                                event_index: event.event_index,
-                                event_data: event.event_data,
-                                event_block_number: event.event_block_number,
-                                event_block: event.event_block,
-                                ethereum_event_configuration_address: MsgAddressInt::AddrStd(
-                                    event.event_configuration_address,
-                                ),
-                            }))
-                            .await;
-                        match result {
-                            Ok(_) => {
-                                log::info!("Rejected tx in ton with hash {}", hash);
-                                eth_queue.remove(block_number).await.unwrap()
-                            }
-                            Err(e) => {
-                                log::error!(
-                                    "Failed rejecting tx with hash: {} in ton: {:?}",
-                                    hash,
-                                    e
-                                )
-                            }
-                        };
-                        continue;
-                    }
-                    async move {
-                        let result = event_votes_listener
-                            .vote(EthTonTransaction::Reject(EthTonConfirmationData {
-                                event_transaction: event.ethereum_event_transaction, // not in other order on case of shutdown
-                                event_index: event.event_index,
-                                event_data: event.event_data,
-                                event_block_number: event.event_block_number,
-                                event_block: event.event_block,
-                                ethereum_event_configuration_address: MsgAddressInt::AddrStd(
-                                    event.event_configuration_address,
-                                ),
-                            }))
-                            .await;
+                let event_votes_listener = event_votes_listener.clone();
+                if web3_client.transaction_exists(hash.clone()).await {
+                    log::info!("transaction exists. Confirming it.");
+                    let result = event_votes_listener
+                        .vote(EthTonTransaction::Confirm(EthTonConfirmationData {
+                            event_transaction: event.ethereum_event_transaction, // not in other order on case of shutdown
+                            event_index: event.event_index,
+                            event_data: event.event_data,
+                            event_block_number: event.event_block_number,
+                            event_block: event.event_block,
+                            ethereum_event_configuration_address: MsgAddressInt::AddrStd(
+                                event.event_configuration_address,
+                            ),
+                        }))
+                        .await;
+                    match result {
+                        Ok(_) => {
+                            log::info!("Rejected tx in ton with hash {}", hash);
+                            eth_queue.remove(block_number).await.unwrap()
+                        }
+                        Err(e) => {
+                            log::error!("Failed rejecting tx with hash: {} in ton: {:?}", hash, e)
+                        }
+                    };
+                    continue;
+                }
 
-                        match result {
-                            Ok(_) => {
-                                log::info!("Confirmed tx in ton with hash {}", hash);
-                                eth_queue.remove(block_number).await.unwrap()
-                            }
-                            Err(e) => {
-                                log::error!(
-                                    "Failed confirming tx with hash: {} in ton: {:?}",
-                                    hash,
-                                    e
-                                )
-                            }
+                tokio::spawn(async move {
+                    let result = event_votes_listener
+                        .vote(EthTonTransaction::Reject(EthTonConfirmationData {
+                            event_transaction: event.ethereum_event_transaction, // not in other order on case of shutdown
+                            event_index: event.event_index,
+                            event_data: event.event_data,
+                            event_block_number: event.event_block_number,
+                            event_block: event.event_block,
+                            ethereum_event_configuration_address: MsgAddressInt::AddrStd(
+                                event.event_configuration_address,
+                            ),
+                        }))
+                        .await;
+
+                    match result {
+                        Ok(_) => {
+                            log::info!("Confirmed tx in ton with hash {}", hash);
+                            eth_queue.remove(block_number).await.unwrap()
+                        }
+                        Err(e) => {
+                            log::error!("Failed confirming tx with hash: {} in ton: {:?}", hash, e)
                         }
                     }
                 });
             }
+
             ton_queue.gc_old_blocks(block_number.into()).unwrap();
             tokio::spawn({
                 let event_votes_listener = event_votes_listener.clone();
@@ -414,13 +405,11 @@ impl Bridge {
                                 log::info!("Confirmed tx in ton with hash {}", hash);
                                 eth_queue.remove(block_number).await.unwrap()
                             }
-                            Err(e) => {
-                                log::error!(
-                                    "Failed confirming tx with hash: {} in ton: {:?}",
-                                    hash,
-                                    e
-                                )
-                            }
+                            Err(e) => log::error!(
+                                "Failed confirming tx with hash: {} in ton: {:?}",
+                                hash,
+                                e
+                            ),
                         }
                     }
                 }
