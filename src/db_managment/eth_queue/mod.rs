@@ -71,24 +71,21 @@ fn make_key(target_block_number: u64, value: &EthTonConfirmationData) -> Vec<u8>
 
 impl Table for EthQueue {
     type Key = u64;
-    type Value = HashMap<H256, EthTonConfirmationData>;
+    type Value = Vec<EthTonConfirmationData>;
 
     fn dump_elements(&self) -> HashMap<Self::Key, Self::Value> {
         self.db
             .iter()
             .filter_map(|x| x.ok())
-            .fold(HashMap::new(), |mut result, (k, v)| {
+            .fold(HashMap::new(), |mut result, (k, _)| {
                 let mut block_number = [0; 8];
                 block_number.copy_from_slice(&k[0..8]);
+                let block_number = u64::from_be_bytes(block_number);
 
-                let mut item = result
-                    .entry(u64::from_be_bytes(block_number))
-                    .or_insert(HashMap::new());
+                let value = bincode::deserialize::<EthTonConfirmationData>(&k[8..])
+                    .expect("Shouldn't fail");
 
-                let _ = item
-                    .entry(H256::from_slice(&k[8..40]))
-                    .or_insert(bincode::deserialize(&v).expect("Shouldn't fail"));
-
+                result.entry(block_number).or_insert(Vec::new()).push(value);
                 result
             })
     }

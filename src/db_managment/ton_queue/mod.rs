@@ -9,7 +9,7 @@ use anyhow::anyhow;
 use relay_eth::ws::H256;
 
 use crate::db_managment::constants::{TX_TABLE_TREE_FAILED_NAME, TX_TABLE_TREE_PENDING_NAME};
-use crate::db_managment::models::EthTonTransaction;
+use crate::db_managment::{EthTonTransaction, Table};
 
 /// Stores sent transactions for our relay
 #[derive(Clone)]

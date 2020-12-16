@@ -35,13 +35,12 @@ pub fn dump_all_trees<W>(db: &Db, ton_writer: W, eth_writer: W)
 where
     W: Write,
 {
-    // let eth_queue = EthQueue::new(db).unwrap();
-    // let eth_elements = eth_queue.dump_elements();
-    // let ton_elements: HashMap<_, _> = ton_queue
-    //     .dump_elements()
-    //     .into_iter()
-    //     .map(|(k, v)| (k, Vec::from_iter(v)))
-    //     .collect();
-    //serde_json::to_writer_pretty(eth_writer, &eth_elements).unwrap();
-    //serde_json::to_writer_pretty(ton_writer, &ton_elements).unwrap();
+    let eth_queue = EthQueue::new(db).unwrap();
+    let eth_elements = eth_queue.dump_elements();
+    serde_json::to_writer_pretty(eth_writer, &eth_elements).unwrap();
+
+    //
+    // let ton_queue = TonQueue::new(db).unwrap();
+    // let ton_elements = ton_queue.dump_elements();
+    // serde_json::to_writer_pretty(ton_writer, &ton_elements).unwrap();
 }
