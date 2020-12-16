@@ -92,7 +92,7 @@ impl EthListener {
     }
 
     // TODO
-    pub async fn check_transaction(&self, hash: H256) -> Result<Address, Error> {
+    pub async fn check_transaction(&self, hash: H256) -> Result<(Address, Vec<u8>), Error> {
         match self.stream.eth().transaction_receipt(hash).await? {
             //if not tx with this hash
             None => Err(anyhow!("No transactions found by hash. Assuming it's fake")),
@@ -104,7 +104,7 @@ impl EthListener {
                             return Err(anyhow!("Tx has failed status"));
                         }
                     }
-                    None => return Err(anyhow!("No status field ins eth node answer")),
+                    None => return Err(anyhow!("No status field in eth node answer")),
                 };
 
                 let logs = a.logs;
@@ -129,7 +129,7 @@ impl EthListener {
                     .filter(|x| x.tx_hash == hash /* && x.data == data */)
                     .next();
                 match event {
-                    Some(a) => Ok(a.address),
+                    Some(a) => Ok((a.address, a.data)),
                     None => Err(anyhow!(
                         "No events for tx. Assuming confirmation is fake.: {}"
                     )),

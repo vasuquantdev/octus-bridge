@@ -2,8 +2,9 @@ use std::collections::HashSet;
 use std::iter::FromIterator;
 use std::sync::Arc;
 
-use anyhow::Error;
-use ethabi::Address;
+use anyhow::{anyhow, Error};
+use ethabi::{Address, ParamType};
+use ethereum_types::H160;
 use futures::stream::{FuturesUnordered, Stream};
 use futures::StreamExt;
 use num_bigint::BigUint;
@@ -15,12 +16,14 @@ use ton_block::MsgAddrStd;
 use relay_eth::ws::{EthListener, H256};
 use relay_ton::contracts::utils::pack_tokens;
 use relay_ton::contracts::*;
-use relay_ton::prelude::MsgAddressInt;
+use relay_ton::prelude::{Cell, MsgAddressInt};
 use relay_ton::transport::Transport;
 
 use crate::crypto::key_managment::EthSigner;
 use crate::db_managment::{EthQueue, EthTonConfirmationData, EthTonTransaction, StatsDb, TonQueue};
-use crate::engine::bridge::event_configurations_listener::EventConfigurationsListener;
+use crate::engine::bridge::event_configurations_listener::{
+    ConfigsState, EventConfigurationsListener,
+};
 use crate::engine::bridge::event_votes_listener::EventVotesListener;
 use crate::engine::bridge::util::map_eth_ton;
 
@@ -158,6 +161,69 @@ impl Bridge {
         Ok(())
     }
 
+    fn check_suspicious_event(self: Arc<Self>, event: EthTonConfirmationData) {
+        async fn check_event(
+            configs: &ConfigsState,
+            check_result: Result<(Address, Vec<u8>), Error>,
+            event: &EthTonConfirmationData,
+        ) -> Result<(), Error> {
+            let (address, data) = check_result?;
+            match configs.address_topic_map.get(&address) {
+                None => Err(anyhow!(
+                    "We have no info about {} to get abi. Rejecting transaction",
+                    address
+                )),
+                Some((_, eth_abi, ton_abi)) => {
+                    // Decode event data
+                    let got_tokens: Vec<ethabi::Token> = util::parse_ton_event_data(
+                        &ton_abi,
+                        event.event_data.clone(),
+                    )
+                    .map_err(|e| {
+                        Error::from(e).context("Failed decoding other relay data as eth types")
+                    })?;
+
+                    let expected_tokens = ethabi::decode(eth_abi, &data).map_err(|e| {
+                        Error::from(e).context(
+                            "Can not verify data, that other relay sent. Assuming it's fake.",
+                        )
+                    })?;
+                    if got_tokens == expected_tokens {
+                        Ok(())
+                    } else {
+                        Err(anyhow!(
+                            "Decoded tokens are not equal with that other relay "
+                        ))
+                    }
+                }
+            }
+        }
+
+        tokio::spawn(async {
+            let configs = self.event_configurations_listener.get_state().await.clone();
+            let eth_listener = self.eth_listener.clone();
+            async move {
+                let hash = H256::from_slice(&event.event_transaction); //FIXME !!!!!!!
+                let check_result = eth_listener.check_transaction(hash).await;
+                if let Err(e) = match check_event(&configs, check_result, &event).await {
+                    Ok(_) => {
+                        log::info!("Confirming tranaction. Hash: {}", hash);
+                        self.event_votes_listener
+                            .spawn_vote(EthTonTransaction::Confirm(event))
+                    }
+                    Err(e) => {
+                        log::warn!("Confirming rejection: {:?}", e);
+                        self.event_votes_listener
+                            .spawn_vote(EthTonTransaction::Reject(event))
+                    }
+                } {
+                    log::error!("Critical error while spawning vote: {:?}", e)
+                }
+            }
+            .await
+        });
+    }
+
     async fn watch_pending_confirmations<S>(self: Arc<Self>, mut blocks_rx: S)
     where
         S: Stream<Item = u64> + Unpin,
@@ -166,31 +232,15 @@ impl Bridge {
 
         while let Some(block_number) = blocks_rx.next().await {
             log::debug!("New block: {}", block_number);
-
             let mut prepared_blocks = self.eth_queue.get_prepared_blocks(block_number).await;
+
             while let Some((entry, event)) = prepared_blocks.next() {
                 log::debug!(
                     "Found unconfirmed data in block {}: {}",
                     block_number,
                     hex::encode(&event.event_transaction)
                 );
-
-                let hash = H256::from_slice(&event.event_transaction);
-
-                if self.eth_listener.check_transaction(hash).await.is_ok() {
-                    // TODO: check transaction validity
-
-                    log::info!("transaction exists. Confirming it.");
-                    let _ = self
-                        .event_votes_listener
-                        .spawn_vote(EthTonTransaction::Confirm(event));
-                } else {
-                    log::info!("transaction doesn't exist. Rejecting it.");
-                    let _ = self
-                        .event_votes_listener
-                        .spawn_vote(EthTonTransaction::Reject(event));
-                }
-
+                self.clone().check_suspicious_event(event);
                 entry.remove().unwrap();
             }
         }
@@ -223,9 +273,9 @@ impl Bridge {
                 .map(|topic_id| state.topic_abi_map.get(topic_id))
                 .filter_map(|x| x)
                 .map(|x| ethabi::decode(x, &event.data))
+                // Taking first element, cause topics and abi shouldn't overlap more than once
                 .next();
 
-            // Taking first element, cause topics and abi shouldn't overlap more than once
             let topic_tokens = match decoded_data {
                 Some(a) => match a {
                     Ok(a) => a,

@@ -1,5 +1,6 @@
-use anyhow::Error;
 use std::sync::Arc;
+
+use anyhow::Error;
 use tokio::signal::ctrl_c;
 use tokio::sync::RwLock;
 
@@ -48,9 +49,11 @@ pub async fn run(config: RelayConfig) -> Result<(), Error> {
             tx.send(()).expect("Failed sending notification");
             log::info!("Flushing db...");
             match db.flush() {
-                Ok(a) => log::info!("Flushed db before panic... Bytes written: {:?}", a),
+                Ok(a) => log::info!("Flushed db before stop... Bytes written: {:?}", a),
                 Err(e) => log::error!("Failed flushing db before panic: {}", e),
             }
+            log::info!("Waiting for graceful shutdown...");
+            tokio::time::delay_for(tokio::time::Duration::from_secs(2)).await;
             std::process::exit(0);
         })
     };
