@@ -1,10 +1,9 @@
-use std::collections::{HashMap};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::{anyhow, Error};
 use ethereum_types::H256;
 use futures::{future, Stream, StreamExt};
-
 
 use tokio::sync::{oneshot, Mutex};
 
@@ -12,7 +11,7 @@ use relay_ton::contracts::{BridgeContract, ContractResult};
 use relay_ton::prelude::UInt256;
 
 use crate::db_managment::{EthQueue, EthTonTransaction, StatsDb, TonQueue};
-use crate::engine::bridge::models::{EventVote, ExtendedEventInfo};
+use crate::engine::bridge::models::{EventVote, ExtendedEventInfo, ValidatedEventStructure};
 
 pub struct EventVotesListener {
     bridge: Arc<BridgeContract>,
@@ -53,34 +52,58 @@ impl EventVotesListener {
         log::info!("Started watching relay events");
 
         while let Some(event) = events_rx.next().await {
-            let hash = H256::from_slice(&event.data.ethereum_event_transaction);
-
             let new_event = !self.stats_db.has_event(&event.event_addr).unwrap();
-            self.stats_db.update_relay_stats(&event).unwrap();
+            let should_check = event.vote == EventVote::Confirm
+                && new_event
+                && !event.data.proxy_callback_executed
+                && !event.data.event_rejected;
 
-            log::info!(
-                "Received {:?} event for tx {}. Pubkey: {}. Event: {:?}",
-                event.vote,
-                hash,
-                hex::encode(&event.relay_key),
-                event
-            );
+            let validated_structure = event.validate_structure();
+            log::info!("Received {}", validated_structure);
 
-            // Stop retrying after event response was found
-            if event.relay_key == self.relay_key {
-                if let Err(e) = self.ton_queue.mark_complete(&hash) {
-                    log::error!("Failed to mark transaction completed. {:?}", e);
+            self.stats_db
+                .update_relay_stats(&validated_structure)
+                .unwrap();
+
+            match validated_structure {
+                ValidatedEventStructure::Valid(event) => {
+                    if event.relay_key == self.relay_key {
+                        // Stop retrying after our event response was found
+                        let hash = H256::from_slice(&event.data.ethereum_event_transaction);
+                        if let Err(e) = self.ton_queue.mark_complete(&hash) {
+                            log::error!("Failed to mark transaction completed. {:?}", e);
+                        }
+
+                        self.notify_found(&event).await;
+                    } else if should_check {
+                        let target_block_number = event.target_block_number();
+
+                        if let Err(e) = self
+                            .eth_queue
+                            .insert(target_block_number, &event.into())
+                            .await
+                        {
+                            log::error!("Failed to insert event confirmation. {:?}", e);
+                        }
+                    }
                 }
-                self.notify_found(&event).await;
-            } else if event.vote == EventVote::Confirm && new_event {
-                let target_block_number = event.target_block_number();
+                ValidatedEventStructure::Invalid(event, _) => {
+                    if event.relay_key == self.relay_key {
+                        log::error!("Found invalid data for our event");
 
-                if let Err(e) = self
-                    .eth_queue
-                    .insert(target_block_number, &event.into())
-                    .await
-                {
-                    log::error!("Failed to insert event confirmation. {:?}", e);
+                        // TODO: mark complete in ton_queue?
+                        self.notify_found(&event).await;
+                    } else if should_check {
+                        // If found event with invalid structure, that we should check - reject it immediately
+                        let data = EthTonTransaction::Reject(event.into());
+
+                        let bridge = self.bridge.clone();
+                        tokio::spawn(async move {
+                            if let Err(e) = data.send(bridge.as_ref()).await {
+                                log::error!("Failed to send rejection for invalid event. {:?}", e);
+                            }
+                        });
+                    }
                 }
             }
         }

@@ -1,7 +1,4 @@
-use std::hash::{Hash, Hasher};
-
 use chrono::{DateTime, Utc};
-
 use ton_block::MsgAddressInt;
 
 use relay_eth::ws::H256;
@@ -85,23 +82,13 @@ impl EthTonTransaction {
     }
 }
 
-impl Hash for EthTonConfirmationData {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.event_transaction.hash(state)
-    }
-}
-
-impl PartialEq for EthTonConfirmationData {
-    fn eq(&self, other: &Self) -> bool {
-        self.event_transaction.eq(&other.event_transaction)
-    }
-}
-
-impl Eq for EthTonConfirmationData {}
-
 #[derive(Deserialize, Serialize)]
-pub struct TxStat {
-    #[serde(with = "h256_to_hex")]
-    pub tx_hash: H256,
-    pub met: DateTime<Utc>,
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum TxStat {
+    Valid {
+        #[serde(with = "h256_to_hex")]
+        tx_hash: H256,
+        met: DateTime<Utc>,
+    },
+    Invalid,
 }

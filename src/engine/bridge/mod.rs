@@ -1,11 +1,9 @@
-
-
 use std::sync::Arc;
 
 use anyhow::{anyhow, Error};
-use ethabi::{Address};
+use ethabi::Address;
 
-use futures::stream::{Stream};
+use futures::stream::Stream;
 use futures::StreamExt;
 
 use num_traits::cast::ToPrimitive;
@@ -16,7 +14,7 @@ use ton_block::MsgAddrStd;
 use relay_eth::ws::{EthListener, H256};
 use relay_ton::contracts::utils::pack_tokens;
 use relay_ton::contracts::*;
-use relay_ton::prelude::{MsgAddressInt};
+use relay_ton::prelude::MsgAddressInt;
 use relay_ton::transport::Transport;
 
 use crate::crypto::key_managment::EthSigner;
@@ -40,12 +38,9 @@ pub struct Bridge {
     ton_transport: Arc<dyn Transport>,
     event_votes_listener: Arc<EventVotesListener>,
     event_configurations_listener: Arc<EventConfigurationsListener>,
-    db: Db,
 
     ton_client: Arc<BridgeContract>,
     eth_queue: EthQueue,
-    ton_queue: TonQueue,
-    stats_db: StatsDb,
 }
 
 impl Bridge {
@@ -75,12 +70,9 @@ impl Bridge {
             ton_transport,
             event_votes_listener,
             event_configurations_listener,
-            db,
 
             ton_client,
             eth_queue,
-            ton_queue,
-            stats_db,
         })
     }
 
@@ -175,19 +167,17 @@ impl Bridge {
                 )),
                 Some((_, eth_abi, ton_abi)) => {
                     // Decode event data
-                    let got_tokens: Vec<ethabi::Token> = util::parse_ton_event_data(
-                        &ton_abi,
-                        event.event_data.clone(),
-                    )
-                    .map_err(|e| {
-                        e.context("Failed decoding other relay data as eth types")
-                    })?;
+                    let got_tokens: Vec<ethabi::Token> =
+                        util::parse_ton_event_data(&ton_abi, event.event_data.clone()).map_err(
+                            |e| e.context("Failed decoding other relay data as eth types"),
+                        )?;
 
                     let expected_tokens = ethabi::decode(eth_abi, &data).map_err(|e| {
                         Error::from(e).context(
                             "Can not verify data, that other relay sent. Assuming it's fake.",
                         )
                     })?;
+
                     if got_tokens == expected_tokens {
                         Ok(())
                     } else {
@@ -232,7 +222,7 @@ impl Bridge {
 
         while let Some(block_number) = blocks_rx.next().await {
             log::debug!("New block: {}", block_number);
-            let  prepared_blocks = self.eth_queue.get_prepared_blocks(block_number).await;
+            let prepared_blocks = self.eth_queue.get_prepared_blocks(block_number).await;
 
             for (entry, event) in prepared_blocks {
                 log::debug!(

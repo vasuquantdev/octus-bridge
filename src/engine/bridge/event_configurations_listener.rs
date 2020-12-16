@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use ethereum_types::{Address, H256};
-use futures::{ Stream, StreamExt};
+use futures::{Stream, StreamExt};
 use tokio::sync::{mpsc, Mutex, RwLock, RwLockReadGuard};
 use ton_block::{MsgAddrStd, MsgAddressInt};
 
@@ -105,34 +105,54 @@ impl EventConfigurationsListener {
     ) {
         let address = MsgAddressInt::AddrStd(address);
 
-        let mut known_config_contracts = self.known_config_contracts.lock().await;
-        if !known_config_contracts.insert(address.clone()) {
+        let new_configuration = self
+            .known_config_contracts
+            .lock()
+            .await
+            .insert(address.clone());
+        if !new_configuration {
             return;
         }
 
-        // TODO: retry connection to configuration contract
         let config_contract = make_config_contract(transport, address.clone()).await;
 
-        let details = match config_contract.get_details().await {
-            Ok(details) => match validate_ethereum_event_configuration(&details) {
-                Ok(_) => details,
+        // retry connection to configuration contract
+        // TODO: move into config
+        let mut retries_count = 100;
+        let retries_interval = tokio::time::Duration::from_secs(5); // 1 sec ~= time before next block in masterchain.
+                                                                    // Should be greater then account polling interval
+
+        let details = loop {
+            match config_contract.get_details().await {
+                Ok(details) => match validate_ethereum_event_configuration(&details) {
+                    Ok(_) => break details,
+                    Err(e) => {
+                        self.known_config_contracts.lock().await.remove(&address);
+                        log::error!("got bad ethereum config: {:?}", e);
+                        return;
+                    }
+                },
+                Err(ContractError::TransportError(TransportError::AccountNotFound))
+                    if retries_count > 0 =>
+                {
+                    retries_count -= 1;
+                    log::error!(
+                        "failed to get events configuration contract details for {}. Retrying ({} left)",
+                        address,
+                        retries_count
+                    );
+                    tokio::time::delay_for(retries_interval).await;
+                }
                 Err(e) => {
-                    known_config_contracts.remove(&address);
-                    log::error!("got bad ethereum config: {:?}", e);
+                    self.known_config_contracts.lock().await.remove(&address);
+                    log::error!(
+                        "failed to get events configuration contract details: {:?}",
+                        e
+                    );
                     return;
                 }
-            },
-            Err(e) => {
-                known_config_contracts.remove(&address);
-                log::error!(
-                    "failed to get events configuration contract details: {:?}",
-                    e
-                );
-                return;
             }
         };
-
-        std::mem::drop(known_config_contracts); // drop lock
 
         let ethereum_event_blocks_to_confirm = details
             .ethereum_event_blocks_to_confirm
@@ -195,8 +215,8 @@ async fn handle_event(
     vote: EventVote,
 ) {
     // TODO: move into config
-    let mut retries_count = 3;
-    let retries_interval = tokio::time::Duration::from_secs(1); // 1 sec ~= time before next block in masterchain.
+    let mut retries_count = 100;
+    let retries_interval = tokio::time::Duration::from_secs(5); // 1 sec ~= time before next block in masterchain.
                                                                 // Should be greater then account polling interval
 
     //
@@ -214,7 +234,7 @@ async fn handle_event(
                 );
                 tokio::time::delay_for(retries_interval).await;
             }
-            e => {
+            Err(e) => {
                 log::error!("get_details failed: {:?}", e);
                 return;
             }
