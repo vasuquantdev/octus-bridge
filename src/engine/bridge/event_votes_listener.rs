@@ -55,6 +55,7 @@ impl EventVotesListener {
         while let Some(event) = events_rx.next().await {
             let hash = H256::from_slice(&event.data.ethereum_event_transaction);
 
+            let new_event = !self.stats_db.has_event(&event.event_addr).unwrap();
             self.stats_db.update_relay_stats(&event).unwrap();
 
             log::info!(
@@ -71,9 +72,7 @@ impl EventVotesListener {
                     log::error!("Failed to mark transaction completed. {:?}", e);
                 }
                 self.notify_found(&event).await;
-            }
-
-            if !self.stats_db.has_event(&event.event_addr).unwrap() {
+            } else if event.vote == EventVote::Confirm && new_event {
                 let target_block_number = event.target_block_number();
 
                 if let Err(e) = self
