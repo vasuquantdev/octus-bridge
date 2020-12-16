@@ -122,7 +122,7 @@ impl From<(MsgAddressInt, contracts::models::EthereumEventConfiguration)> for Ev
         Self {
             address: address.to_string(),
             ethereum_event_abi: c.ethereum_event_abi,
-            ethereum_event_address: hex::encode(c.ethereum_event_address.to_fixed_bytes()),
+            ethereum_event_address: hex::encode(c.ethereum_event_address.as_bytes()),
             event_proxy_address: c.event_proxy_address.to_string(),
             ethereum_event_blocks_to_confirm: c
                 .ethereum_event_blocks_to_confirm

@@ -21,9 +21,7 @@ use relay_ton::transport::Transport;
 use crate::config::{RelayConfig, TonConfig};
 use crate::crypto::key_managment::KeyData;
 use crate::crypto::recovery::*;
-use crate::db_managment::models::TxStat;
-use crate::db_managment::stats::StatsProvider;
-use crate::db_managment::Table;
+use crate::db_managment::{StatsDb, Table, TxStat};
 use crate::engine::bridge::Bridge;
 use crate::engine::models::{
     BridgeState, EventConfiguration, InitData, NewEventConfiguration, Password, RescanEthData,
@@ -247,8 +245,8 @@ async fn get_status(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible>
         is_working: bool,
         relay_stats: HashMap<String, Vec<TxStat>>,
     }
-    let provider = StatsProvider::new(&state.state_manager).unwrap();
-    let relay_stats = provider.dump_elements();
+    let provider = StatsDb::new(&state.state_manager).unwrap();
+    let relay_stats = Default::default(); // provider.dump_elements();
     let result = match &state.bridge_state {
         BridgeState::Uninitialized => Status {
             password_needed: true,
@@ -411,12 +409,14 @@ pub async fn create_bridge(
         BridgeContract::new(transport.clone(), contract_address, key_data.ton.keypair()).await?,
     );
 
-    let eth_client = EthListener::new(
-        Url::parse(config.eth_node_address.as_str())
-            .map_err(|e| Error::new(e).context("Bad url for eth_config provided"))?,
-        state_manager.clone(),
-    )
-    .await?;
+    let eth_client = Arc::new(
+        EthListener::new(
+            Url::parse(config.eth_node_address.as_str())
+                .map_err(|e| Error::new(e).context("Bad url for eth_config provided"))?,
+            state_manager.clone(),
+        )
+        .await?,
+    );
 
     Ok(Arc::new(Bridge::new(
         key_data.eth,
@@ -424,7 +424,7 @@ pub async fn create_bridge(
         ton_client,
         transport,
         state_manager.clone(),
-    )))
+    )?))
 }
 
 impl TonConfig {

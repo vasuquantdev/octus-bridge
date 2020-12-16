@@ -3,88 +3,100 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Error};
 use ethereum_types::H256;
-use futures::{future, StreamExt};
+use futures::{future, Stream, StreamExt};
+use num_traits::ToPrimitive;
 use sled::Db;
-use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::{oneshot, Mutex};
 
 use relay_ton::contracts::{BridgeContract, ContractResult};
 use relay_ton::prelude::UInt256;
 
-use crate::db_managment::models::EthTonTransaction;
-use crate::db_managment::stats::StatsProvider;
-use crate::db_managment::ton_event_db::TonTree;
-use crate::db_managment::tx_monitor::TxTable;
+use crate::db_managment::{EthQueue, EthTonTransaction, StatsDb, TonQueue};
 use crate::engine::bridge::models::{EventVote, ExtendedEventInfo};
 
 pub struct EventVotesListener {
     bridge: Arc<BridgeContract>,
-    db: TonTree,
-    tx_table: TxTable,
-    stats: StatsProvider,
+    eth_queue: EthQueue,
+    ton_queue: TonQueue,
+    stats_db: StatsDb,
+
     relay_key: UInt256,
-    confirmations: Mutex<HashMap<Vec<u8>, oneshot::Sender<ExtendedEventInfo>>>,
-    rejections: Mutex<HashMap<Vec<u8>, oneshot::Sender<ExtendedEventInfo>>>,
+    confirmations: Mutex<HashMap<Vec<u8>, oneshot::Sender<()>>>,
+    rejections: Mutex<HashMap<Vec<u8>, oneshot::Sender<()>>>,
 }
 
 impl EventVotesListener {
-    pub fn new(db: &Db, bridge: Arc<BridgeContract>) -> Result<Arc<Self>, Error> {
+    pub fn new(
+        bridge: Arc<BridgeContract>,
+        eth_queue: EthQueue,
+        ton_queue: TonQueue,
+        stats_db: StatsDb,
+    ) -> Arc<Self> {
         let relay_key = bridge.pubkey();
 
-        Ok(Arc::new(Self {
+        Arc::new(Self {
             bridge,
-            db: TonTree::new(&db)?,
-            tx_table: TxTable::new(db)?,
-            stats: StatsProvider::new(&db)?,
+            eth_queue,
+            ton_queue,
+            stats_db,
+
             relay_key,
             confirmations: Default::default(),
             rejections: Default::default(),
-        }))
+        })
     }
 
-    pub async fn watch(
-        self: Arc<Self>,
-        mut events_rx: UnboundedReceiver<(EventVote, ExtendedEventInfo)>,
-    ) {
-        log::info!("Started watching other relay events");
-        while let Some((vote, event)) = events_rx.next().await {
-            self.stats
-                .update_relay_stats(
-                    &event.relay_key,
-                    H256::from_slice(&event.data.ethereum_event_transaction),
-                )
-                .unwrap();
+    pub async fn watch<S>(self: Arc<Self>, mut events_rx: S)
+    where
+        S: Stream<Item = ExtendedEventInfo> + Unpin,
+    {
+        log::info!("Started watching relay events");
 
-            log::info!("Received event {:?}", vote);
+        while let Some(event) = events_rx.next().await {
+            let hash = H256::from_slice(&event.data.ethereum_event_transaction);
 
+            self.stats_db.update_relay_stats(&event).unwrap();
+
+            log::info!(
+                "Received {:?} event for tx {}. Pubkey: {}. Event: {:?}",
+                event.vote,
+                hash,
+                hex::encode(&event.relay_key),
+                event
+            );
+
+            // Stop retrying after event response was found
             if event.relay_key == self.relay_key {
-                log::info!(
-                    "Received event for our relay. Eth tx: {}",
-                    hex::encode(&event.data.ethereum_event_transaction)
-                );
+                if let Err(e) = self.ton_queue.mark_complete(&hash) {
+                    log::error!("Failed to mark transaction completed. {:?}", e);
+                }
+                self.notify_found(&event).await;
+            }
 
-                self.notify(vote, event).await;
-            } else {
-                log::info!(
-                    "Received event for other relay. Eth tx: {}, relay key: {}",
-                    hex::encode(&event.data.ethereum_event_transaction),
-                    hex::encode(&event.relay_key)
-                );
+            if !self.stats_db.has_event(&event.event_addr).unwrap() {
+                let target_block_number = event.target_block_number();
 
-                // TODO: check how to handle events from multiple relays
-                self.db
-                    .insert(
-                        event,
-                    )
-                    .unwrap();
+                if let Err(e) = self
+                    .eth_queue
+                    .insert(target_block_number, &event.into())
+                    .await
+                {
+                    log::error!("Failed to insert event confirmation. {:?}", e);
+                }
             }
         }
     }
 
-    pub async fn vote(self: Arc<Self>, data: EthTonTransaction) -> Result<(), Error> {
+    pub fn spawn_vote(self: &Arc<Self>, data: EthTonTransaction) -> Result<(), Error> {
         let hash = data.get_event_transaction();
-        self.tx_table.insert(&hash, &data).unwrap();
+        self.ton_queue.insert_pending(&hash, &data)?;
 
+        tokio::spawn(self.clone().ensure_sent(hash, data));
+
+        Ok(())
+    }
+
+    async fn ensure_sent(self: Arc<Self>, hash: H256, data: EthTonTransaction) {
         let (tx, rx) = oneshot::channel();
 
         let vote = match &data {
@@ -120,13 +132,8 @@ impl EventVotesListener {
                 delay.await;
             } else if let Some(rx_fut) = rx.take() {
                 match future::select(rx_fut, delay).await {
-                    future::Either::Left((Ok(event), _)) => {
-                        log::info!(
-                            "Got response for voting for {}. Event: {:?}",
-                            data.get_event_transaction(),
-                            event
-                        );
-                        self.tx_table.remove(&hash).unwrap();
+                    future::Either::Left((Ok(()), _)) => {
+                        log::info!("Got response for voting for {:?} {}", vote, hash);
                         break Ok(());
                     }
                     future::Either::Left((Err(e), _)) => {
@@ -152,7 +159,38 @@ impl EventVotesListener {
         };
 
         self.cancel(&hash.0, vote).await;
-        result
+
+        match result {
+            Ok(_) => {
+                log::info!(
+                    "Stopped waiting for transaction: {}",
+                    hex::encode(hash.as_bytes())
+                );
+            }
+            Err(e) => {
+                log::error!(
+                    "Stopped waiting for transaction: {}. Reason: {:?}",
+                    hex::encode(hash.as_bytes()),
+                    e
+                );
+                if let Err(e) = self.ton_queue.mark_failed(&hash) {
+                    log::error!("failed to mark transaction: {:?}", e);
+                }
+            }
+        }
+    }
+
+    async fn notify_found(&self, event: &ExtendedEventInfo) {
+        let mut table = match event.vote {
+            EventVote::Confirm => self.confirmations.lock().await,
+            EventVote::Reject => self.rejections.lock().await,
+        };
+
+        if let Some(tx) = table.remove(&event.data.ethereum_event_transaction) {
+            if tx.send(()).is_err() {
+                log::error!("Failed sending event notification");
+            }
+        }
     }
 
     async fn cancel(&self, hash: &[u8], vote: EventVote) {
@@ -160,19 +198,6 @@ impl EventVotesListener {
             EventVote::Confirm => self.confirmations.lock().await.remove(hash),
             EventVote::Reject => self.rejections.lock().await.remove(hash),
         };
-    }
-
-    async fn notify(&self, vote: EventVote, event: ExtendedEventInfo) {
-        let mut table = match vote {
-            EventVote::Confirm => self.confirmations.lock().await,
-            EventVote::Reject => self.rejections.lock().await,
-        };
-
-        if let Some(tx) = table.remove(&event.data.ethereum_event_transaction) {
-            if tx.send(event).is_err() {
-                log::error!("Failed sending event notification");
-            }
-        }
     }
 }
 
@@ -183,9 +208,9 @@ impl EthTonTransaction {
                 bridge
                     .confirm_ethereum_event(
                         a.event_transaction,
-                        a.event_index,
+                        a.event_index.into(),
                         a.event_data,
-                        a.event_block_number,
+                        a.event_block_number.into(),
                         a.event_block,
                         a.ethereum_event_configuration_address,
                     )
@@ -195,9 +220,9 @@ impl EthTonTransaction {
                 bridge
                     .reject_ethereum_event(
                         a.event_transaction,
-                        a.event_index,
+                        a.event_index.into(),
                         a.event_data,
-                        a.event_block_number,
+                        a.event_block_number.into(),
                         a.event_block,
                         a.ethereum_event_configuration_address,
                     )

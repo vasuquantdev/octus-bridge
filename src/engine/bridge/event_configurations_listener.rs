@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use ethereum_types::{H160, H256};
-use futures::StreamExt;
+use ethereum_types::{Address, H256};
+use futures::{SinkExt, Stream, StreamExt};
 use tokio::sync::{mpsc, Mutex, Notify, RwLock, RwLockReadGuard};
 use ton_block::{MsgAddrStd, MsgAddressInt};
 
@@ -14,14 +14,13 @@ use ton_abi::ParamType as TonParamType;
 
 use super::models::{EventVote, ExtendedEventInfo};
 use crate::engine::bridge::util::{parse_eth_abi, validate_ethereum_event_configuration};
+use num_traits::ToPrimitive;
 
 /// Listens to config streams and maps them.
 #[derive(Debug)]
 pub struct EventConfigurationsListener {
     configs_state: Arc<RwLock<ConfigsState>>,
     known_config_contracts: Arc<Mutex<HashSet<MsgAddressInt>>>,
-
-    initial_data_received: Arc<Notify>,
 }
 
 impl EventConfigurationsListener {
@@ -29,7 +28,6 @@ impl EventConfigurationsListener {
         Arc::new(Self {
             configs_state: Arc::new(RwLock::new(ConfigsState::new())),
             known_config_contracts: Arc::new(Mutex::new(HashSet::new())),
-            initial_data_received: Arc::new(Notify::new()),
         })
     }
 
@@ -37,7 +35,11 @@ impl EventConfigurationsListener {
         self: &Arc<Self>,
         transport: Arc<dyn Transport>,
         bridge: Arc<BridgeContract>,
-    ) -> mpsc::UnboundedReceiver<(EventVote, ExtendedEventInfo)> {
+    ) -> (
+        impl Stream<Item = (Address, H256)>,
+        impl Stream<Item = ExtendedEventInfo>,
+    ) {
+        let (subscriptions_tx, subscriptions_rx) = mpsc::unbounded_channel();
         let (events_tx, events_rx) = mpsc::unbounded_channel();
 
         let ethereum_event_contract =
@@ -45,10 +47,13 @@ impl EventConfigurationsListener {
 
         // Subscribe to bridge events
         tokio::spawn({
-            let transport = transport.clone();
             let listener = self.clone();
-            let events_tx = events_tx.clone();
+            let transport = transport.clone();
             let event_contract = ethereum_event_contract.clone();
+
+            let subscriptions_tx = subscriptions_tx.clone();
+            let events_tx = events_tx.clone();
+
             let mut bridge_events = bridge.events();
 
             async move {
@@ -59,9 +64,9 @@ impl EventConfigurationsListener {
                                 listener.clone().subscribe_to_events_configuration_contract(
                                     transport.clone(),
                                     event_contract.clone(),
-                                    address,
+                                    subscriptions_tx.clone(),
                                     events_tx.clone(),
-                                    None,
+                                    address,
                                 ),
                             );
                         }
@@ -75,21 +80,18 @@ impl EventConfigurationsListener {
 
         // Get all configs before now
         let known_configs = bridge.get_known_config_contracts().await.unwrap();
-        log::info!("Known configs: {:?}", known_configs);
-        let semaphore = Semaphore::new(known_configs.len());
 
         for address in known_configs {
             tokio::spawn(self.clone().subscribe_to_events_configuration_contract(
                 transport.clone(),
                 ethereum_event_contract.clone(),
-                address,
+                subscriptions_tx.clone(),
                 events_tx.clone(),
-                Some(semaphore.clone()),
+                address,
             ));
         }
 
-        semaphore.wait().await;
-        events_rx
+        (subscriptions_rx, events_rx)
     }
 
     // Creates listener for new event configuration contracts
@@ -97,32 +99,30 @@ impl EventConfigurationsListener {
         self: Arc<Self>,
         transport: Arc<dyn Transport>,
         event_contract: Arc<EthereumEventContract>,
+        subscriptions_tx: mpsc::UnboundedSender<(Address, H256)>,
+        events_tx: mpsc::UnboundedSender<ExtendedEventInfo>,
         address: MsgAddrStd,
-        events_tx: mpsc::UnboundedSender<(EventVote, ExtendedEventInfo)>,
-        semaphore: Option<Semaphore>,
     ) {
         let address = MsgAddressInt::AddrStd(address);
 
         let mut known_config_contracts = self.known_config_contracts.lock().await;
         if !known_config_contracts.insert(address.clone()) {
-            try_notify(semaphore).await;
             return;
         }
 
+        // TODO: retry connection to configuration contract
         let config_contract = make_config_contract(transport, address.clone()).await;
 
         let details = match config_contract.get_details().await {
             Ok(details) => match validate_ethereum_event_configuration(&details) {
                 Ok(_) => details,
                 Err(e) => {
-                    try_notify(semaphore).await;
                     known_config_contracts.remove(&address);
                     log::error!("got bad ethereum config: {:?}", e);
                     return;
                 }
             },
             Err(e) => {
-                try_notify(semaphore).await;
                 known_config_contracts.remove(&address);
                 log::error!(
                     "failed to get events configuration contract details: {:?}",
@@ -134,11 +134,23 @@ impl EventConfigurationsListener {
 
         std::mem::drop(known_config_contracts); // drop lock
 
+        let ethereum_event_blocks_to_confirm = details
+            .ethereum_event_blocks_to_confirm
+            .to_u64()
+            .unwrap_or_else(u64::max_value);
+        let ethereum_event_address = details.ethereum_event_address.clone();
+
         self.configs_state
             .write()
             .await
             .insert_configuration(address, details);
-        try_notify(semaphore).await;
+
+        {
+            let topics = self.get_state().await;
+            if let Some((topic, _, _)) = topics.address_topic_map.get(&ethereum_event_address) {
+                let _ = subscriptions_tx.send((ethereum_event_address, topic.clone()));
+            }
+        }
 
         let mut eth_events = config_contract.events();
         while let Some(event) = eth_events.next().await {
@@ -155,8 +167,12 @@ impl EventConfigurationsListener {
                 } => (address, relay_key, EventVote::Reject),
             };
 
+            // TODO: update config on new event configuration confirmations
+            // let mut states = self.configs_state.write().await;
+
             tokio::spawn(handle_event(
                 event_contract.clone(),
+                ethereum_event_blocks_to_confirm,
                 events_tx.clone(),
                 address,
                 relay_key,
@@ -172,7 +188,8 @@ impl EventConfigurationsListener {
 
 async fn handle_event(
     event_contract: Arc<EthereumEventContract>,
-    events_tx: mpsc::UnboundedSender<(EventVote, ExtendedEventInfo)>,
+    ethereum_event_blocks_to_confirm: u64,
+    events_tx: mpsc::UnboundedSender<ExtendedEventInfo>,
     event_addr: MsgAddrStd,
     relay_key: UInt256,
     vote: EventVote,
@@ -204,27 +221,23 @@ async fn handle_event(
         };
     };
 
-    if let Err(e) = events_tx.send((
+    if let Err(e) = events_tx.send(ExtendedEventInfo {
         vote,
-        ExtendedEventInfo {
-            event_addr,
-            relay_key,
-            data,
-        },
-    )) {
+        event_addr,
+        relay_key,
+        ethereum_event_blocks_to_confirm,
+        data,
+    }) {
         log::error!("Failed sending eth event details via channel: {:?}", e);
     }
-
-    // TODO: update config
-    // let mut states = self.configs_state.write().await;
 }
 
 #[derive(Debug, Clone)]
 pub struct ConfigsState {
-    pub eth_addr: HashSet<ethereum_types::Address>,
-    pub address_topic_map: HashMap<H160, (H256, Vec<EthParamType>, Vec<TonParamType>)>,
+    pub eth_addr: HashSet<Address>,
+    pub address_topic_map: HashMap<Address, (H256, Vec<EthParamType>, Vec<TonParamType>)>,
     pub topic_abi_map: HashMap<H256, Vec<EthParamType>>,
-    pub eth_configs_map: HashMap<H160, (MsgAddressInt, EthereumEventConfiguration)>,
+    pub eth_configs_map: HashMap<Address, (MsgAddressInt, EthereumEventConfiguration)>,
 }
 
 impl ConfigsState {
@@ -278,37 +291,4 @@ async fn make_config_contract(
             .await
             .unwrap(),
     )
-}
-
-async fn try_notify(semaphore: Option<Semaphore>) {
-    if let Some(semaphore) = semaphore {
-        semaphore.notify().await;
-    }
-}
-
-#[derive(Clone)]
-struct Semaphore {
-    counter: Arc<Mutex<usize>>,
-    done: Arc<Notify>,
-}
-
-impl Semaphore {
-    fn new(count: usize) -> Self {
-        Self {
-            counter: Arc::new(Mutex::new(count)),
-            done: Arc::new(Notify::new()),
-        }
-    }
-
-    async fn wait(&self) {
-        self.done.notified().await
-    }
-
-    async fn notify(&self) {
-        let mut counter = self.counter.lock().await;
-        match counter.checked_sub(1) {
-            Some(new) if new != 0 => *counter = new,
-            _ => self.done.notify(),
-        }
-    }
 }

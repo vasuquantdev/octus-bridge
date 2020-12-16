@@ -261,7 +261,7 @@ impl FunctionArg for MsgAddressInt {
 
 impl FunctionArg for ethereum_types::Address {
     fn token_value(self) -> TokenValue {
-        TokenValue::Bytes(self.to_fixed_bytes().to_vec())
+        TokenValue::Bytes(self.as_bytes().to_vec())
     }
 }
 

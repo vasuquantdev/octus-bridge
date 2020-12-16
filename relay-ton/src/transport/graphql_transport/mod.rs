@@ -262,8 +262,6 @@ impl GraphQLAccountSubscription {
                     }
                     Ok(None) => {
                         log::trace!("account state wasn't changed");
-                        last_block_id = next_block_id;
-                        continue 'subscription_loop;
                     }
                     Err(e) => {
                         log::error!("failed to parse block data. {:?}", e.to_string());

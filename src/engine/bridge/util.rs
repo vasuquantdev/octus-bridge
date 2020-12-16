@@ -117,7 +117,7 @@ pub fn parse_ton_event_data(abi: &[TonParamType], data: Cell) -> Result<Vec<EthT
         let last = Some(param_type) == abi.last();
 
         let (token_value, new_cursor) =
-            TokenValue::read_from(param_type, cursor, last, abi_version)?;
+            TokenValue::read_from(param_type, cursor, last, abi_version).map_err(|e| anyhow!(e))?;
 
         cursor = new_cursor;
 
@@ -139,20 +139,27 @@ pub fn map_eth_abi_param(param: &EthParamType) -> Result<TonParamType, Error> {
     Ok(match param {
         EthParamType::Address => TonParamType::Bytes,
         EthParamType::Bytes => TonParamType::Bytes,
-        EthParamType::Int(&size) => TonParamType::Int(size),
-        EthParamType::Uint(&size) => TonParamType::Uint(size),
+        EthParamType::Int(size) => TonParamType::Int(*size),
+        EthParamType::Uint(size) => TonParamType::Uint(*size),
         EthParamType::Bool => TonParamType::Bool,
         EthParamType::String => TonParamType::Bytes,
-        EthParamType::Array(param) => map_eth_abi_param(param.as_ref()),
-        EthParamType::FixedBytes(&size) => TonParamType::FixedBytes(size),
-        EthParamType::FixedArray(param, &size) => {
-            TonParamType::FixedArray(Box::new(map_eth_abi_param(param.as_ref())?), size)
+        EthParamType::Array(param) => {
+            TonParamType::Array(Box::new(map_eth_abi_param(param.as_ref())?))
+        }
+        EthParamType::FixedBytes(size) => TonParamType::FixedBytes(*size),
+        EthParamType::FixedArray(param, size) => {
+            TonParamType::FixedArray(Box::new(map_eth_abi_param(param.as_ref())?), *size)
         }
         EthParamType::Tuple(params) => TonParamType::Tuple(
             params
                 .iter()
-                .map(|item| map_eth_abi_param(item.as_ref()))
-                .collect::<Result<_, _>>()?,
+                .map(|item: &Box<EthParamType>| {
+                    Ok(ton_abi::Param {
+                        name: String::new(),
+                        kind: map_eth_abi_param(item.as_ref())?,
+                    })
+                })
+                .collect::<Result<Vec<ton_abi::Param>, Error>>()?,
         ),
     })
 }

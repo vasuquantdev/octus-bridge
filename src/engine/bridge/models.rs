@@ -1,51 +1,55 @@
 use num_bigint::BigUint;
-
+use num_traits::ToPrimitive;
 use relay_eth::ws::H256;
 use relay_ton::contracts::EthereumEventDetails;
-use relay_ton::prelude::{serde_cells, serde_std_addr, serde_uint256, Cell, MsgAddrStd, UInt256};
+use relay_ton::prelude::{
+    serde_cells, serde_std_addr, serde_uint256, Cell, MsgAddrStd, MsgAddressInt, UInt256,
+};
 
 use super::prelude::*;
+use crate::db_managment::EthTonConfirmationData;
 
 /// Event received from TON
-#[derive(Debug, Clone, Hash, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtendedEventInfo {
+    pub vote: EventVote,
     #[serde(with = "serde_std_addr")]
     pub event_addr: MsgAddrStd,
     #[serde(with = "serde_uint256")]
     pub relay_key: UInt256,
+    pub ethereum_event_blocks_to_confirm: u64,
     pub data: EthereumEventDetails,
 }
 
-#[derive(Debug, Clone,  Serialize, Deserialize, Eq, PartialEq)]
-pub struct ReducedEventInfo {
-    #[serde(with = "serde_std_addr")]
-    pub event_addr: MsgAddrStd,
-    #[serde(with = "serde_uint256")]
-    relay_key: UInt256,
-    pub ethereum_event_transaction: Vec<u8>,
-    pub event_index: BigUint,
-    #[serde(with = "serde_cells")]
-    pub event_data: Cell,
-    pub event_block_number: BigUint,
-    pub event_block: Vec<u8>,
-    pub event_rejected: bool,
-    #[serde(with = "serde_std_addr")]
-    pub event_configuration_address: MsgAddrStd,
+impl ExtendedEventInfo {
+    pub fn target_block_number(&self) -> u64 {
+        self.data
+            .event_block_number
+            .to_u64()
+            .unwrap_or_else(u64::max_value)
+            + self.ethereum_event_blocks_to_confirm
+    }
 }
 
-impl From<ExtendedEventInfo> for ReducedEventInfo {
+impl From<ExtendedEventInfo> for EthTonConfirmationData {
     fn from(event: ExtendedEventInfo) -> Self {
-        let data = event.data;
         Self {
-            event_addr: event.event_addr,
-            relay_key: event.relay_key,
-            ethereum_event_transaction: data.ethereum_event_transaction,
-            event_index: data.event_index,
-            event_data: data.event_data,
-            event_block_number: data.event_block_number,
-            event_block: data.event_block,
-            event_rejected: data.event_rejected,
-            event_configuration_address: data.event_configuration_address,
+            event_transaction: event.data.ethereum_event_transaction,
+            event_index: event
+                .data
+                .event_index
+                .to_u64()
+                .unwrap_or_else(u64::max_value),
+            event_data: event.data.event_data,
+            event_block_number: event
+                .data
+                .event_block_number
+                .to_u64()
+                .unwrap_or_else(u64::max_value),
+            event_block: event.data.event_block,
+            ethereum_event_configuration_address: MsgAddressInt::AddrStd(
+                event.data.event_configuration_address,
+            ),
         }
     }
 }
@@ -55,7 +59,8 @@ pub struct Status {
     pub success: bool,
 }
 
-#[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum EventVote {
     Confirm,
     Reject,

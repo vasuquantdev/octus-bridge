@@ -61,10 +61,10 @@ pub mod h256_to_hex {
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct EthTonConfirmationData {
     pub event_transaction: Vec<u8>,
-    pub event_index: BigUint,
+    pub event_index: u64,
     #[serde(with = "serde_cells")]
     pub event_data: Cell,
-    pub event_block_number: BigUint,
+    pub event_block_number: u64,
     pub event_block: Vec<u8>,
     #[serde(with = "serde_int_addr")]
     pub ethereum_event_configuration_address: MsgAddressInt,
