@@ -1,7 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap};
 
-use relay_eth::ws::H256;
-use sled::Batch;
+
+
 use tokio::sync::{Mutex, MutexGuard};
 
 use crate::db_managment::models::EthTonConfirmationData;

@@ -1,15 +1,14 @@
 use anyhow::Error;
 use sled::transaction::{
-    ConflictableTransactionError, ConflictableTransactionResult, TransactionError,
-    TransactionResult,
+    ConflictableTransactionError, ConflictableTransactionResult,
 };
 use sled::{Db, Transactional, Tree};
 
-use anyhow::anyhow;
+
 use relay_eth::ws::H256;
 
 use crate::db_managment::constants::{TX_TABLE_TREE_FAILED_NAME, TX_TABLE_TREE_PENDING_NAME};
-use crate::db_managment::{EthTonTransaction, Table};
+use crate::db_managment::{EthTonTransaction};
 
 /// Stores sent transactions for our relay
 #[derive(Clone)]

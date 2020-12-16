@@ -1,13 +1,13 @@
 use std::collections::HashSet;
 use std::convert::TryInto;
-use std::sync::{Arc, Weak};
+use std::sync::{Arc};
 
 use anyhow::{anyhow, Error};
 use futures::stream::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
 use sled::{Db, Tree};
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
+use tokio::sync::{RwLock};
 use url::Url;
 use web3::transports::ws::WebSocket;
 pub use web3::types::{Address, BlockNumber, H256};

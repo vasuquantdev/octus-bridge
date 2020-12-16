@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use ethereum_types::{Address, H256};
-use futures::{SinkExt, Stream, StreamExt};
-use tokio::sync::{mpsc, Mutex, Notify, RwLock, RwLockReadGuard};
+use futures::{ Stream, StreamExt};
+use tokio::sync::{mpsc, Mutex, RwLock, RwLockReadGuard};
 use ton_block::{MsgAddrStd, MsgAddressInt};
 
 use ethabi::ParamType as EthParamType;
@@ -138,7 +138,7 @@ impl EventConfigurationsListener {
             .ethereum_event_blocks_to_confirm
             .to_u64()
             .unwrap_or_else(u64::max_value);
-        let ethereum_event_address = details.ethereum_event_address.clone();
+        let ethereum_event_address = details.ethereum_event_address;
 
         self.configs_state
             .write()
@@ -148,7 +148,7 @@ impl EventConfigurationsListener {
         {
             let topics = self.get_state().await;
             if let Some((topic, _, _)) = topics.address_topic_map.get(&ethereum_event_address) {
-                let _ = subscriptions_tx.send((ethereum_event_address, topic.clone()));
+                let _ = subscriptions_tx.send((ethereum_event_address, *topic));
             }
         }
 

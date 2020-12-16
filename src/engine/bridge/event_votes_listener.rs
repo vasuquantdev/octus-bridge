@@ -1,11 +1,11 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap};
 use std::sync::Arc;
 
 use anyhow::{anyhow, Error};
 use ethereum_types::H256;
 use futures::{future, Stream, StreamExt};
-use num_traits::ToPrimitive;
-use sled::Db;
+
+
 use tokio::sync::{oneshot, Mutex};
 
 use relay_ton::contracts::{BridgeContract, ContractResult};

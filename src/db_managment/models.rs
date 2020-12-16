@@ -1,7 +1,7 @@
 use std::hash::{Hash, Hasher};
 
 use chrono::{DateTime, Utc};
-use num_bigint::BigUint;
+
 use ton_block::MsgAddressInt;
 
 use relay_eth::ws::H256;

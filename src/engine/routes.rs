@@ -21,7 +21,7 @@ use relay_ton::transport::Transport;
 use crate::config::{RelayConfig, TonConfig};
 use crate::crypto::key_managment::KeyData;
 use crate::crypto::recovery::*;
-use crate::db_managment::{StatsDb, Table, TxStat};
+use crate::db_managment::{StatsDb, TxStat};
 use crate::engine::bridge::Bridge;
 use crate::engine::models::{
     BridgeState, EventConfiguration, InitData, NewEventConfiguration, Password, RescanEthData,
@@ -245,7 +245,7 @@ async fn get_status(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible>
         is_working: bool,
         relay_stats: HashMap<String, Vec<TxStat>>,
     }
-    let provider = StatsDb::new(&state.state_manager).unwrap();
+    let _provider = StatsDb::new(&state.state_manager).unwrap();
     let relay_stats = Default::default(); // provider.dump_elements();
     let result = match &state.bridge_state {
         BridgeState::Uninitialized => Status {

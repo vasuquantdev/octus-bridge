@@ -1,9 +1,9 @@
-use num_bigint::BigUint;
+
 use num_traits::ToPrimitive;
 use relay_eth::ws::H256;
 use relay_ton::contracts::EthereumEventDetails;
 use relay_ton::prelude::{
-    serde_cells, serde_std_addr, serde_uint256, Cell, MsgAddrStd, MsgAddressInt, UInt256,
+    serde_std_addr, serde_uint256,  MsgAddrStd, MsgAddressInt, UInt256,
 };
 
 use super::prelude::*;

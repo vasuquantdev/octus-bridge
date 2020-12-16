@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use relay_eth::ws::H256;
-use relay_ton::prelude::UInt256;
+
 use ton_block::MsgAddrStd;
 
 use crate::db_managment::{constants::STATS_TREE_NAME, Table, TxStat};

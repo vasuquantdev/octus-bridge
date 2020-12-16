@@ -1,22 +1,22 @@
-use std::collections::HashSet;
-use std::iter::FromIterator;
+
+
 use std::sync::Arc;
 
 use anyhow::{anyhow, Error};
-use ethabi::{Address, ParamType};
-use ethereum_types::H160;
-use futures::stream::{FuturesUnordered, Stream};
+use ethabi::{Address};
+
+use futures::stream::{Stream};
 use futures::StreamExt;
-use num_bigint::BigUint;
+
 use num_traits::cast::ToPrimitive;
 use sled::Db;
-use tokio::sync::mpsc::UnboundedReceiver;
+
 use ton_block::MsgAddrStd;
 
 use relay_eth::ws::{EthListener, H256};
 use relay_ton::contracts::utils::pack_tokens;
 use relay_ton::contracts::*;
-use relay_ton::prelude::{Cell, MsgAddressInt};
+use relay_ton::prelude::{MsgAddressInt};
 use relay_ton::transport::Transport;
 
 use crate::crypto::key_managment::EthSigner;
@@ -180,7 +180,7 @@ impl Bridge {
                         event.event_data.clone(),
                     )
                     .map_err(|e| {
-                        Error::from(e).context("Failed decoding other relay data as eth types")
+                        e.context("Failed decoding other relay data as eth types")
                     })?;
 
                     let expected_tokens = ethabi::decode(eth_abi, &data).map_err(|e| {
@@ -232,9 +232,9 @@ impl Bridge {
 
         while let Some(block_number) = blocks_rx.next().await {
             log::debug!("New block: {}", block_number);
-            let mut prepared_blocks = self.eth_queue.get_prepared_blocks(block_number).await;
+            let  prepared_blocks = self.eth_queue.get_prepared_blocks(block_number).await;
 
-            while let Some((entry, event)) = prepared_blocks.next() {
+            for (entry, event) in prepared_blocks {
                 log::debug!(
                     "Found unconfirmed data in block {}: {}",
                     block_number,
@@ -313,7 +313,7 @@ impl Bridge {
 
         let prepared_data = EthTonConfirmationData {
             event_transaction: event.tx_hash.0.to_vec(),
-            event_index: event.event_index.into(),
+            event_index: event.event_index,
             event_data,
             event_block_number: event.block_number,
             event_block: event.block_hash,

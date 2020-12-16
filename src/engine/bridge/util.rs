@@ -9,7 +9,7 @@ use ton_abi::{ParamType as TonParamType, TokenValue as TonTokenValue, TokenValue
 
 use relay_eth::ws::H256;
 use relay_ton::contracts::EthereumEventConfiguration;
-use relay_ton::prelude::{Cell, SliceData};
+use relay_ton::prelude::{Cell};
 
 /// Returns topic hash and abi for ETH and TON
 pub fn parse_eth_abi(abi: &str) -> Result<(H256, Vec<EthParamType>, Vec<TonParamType>), Error> {

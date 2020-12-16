@@ -14,7 +14,7 @@ mod prelude;
 
 use std::collections::HashMap;
 use std::io::Write;
-use std::iter::FromIterator;
+
 
 pub use self::eth_queue::*;
 pub use self::stats_db::*;
@@ -31,7 +31,7 @@ pub trait Table {
     fn dump_elements(&self) -> HashMap<Self::Key, Self::Value>;
 }
 
-pub fn dump_all_trees<W>(db: &Db, ton_writer: W, eth_writer: W)
+pub fn dump_all_trees<W>(db: &Db, _ton_writer: W, eth_writer: W)
 where
     W: Write,
 {
