@@ -312,7 +312,7 @@ impl RunLocal for TonlibAccountSubscription {
         abi: &AbiFunction,
         message: ExternalMessage,
     ) -> TransportResult<ContractOutput> {
-        let message = encode_external_message(message);
+        let message = message.encode();
 
         let account_state = self.known_state.read().await;
 
@@ -339,6 +339,23 @@ impl AccountSubscription for TonlibAccountSubscription {
         self.event_notifier.clone()
     }
 
+    async fn simulate_call(
+        &self,
+        message: InternalMessage,
+    ) -> TransportResult<Vec<ton_block::Message>> {
+        let message = message.encode();
+
+        let account_state = self.known_state.read().await;
+
+        let (messages, _) = tvm::call_msg(
+            account_state.0.gen_utime,
+            account_state.0.gen_lt,
+            account_state.1.clone(),
+            &message,
+        )?;
+        Ok(messages)
+    }
+
     async fn send_message(
         &self,
         abi: Arc<Function>,
@@ -349,7 +366,8 @@ impl AccountSubscription for TonlibAccountSubscription {
         }
         let expires_at = message.header.expire;
 
-        let cells = encode_external_message(message)
+        let cells = message
+            .encode()
             .write_to_new_cell()
             .map_err(|_| TransportError::FailedToSerialize)?
             .into();

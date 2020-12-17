@@ -44,6 +44,11 @@ pub trait Transport: RunLocal {
 pub trait AccountSubscription: RunLocal {
     fn events(&self) -> watch::Receiver<AccountEvent>;
 
+    async fn simulate_call(
+        &self,
+        message: InternalMessage,
+    ) -> TransportResult<Vec<ton_block::Message>>;
+
     async fn send_message(
         &self,
         abi: Arc<AbiFunction>,

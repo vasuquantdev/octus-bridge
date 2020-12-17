@@ -1,5 +1,3 @@
-use std::collections::hash_map::RandomState;
-
 use anyhow::Error;
 use sled::transaction::{ConflictableTransactionError, ConflictableTransactionResult};
 use sled::{Db, Transactional, Tree};

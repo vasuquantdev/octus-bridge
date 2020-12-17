@@ -59,7 +59,12 @@ impl EventVotesListener {
                 && !event.data.event_rejected;
 
             let validated_structure = event.validate_structure();
-            log::info!("Received {}", validated_structure);
+            log::info!(
+                "Received {}, new event: {}, should check: {}",
+                validated_structure,
+                new_event,
+                should_check
+            );
 
             self.stats_db
                 .update_relay_stats(&validated_structure)

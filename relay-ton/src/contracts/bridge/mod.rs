@@ -52,6 +52,10 @@ impl BridgeContract {
         )
     }
 
+    pub fn address(&self) -> &MsgAddressInt {
+        &self.config.account
+    }
+
     pub fn pubkey(&self) -> UInt256 {
         UInt256::from(self.keypair.public.to_bytes())
     }

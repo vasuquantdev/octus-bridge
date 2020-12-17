@@ -61,6 +61,20 @@ pub struct ExternalMessage {
     pub run_local: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct InternalMessageHeader {
+    pub src: MsgAddressInt,
+    pub value: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct InternalMessage {
+    pub dest: MsgAddressInt,
+    pub init: Option<SliceData>,
+    pub body: Option<SliceData>,
+    pub header: InternalMessageHeader,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct ContractOutput {
     pub transaction_id: Option<TransactionId>,

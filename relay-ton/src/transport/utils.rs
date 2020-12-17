@@ -50,15 +50,46 @@ impl<T> Drop for PendingMessage<T> {
     }
 }
 
-pub fn encode_external_message(message: ExternalMessage) -> Message {
-    let mut message_header = ExternalInboundMessageHeader::default();
-    message_header.dst = message.dest.clone();
+pub trait ExecutableMessage {
+    fn dest(&self) -> &MsgAddressInt;
+    fn encode(self) -> ton_block::Message;
+}
 
-    let mut msg = Message::with_ext_in_header(message_header);
-    if let Some(body) = message.body {
-        msg.set_body(body);
+impl ExecutableMessage for ExternalMessage {
+    fn dest(&self) -> &MsgAddressInt {
+        &self.dest
     }
-    msg
+
+    fn encode(self) -> Message {
+        let mut message_header = ExternalInboundMessageHeader::default();
+        message_header.dst = self.dest.clone();
+
+        let mut msg = Message::with_ext_in_header(message_header);
+        if let Some(body) = self.body {
+            msg.set_body(body);
+        }
+        msg
+    }
+}
+
+impl ExecutableMessage for InternalMessage {
+    fn dest(&self) -> &MsgAddressInt {
+        &self.dest
+    }
+
+    fn encode(self) -> Message {
+        let message_header = ton_block::InternalMessageHeader::with_addresses(
+            self.header.src,
+            self.dest,
+            self.header.value.into(),
+        );
+
+        let mut msg = Message::with_int_header(message_header);
+        if let Some(body) = self.body {
+            msg.set_body(body);
+        }
+        msg
+    }
 }
 
 #[allow(dead_code)]
