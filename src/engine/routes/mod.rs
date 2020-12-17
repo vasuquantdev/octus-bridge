@@ -28,6 +28,8 @@ use crate::engine::models::{
     State, Voting, VotingAddress,
 };
 
+mod status;
+
 pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handler: Receiver<()>) {
     log::info!("Starting server");
     let serve_address = config.listen_address;
@@ -49,7 +51,7 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
     let status = warp::path!("status")
         .and(warp::get())
         .and(state.clone())
-        .and_then(|(state, _)| get_status(state));
+        .and_then(|(state, _)| status::get_status(state));
 
     let init = warp::path!("init")
         .and(warp::post())
@@ -80,9 +82,27 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
         .and(state.clone())
         .and_then(|data, (state, _)| vote_for_event_configuration(state, data));
 
+    let pending_transactions = warp::path!("status" / "pending")
+        .and(warp::get())
+        .and(state.clone())
+        .and_then(|(state, _)| status::pending(state));
+
+    let failed_transactions = warp::path!("status" / "failed")
+        .and(warp::get())
+        .and(state.clone())
+        .and_then(|(state, _)| status::failed(state));
+
+    let eth_transactions = warp::path!("status" / "eth_transactions")
+        .and(warp::get())
+        .and(state.clone())
+        .and_then(|(state, _)| status::eth_queue(state));
+
     let routes = init
         .or(password)
         .or(status)
+        .or(pending_transactions)
+        .or(failed_transactions)
+        .or(eth_transactions)
         .or(rescan_from_block_eth)
         .or(get_event_configuration)
         .or(add_event_configuration)
@@ -233,43 +253,6 @@ async fn set_eth_block_height(
             reply::with_status(err, StatusCode::INTERNAL_SERVER_ERROR)
         }
     })
-}
-
-async fn get_status(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {
-    let state = state.read().await;
-
-    #[derive(Serialize)]
-    struct Status {
-        password_needed: bool,
-        init_data_needed: bool,
-        is_working: bool,
-        relay_stats: HashMap<String, Vec<TxStat>>,
-    }
-    let provider = StatsDb::new(&state.state_manager).unwrap();
-    let relay_stats = provider.dump_elements();
-    let result = match &state.bridge_state {
-        BridgeState::Uninitialized => Status {
-            password_needed: true,
-            init_data_needed: true,
-            is_working: false,
-            relay_stats,
-        },
-        BridgeState::Locked => Status {
-            password_needed: true,
-            init_data_needed: true,
-            is_working: false,
-            relay_stats,
-        },
-        BridgeState::Running(_) => Status {
-            password_needed: false,
-            init_data_needed: false,
-            is_working: true,
-            relay_stats,
-        },
-    };
-
-    drop(state);
-    Ok(serde_json::to_string(&result).expect("Can't fail"))
 }
 
 async fn wait_for_init(

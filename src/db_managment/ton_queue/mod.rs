@@ -1,14 +1,14 @@
+use std::collections::hash_map::RandomState;
+
 use anyhow::Error;
-use sled::transaction::{
-    ConflictableTransactionError, ConflictableTransactionResult,
-};
+use sled::transaction::{ConflictableTransactionError, ConflictableTransactionResult};
 use sled::{Db, Transactional, Tree};
 
-
 use relay_eth::ws::H256;
+use std::collections::HashMap;
 
 use crate::db_managment::constants::{TX_TABLE_TREE_FAILED_NAME, TX_TABLE_TREE_PENDING_NAME};
-use crate::db_managment::{EthTonTransaction};
+use crate::db_managment::{EthTonTransaction, Table};
 
 /// Stores sent transactions for our relay
 #[derive(Clone)]
@@ -71,6 +71,32 @@ impl TonQueue {
     pub fn remove_pending(&self, tx_hash: &H256) -> Result<(), Error> {
         self.pending.remove(tx_hash.as_bytes())?;
         Ok(())
+    }
+
+    pub fn get_all_pending(&self) -> HashMap<String, EthTonTransaction> {
+        self.pending
+            .iter()
+            .filter_map(|x| x.ok())
+            .map(|x| {
+                (
+                    H256::from_slice(&*x.0).to_string(),
+                    bincode::deserialize::<EthTonTransaction>(&x.1).unwrap(),
+                )
+            })
+            .collect()
+    }
+
+    pub fn get_all_failed(&self) -> HashMap<String, EthTonTransaction> {
+        self.failed
+            .iter()
+            .filter_map(|x| x.ok())
+            .map(|x| {
+                (
+                    H256::from_slice(&*x.0).to_string(),
+                    bincode::deserialize::<EthTonTransaction>(&x.1).unwrap(),
+                )
+            })
+            .collect()
     }
 }
 
