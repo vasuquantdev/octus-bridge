@@ -168,9 +168,10 @@ impl Bridge {
                 Some((_, eth_abi, ton_abi)) => {
                     // Decode event data
                     let got_tokens: Vec<ethabi::Token> =
-                        util::parse_ton_event_data(&ton_abi, event.event_data.clone()).map_err(
-                            |e| e.context("Failed decoding other relay data as eth types"),
-                        )?;
+                        util::parse_ton_event_data(&eth_abi, &ton_abi, event.event_data.clone())
+                            .map_err(|e| {
+                                e.context("Failed decoding other relay data as eth types")
+                            })?;
 
                     let expected_tokens = ethabi::decode(eth_abi, &data).map_err(|e| {
                         Error::from(e).context(
@@ -202,7 +203,7 @@ impl Bridge {
                             .spawn_vote(EthTonTransaction::Confirm(event))
                     }
                     Err(e) => {
-                        log::warn!("Confirming rejection: {:?}", e);
+                        log::warn!("Rejection: {:?}", e);
                         self.event_votes_listener
                             .spawn_vote(EthTonTransaction::Reject(event))
                     }

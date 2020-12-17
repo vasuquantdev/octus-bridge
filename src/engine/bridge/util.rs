@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use anyhow::Error;
-use ethabi::{ParamType as EthParamType, Token as EthTokenValue};
+use ethabi::{ParamType as EthParamType, ParamType, Token as EthTokenValue};
 use num_bigint::{BigInt, BigUint};
 use serde::{Deserialize, Serialize};
 use sha3::digest::Digest;
@@ -9,7 +9,7 @@ use ton_abi::{ParamType as TonParamType, TokenValue as TonTokenValue, TokenValue
 
 use relay_eth::ws::H256;
 use relay_ton::contracts::EthereumEventConfiguration;
-use relay_ton::prelude::{Cell};
+use relay_ton::prelude::Cell;
 
 /// Returns topic hash and abi for ETH and TON
 pub fn parse_eth_abi(abi: &str) -> Result<(H256, Vec<EthParamType>, Vec<TonParamType>), Error> {
@@ -108,20 +108,29 @@ pub fn eth_param_from_str(token: &str) -> Result<EthParamType, Error> {
     })
 }
 
-pub fn parse_ton_event_data(abi: &[TonParamType], data: Cell) -> Result<Vec<EthTokenValue>, Error> {
+pub fn parse_ton_event_data(
+    eth_abi: &[EthParamType],
+    ton_abi: &[TonParamType],
+    data: Cell,
+) -> Result<Vec<EthTokenValue>, Error> {
+    if eth_abi.len() != ton_abi.len() {
+        return Err(anyhow!("TON and ETH ABI are different")); // unreachable!
+    }
+
     let abi_version = 2;
     let mut cursor = data.into();
-    let mut tokens = Vec::with_capacity(abi.len());
+    let mut tokens = Vec::with_capacity(eth_abi.len());
 
-    for param_type in abi {
-        let last = Some(param_type) == abi.last();
+    for (eth_param_type, ton_param_type) in eth_abi.iter().zip(ton_abi.iter()) {
+        let last = Some(ton_param_type) == ton_abi.last();
 
         let (token_value, new_cursor) =
-            TokenValue::read_from(param_type, cursor, last, abi_version).map_err(|e| anyhow!(e))?;
+            TokenValue::read_from(ton_param_type, cursor, last, abi_version)
+                .map_err(|e| anyhow!(e))?;
 
         cursor = new_cursor;
 
-        tokens.push(map_ton_eth(token_value));
+        tokens.push(map_ton_eth(token_value, eth_param_type));
     }
 
     if cursor.remaining_references() != 0 || cursor.remaining_bits() != 0 {
@@ -186,7 +195,8 @@ pub fn map_eth_ton(eth: EthTokenValue) -> TonTokenValue {
     }
 }
 
-pub fn map_ton_eth(ton: TonTokenValue) -> EthTokenValue {
+// TODO: return result
+pub fn map_ton_eth(ton: TonTokenValue, eth_param_type: &EthParamType) -> EthTokenValue {
     match ton {
         TonTokenValue::Uint(a) => {
             let bytes = a.number.to_bytes_le();
@@ -202,12 +212,17 @@ pub fn map_ton_eth(ton: TonTokenValue) -> EthTokenValue {
 
             EthTokenValue::Int(ethabi::Int::from_little_endian(&bytes))
         }
-        TonTokenValue::Bytes(a) => EthTokenValue::Bytes(a),
+        TonTokenValue::Bytes(a) => match eth_param_type {
+            ParamType::Address if a.len() == 20 => {
+                EthTokenValue::Address(ethereum_types::Address::from_slice(&a))
+            }
+            /*ParamType::Bytes*/ _ => EthTokenValue::Bytes(a),
+        },
         TonTokenValue::Address(a) => EthTokenValue::String(a.to_string()),
         TonTokenValue::FixedBytes(a) => EthTokenValue::FixedBytes(a),
         TonTokenValue::Bool(a) => EthTokenValue::Bool(a),
         TonTokenValue::Cell(a) => EthTokenValue::Bytes(a.data().to_vec()),
-        _ => unimplemented!(),
+        _ => todo!(),
     }
 }
 
