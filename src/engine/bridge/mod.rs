@@ -1,5 +1,4 @@
 use std::sync::Arc;
-
 use anyhow::{anyhow, Error};
 use ethabi::Address;
 use futures::stream::Stream;
@@ -56,13 +55,13 @@ impl Bridge {
         let event_votes_listener = EventVotesListener::new(
             ton_client.clone(),
             eth_queue.clone(),
-            ton_queue.clone(),
-            stats_db.clone(),
+            ton_queue,
+            stats_db,
         );
         let event_configurations_listener = EventConfigurationsListener::new();
 
         Ok(Self {
-            eth_signer: eth_signer,
+            eth_signer,
             eth_listener: eth_client,
 
             ton_transport,
@@ -319,7 +318,7 @@ impl Bridge {
         self.eth_queue
             .insert(target_block_number, &prepared_data)
             .await
-            .unwrap();
+            .expect("Fatal db error");
     }
 
     pub fn ton_pubkey(&self) -> UInt256 {

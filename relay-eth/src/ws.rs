@@ -1,13 +1,13 @@
 use std::collections::HashSet;
 use std::convert::TryInto;
-use std::sync::{Arc};
+use std::sync::Arc;
 
 use anyhow::{anyhow, Error};
 use futures::stream::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
 use sled::{Db, Tree};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
-use tokio::sync::{RwLock};
+use tokio::sync::RwLock;
 use url::Url;
 use web3::transports::ws::WebSocket;
 pub use web3::types::{Address, BlockNumber, H256};
@@ -126,8 +126,7 @@ impl EthListener {
                 // if any event matches
                 let event: Option<_> = events
                     .into_iter()
-                    .filter(|x| x.tx_hash == hash /* && x.data == data */)
-                    .next();
+                    .find(|x| x.tx_hash == hash /* && x.data == data */);
                 match event {
                     Some(a) => Ok((a.address, a.data)),
                     None => Err(anyhow!(

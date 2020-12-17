@@ -1,5 +1,3 @@
-use std::collections::hash_map::RandomState;
-
 use anyhow::Error;
 use sled::transaction::{ConflictableTransactionError, ConflictableTransactionResult};
 use sled::{Db, Transactional, Tree};
@@ -8,7 +6,7 @@ use relay_eth::ws::H256;
 use std::collections::HashMap;
 
 use crate::db_managment::constants::{TX_TABLE_TREE_FAILED_NAME, TX_TABLE_TREE_PENDING_NAME};
-use crate::db_managment::{EthTonTransaction, Table};
+use crate::db_managment::{EthTonTransaction};
 
 /// Stores sent transactions for our relay
 #[derive(Clone)]

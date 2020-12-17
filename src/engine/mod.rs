@@ -18,9 +18,7 @@ pub async fn run(config: RelayConfig) -> Result<(), Error> {
     let state_manager = sled::open(&config.storage_path)?;
     setup_panic_handler(state_manager.clone());
     let crypto_data_metadata = std::fs::File::open(&config.encrypted_data);
-    let ton = std::fs::File::create("ton_dump.json").unwrap();
-    let eth = std::fs::File::create("eth_dump.json").unwrap();
-    super::db_managment::dump_all_trees(&state_manager, ton, eth);
+
     let file_size = match crypto_data_metadata {
         Err(e) => {
             log::warn!("Error opening file with encrypted config: {}", e);

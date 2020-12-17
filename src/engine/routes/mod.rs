@@ -1,11 +1,8 @@
-use std::collections::HashMap;
 use std::convert::{Infallible, TryFrom, TryInto};
 use std::str::FromStr;
 use std::sync::Arc;
-
 use anyhow::Error;
 use bip39::Language;
-use serde::Serialize;
 use sled::Db;
 use tokio::sync::oneshot::Receiver;
 use tokio::sync::RwLock;
@@ -21,7 +18,6 @@ use relay_ton::transport::Transport;
 use crate::config::{RelayConfig, TonConfig};
 use crate::crypto::key_managment::KeyData;
 use crate::crypto::recovery::*;
-use crate::db_managment::{StatsDb, Table, TxStat};
 use crate::engine::bridge::Bridge;
 use crate::engine::models::{
     BridgeState, EventConfiguration, InitData, NewEventConfiguration, Password, RescanEthData,

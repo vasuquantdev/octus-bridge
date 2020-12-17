@@ -1,12 +1,12 @@
-use std::collections::HashMap;
+
 use std::convert::Infallible;
 use std::sync::Arc;
 
-use serde::{Deserialize, Serialize};
+use serde::{ Serialize};
 use tokio::sync::RwLock;
 use warp::Reply;
 
-use crate::db_managment::{EthQueue, StatsDb, Table, TonQueue, TxStat};
+use crate::db_managment::{EthQueue, StatsDb, Table, TonQueue};
 use crate::engine::models::{BridgeState, State};
 
 pub async fn get_status(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {
@@ -48,33 +48,33 @@ pub async fn get_status(state: Arc<RwLock<State>>) -> Result<impl Reply, Infalli
             }
         }
     };
-    Ok(serde_json::to_string(&result).expect("Can't fail"))
+    Ok(serde_json::to_string(&result).expect("Shouldn't fail"))
 }
 
 pub async fn pending(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {
     let state = state.read().await;
-    let provider = TonQueue::new(&state.state_manager).unwrap();
+    let provider = TonQueue::new(&state.state_manager).expect("Fatal db error");
     let pending = provider.get_all_pending();
-    Ok(serde_json::to_string(&pending).unwrap())
+    Ok(serde_json::to_string(&pending).expect("Shouldn't fail"))
 }
 
 pub async fn failed(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {
     let state = state.read().await;
-    let provider = TonQueue::new(&state.state_manager).unwrap();
+    let provider = TonQueue::new(&state.state_manager).expect("Fatal db error");
     let failed = provider.get_all_failed();
-    Ok(serde_json::to_string(&failed).unwrap())
+    Ok(serde_json::to_string(&failed).expect("Shouldn't fail"))
 }
 
 pub async fn eth_queue(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {
     let state = state.read().await;
-    let provider = EthQueue::new(&state.state_manager).unwrap();
+    let provider = EthQueue::new(&state.state_manager).expect("Fatal db error");
     let data = provider.dump_elements();
-    Ok(serde_json::to_string(&data).unwrap())
+    Ok(serde_json::to_string(&data).expect("Shouldn't fail"))
 }
 
 pub async fn all_relay_stats(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {
     let state = state.read().await;
-    let provider = StatsDb::new(&state.state_manager).unwrap();
+    let provider = StatsDb::new(&state.state_manager).expect("Fatal db error");
     let data = provider.dump_elements();
-    Ok(serde_json::to_string(&data).unwrap())
+    Ok(serde_json::to_string(&data).expect("Shouldn't fail"))
 }
