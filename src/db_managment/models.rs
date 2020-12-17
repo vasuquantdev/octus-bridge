@@ -83,7 +83,7 @@ impl EthTonTransaction {
 }
 
 #[derive(Deserialize, Serialize)]
-#[serde(tag = "kind", rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
 pub enum TxStat {
     Valid {
         #[serde(with = "h256_to_hex")]
