@@ -2,12 +2,12 @@ use num_traits::ToPrimitive;
 pub use ton_abi::{Token, TokenValue};
 pub use ton_types::Cell;
 
+pub use super::contract::*;
 use super::errors::*;
 pub use super::message_builder::{
     BigUint128, BigUint256, FunctionArg, FunctionArgsGroup, MessageBuilder, SignedMessageBuilder,
 };
 use super::utils::*;
-pub use super::{Contract, ContractWithEvents};
 use crate::models::*;
 use crate::prelude::*;
 

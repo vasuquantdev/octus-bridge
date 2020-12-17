@@ -10,16 +10,20 @@ pub struct EthereumEventConfigurationContract {
     transport: Arc<dyn Transport>,
     subscription: Arc<dyn AccountSubscription>,
     contract: Arc<ton_abi::Contract>,
+    events_map: Arc<EventsMap>,
     config: ContractConfig,
+    bridge_address: MsgAddressInt,
 }
 
 impl EthereumEventConfigurationContract {
     pub async fn new(
         transport: Arc<dyn Transport>,
         account: MsgAddressInt,
+        bridge_address: MsgAddressInt,
     ) -> ContractResult<Self> {
         let subscription = transport.subscribe(account.clone()).await?;
         let contract = abi();
+        let events_map = shared_events_map();
 
         let config = ContractConfig {
             account,
@@ -30,7 +34,9 @@ impl EthereumEventConfigurationContract {
             transport,
             subscription,
             contract,
+            events_map,
             config,
+            bridge_address,
         })
     }
 
@@ -46,6 +52,49 @@ impl EthereumEventConfigurationContract {
 
     pub fn address(&self) -> &MsgAddressInt {
         &self.config.account
+    }
+
+    pub async fn compute_event_address(
+        &self,
+        bridge_address: MsgAddressInt,
+        event_transaction: Vec<u8>,
+        event_index: BigUint,
+        event_data: Cell,
+        event_block_number: BigUint,
+        event_block: Vec<u8>,
+    ) -> ContractResult<MsgAddrStd> {
+        const TON: u64 = 1_000_000_000;
+        const CONFIRM_VALUE: u64 = 1_000_000 * TON;
+
+        let message = self
+            .message("confirmEvent")?
+            .arg(event_transaction)
+            .arg(BigUint256(event_index))
+            .arg(event_data)
+            .arg(BigUint256(event_block_number))
+            .arg(event_block)
+            .arg(BigUint256(0u8.into()))
+            .build_internal(bridge_address, CONFIRM_VALUE)?;
+
+        let messages = self.subscription.simulate_call(message).await?;
+        for msg in messages {
+            if !matches!(msg.header(), ton_block::CommonMsgInfo::ExtOutMsgInfo(_)) {
+                continue;
+            }
+
+            let body = msg.body().ok_or_else(|| TransportError::ExecutionError {
+                reason: "output message has not body".to_string(),
+            })?;
+
+            type Event = <EthereumEventConfigurationContract as ContractWithEvents>::Event;
+            if let Ok(Event::NewEthereumEventConfirmation { address, .. }) =
+                Self::parse_event(&self.events_map, &body)
+            {
+                return Ok(address);
+            }
+        }
+
+        Err(ContractError::UnknownEvent)
     }
 
     pub async fn get_details(&self) -> ContractResult<EthereumEventConfiguration> {
@@ -83,8 +132,27 @@ fn abi() -> Arc<AbiContract> {
     .clone()
 }
 
+fn shared_events_map() -> Arc<EventsMap> {
+    EVENTS
+        .get_or_init(|| {
+            Arc::new(make_events_map::<EthereumEventConfigurationContract>(
+                abi().as_ref(),
+            ))
+        })
+        .clone()
+}
+
 static ABI: OnceCell<Arc<AbiContract>> = OnceCell::new();
+static EVENTS: OnceCell<Arc<EventsMap>> = OnceCell::new();
 const JSON_ABI: &str = include_str!("../../../abi/EthereumEventConfiguration.abi.json");
+
+type EventsMap = HashMap<
+    u32,
+    (
+        <EthereumEventConfigurationContract as ContractWithEvents>::EventKind,
+        AbiEvent,
+    ),
+>;
 
 #[cfg(test)]
 mod test {

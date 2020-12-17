@@ -7,21 +7,14 @@ pub trait Contract: Send + Sync + 'static {
     fn abi(&self) -> &Arc<ton_abi::Contract>;
 }
 
-pub trait ContractWithEvents: Contract {
+pub trait ContractWithEvents: Contract + Sized {
     type Event: TryFrom<(Self::EventKind, Vec<Token>), Error = ContractError> + Send;
     type EventKind: for<'a> TryFrom<&'a str, Error = ContractError> + Send + Copy + Clone;
 
     fn subscription(&self) -> &Arc<dyn AccountSubscription>;
 
     fn events_map(&self) -> HashMap<u32, (Self::EventKind, AbiEvent)> {
-        self.abi()
-            .events()
-            .iter()
-            .map(|(key, event)| {
-                let kind = Self::EventKind::try_from(key.as_str()).unwrap();
-                (event.get_id(), (kind, event.clone()))
-            })
-            .collect::<HashMap<_, _>>()
+        make_events_map::<Self>(self.abi())
     }
 
     fn parse_event(
@@ -77,4 +70,17 @@ pub trait ContractWithEvents: Contract {
 
         rx
     }
+}
+
+pub fn make_events_map<T>(abi: &AbiContract) -> HashMap<u32, (T::EventKind, AbiEvent)>
+where
+    T: ContractWithEvents,
+{
+    abi.events()
+        .iter()
+        .map(|(key, event)| {
+            let kind = T::EventKind::try_from(key.as_str()).unwrap();
+            (event.get_id(), (kind, event.clone()))
+        })
+        .collect::<HashMap<_, _>>()
 }

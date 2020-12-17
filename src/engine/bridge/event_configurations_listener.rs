@@ -54,6 +54,7 @@ impl EventConfigurationsListener {
             let subscriptions_tx = subscriptions_tx.clone();
             let events_tx = events_tx.clone();
 
+            let bridge_address = bridge.address().clone();
             let mut bridge_events = bridge.events();
 
             async move {
@@ -67,6 +68,7 @@ impl EventConfigurationsListener {
                                     subscriptions_tx.clone(),
                                     events_tx.clone(),
                                     address,
+                                    bridge_address.clone(),
                                 ),
                             );
                         }
@@ -88,6 +90,7 @@ impl EventConfigurationsListener {
                 subscriptions_tx.clone(),
                 events_tx.clone(),
                 address,
+                bridge.address().clone(),
             ));
         }
 
@@ -102,6 +105,7 @@ impl EventConfigurationsListener {
         subscriptions_tx: mpsc::UnboundedSender<(Address, H256)>,
         events_tx: mpsc::UnboundedSender<ExtendedEventInfo>,
         address: MsgAddrStd,
+        bridge_address: MsgAddressInt,
     ) {
         let address = MsgAddressInt::AddrStd(address);
 
@@ -114,7 +118,8 @@ impl EventConfigurationsListener {
             return;
         }
 
-        let config_contract = make_config_contract(transport, address.clone()).await;
+        let config_contract =
+            make_config_contract(transport, address.clone(), bridge_address).await;
 
         // retry connection to configuration contract
         // TODO: move into config
@@ -305,9 +310,10 @@ impl ConfigsState {
 async fn make_config_contract(
     transport: Arc<dyn Transport>,
     address: MsgAddressInt,
+    bridge_address: MsgAddressInt,
 ) -> Arc<EthereumEventConfigurationContract> {
     Arc::new(
-        EthereumEventConfigurationContract::new(transport, address)
+        EthereumEventConfigurationContract::new(transport, address, bridge_address)
             .await
             .unwrap(),
     )

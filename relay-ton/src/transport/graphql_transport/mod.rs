@@ -55,7 +55,14 @@ impl RunLocal for GraphQLTransport {
         abi: &Function,
         message: ExternalMessage,
     ) -> TransportResult<ContractOutput> {
-        run_local(&self.client, abi, message).await
+        let messages = run_local(&self.client, message).await?;
+        process_out_messages(
+            &messages,
+            MessageProcessingParams {
+                abi_function: Some(abi),
+                events_tx: None,
+            },
+        )
     }
 }
 
@@ -299,7 +306,14 @@ impl RunLocal for GraphQLAccountSubscription {
         abi: &Function,
         message: ExternalMessage,
     ) -> TransportResult<ContractOutput> {
-        run_local(&self.client, abi, message).await
+        let messages = run_local(&self.client, message).await?;
+        process_out_messages(
+            &messages,
+            MessageProcessingParams {
+                abi_function: Some(abi),
+                events_tx: None,
+            },
+        )
     }
 }
 
@@ -307,6 +321,10 @@ impl RunLocal for GraphQLAccountSubscription {
 impl AccountSubscription for GraphQLAccountSubscription {
     fn events(&self) -> watch::Receiver<AccountEvent> {
         self.event_notifier.clone()
+    }
+
+    async fn simulate_call(&self, message: InternalMessage) -> TransportResult<Vec<Message>> {
+        run_local(&self.client, message).await
     }
 
     async fn send_message(
@@ -320,7 +338,8 @@ impl AccountSubscription for GraphQLAccountSubscription {
 
         let expires_at = message.header.expire;
 
-        let cells = encode_external_message(message)
+        let cells = message
+            .encode()
             .write_to_new_cell()
             .map_err(|_| TransportError::FailedToSerialize)?
             .into();
@@ -481,16 +500,15 @@ impl<'a> Stream for EventsScanner<'a> {
 
 type MessagesResponse = Vec<(u64, TransportResult<Message>)>;
 
-async fn run_local(
-    node_client: &NodeClient,
-    abi: &Function,
-    message: ExternalMessage,
-) -> TransportResult<ContractOutput> {
+async fn run_local<T>(node_client: &NodeClient, message: T) -> TransportResult<Vec<Message>>
+where
+    T: ExecutableMessage,
+{
     let utime = Utc::now().timestamp() as u32; // TODO: make sure it is not used by contract. Otherwise force tonlabs to add gen_utime for account response
 
-    let account_state = node_client.get_account_state(&message.dest).await?;
+    let account_state = node_client.get_account_state(message.dest()).await?;
 
-    let msg = encode_external_message(message);
+    let msg = message.encode();
 
     let (messages, _) = tvm::call_msg(
         utime,
@@ -498,13 +516,8 @@ async fn run_local(
         account_state,
         &msg,
     )?;
-    process_out_messages(
-        &messages,
-        MessageProcessingParams {
-            abi_function: Some(abi),
-            events_tx: None,
-        },
-    )
+
+    Ok(messages)
 }
 
 #[cfg(test)]

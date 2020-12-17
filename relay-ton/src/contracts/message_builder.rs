@@ -17,7 +17,7 @@ impl From<ExternalMessageHeader> for HashMap<String, TokenValue> {
     }
 }
 
-pub fn make_header(timeout_sec: u32, keypair: Option<&Keypair>) -> ExternalMessageHeader {
+pub fn make_external_header(timeout_sec: u32, keypair: Option<&Keypair>) -> ExternalMessageHeader {
     let time = Utc::now().timestamp_millis() as u64;
     let expire = ((time / 1000) + timeout_sec as u64) as u32;
     ExternalMessageHeader {
@@ -64,6 +64,10 @@ impl<'a> MessageBuilder<'a> {
 
     pub fn build(self, keypair: Option<&Keypair>) -> ContractResult<ExternalMessage> {
         self.0.build(keypair)
+    }
+
+    pub fn build_internal(self, src: MsgAddressInt, value: u64) -> ContractResult<InternalMessage> {
+        self.0.build_internal(src, value)
     }
 
     pub async fn run_local(self) -> ContractResult<ContractOutput> {
@@ -204,7 +208,7 @@ where
     }
 
     pub fn build(self, keypair: Option<&Keypair>) -> ContractResult<ExternalMessage> {
-        let header = make_header(self.config.timeout_sec, keypair);
+        let header = make_external_header(self.config.timeout_sec, keypair);
         let encoded_input = self
             .function
             .encode_input(&header.clone().into(), &self.input, false, keypair)
@@ -216,6 +220,21 @@ where
             body: Some(encoded_input.into()),
             header,
             run_local: self.run_local,
+        })
+    }
+
+    pub fn build_internal(self, src: MsgAddressInt, value: u64) -> ContractResult<InternalMessage> {
+        let header = InternalMessageHeader { src, value };
+        let encoded_input = self
+            .function
+            .encode_input(&Default::default(), &self.input, true, None)
+            .map_err(|_| ContractError::InvalidInput)?;
+
+        Ok(InternalMessage {
+            dest: self.config.account.clone(),
+            init: None,
+            body: Some(encoded_input.into()),
+            header,
         })
     }
 }
