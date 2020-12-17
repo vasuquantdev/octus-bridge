@@ -195,7 +195,7 @@ impl Bridge {
                 let check_result = eth_listener.check_transaction(hash).await;
                 if let Err(e) = match check_event(&configs, check_result, &event).await {
                     Ok(_) => {
-                        log::info!("Confirming tranaction. Hash: {}", hash);
+                        log::info!("Confirming transaction. Hash: {}", hash);
                         self.event_votes_listener
                             .spawn_vote(EthTonTransaction::Confirm(event))
                     }

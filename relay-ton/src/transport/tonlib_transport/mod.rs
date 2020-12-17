@@ -142,11 +142,13 @@ impl TonlibAccountSubscription {
             }
         })? {
             Some(data) => {
-                let mut lt = 0;
-                for (i, &byte) in data.iter().take(4).enumerate() {
-                    lt += (byte as u64) << i;
-                }
-                lt
+                // let mut lt = 0;
+                // for (i, &byte) in data.iter().take(4).enumerate() {
+                //     lt += (byte as u64) << i;
+                // }
+                // lt
+
+                stats.last_trans_lt as u64
             }
             None => stats.last_trans_lt as u64,
         };
@@ -201,13 +203,14 @@ impl TonlibAccountSubscription {
                         continue;
                     }
                 };
-                log::debug!("got account state: {:?}, {:?}", stats, account_state);
 
                 let new_trans_lt = stats.last_trans_lt;
                 if last_trans_lt >= new_trans_lt {
                     log::debug!("no changes found. skipping");
                     continue;
                 }
+
+                log::debug!("got account state: {:?}, {:?}", stats, account_state);
 
                 let gen_utime = stats.gen_utime;
                 let mut current_trans_lt = new_trans_lt;
@@ -245,6 +248,10 @@ impl TonlibAccountSubscription {
                     };
 
                     for (hash, transaction) in transactions.into_iter() {
+                        if transaction.lt < last_trans_lt {
+                            break 'process_transactions;
+                        }
+
                         current_trans_lt = transaction.lt;
                         current_trans_hash = hash;
 
@@ -252,7 +259,7 @@ impl TonlibAccountSubscription {
                             Ok(messages) => messages,
                             Err(e) => {
                                 log::error!("error during transaction processing. {:?}", e);
-                                continue 'subscription_loop;
+                                continue;
                             }
                         };
 
@@ -293,10 +300,10 @@ impl TonlibAccountSubscription {
 
                 pending_messages.retain(|_, message| gen_utime <= message.expires_at());
 
-                last_trans_lt = current_trans_lt;
+                last_trans_lt = new_trans_lt;
                 if let Err(e) = subscription.db.insert(
                     subscription.account.address().get_bytestring(0),
-                    &current_trans_lt.to_le_bytes(),
+                    &new_trans_lt.to_le_bytes(),
                 ) {
                     log::error!("failed to save state into db. {}", e);
                 }

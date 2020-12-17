@@ -17,17 +17,20 @@ use crate::engine::bridge::util::{parse_eth_abi, validate_ethereum_event_configu
 use num_traits::ToPrimitive;
 
 /// Listens to config streams and maps them.
-#[derive(Debug)]
 pub struct EventConfigurationsListener {
     configs_state: Arc<RwLock<ConfigsState>>,
-    known_config_contracts: Arc<Mutex<HashSet<MsgAddressInt>>>,
+    config_contracts: Arc<RwLock<ContractsMap>>,
+    known_config_addresses: Arc<Mutex<HashSet<MsgAddressInt>>>,
 }
+
+type ContractsMap = HashMap<MsgAddressInt, Arc<EthereumEventConfigurationContract>>;
 
 impl EventConfigurationsListener {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
             configs_state: Arc::new(RwLock::new(ConfigsState::new())),
-            known_config_contracts: Arc::new(Mutex::new(HashSet::new())),
+            config_contracts: Arc::new(RwLock::new(HashMap::new())),
+            known_config_addresses: Arc::new(Mutex::new(HashSet::new())),
         })
     }
 
@@ -110,7 +113,7 @@ impl EventConfigurationsListener {
         let address = MsgAddressInt::AddrStd(address);
 
         let new_configuration = self
-            .known_config_contracts
+            .known_config_addresses
             .lock()
             .await
             .insert(address.clone());
@@ -132,7 +135,7 @@ impl EventConfigurationsListener {
                 Ok(details) => match validate_ethereum_event_configuration(&details) {
                     Ok(_) => break details,
                     Err(e) => {
-                        self.known_config_contracts.lock().await.remove(&address);
+                        self.known_config_addresses.lock().await.remove(&address);
                         log::error!("got bad ethereum config: {:?}", e);
                         return;
                     }
@@ -149,7 +152,7 @@ impl EventConfigurationsListener {
                     tokio::time::delay_for(retries_interval).await;
                 }
                 Err(e) => {
-                    self.known_config_contracts.lock().await.remove(&address);
+                    self.known_config_addresses.lock().await.remove(&address);
                     log::error!(
                         "failed to get events configuration contract details: {:?}",
                         e
@@ -158,6 +161,11 @@ impl EventConfigurationsListener {
                 }
             }
         };
+
+        self.config_contracts
+            .write()
+            .await
+            .insert(address.clone(), config_contract.clone());
 
         let ethereum_event_blocks_to_confirm = details
             .ethereum_event_blocks_to_confirm
@@ -208,6 +216,13 @@ impl EventConfigurationsListener {
 
     pub async fn get_state(&self) -> RwLockReadGuard<'_, ConfigsState> {
         self.configs_state.read().await
+    }
+
+    pub async fn get_configuration_contract(
+        &self,
+        address: &MsgAddressInt,
+    ) -> Option<Arc<EthereumEventConfigurationContract>> {
+        self.config_contracts.read().await.get(address).cloned()
     }
 }
 

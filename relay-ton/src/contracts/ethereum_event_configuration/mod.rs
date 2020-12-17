@@ -56,7 +56,6 @@ impl EthereumEventConfigurationContract {
 
     pub async fn compute_event_address(
         &self,
-        bridge_address: MsgAddressInt,
         event_transaction: Vec<u8>,
         event_index: BigUint,
         event_data: Cell,
@@ -74,7 +73,7 @@ impl EthereumEventConfigurationContract {
             .arg(BigUint256(event_block_number))
             .arg(event_block)
             .arg(BigUint256(0u8.into()))
-            .build_internal(bridge_address, CONFIRM_VALUE)?;
+            .build_internal(self.bridge_address.clone(), CONFIRM_VALUE)?;
 
         let messages = self.subscription.simulate_call(message).await?;
         for msg in messages {
