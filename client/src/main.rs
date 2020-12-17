@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use anyhow::Error;
 use dialoguer::theme::{ColorfulTheme, Theme};
-use dialoguer::{Editor, Input, Password, Select};
+use dialoguer::{Input, Password, Select};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -46,7 +46,7 @@ impl Client {
         let status: Status = self.get("status")?;
 
         println!("Status: {}", serde_json::to_string_pretty(&status)?);
-        return Ok(());
+        Ok(())
     }
 
     pub fn init_bridge(&self) -> Result<(), Error> {
@@ -95,18 +95,15 @@ impl Client {
         let theme = ColorfulTheme::default();
 
         let ethereum_event_abi: String = Input::with_theme(&theme)
-            .with_prompt("Path to Ethereum event ABI")
+            .with_prompt("Path to ETH event ABI")
             .interact()?;
         let ethereum_event_abi = std::fs::read_to_string(ethereum_event_abi)?;
 
         let ethereum_event_address = Input::with_theme(&theme)
-            .with_prompt("Ethereum event address")
-            .interact()?;
-        let event_proxy_address = Input::with_theme(&theme)
-            .with_prompt("Event proxy address")
+            .with_prompt("ETH event address")
             .interact()?;
         let ethereum_event_blocks_to_confirm = Input::with_theme(&theme)
-            .with_prompt("Ethereum blocks to confirm")
+            .with_prompt("ETH blocks to confirm")
             .default(10)
             .interact()?;
         let required_confirmations = Input::with_theme(&theme)
@@ -114,6 +111,20 @@ impl Client {
             .interact()?;
         let required_rejections = Input::with_theme(&theme)
             .with_prompt("Required rejections")
+            .interact()?;
+        let ethereum_event_initial_balance: f64 = Input::with_theme(&theme)
+            .with_prompt("ETH event initial balance")
+            .default(2.0)
+            .interact()?;
+        let ethereum_event_initial_balance = match ethereum_event_initial_balance {
+            x if x > 1000.0 => return Err(anyhow!("{} TON is too much for event balance", x)),
+            x if x < 0.5 => {
+                return Err(anyhow!("{} TON is not enough to initialize event contract"))
+            }
+            x => (x * 1_000_000_000.0) as u64,
+        };
+        let event_proxy_address = Input::with_theme(&theme)
+            .with_prompt("Event proxy address")
             .interact()?;
 
         let request = NewEventConfiguration {
@@ -123,6 +134,7 @@ impl Client {
             ethereum_event_blocks_to_confirm,
             required_confirmations,
             required_rejections,
+            ethereum_event_initial_balance,
         };
 
         let result: VotingAddress = self.post_json("event_configurations", &request)?;
@@ -306,10 +318,11 @@ pub enum Voting {
 pub struct NewEventConfiguration {
     pub ethereum_event_abi: String,
     pub ethereum_event_address: String,
-    pub event_proxy_address: String,
     pub ethereum_event_blocks_to_confirm: u64,
     pub required_confirmations: u64,
     pub required_rejections: u64,
+    pub ethereum_event_initial_balance: u64,
+    pub event_proxy_address: String,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -353,10 +366,12 @@ fn parse_url(url: &str) -> Result<Url, Error> {
     Ok(Url::parse(url)?)
 }
 
+type CommandHandler = Box<dyn FnMut(&Client) -> Result<(), Error>>;
+
 struct Prompt<'a> {
     client: Client,
     select: Select<'a>,
-    items: Vec<Box<dyn FnMut(&Client) -> Result<(), Error>>>,
+    items: Vec<CommandHandler>,
 }
 
 impl<'a> Prompt<'a> {

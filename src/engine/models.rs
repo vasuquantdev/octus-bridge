@@ -3,7 +3,6 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use anyhow::{anyhow, Error};
-use num_bigint::BigUint;
 use num_traits::ToPrimitive;
 use serde::{Deserialize, Serialize};
 use sled::Db;
@@ -64,10 +63,11 @@ pub struct RescanEthData {
 pub struct NewEventConfiguration {
     pub ethereum_event_abi: String,
     pub ethereum_event_address: String,
-    pub event_proxy_address: String,
     pub ethereum_event_blocks_to_confirm: u64,
     pub required_confirmations: u64,
     pub required_rejections: u64,
+    pub ethereum_event_initial_balance: u64,
+    pub event_proxy_address: String,
 }
 
 impl TryFrom<NewEventConfiguration> for contracts::models::NewEventConfiguration {
@@ -79,19 +79,21 @@ impl TryFrom<NewEventConfiguration> for contracts::models::NewEventConfiguration
 
         let ethereum_event_address =
             ethereum_types::Address::from_str(&value.ethereum_event_address)?;
-        let event_proxy_address = MsgAddressInt::from_str(&value.event_proxy_address)
-            .map_err(|e| anyhow::anyhow!("{}", e.to_string()))?;
         let ethereum_event_blocks_to_confirm = value.ethereum_event_blocks_to_confirm.into();
         let required_confirmations = value.required_confirmations.into();
         let required_rejections = value.required_confirmations.into();
+        let ethereum_event_initial_balance = value.ethereum_event_initial_balance.into();
+        let event_proxy_address = MsgAddressInt::from_str(&value.event_proxy_address)
+            .map_err(|e| anyhow::anyhow!("{}", e.to_string()))?;
 
         Ok(Self {
             ethereum_event_abi: serde_json::to_string(&ethereum_event_abi)?,
             ethereum_event_address,
-            event_proxy_address,
             ethereum_event_blocks_to_confirm,
             required_confirmations,
             required_rejections,
+            ethereum_event_initial_balance,
+            event_proxy_address,
         })
     }
 }
@@ -120,7 +122,7 @@ impl From<(MsgAddressInt, contracts::models::EthereumEventConfiguration)> for Ev
         Self {
             address: address.to_string(),
             ethereum_event_abi: c.ethereum_event_abi,
-            ethereum_event_address: hex::encode(c.ethereum_event_address.to_fixed_bytes()),
+            ethereum_event_address: hex::encode(c.ethereum_event_address.as_bytes()),
             event_proxy_address: c.event_proxy_address.to_string(),
             ethereum_event_blocks_to_confirm: c
                 .ethereum_event_blocks_to_confirm

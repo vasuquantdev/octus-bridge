@@ -1,4 +1,4 @@
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 
 use crate::contracts::errors::*;
 use crate::contracts::prelude::*;
@@ -182,6 +182,7 @@ pub struct NewEventConfiguration {
     pub ethereum_event_blocks_to_confirm: BigUint,
     pub required_confirmations: BigUint,
     pub required_rejections: BigUint,
+    pub ethereum_event_initial_balance: BigUint,
     #[serde(with = "serde_int_addr")]
     pub event_proxy_address: MsgAddressInt,
 }
@@ -190,10 +191,11 @@ impl FunctionArgsGroup for NewEventConfiguration {
     fn token_values(self) -> Vec<TokenValue> {
         vec![
             self.ethereum_event_abi.token_value(),
-            hex::encode(&self.ethereum_event_address.to_fixed_bytes()).token_value(),
+            hex::encode(&self.ethereum_event_address.as_bytes()).token_value(),
             BigUint256(self.ethereum_event_blocks_to_confirm).token_value(),
             BigUint256(self.required_confirmations).token_value(),
             BigUint256(self.required_rejections).token_value(),
+            BigUint128(self.ethereum_event_initial_balance).token_value(),
             self.event_proxy_address.token_value(),
         ]
     }
@@ -279,7 +281,7 @@ impl TryFrom<ContractOutput> for BridgeConfigurationUpdateDetails {
     }
 }
 
-#[derive(Debug, Clone, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EthereumEventDetails {
     pub ethereum_event_transaction: Vec<u8>,
     pub event_index: BigUint,
@@ -297,19 +299,8 @@ pub struct EthereumEventDetails {
     pub confirm_keys: Vec<UInt256>,
     #[serde(with = "serde_vec_uint256")]
     pub reject_keys: Vec<UInt256>,
-}
-
-impl Hash for EthereumEventDetails {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        std::hash::Hash::hash(&self.event_configuration_address, state)
-    }
-}
-
-impl PartialEq for EthereumEventDetails {
-    fn eq(&self, other: &Self) -> bool {
-        self.event_configuration_address
-            .eq(&other.event_configuration_address)
-    }
+    pub required_confirmations: BigUint,
+    pub required_rejections: BigUint,
 }
 
 impl StandaloneToken for EthereumEventDetails {}
@@ -332,6 +323,8 @@ impl TryFrom<ContractOutput> for EthereumEventDetails {
             event_rejected: tuple.parse_next()?,
             confirm_keys: tuple.parse_next()?,
             reject_keys: tuple.parse_next()?,
+            required_confirmations: tuple.parse_next()?,
+            required_rejections: tuple.parse_next()?,
         })
     }
 }

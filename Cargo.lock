@@ -2520,6 +2520,7 @@ dependencies = [
  "daemonize",
  "dialoguer",
  "ed25519-dalek",
+ "either",
  "env_logger",
  "ethabi",
  "ethereum-types",

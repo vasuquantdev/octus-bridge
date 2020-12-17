@@ -155,14 +155,7 @@ impl GraphQLAccountSubscription {
         log::debug!("started polling account {}", self.account);
 
         tokio::spawn(async move {
-            let mut next_iteration_time = tokio::time::Instant::now();
             'subscription_loop: loop {
-                //tokio::time::delay_until(next_iteration_time).await;
-
-                // Debounce api calls
-                next_iteration_time =
-                    tokio::time::Instant::now() + tokio::time::Duration::from_millis(100);
-
                 let subscription = match subscription.upgrade() {
                     Some(s) => s,
                     None => return,
@@ -176,10 +169,6 @@ impl GraphQLAccountSubscription {
                     Ok(id) => id,
                     Err(e) => {
                         log::error!("failed to get next block id. {:?}", e);
-                        if let TransportError::ApiFailure { .. } = e {
-                            next_iteration_time =
-                                tokio::time::Instant::now() + tokio::time::Duration::from_secs(1);
-                        }
                         continue 'subscription_loop;
                     }
                 };
@@ -273,8 +262,6 @@ impl GraphQLAccountSubscription {
                     }
                     Ok(None) => {
                         log::trace!("account state wasn't changed");
-                        last_block_id = next_block_id;
-                        continue 'subscription_loop;
                     }
                     Err(e) => {
                         log::error!("failed to parse block data. {:?}", e.to_string());

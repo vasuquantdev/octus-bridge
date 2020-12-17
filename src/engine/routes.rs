@@ -1,29 +1,27 @@
-use std::collections::HashSet;
-use std::convert::{Infallible, TryFrom};
+use std::collections::HashMap;
+use std::convert::{Infallible, TryFrom, TryInto};
 use std::str::FromStr;
+use std::sync::Arc;
 
 use anyhow::Error;
 use bip39::Language;
 use serde::Serialize;
 use sled::Db;
 use tokio::sync::oneshot::Receiver;
+use tokio::sync::RwLock;
 use ton_block::MsgAddressInt;
 use url::Url;
 use warp::http::StatusCode;
 use warp::{reply, Filter, Reply};
 
-use relay_eth::ws::EthListener;
-use relay_eth::ws::{update_height, H256};
+use relay_eth::ws::{update_height, EthListener};
 use relay_ton::contracts::{self, BridgeContract};
-use relay_ton::prelude::{Arc, HashMap, RwLock, TryInto};
 use relay_ton::transport::Transport;
 
 use crate::config::{RelayConfig, TonConfig};
 use crate::crypto::key_managment::KeyData;
 use crate::crypto::recovery::*;
-use crate::db_managment::models::TxStat;
-use crate::db_managment::stats::StatsProvider;
-use crate::db_managment::Table;
+use crate::db_managment::{StatsDb, Table, TxStat};
 use crate::engine::bridge::Bridge;
 use crate::engine::models::{
     BridgeState, EventConfiguration, InitData, NewEventConfiguration, Password, RescanEthData,
@@ -247,7 +245,7 @@ async fn get_status(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible>
         is_working: bool,
         relay_stats: HashMap<String, Vec<TxStat>>,
     }
-    let provider = StatsProvider::new(&state.state_manager).unwrap();
+    let provider = StatsDb::new(&state.state_manager).unwrap();
     let relay_stats = provider.dump_elements();
     let result = match &state.bridge_state {
         BridgeState::Uninitialized => Status {
@@ -307,7 +305,11 @@ async fn wait_for_init(
         }
     };
 
-    let ton_key_pair = match derive_from_words_ton(language, &data.ton_seed) {
+    let ton_key_pair = match derive_from_words_ton(
+        language,
+        &data.ton_seed,
+        config.ton_derivation_path.as_deref(),
+    ) {
         Ok(a) => a,
         Err(e) => {
             let error = format!("Failed deriving from ton seed: {}", e);
@@ -407,12 +409,14 @@ pub async fn create_bridge(
         BridgeContract::new(transport.clone(), contract_address, key_data.ton.keypair()).await?,
     );
 
-    let eth_client = EthListener::new(
-        Url::parse(config.eth_node_address.as_str())
-            .map_err(|e| Error::new(e).context("Bad url for eth_config provided"))?,
-        state_manager.clone(),
-    )
-    .await?;
+    let eth_client = Arc::new(
+        EthListener::new(
+            Url::parse(config.eth_node_address.as_str())
+                .map_err(|e| Error::new(e).context("Bad url for eth_config provided"))?,
+            state_manager.clone(),
+        )
+        .await?,
+    );
 
     Ok(Arc::new(Bridge::new(
         key_data.eth,
@@ -420,7 +424,7 @@ pub async fn create_bridge(
         ton_client,
         transport,
         state_manager.clone(),
-    )))
+    )?))
 }
 
 impl TonConfig {

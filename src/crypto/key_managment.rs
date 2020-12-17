@@ -21,6 +21,7 @@ const CREDENTIAL_LEN: usize = digest::SHA256_OUTPUT_LEN;
 #[cfg(debug_assertions)]
 const N_ITER: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(1) };
 #[cfg(not(debug_assertions))]
+
 ///Change it to tune number of iterations in pbkdf2 function. Higher number - password bruteforce becomes slower.
 /// Initial value is optimal for the current machine, so you maybe want to change it.
 const N_ITER: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(5_000_000) };
@@ -65,6 +66,7 @@ impl Debug for EthSigner {
     }
 }
 
+///Data, stored on disk in `encrypted_data` filed of config.
 #[derive(Serialize, Deserialize)]
 struct CryptoData {
     #[serde(serialize_with = "buffer_to_hex", deserialize_with = "hex_to_buffer")]
@@ -259,6 +261,7 @@ impl KeyData {
         })
     }
 
+    ///Calculates symmetric key from user password, using pbkdf2
     fn symmetric_key_from_password(password: SecStr, salt: &[u8]) -> Key {
         let mut pbkdf2_hash = SecVec::new(vec![0; CREDENTIAL_LEN]);
         pbkdf2::derive(

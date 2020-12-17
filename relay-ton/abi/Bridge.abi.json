@@ -36,6 +36,7 @@
         {"name":"ethereumEventBlocksToConfirm","type":"uint256"},
         {"name":"ethereumEventRequiredConfirmations","type":"uint256"},
         {"name":"ethereumEventRequiredRejects","type":"uint256"},
+        {"name":"ethereumEventInitialBalance","type":"uint128"},
         {"name":"eventProxyAddress","type":"address"}
       ],
       "outputs": [

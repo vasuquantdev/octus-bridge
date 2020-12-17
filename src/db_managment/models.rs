@@ -1,12 +1,8 @@
-use std::hash::{Hash, Hasher};
-
 use chrono::{DateTime, Utc};
-use ethereum_types::H160;
 use ton_block::MsgAddressInt;
 
 use relay_eth::ws::H256;
-use relay_ton::prelude::{serde_cells, serde_int_addr};
-use relay_ton::prelude::{BigUint, Cell};
+use relay_ton::prelude::{serde_cells, serde_int_addr, Cell};
 
 use super::prelude::*;
 
@@ -59,36 +55,40 @@ pub mod h256_to_hex {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct EthTonConfirmationData {
     pub event_transaction: Vec<u8>,
-    pub event_index: BigUint,
+    pub event_index: u64,
     #[serde(with = "serde_cells")]
     pub event_data: Cell,
-    pub event_block_number: BigUint,
+    pub event_block_number: u64,
     pub event_block: Vec<u8>,
     #[serde(with = "serde_int_addr")]
     pub ethereum_event_configuration_address: MsgAddressInt,
 }
 
-impl Hash for EthTonConfirmationData {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.event_transaction.hash(state)
-    }
+#[derive(Serialize, Deserialize, Clone)]
+pub enum EthTonTransaction {
+    Confirm(EthTonConfirmationData),
+    Reject(EthTonConfirmationData),
 }
 
-impl PartialEq for EthTonConfirmationData {
-    fn eq(&self, other: &Self) -> bool {
-        self.event_transaction.eq(&other.event_transaction)
+impl EthTonTransaction {
+    pub fn get_event_transaction(&self) -> H256 {
+        match self {
+            EthTonTransaction::Confirm(a) => H256::from_slice(&a.event_transaction),
+            EthTonTransaction::Reject(a) => H256::from_slice(&a.event_transaction),
+        }
     }
 }
-
-impl Eq for EthTonConfirmationData {}
-
 
 #[derive(Deserialize, Serialize)]
-pub struct TxStat {
-    #[serde(with = "h256_to_hex")]
-    pub tx_hash: H256,
-    pub met: DateTime<Utc>,
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum TxStat {
+    Valid {
+        #[serde(with = "h256_to_hex")]
+        tx_hash: H256,
+        met: DateTime<Utc>,
+    },
+    Invalid,
 }

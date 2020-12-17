@@ -6,7 +6,6 @@ use relay::engine;
 fn main() -> Result<(), Error> {
     env_logger::init();
     let args = parse_args();
-
     if args.gen_config {
         generate_config(args.generated_config_path, args.crypto_store_path.unwrap())?;
         return Ok(());
