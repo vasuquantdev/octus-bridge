@@ -17,32 +17,37 @@ pub async fn get_status(state: Arc<RwLock<State>>) -> Result<impl Reply, Infalli
         password_needed: bool,
         init_data_needed: bool,
         is_working: bool,
-        relay_stats: HashMap<String, Vec<TxStat>>,
+        ton_pubkey: Option<String>,
+        eth_pubkey: Option<String>,
     }
-    let provider = StatsDb::new(&state.state_manager).unwrap();
-    let relay_stats = provider.dump_elements();
     let result = match &state.bridge_state {
         BridgeState::Uninitialized => Status {
             password_needed: true,
             init_data_needed: true,
             is_working: false,
-            relay_stats,
+            ton_pubkey: None,
+            eth_pubkey: None,
         },
         BridgeState::Locked => Status {
             password_needed: true,
             init_data_needed: true,
             is_working: false,
-            relay_stats,
+            ton_pubkey: None,
+            eth_pubkey: None,
         },
-        BridgeState::Running(_) => Status {
-            password_needed: false,
-            init_data_needed: false,
-            is_working: true,
-            relay_stats,
-        },
-    };
+        BridgeState::Running(bridge) => {
+            let ton_pubkey = bridge.ton_pubkey();
+            let eth_pubkey = bridge.eth_pubkey();
 
-    drop(state);
+            Status {
+                ton_pubkey: Some(ton_pubkey.to_hex_string()),
+                eth_pubkey: Some(eth_pubkey.to_string()),
+                password_needed: false,
+                init_data_needed: false,
+                is_working: true,
+            }
+        }
+    };
     Ok(serde_json::to_string(&result).expect("Can't fail"))
 }
 
@@ -60,10 +65,16 @@ pub async fn failed(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible>
     Ok(serde_json::to_string(&failed).unwrap())
 }
 
-pub async fn eth_queue(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible>
-{
+pub async fn eth_queue(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {
     let state = state.read().await;
     let provider = EthQueue::new(&state.state_manager).unwrap();
+    let data = provider.dump_elements();
+    Ok(serde_json::to_string(&data).unwrap())
+}
+
+pub async fn all_relay_stats(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {
+    let state = state.read().await;
+    let provider = StatsDb::new(&state.state_manager).unwrap();
     let data = provider.dump_elements();
     Ok(serde_json::to_string(&data).unwrap())
 }

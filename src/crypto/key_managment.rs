@@ -156,6 +156,10 @@ impl EthSigner {
         let secp = secp256k1::Secp256k1::new();
         Ok(secp.sign(&message, &self.private_key))
     }
+
+    pub fn pubkey(&self) -> PublicKey {
+        self.pubkey
+    }
 }
 
 impl TonSigner {

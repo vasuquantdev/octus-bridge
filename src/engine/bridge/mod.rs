@@ -2,19 +2,17 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Error};
 use ethabi::Address;
-
 use futures::stream::Stream;
 use futures::StreamExt;
-
 use num_traits::cast::ToPrimitive;
+use secp256k1::PublicKey;
 use sled::Db;
-
 use ton_block::MsgAddrStd;
 
 use relay_eth::ws::{EthListener, H256};
 use relay_ton::contracts::utils::pack_tokens;
 use relay_ton::contracts::*;
-use relay_ton::prelude::MsgAddressInt;
+use relay_ton::prelude::{MsgAddressInt, UInt256};
 use relay_ton::transport::Transport;
 
 use crate::crypto::key_managment::EthSigner;
@@ -33,7 +31,7 @@ mod prelude;
 mod util;
 
 pub struct Bridge {
-    _eth_signer: EthSigner,
+    eth_signer: EthSigner,
     eth_listener: Arc<EthListener>,
     ton_transport: Arc<dyn Transport>,
     event_votes_listener: Arc<EventVotesListener>,
@@ -64,7 +62,7 @@ impl Bridge {
         let event_configurations_listener = EventConfigurationsListener::new();
 
         Ok(Self {
-            _eth_signer: eth_signer,
+            eth_signer: eth_signer,
             eth_listener: eth_client,
 
             ton_transport,
@@ -322,5 +320,13 @@ impl Bridge {
             .insert(target_block_number, &prepared_data)
             .await
             .unwrap();
+    }
+
+    pub fn ton_pubkey(&self) -> UInt256 {
+        self.ton_client.pubkey()
+    }
+
+    pub fn eth_pubkey(&self) -> PublicKey {
+        self.eth_signer.pubkey()
     }
 }

@@ -92,10 +92,15 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
         .and(state.clone())
         .and_then(|(state, _)| status::failed(state));
 
-    let eth_transactions = warp::path!("status" / "eth_transactions")
+    let eth_transactions = warp::path!("status" / "eth")
         .and(warp::get())
         .and(state.clone())
         .and_then(|(state, _)| status::eth_queue(state));
+
+    let relay_stats = warp::path!("status" / "relay")
+        .and(warp::get())
+        .and(state.clone())
+        .and_then(|(state, _)| status::all_relay_stats(state));
 
     let routes = init
         .or(password)
@@ -103,6 +108,7 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
         .or(pending_transactions)
         .or(failed_transactions)
         .or(eth_transactions)
+        .or(relay_stats)
         .or(rescan_from_block_eth)
         .or(get_event_configuration)
         .or(add_event_configuration)
