@@ -306,6 +306,7 @@ impl Bridge {
             event_block_number: event.block_number,
             event_block: event.block_hash,
             ethereum_event_configuration_address,
+            construction_time: chrono::Utc::now()
         };
 
         let target_block_number = event.block_number + ethereum_event_blocks_to_confirm;

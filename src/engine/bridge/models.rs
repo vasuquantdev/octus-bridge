@@ -1,10 +1,12 @@
 use num_traits::ToPrimitive;
+
 use relay_eth::ws::H256;
 use relay_ton::contracts::EthereumEventDetails;
 use relay_ton::prelude::{serde_std_addr, serde_uint256, MsgAddrStd, MsgAddressInt, UInt256};
 
-use super::prelude::*;
 use crate::db_managment::EthTonConfirmationData;
+
+use super::prelude::*;
 
 /// Event received from TON
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -112,6 +114,7 @@ impl From<ExtendedEventInfo> for EthTonConfirmationData {
             ethereum_event_configuration_address: MsgAddressInt::AddrStd(
                 event.data.event_configuration_address,
             ),
+            construction_time: chrono::Utc::now(),
         }
     }
 }

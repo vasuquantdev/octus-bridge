@@ -1,6 +1,7 @@
 use std::convert::{Infallible, TryFrom, TryInto};
 use std::str::FromStr;
 use std::sync::Arc;
+
 use anyhow::Error;
 use bip39::Language;
 use sled::Db;
@@ -23,6 +24,7 @@ use crate::engine::models::{
     BridgeState, EventConfiguration, InitData, NewEventConfiguration, Password, RescanEthData,
     State, Voting, VotingAddress,
 };
+use crate::engine::routes::status::GcOlderThen;
 
 mod status;
 
@@ -98,6 +100,12 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
         .and(state.clone())
         .and_then(|(state, _)| status::all_relay_stats(state));
 
+    let gc_old_failed = warp::path!("status" / "failed")
+        .and(warp::path::end())
+        .and(json_data::<GcOlderThen>()) //todo maybe get/delete?
+        .and(state.clone())
+        .and_then(|data, (state, _)| status::remove_failed_older_than(state, data));
+
     let routes = init
         .or(password)
         .or(status)
@@ -108,6 +116,7 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
         .or(rescan_from_block_eth)
         .or(get_event_configuration)
         .or(add_event_configuration)
+        .or(gc_old_failed)
         .or(vote_for_event_configuration);
 
     let server = warp::serve(routes);

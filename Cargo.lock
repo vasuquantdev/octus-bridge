@@ -446,6 +446,7 @@ name = "client"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "dialoguer",
  "reqwest",
  "serde 1.0.118",

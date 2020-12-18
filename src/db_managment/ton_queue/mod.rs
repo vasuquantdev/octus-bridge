@@ -1,12 +1,14 @@
-use anyhow::Error;
-use sled::transaction::{ConflictableTransactionError, ConflictableTransactionResult};
-use sled::{Db, Transactional, Tree};
-
-use relay_eth::ws::H256;
 use std::collections::HashMap;
 
+use anyhow::Error;
+use chrono::{DateTime, Utc};
+use sled::transaction::{ConflictableTransactionError, ConflictableTransactionResult};
+use sled::{Batch, Db, Transactional, Tree};
+
+use relay_eth::ws::H256;
+
 use crate::db_managment::constants::{TX_TABLE_TREE_FAILED_NAME, TX_TABLE_TREE_PENDING_NAME};
-use crate::db_managment::{EthTonTransaction};
+use crate::db_managment::EthTonTransaction;
 
 /// Stores sent transactions for our relay
 #[derive(Clone)]
@@ -95,6 +97,31 @@ impl TonQueue {
                 )
             })
             .collect()
+    }
+
+    /// removes all transactions, older than `upper_threshold`
+    pub fn remove_failed_older_than(
+        &self,
+        upper_threshold: &DateTime<Utc>,
+    ) -> Result<usize, Error> {
+        let mut batch = Batch::default();
+        let mut count = 0;
+        self.failed
+            .iter()
+            .filter_map(|x| x.ok())
+            .map(|x| {
+                (
+                    x.0,
+                    bincode::deserialize::<EthTonTransaction>(&x.1).unwrap(),
+                )
+            })
+            .filter(|(_, v)| v.get_construction_time() < upper_threshold)
+            .for_each(|(k, _)| {
+                count += 1;
+                batch.remove(k)
+            });
+        self.failed.apply_batch(batch)?;
+        Ok(count)
     }
 }
 
