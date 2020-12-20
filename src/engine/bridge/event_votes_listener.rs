@@ -52,7 +52,10 @@ impl EventVotesListener {
         log::info!("Started watching relay events");
 
         while let Some(event) = events_rx.next().await {
-            let new_event = !self.stats_db.has_event(&event.event_addr).expect("Fatal db error");
+            let new_event = !self
+                .stats_db
+                .has_confirmed_event(&event.event_addr)
+                .expect("Fatal db error");
             let should_check = event.vote == EventVote::Confirm
                 && new_event
                 && !event.data.proxy_callback_executed

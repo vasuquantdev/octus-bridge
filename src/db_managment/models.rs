@@ -99,3 +99,13 @@ pub enum TxStat {
     },
     Invalid,
 }
+
+impl TxStat {
+    pub fn is_valid(&self) -> bool {
+        matches!(self, TxStat::Valid { .. })
+    }
+
+    pub fn is_invalid(&self) -> bool {
+        matches!(self, TxStat::Invalid)
+    }
+}

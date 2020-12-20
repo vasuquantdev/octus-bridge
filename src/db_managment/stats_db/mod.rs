@@ -50,7 +50,7 @@ impl StatsDb {
         Ok(())
     }
 
-    pub fn has_event(&self, event_addr: &MsgAddrStd) -> Result<bool, Error> {
+    pub fn has_confirmed_event(&self, event_addr: &MsgAddrStd) -> Result<bool, Error> {
         let event_addr = event_addr.address.get_bytestring(0);
 
         Ok(self
@@ -58,7 +58,11 @@ impl StatsDb {
             .scan_prefix(&event_addr)
             .keys()
             .next()
-            .and_then(|key| key.ok())
+            .and_then(|key| {
+                key.ok()
+                    .and_then(|item| bincode::deserialize::<TxStat>(&item).ok())
+            })
+            .filter(TxStat::is_valid)
             .is_some())
     }
 }
