@@ -191,7 +191,19 @@ pub fn map_eth_ton(eth: EthTokenValue) -> TonTokenValue {
         }
         EthTokenValue::Address(ad) => TonTokenValue::Bytes(ad.0.to_vec()),
         EthTokenValue::String(a) => TonTokenValue::Bytes(Vec::from(a)),
-        _ => unimplemented!(),
+        EthTokenValue::Bool(a) => TonTokenValue::Bool(a),
+        EthTokenValue::FixedArray(a) => {
+            TonTokenValue::FixedArray(a.into_iter().map(map_eth_ton).collect())
+        }
+        EthTokenValue::Array(a) => {
+            TonTokenValue::Array(a.into_iter().map(map_eth_ton).collect::<Vec<_>>())
+        }
+        EthTokenValue::Tuple(a) => TonTokenValue::Tuple(
+            a.into_iter()
+                .map(map_eth_ton)
+                .map(|x| ton_abi::Token::new("why?", x))
+                .collect::<Vec<_>>(),
+        ),
     }
 }
 

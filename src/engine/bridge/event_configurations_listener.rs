@@ -15,9 +15,11 @@ use relay_ton::contracts::*;
 use relay_ton::prelude::UInt256;
 use relay_ton::transport::{Transport, TransportError};
 
-use super::models::*;
+use crate::config::TonOperationRetryParams;
 use crate::db_managment::*;
 use crate::engine::bridge::util::{parse_eth_abi, validate_ethereum_event_configuration};
+
+use super::models::*;
 
 /// Listens to config streams and maps them.
 pub struct EventConfigurationsListener {
@@ -36,6 +38,7 @@ pub struct EventConfigurationsListener {
     configs_state: Arc<RwLock<ConfigsState>>,
     config_contracts: Arc<RwLock<ContractsMap>>,
     known_config_addresses: Arc<Mutex<HashSet<MsgAddressInt>>>,
+    timeout_params: TonOperationRetryParams,
 }
 
 type ContractsMap = HashMap<MsgAddressInt, Arc<EthereumEventConfigurationContract>>;
@@ -47,6 +50,7 @@ impl EventConfigurationsListener {
         eth_queue: EthQueue,
         ton_queue: TonQueue,
         stats_db: StatsDb,
+        timeout_params: TonOperationRetryParams,
     ) -> Arc<Self> {
         let relay_key = bridge.pubkey();
 
@@ -68,6 +72,7 @@ impl EventConfigurationsListener {
             configs_state: Arc::new(RwLock::new(ConfigsState::new())),
             config_contracts: Arc::new(RwLock::new(HashMap::new())),
             known_config_addresses: Arc::new(Mutex::new(HashSet::new())),
+            timeout_params,
         })
     }
 
@@ -125,7 +130,7 @@ impl EventConfigurationsListener {
 
     /// Current configs state
     pub async fn get_state(&self) -> RwLockReadGuard<'_, ConfigsState> {
-        self.configs_state.read().await
+        dbg!(self.configs_state.read().await)
     }
 
     /// Find configuration contract by its address
@@ -151,12 +156,15 @@ impl EventConfigurationsListener {
         };
 
         let mut rx = Some(rx);
-        let mut retries_count = 3;
-        let retries_interval = tokio::time::Duration::from_secs(60);
+        let mut retries_count = self.timeout_params.broadcast_in_ton_times;
+        let mut retries_interval = self.timeout_params.broadcast_in_ton_interval_secs;
 
         let result = loop {
             let delay = tokio::time::delay_for(retries_interval);
-
+            retries_interval = std::time::Duration::from_secs_f64(
+                retries_interval.as_secs_f64()
+                    * self.timeout_params.broadcast_in_ton_interval_multiplier,
+            );
             if let Err(e) = data.send(&self.bridge).await {
                 log::error!(
                     "Failed to vote for event: {:?}. Retrying ({} left)",
@@ -268,10 +276,10 @@ impl EventConfigurationsListener {
         .await;
 
         // retry connection to configuration contract
-        // TODO: move into config
-        let mut retries_count = 100;
-        let retries_interval = tokio::time::Duration::from_secs(5); // 1 sec ~= time before next block in masterchain.
-                                                                    // Should be greater then account polling interval
+        let mut retries_count = self.timeout_params.configuration_contract_try_poll_times;
+        // 1 sec ~= time before next block in masterchain.
+        // Should be greater then account polling interval
+        let retries_interval = self.timeout_params.get_event_details_poll_interval_secs;
 
         let details = loop {
             match config_contract.get_details().await {

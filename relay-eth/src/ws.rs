@@ -329,7 +329,7 @@ async fn process_block(
         }
         Err(e) => {
             log::error!("Critical error in eth subscriber: {}", e);
-            tokio::time::delay_for(tokio::time::Duration::from_secs(1)).await;
+            //FIXME will block be skipped in case of interrupted connection?
         }
     };
 }

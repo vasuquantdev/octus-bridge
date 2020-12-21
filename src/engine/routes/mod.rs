@@ -418,6 +418,7 @@ pub async fn create_bridge(
             eth_client,
             ton_client,
             transport,
+            config.ton_operation_timeouts.clone(),
             state_manager.clone(),
         )
         .await?,
