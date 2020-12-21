@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::convert::TryInto;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{anyhow, Error};
 use futures::stream::{Stream, StreamExt};
@@ -9,25 +10,50 @@ use sled::{Db, Tree};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::sync::RwLock;
 use url::Url;
-use web3::transports::ws::WebSocket;
+use web3::transports::http::Http;
 pub use web3::types::{Address, BlockNumber, H256};
-use web3::types::{BlockHeader, FilterBuilder, Log};
-use web3::Web3;
+use web3::types::{FilterBuilder, Log};
+use web3::{Transport, Web3};
+
+const ETH_POLL_INTERVAL: Duration = Duration::from_secs(5);
+const ETH_TIMEOUT: Duration = Duration::from_secs(2);
 
 const ETH_TREE_NAME: &str = "ethereum_data";
 pub const ETH_LAST_MET_HEIGHT: &str = "last_met_height";
 
 pub struct EthListener {
-    stream: Web3<WebSocket>,
+    stream: Web3<Http>,
     db: Tree,
     topics: Arc<RwLock<(HashSet<Address>, HashSet<H256>)>>,
 }
 
+async fn get_actual_eth_height<T: Transport>(w3: &Web3<T>) -> Option<u64> {
+    use tokio::time::timeout;
+    log::debug!("Getting height");
+    match timeout(ETH_TIMEOUT, w3.eth().block_number()).await {
+        Ok(a) => match a {
+            Ok(a) => Some(a.as_u64()),
+            Err(e) => {
+                if let web3::error::Error::Transport(e) = &e {
+                    if e == "hyper::Error(IncompleteMessage)" {
+                        log::debug!("Failed getting height: {}", e);
+                        return None;
+                    }
+                }
+                log::error!("Failed getting block number: {:?}", e);
+                None
+            }
+        },
+        Err(e) => {
+            log::error!("Timed out on getting actual eth block number: {:?}", e);
+            None
+        }
+    }
+}
+
 impl EthListener {
     pub async fn new(url: Url, db: Db) -> Result<Self, Error> {
-        let connection = WebSocket::new(url.as_str())
-            .await
-            .expect("Failed connecting to ethereum node");
+        let connection = Http::new(url.as_str()).expect("Failed connecting to ethereum node");
         log::info!("Connected to: {}", &url);
         let api = Web3::new(connection);
 
@@ -51,7 +77,7 @@ impl EthListener {
     where
         S: Stream<Item = (Address, H256)> + Send + Unpin + 'static,
     {
-        let from_height = self.get_block_number().await?;
+        let from_height = self.get_block_number_on_start().await?;
 
         tokio::spawn({
             let mut subscriptions = subscriptions;
@@ -84,7 +110,7 @@ impl EthListener {
         Ok((blocks_rx, events_rx))
     }
 
-    pub async fn get_block_number(&self) -> Result<u64, Error> {
+    pub async fn get_block_number_on_start(&self) -> Result<u64, Error> {
         Ok(match self.db.get(ETH_LAST_MET_HEIGHT)? {
             Some(a) => u64::from_le_bytes(a.as_ref().try_into()?),
             None => self.stream.eth().block_number().await?.as_u64(),
@@ -195,7 +221,7 @@ impl EthListener {
 
 fn spawn_blocks_scanner(
     db: Tree,
-    w3: Web3<WebSocket>,
+    w3: Web3<Http>,
     topics: Arc<RwLock<(HashSet<Address>, HashSet<H256>)>>,
     from_height: u64,
 ) -> (
@@ -208,74 +234,48 @@ fn spawn_blocks_scanner(
     tokio::spawn(async move {
         //
         //
-        let mut current_height = match w3.eth().block_number().await {
-            Ok(a) => a.as_u64(),
-            Err(e) => {
-                log::error!("Failed getting block number: {:?}", e);
-                return;
-            }
+        let w3 = w3.clone();
+        let mut ethereum_actual_height = loop {
+            match get_actual_eth_height(&w3).await {
+                Some(a) => break a,
+                None => {
+                    tokio::time::delay_for(ETH_POLL_INTERVAL).await;
+                    log::error!("Failed getting start height. Polling");
+                    continue;
+                }
+            };
         };
-
-        let mut block_number = from_height;
-        while block_number < current_height {
-            if let Err(e) = update_eth_state(&db, block_number, ETH_LAST_MET_HEIGHT) {
+        let mut scanned_height = from_height;
+        loop {
+            //sleeping if we are on head
+            if ethereum_actual_height <= scanned_height {
+                tokio::time::delay_for(ETH_POLL_INTERVAL).await;
+                ethereum_actual_height = match get_actual_eth_height(&w3).await {
+                    Some(a) => a,
+                    None => continue,
+                };
+                if ethereum_actual_height <= scanned_height {
+                    continue;
+                }
+            // polling if we are near head
+            } else if (ethereum_actual_height - scanned_height) < 2 {
+                ethereum_actual_height = match get_actual_eth_height(&w3).await {
+                    Some(a) => a,
+                    None => continue,
+                };
+            }
+            if let Err(e) = update_eth_state(&db, scanned_height, ETH_LAST_MET_HEIGHT) {
                 let err = format!("Critical error: failed saving eth state: {}", e);
                 log::error!("{}", &err);
             };
 
-            process_block(&w3, topics.as_ref(), block_number.into(), &events_tx).await;
+            process_block(&w3, topics.as_ref(), scanned_height.into(), &events_tx).await;
 
-            if let Err(e) = blocks_tx.send(block_number) {
+            if let Err(e) = blocks_tx.send(scanned_height) {
                 log::error!("Failed sending event via channel: {:?}", e);
                 // Panic?
             }
-
-            current_height = match w3.eth().block_number().await {
-                Ok(height) => height.as_u64(),
-                Err(e) => {
-                    log::error!("Failed getting block number: {:?}", e);
-                    continue;
-                }
-            };
-
-            block_number += 1;
-        }
-
-        log::info!("Synchronized with ethereum");
-        log::info!("Now subscribing instead of polling");
-        let mut blocks_stream = match w3.eth_subscribe().subscribe_new_heads().await {
-            Ok(a) => a,
-            Err(e) => {
-                log::error!("Failed subscribing on eth logs: {}", e);
-                return;
-            }
-        };
-
-        while let Some(block) = blocks_stream.next().await {
-            let head: BlockHeader = match block {
-                Ok(a) => a,
-                Err(e) => {
-                    log::error!("Got bad data from stream: {:?}", e);
-                    continue;
-                }
-            };
-            let block_number = match head.number {
-                Some(a) => a.as_u64(),
-                None => {
-                    log::error!("Block is pending");
-                    continue;
-                }
-            };
-
-            if let Err(e) = update_eth_state(&db, block_number, ETH_LAST_MET_HEIGHT) {
-                let err = format!("Critical error: failed saving eth state: {}", e);
-                log::error!("{}", &err);
-            };
-
-            if let Err(e) = blocks_tx.send(block_number) {
-                log::error!("Failed sending event via channel: {:?}", e);
-            }
-            process_block(&w3, topics.as_ref(), block_number.into(), &events_tx).await;
+            scanned_height += 1;
         }
     });
 
@@ -283,7 +283,7 @@ fn spawn_blocks_scanner(
 }
 
 async fn process_block(
-    w3: &Web3<WebSocket>,
+    w3: &Web3<Http>,
     topics: &RwLock<(HashSet<Address>, HashSet<H256>)>,
     block_number: BlockNumber,
     events_tx: &UnboundedSender<Result<Event, Error>>,
