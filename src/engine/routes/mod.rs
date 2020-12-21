@@ -412,13 +412,16 @@ pub async fn create_bridge(
         .await?,
     );
 
-    Ok(Arc::new(Bridge::new(
-        key_data.eth,
-        eth_client,
-        ton_client,
-        transport,
-        state_manager.clone(),
-    )?))
+    Ok(Arc::new(
+        Bridge::new(
+            key_data.eth,
+            eth_client,
+            ton_client,
+            transport,
+            state_manager.clone(),
+        )
+        .await?,
+    ))
 }
 
 impl TonConfig {
