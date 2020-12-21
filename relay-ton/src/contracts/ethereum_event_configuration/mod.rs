@@ -54,6 +54,24 @@ impl EthereumEventConfigurationContract {
         &self.config.account
     }
 
+    pub fn get_known_events(&self) -> BoxStream<'_, EthereumEventConfigurationContractEvent> {
+        self.subscription
+            .rescan_events(None, None)
+            .filter_map(move |event_body| async move {
+                match event_body
+                    .map_err(ContractError::TransportError)
+                    .and_then(|body| Self::parse_event(&self.events_map, &body))
+                {
+                    Ok(event) => Some(event),
+                    Err(e) => {
+                        log::warn!("skipping outbound message. {:?}", e);
+                        None
+                    }
+                }
+            })
+            .boxed()
+    }
+
     pub async fn compute_event_address(
         &self,
         event_transaction: Vec<u8>,

@@ -188,12 +188,12 @@ impl Bridge {
                     Ok(_) => {
                         log::info!("Confirming transaction. Hash: {}", hash);
                         self.event_configurations_listener
-                            .spawn_vote(EthTonTransaction::Confirm(event))
+                            .enqueue_vote(EthTonTransaction::Confirm(event))
                     }
                     Err(e) => {
                         log::warn!("Rejection: {:?}", e);
                         self.event_configurations_listener
-                            .spawn_vote(EthTonTransaction::Reject(event))
+                            .enqueue_vote(EthTonTransaction::Reject(event))
                     }
                 } {
                     log::error!("Critical error while spawning vote: {:?}", e)

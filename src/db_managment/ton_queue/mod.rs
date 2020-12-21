@@ -61,6 +61,11 @@ impl TonQueue {
             .map_err(Error::from)
     }
 
+    pub fn has_event(&self, tx_hash: &H256) -> Result<bool, Error> {
+        Ok(self.pending.contains_key(tx_hash.as_bytes())?
+            || self.failed.contains_key(tx_hash.as_bytes())?)
+    }
+
     pub fn get_pending(&self, tx_hash: &H256) -> Result<Option<EthTonTransaction>, Error> {
         Ok(self
             .pending

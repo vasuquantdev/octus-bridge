@@ -12,6 +12,7 @@ pub struct BridgeContract {
     transport: Arc<dyn AccountSubscription>,
     keypair: Arc<Keypair>,
     config: ContractConfig,
+    events_map: Arc<EventsMap>,
     contract: Arc<ton_abi::Contract>,
 }
 
@@ -22,21 +23,19 @@ impl BridgeContract {
         keypair: Arc<Keypair>,
     ) -> ContractResult<Self> {
         let transport = transport.subscribe(account.clone()).await?;
+        let contract = abi();
+        let events_map = shared_events_map();
 
         let config = ContractConfig {
             account,
             timeout_sec: 60,
         };
 
-        let contract = Arc::new(
-            ton_abi::Contract::load(Cursor::new(ABI))
-                .expect("failed to load bridge BridgeContract ABI"),
-        );
-
         Ok(Self {
             transport,
             keypair,
             config,
+            events_map,
             contract,
         })
     }
@@ -60,26 +59,25 @@ impl BridgeContract {
         UInt256::from(self.keypair.public.to_bytes())
     }
 
-    pub async fn get_known_config_contracts(&self) -> ContractResult<Vec<MsgAddrStd>> {
-        let events = self.events_map();
-        let mut scanner = self.transport.rescan_events(None, None);
-        let mut configs = Vec::new();
-        while let Some(event_body) = scanner.next().await {
-            match event_body
-                .map_err(ContractError::TransportError)
-                .and_then(|body| Self::parse_event(&events, &body))
-            {
-                Ok(event) => {
-                    if let BridgeContractEvent::NewEthereumEventConfiguration { address } = event {
-                        configs.push(address);
+    pub fn get_known_config_contracts(&self) -> BoxStream<'_, MsgAddrStd> {
+        self.transport
+            .rescan_events(None, None)
+            .filter_map(move |event_body| async move {
+                match event_body
+                    .map_err(ContractError::TransportError)
+                    .and_then(|body| Self::parse_event(&self.events_map, &body))
+                {
+                    Ok(BridgeContractEvent::NewEthereumEventConfiguration { address }) => {
+                        Some(address)
+                    }
+                    Ok(_) => None,
+                    Err(e) => {
+                        log::warn!("skipping outbound message. {:?}", e);
+                        None
                     }
                 }
-                Err(e) => {
-                    log::warn!("skipping outbound message. {:?}", e);
-                }
-            }
-        }
-        Ok(configs)
+            })
+            .boxed()
     }
 
     pub async fn confirm_bridge_configuration_update(
@@ -206,7 +204,27 @@ impl ContractWithEvents for BridgeContract {
     }
 }
 
-const ABI: &str = include_str!("../../../abi/Bridge.abi.json");
+static ABI: OnceCell<Arc<AbiContract>> = OnceCell::new();
+static EVENTS: OnceCell<Arc<EventsMap>> = OnceCell::new();
+const JSON_ABI: &str = include_str!("../../../abi/Bridge.abi.json");
+
+fn abi() -> Arc<AbiContract> {
+    ABI.get_or_init(|| {
+        Arc::new(
+            AbiContract::load(Cursor::new(JSON_ABI))
+                .expect("failed to load bridge BridgeContract ABI"),
+        )
+    })
+    .clone()
+}
+
+fn shared_events_map() -> Arc<EventsMap> {
+    EVENTS
+        .get_or_init(|| Arc::new(make_events_map::<BridgeContract>(abi().as_ref())))
+        .clone()
+}
+
+type EventsMap = HashMap<u32, (<BridgeContract as ContractWithEvents>::EventKind, AbiEvent)>;
 
 #[cfg(test)]
 mod tests {
