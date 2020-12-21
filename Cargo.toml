@@ -25,7 +25,7 @@ either = "1.6"
 config = { version = "*", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0.59"
-toml="0.5.7"
+toml = "0.5.7"
 rand = "0.6"
 sha3 = "0.9.1"
 hex = "0.4.2"
@@ -43,7 +43,7 @@ sled = "0.34.5"
 clap = "3.0.0-beta.2"
 log = "*"
 env_logger = "*"
-backtrace= "0.3.55"
+backtrace = "0.3.55"
 thiserror = "1.0.22"
 futures = "0.3.1"
 tokio = { version = "0.2", features = ["full"] }
@@ -55,7 +55,8 @@ ton_abi = { git = "https://github.com/tonlabs/ton-labs-abi.git", branch = "1.0.0
 num-bigint = "0.2.6"
 ethabi = "12.0.0"
 num-traits = "0.2.14"
-chrono = {version="0.4",features = ["serde"]}
+chrono = { version = "0.4", features = ["serde"] }
+log4rs = "1.0.0"
 [dev-dependencies]
 pretty_assertions = "0.6.1"
 
