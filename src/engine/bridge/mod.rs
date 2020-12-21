@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use anyhow::{anyhow, Error};
 use ethabi::Address;
 use futures::stream::Stream;
@@ -6,6 +5,7 @@ use futures::StreamExt;
 use num_traits::cast::ToPrimitive;
 use secp256k1::PublicKey;
 use sled::Db;
+use std::sync::Arc;
 use ton_block::MsgAddrStd;
 
 use relay_eth::ws::{EthListener, H256};
@@ -19,12 +19,10 @@ use crate::db_managment::{EthQueue, EthTonConfirmationData, EthTonTransaction, S
 use crate::engine::bridge::event_configurations_listener::{
     ConfigsState, EventConfigurationsListener,
 };
-use crate::engine::bridge::event_votes_listener::EventVotesListener;
 use crate::engine::bridge::util::map_eth_ton;
 
 pub(crate) mod event_configurations_listener;
 
-mod event_votes_listener;
 pub mod models;
 mod prelude;
 mod util;
@@ -33,7 +31,6 @@ pub struct Bridge {
     eth_signer: EthSigner,
     eth_listener: Arc<EthListener>,
     ton_transport: Arc<dyn Transport>,
-    event_votes_listener: Arc<EventVotesListener>,
     event_configurations_listener: Arc<EventConfigurationsListener>,
 
     ton_client: Arc<BridgeContract>,
@@ -41,7 +38,7 @@ pub struct Bridge {
 }
 
 impl Bridge {
-    pub fn new(
+    pub async fn new(
         eth_signer: EthSigner,
         eth_client: Arc<EthListener>,
         ton_client: Arc<BridgeContract>,
@@ -52,20 +49,20 @@ impl Bridge {
         let ton_queue = TonQueue::new(&db)?;
         let stats_db = StatsDb::new(&db)?;
 
-        let event_votes_listener = EventVotesListener::new(
+        let event_configurations_listener = EventConfigurationsListener::new(
+            ton_transport.clone(),
             ton_client.clone(),
             eth_queue.clone(),
             ton_queue,
             stats_db,
-        );
-        let event_configurations_listener = EventConfigurationsListener::new();
+        )
+        .await;
 
         Ok(Self {
             eth_signer,
             eth_listener: eth_client,
 
             ton_transport,
-            event_votes_listener,
             event_configurations_listener,
 
             ton_client,
@@ -80,13 +77,7 @@ impl Bridge {
         );
 
         // Subscribe for new event configuration contracts
-        let (subscriptions, ton_events) = self
-            .event_configurations_listener
-            .start(self.ton_transport.clone(), self.ton_client.clone())
-            .await;
-
-        // Start event votes listener
-        tokio::spawn(self.event_votes_listener.clone().watch(ton_events));
+        let subscriptions = self.event_configurations_listener.start().await;
 
         // Subscribe for ETH blocks and events
         let (blocks_rx, mut eth_events_rx) = self.eth_listener.start(subscriptions).await?;
@@ -196,12 +187,12 @@ impl Bridge {
                 if let Err(e) = match check_event(&configs, check_result, &event).await {
                     Ok(_) => {
                         log::info!("Confirming transaction. Hash: {}", hash);
-                        self.event_votes_listener
+                        self.event_configurations_listener
                             .spawn_vote(EthTonTransaction::Confirm(event))
                     }
                     Err(e) => {
                         log::warn!("Rejection: {:?}", e);
-                        self.event_votes_listener
+                        self.event_configurations_listener
                             .spawn_vote(EthTonTransaction::Reject(event))
                     }
                 } {
@@ -306,7 +297,7 @@ impl Bridge {
             event_block_number: event.block_number,
             event_block: event.block_hash,
             ethereum_event_configuration_address,
-            construction_time: chrono::Utc::now()
+            construction_time: chrono::Utc::now(),
         };
 
         let target_block_number = event.block_number + ethereum_event_blocks_to_confirm;
