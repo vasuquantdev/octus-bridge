@@ -88,7 +88,7 @@ impl ParseToken<ethereum_types::Address> for TokenValue {
                 // copy min(N,20) bytes into last min(N,20) elements of address
 
                 let size = bytes.len();
-                let src_offset = bytes.len() - ADDRESS_SIZE;
+                let src_offset = size - size.min(ADDRESS_SIZE);
                 let dest_offset = ADDRESS_SIZE - size.min(ADDRESS_SIZE);
                 address.0[dest_offset..ADDRESS_SIZE].copy_from_slice(&bytes[src_offset..size]);
 
@@ -111,8 +111,8 @@ impl ParseToken<ethereum_types::H256> for TokenValue {
                 // copy min(N,20) bytes into last min(N,20) elements of address
 
                 let size = bytes.len();
-                let src_offset = bytes.len() - HASH_SIZE;
-                let dest_offset = HASH_SIZE - size.min(HASH_SIZE);
+                let src_offset = size - HASH_SIZE.min(size);
+                let dest_offset = HASH_SIZE - HASH_SIZE.min(size);
                 hash.0[dest_offset..HASH_SIZE].copy_from_slice(&bytes[src_offset..size]);
 
                 Ok(hash)
