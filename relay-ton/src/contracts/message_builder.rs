@@ -280,13 +280,16 @@ impl FunctionArg for MsgAddressInt {
 
 impl FunctionArg for ethereum_types::Address {
     fn token_value(self) -> TokenValue {
-        TokenValue::FixedBytes(self.as_bytes().to_vec())
+        TokenValue::Uint(ton_abi::Uint {
+            number: num_bigint::BigUint::from_bytes_be(self.as_bytes()),
+            size: 256, // TODO: shrink to 160 bits when contract will be ready
+        })
     }
 }
 
 impl FunctionArg for ethereum_types::H256 {
     fn token_value(self) -> TokenValue {
-        TokenValue::FixedBytes(self.as_bytes().to_vec())
+        BigUint256(num_bigint::BigUint::from_bytes_be(self.as_bytes())).token_value()
     }
 }
 
