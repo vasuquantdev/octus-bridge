@@ -9,7 +9,7 @@ use secp256k1::PublicKey;
 use sled::Db;
 use ton_block::MsgAddrStd;
 
-use relay_eth::ws::{EthListener, H256};
+use relay_eth::ws::EthListener;
 use relay_ton::contracts::utils::pack_tokens;
 use relay_ton::contracts::*;
 use relay_ton::prelude::{MsgAddressInt, UInt256};
@@ -32,7 +32,6 @@ mod util;
 pub struct Bridge {
     eth_signer: EthSigner,
     eth_listener: Arc<EthListener>,
-    ton_transport: Arc<dyn Transport>,
     event_configurations_listener: Arc<EventConfigurationsListener>,
 
     ton_client: Arc<BridgeContract>,
@@ -66,7 +65,6 @@ impl Bridge {
             eth_signer,
             eth_listener: eth_client,
 
-            ton_transport,
             event_configurations_listener,
 
             ton_client,
@@ -186,11 +184,12 @@ impl Bridge {
             let configs = self.event_configurations_listener.get_state().await.clone();
             let eth_listener = self.eth_listener.clone();
             async move {
-                let hash = H256::from_slice(&event.event_transaction); //FIXME !!!!!!!
-                let check_result = eth_listener.check_transaction(hash).await;
+                let check_result = eth_listener
+                    .check_transaction(event.event_transaction)
+                    .await;
                 if let Err(e) = match check_event(&configs, check_result, &event).await {
                     Ok(_) => {
-                        log::info!("Confirming transaction. Hash: {}", hash);
+                        log::info!("Confirming transaction. Hash: {}", event.event_transaction);
                         self.event_configurations_listener
                             .enqueue_vote(EthTonTransaction::Confirm(event))
                     }
@@ -295,7 +294,7 @@ impl Bridge {
         };
 
         let prepared_data = EthTonConfirmationData {
-            event_transaction: event.tx_hash.0.to_vec(),
+            event_transaction: event.tx_hash,
             event_index: event.event_index,
             event_data,
             event_block_number: event.block_number,

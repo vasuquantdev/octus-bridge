@@ -32,11 +32,11 @@
     {
       "name": "confirmEvent",
       "inputs": [
-        {"name":"eventTransaction","type":"bytes"},
+        {"name":"eventTransaction","type":"uint256"},
         {"name":"eventIndex","type":"uint256"},
         {"name":"eventData","type":"cell"},
         {"name":"eventBlockNumber","type":"uint256"},
-        {"name":"eventBlock","type":"bytes"},
+        {"name":"eventBlock","type":"uint256"},
         {"name":"relayKey","type":"uint256"}
       ],
       "outputs": [
@@ -45,11 +45,11 @@
     {
       "name": "rejectEvent",
       "inputs": [
-        {"name":"eventTransaction","type":"bytes"},
+        {"name":"eventTransaction","type":"uint256"},
         {"name":"eventIndex","type":"uint256"},
         {"name":"eventData","type":"cell"},
         {"name":"eventBlockNumber","type":"uint256"},
-        {"name":"eventBlock","type":"bytes"},
+        {"name":"eventBlock","type":"uint256"},
         {"name":"relayKey","type":"uint256"}
       ],
       "outputs": [
@@ -85,6 +85,22 @@
     {"key":8,"name":"bridgeAddress","type":"address"}
   ],
   "events": [
+    {
+      "name": "NewEthereumConfigurationConfirmation",
+      "inputs": [
+        {"name":"relayKey","type":"uint256"}
+      ],
+      "outputs": [
+      ]
+    },
+    {
+      "name": "NewEthereumConfigurationReject",
+      "inputs": [
+        {"name":"relayKey","type":"uint256"}
+      ],
+      "outputs": [
+      ]
+    },
     {
       "name": "NewEthereumEventConfirmation",
       "inputs": [

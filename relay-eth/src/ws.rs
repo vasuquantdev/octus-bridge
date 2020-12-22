@@ -193,7 +193,7 @@ impl EthListener {
             }
         };
         let block_hash = match log.block_hash {
-            Some(a) => Vec::from(a.0),
+            Some(a) => a,
             None => {
                 let err = format!("No hash in log. Tx hash: {}. Block: {}", hash, block_number);
                 log::error!("{}", err);
@@ -343,7 +343,7 @@ pub struct Event {
     pub topics: Vec<H256>,
     pub event_index: u64,
     pub block_number: u64,
-    pub block_hash: Vec<u8>,
+    pub block_hash: H256,
 }
 
 fn update_eth_state(db: &Tree, height: u64, key: &str) -> Result<(), Error> {

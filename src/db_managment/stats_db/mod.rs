@@ -8,7 +8,7 @@ use crate::db_managment::{constants::STATS_TREE_NAME, Table, TxStat};
 
 use super::prelude::{Error, Tree};
 use super::Db;
-use crate::engine::bridge::models::ValidatedEventStructure;
+use crate::engine::bridge::models::ExtendedEventInfo;
 
 #[derive(Clone)]
 pub struct StatsDb {
@@ -22,13 +22,8 @@ impl StatsDb {
         })
     }
 
-    pub fn update_relay_stats(&self, event: &ValidatedEventStructure) -> Result<(), Error> {
+    pub fn update_relay_stats(&self, event: &ExtendedEventInfo) -> Result<(), Error> {
         log::debug!("Inserting stats");
-
-        let (event, is_valid) = match event {
-            ValidatedEventStructure::Valid(event) => (event, true),
-            ValidatedEventStructure::Invalid(event, _) => (event, false),
-        };
 
         let event_addr = event.event_addr.address.get_bytestring(0);
 
@@ -36,16 +31,14 @@ impl StatsDb {
         key[0..32].copy_from_slice(&event_addr);
         key[32..64].copy_from_slice(event.relay_key.as_slice());
 
-        let stats = if is_valid {
-            TxStat::Valid {
-                tx_hash: H256::from_slice(&event.data.ethereum_event_transaction),
+        self.tree.insert(
+            key,
+            bincode::serialize(&TxStat {
+                tx_hash: event.data.ethereum_event_transaction,
                 met: chrono::Utc::now(),
-            }
-        } else {
-            TxStat::Invalid
-        };
-
-        self.tree.insert(key, bincode::serialize(&stats).unwrap())?;
+            })
+            .unwrap(),
+        )?;
 
         Ok(())
     }
@@ -62,7 +55,6 @@ impl StatsDb {
                 key.ok()
                     .and_then(|item| bincode::deserialize::<TxStat>(&item).ok())
             })
-            .filter(TxStat::is_valid)
             .is_some())
     }
 }

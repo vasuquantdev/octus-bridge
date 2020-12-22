@@ -62,11 +62,11 @@
     {
       "name": "confirmEthereumEvent",
       "inputs": [
-        {"name":"eventTransaction","type":"bytes"},
+        {"name":"eventTransaction","type":"uint256"},
         {"name":"eventIndex","type":"uint256"},
         {"name":"eventData","type":"cell"},
         {"name":"eventBlockNumber","type":"uint256"},
-        {"name":"eventBlock","type":"bytes"},
+        {"name":"eventBlock","type":"uint256"},
         {"name":"ethereumEventConfigurationAddress","type":"address"}
       ],
       "outputs": [
@@ -75,11 +75,11 @@
     {
       "name": "rejectEthereumEvent",
       "inputs": [
-        {"name":"eventTransaction","type":"bytes"},
+        {"name":"eventTransaction","type":"uint256"},
         {"name":"eventIndex","type":"uint256"},
         {"name":"eventData","type":"cell"},
         {"name":"eventBlockNumber","type":"uint256"},
-        {"name":"eventBlock","type":"bytes"},
+        {"name":"eventBlock","type":"uint256"},
         {"name":"ethereumEventConfigurationAddress","type":"address"}
       ],
       "outputs": [

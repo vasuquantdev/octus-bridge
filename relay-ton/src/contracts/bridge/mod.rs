@@ -126,11 +126,11 @@ impl BridgeContract {
 
     pub async fn confirm_ethereum_event(
         &self,
-        event_transaction: Vec<u8>,
+        event_transaction: ethereum_types::H256,
         event_index: BigUint,
         event_data: Cell,
         event_block_number: BigUint,
-        event_block: Vec<u8>,
+        event_block: ethereum_types::H256,
         ethereum_event_configuration_address: MsgAddressInt,
     ) -> ContractResult<()> {
         log::info!(
@@ -155,11 +155,11 @@ impl BridgeContract {
 
     pub async fn reject_ethereum_event(
         &self,
-        event_transaction: Vec<u8>,
+        event_transaction: ethereum_types::H256,
         event_index: BigUint,
         event_data: Cell,
         event_block_number: BigUint,
-        event_block: Vec<u8>,
+        event_block: ethereum_types::H256,
         ethereum_event_configuration_address: MsgAddressInt,
     ) -> ContractResult<()> {
         log::info!(

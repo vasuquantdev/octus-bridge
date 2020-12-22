@@ -57,12 +57,12 @@ pub mod h256_to_hex {
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct EthTonConfirmationData {
-    pub event_transaction: Vec<u8>,
+    pub event_transaction: H256,
     pub event_index: u64,
     #[serde(with = "serde_cells")]
     pub event_data: Cell,
     pub event_block_number: u64,
-    pub event_block: Vec<u8>,
+    pub event_block: H256,
     #[serde(with = "serde_int_addr")]
     pub ethereum_event_configuration_address: MsgAddressInt,
     pub construction_time: DateTime<Utc>,
@@ -77,8 +77,8 @@ pub enum EthTonTransaction {
 impl EthTonTransaction {
     pub fn get_event_transaction(&self) -> H256 {
         match self {
-            EthTonTransaction::Confirm(a) => H256::from_slice(&a.event_transaction),
-            EthTonTransaction::Reject(a) => H256::from_slice(&a.event_transaction),
+            EthTonTransaction::Confirm(a) => a.event_transaction,
+            EthTonTransaction::Reject(a) => a.event_transaction,
         }
     }
     pub fn get_construction_time(&self) -> &DateTime<Utc> {
@@ -91,21 +91,8 @@ impl EthTonTransaction {
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
-pub enum TxStat {
-    Valid {
-        #[serde(with = "h256_to_hex")]
-        tx_hash: H256,
-        met: DateTime<Utc>,
-    },
-    Invalid,
-}
-
-impl TxStat {
-    pub fn is_valid(&self) -> bool {
-        matches!(self, TxStat::Valid { .. })
-    }
-
-    pub fn is_invalid(&self) -> bool {
-        matches!(self, TxStat::Invalid)
-    }
+pub struct TxStat {
+    #[serde(with = "h256_to_hex")]
+    pub tx_hash: H256,
+    pub met: DateTime<Utc>,
 }

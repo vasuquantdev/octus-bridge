@@ -32,8 +32,8 @@ pub struct EventConfigurationsListener {
     stats_db: StatsDb,
 
     relay_key: UInt256,
-    confirmations: Mutex<HashMap<Vec<u8>, oneshot::Sender<()>>>,
-    rejections: Mutex<HashMap<Vec<u8>, oneshot::Sender<()>>>,
+    confirmations: Mutex<HashMap<H256, oneshot::Sender<()>>>,
+    rejections: Mutex<HashMap<H256, oneshot::Sender<()>>>,
 
     configs_state: Arc<RwLock<ConfigsState>>,
     config_contracts: Arc<RwLock<ContractsMap>>,
@@ -146,11 +146,11 @@ impl EventConfigurationsListener {
 
         let vote = match &data {
             EthTonTransaction::Confirm(_) => {
-                self.confirmations.lock().await.insert(hash.0.to_vec(), tx);
+                self.confirmations.lock().await.insert(hash, tx);
                 EventVote::Confirm
             }
             EthTonTransaction::Reject(_) => {
-                self.rejections.lock().await.insert(hash.0.to_vec(), tx);
+                self.rejections.lock().await.insert(hash, tx);
                 EventVote::Reject
             }
         };
@@ -206,7 +206,7 @@ impl EventConfigurationsListener {
             }
         };
 
-        self.cancel(&hash.0, vote).await;
+        self.cancel(&hash, vote).await;
 
         match result {
             Ok(_) => {
@@ -243,7 +243,7 @@ impl EventConfigurationsListener {
     }
 
     /// Just remove the transaction from TON queue
-    async fn cancel(&self, hash: &[u8], vote: EventVote) {
+    async fn cancel(&self, hash: &H256, vote: EventVote) {
         match vote {
             EventVote::Confirm => self.confirmations.lock().await.remove(hash),
             EventVote::Reject => self.rejections.lock().await.remove(hash),
@@ -357,6 +357,7 @@ impl EventConfigurationsListener {
                             address,
                             relay_key,
                         } => (address, relay_key, EventVote::Reject),
+                        _ => continue, // TODO: handle new votes for configuration
                     };
 
                     // TODO: update config on new event configuration confirmations
@@ -384,6 +385,7 @@ impl EventConfigurationsListener {
                     address,
                     relay_key,
                 } => (address, relay_key, EventVote::Reject),
+                _ => continue, // ignore votes for configuration
             };
 
             tokio::spawn(self.clone().handle_event(
@@ -427,58 +429,36 @@ impl EventConfigurationsListener {
             && !event.data.proxy_callback_executed
             && !event.data.event_rejected;
 
-        let validated_structure = event.validate_structure();
         log::info!(
             "Received {}, new event: {}, should check: {}",
-            validated_structure,
+            event,
             new_event,
             should_check
         );
 
         self.stats_db
-            .update_relay_stats(&validated_structure)
+            .update_relay_stats(&event)
             .expect("Fatal db error");
 
-        match validated_structure {
-            ValidatedEventStructure::Valid(event) => {
-                let hash = H256::from_slice(&event.data.ethereum_event_transaction);
-
-                if event.relay_key == self.relay_key {
-                    // Stop retrying after our event response was found
-                    if let Err(e) = self.ton_queue.mark_complete(&hash) {
-                        log::error!("Failed to mark transaction completed. {:?}", e);
-                    }
-
-                    self.notify_found(&event).await;
-                } else if should_check {
-                    let target_block_number = event.target_block_number();
-
-                    if let Err(e) = self
-                        .eth_queue
-                        .insert(target_block_number, &event.into())
-                        .await
-                    {
-                        log::error!("Failed to insert event confirmation. {:?}", e);
-                    }
-                }
+        if event.relay_key == self.relay_key {
+            // Stop retrying after our event response was found
+            if let Err(e) = self
+                .ton_queue
+                .mark_complete(&event.data.ethereum_event_transaction)
+            {
+                log::error!("Failed to mark transaction completed. {:?}", e);
             }
-            ValidatedEventStructure::Invalid(event, _) => {
-                if event.relay_key == self.relay_key {
-                    log::error!("Found invalid data for our event");
 
-                    // TODO: mark complete in ton_queue?
-                    self.notify_found(&event).await;
-                } else if should_check {
-                    // If found event with invalid structure, that we should check - reject it immediately
-                    let data = EthTonTransaction::Reject(event.into());
+            self.notify_found(&event).await;
+        } else if should_check {
+            let target_block_number = event.target_block_number();
 
-                    let bridge = self.bridge.clone();
-                    tokio::spawn(async move {
-                        if let Err(e) = data.send(bridge.as_ref()).await {
-                            log::error!("Failed to send rejection for invalid event. {:?}", e);
-                        }
-                    });
-                }
+            if let Err(e) = self
+                .eth_queue
+                .insert(target_block_number, &event.into())
+                .await
+            {
+                log::error!("Failed to insert event confirmation. {:?}", e);
             }
         }
     }

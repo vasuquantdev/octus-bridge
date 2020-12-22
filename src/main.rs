@@ -1,5 +1,4 @@
 use anyhow::Error;
-use log4rs;
 
 use relay::config::*;
 use relay::engine;

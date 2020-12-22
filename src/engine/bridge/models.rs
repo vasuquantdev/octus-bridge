@@ -21,21 +21,6 @@ pub struct ExtendedEventInfo {
 }
 
 impl ExtendedEventInfo {
-    pub fn validate_structure(self) -> ValidatedEventStructure {
-        if self.data.ethereum_event_transaction.len() != 32 {
-            return ValidatedEventStructure::Invalid(
-                self,
-                EventValidationError::InvalidEventTransactionHash,
-            );
-        }
-
-        if self.data.event_block.len() != 32 {
-            return ValidatedEventStructure::Invalid(self, EventValidationError::InvalidBlockHash);
-        }
-
-        ValidatedEventStructure::Valid(self)
-    }
-
     pub fn target_block_number(&self) -> u64 {
         self.data
             .event_block_number
@@ -45,45 +30,17 @@ impl ExtendedEventInfo {
     }
 }
 
-pub enum ValidatedEventStructure {
-    Valid(ExtendedEventInfo),
-    Invalid(ExtendedEventInfo, EventValidationError),
-}
-
-impl std::fmt::Display for ValidatedEventStructure {
+impl std::fmt::Display for ExtendedEventInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Valid(event) => f.write_fmt(format_args!(
-                "{:?} tx {} (block {}) from {}. executed: {}, rejected: {}",
-                event.vote,
-                hex::encode(&event.data.ethereum_event_transaction),
-                event.data.event_block_number,
-                hex::encode(&event.relay_key),
-                event.data.proxy_callback_executed,
-                event.data.event_rejected
-            )),
-            Self::Invalid(event, EventValidationError::InvalidBlockHash) => {
-                f.write_fmt(format_args!(
-                    "invalid {:?} tx {} (block {}) from {}. executed: {}, rejected: {}",
-                    event.vote,
-                    hex::encode(&event.data.ethereum_event_transaction),
-                    event.data.event_block_number,
-                    hex::encode(&event.relay_key),
-                    event.data.proxy_callback_executed,
-                    event.data.event_rejected
-                ))
-            }
-            Self::Invalid(event, EventValidationError::InvalidEventTransactionHash) => {
-                f.write_fmt(format_args!(
-                    "invalid {:?} tx INVALID (block {}) from {}. executed: {}, rejected: {}",
-                    event.vote,
-                    event.data.event_block_number,
-                    hex::encode(&event.relay_key),
-                    event.data.proxy_callback_executed,
-                    event.data.event_rejected
-                ))
-            }
-        }
+        f.write_fmt(format_args!(
+            "{:?} tx {} (block {}) from {}. executed: {}, rejected: {}",
+            self.vote,
+            hex::encode(&self.data.ethereum_event_transaction),
+            self.data.event_block_number,
+            hex::encode(&self.relay_key),
+            self.data.proxy_callback_executed,
+            self.data.event_rejected
+        ))
     }
 }
 

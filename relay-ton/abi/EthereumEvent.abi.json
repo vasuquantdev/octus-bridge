@@ -33,12 +33,12 @@
       "inputs": [
       ],
       "outputs": [
-        {"name":"_eventTransaction","type":"bytes"},
+        {"name":"_eventTransaction","type":"uint256"},
         {"name":"_eventIndex","type":"uint256"},
         {"name":"_eventData","type":"cell"},
         {"name":"_proxyAddress","type":"address"},
         {"name":"_eventBlockNumber","type":"uint256"},
-        {"name":"_eventBlock","type":"bytes"},
+        {"name":"_eventBlock","type":"uint256"},
         {"name":"_ethereumEventConfirguration","type":"address"},
         {"name":"_proxyCallbackExecuted","type":"bool"},
         {"name":"_eventRejected","type":"bool"},
@@ -50,12 +50,12 @@
     }
   ],
   "data": [
-    {"key":1,"name":"eventTransaction","type":"bytes"},
+    {"key":1,"name":"eventTransaction","type":"uint256"},
     {"key":2,"name":"eventIndex","type":"uint256"},
     {"key":3,"name":"eventData","type":"cell"},
     {"key":4,"name":"proxyAddress","type":"address"},
     {"key":5,"name":"eventBlockNumber","type":"uint256"},
-    {"key":6,"name":"eventBlock","type":"bytes"},
+    {"key":6,"name":"eventBlock","type":"uint256"},
     {"key":7,"name":"ethereumEventConfirguration","type":"address"}
   ],
   "events": [

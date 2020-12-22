@@ -33,6 +33,12 @@ crate::define_event!(
     EthereumEventConfigurationContractEvent,
     EthereumEventConfigurationContractEventKind,
     {
+        NewEthereumConfigurationConfirmation {
+            relay_key: UInt256,
+        },
+        NewEthereumConfigurationReject {
+            relay_key: UInt256,
+        },
         NewEthereumEventConfirmation {
             address: MsgAddrStd,
             relay_key: UInt256,
@@ -55,6 +61,16 @@ impl TryFrom<(EthereumEventConfigurationContractEventKind, Vec<Token>)>
         let mut tokens = tokens.into_iter();
 
         Ok(match kind {
+            EthereumEventConfigurationContractEventKind::NewEthereumConfigurationConfirmation => {
+                EthereumEventConfigurationContractEvent::NewEthereumConfigurationConfirmation {
+                    relay_key: tokens.next().try_parse()?,
+                }
+            }
+            EthereumEventConfigurationContractEventKind::NewEthereumConfigurationReject => {
+                EthereumEventConfigurationContractEvent::NewEthereumConfigurationReject {
+                    relay_key: tokens.next().try_parse()?,
+                }
+            }
             EthereumEventConfigurationContractEventKind::NewEthereumEventConfirmation => {
                 EthereumEventConfigurationContractEvent::NewEthereumEventConfirmation {
                     address: tokens.next().try_parse()?,
@@ -229,14 +245,8 @@ impl TryFrom<ContractOutput> for EthereumEventConfiguration {
         let mut tuple = output.into_parser();
 
         Ok(EthereumEventConfiguration {
-            ethereum_event_abi: String::from_utf8(tuple.parse_next()?)
-                .map_err(|_| ContractError::InvalidString)?,
-            ethereum_event_address: ethereum_types::Address::from_str(
-                String::from_utf8(tuple.parse_next()?)
-                    .map_err(|_| ContractError::InvalidString)?
-                    .trim_start_matches("0x"),
-            )
-            .map_err(|_| ContractError::InvalidEthAddress)?,
+            ethereum_event_abi: tuple.parse_next()?,
+            ethereum_event_address: tuple.parse_next()?,
             event_proxy_address: tuple.parse_next()?,
             ethereum_event_blocks_to_confirm: tuple.parse_next()?,
             required_confirmations: tuple.parse_next()?,
@@ -283,14 +293,14 @@ impl TryFrom<ContractOutput> for BridgeConfigurationUpdateDetails {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EthereumEventDetails {
-    pub ethereum_event_transaction: Vec<u8>,
+    pub ethereum_event_transaction: ethereum_types::H256,
     pub event_index: BigUint,
     #[serde(with = "serde_cells")]
     pub event_data: Cell,
     #[serde(with = "serde_std_addr")]
     pub proxy_address: MsgAddrStd,
     pub event_block_number: BigUint,
-    pub event_block: Vec<u8>,
+    pub event_block: ethereum_types::H256,
     #[serde(with = "serde_std_addr")]
     pub event_configuration_address: MsgAddrStd,
     pub proxy_callback_executed: bool,

@@ -76,10 +76,39 @@ impl ParseToken<Cell> for TokenValue {
     }
 }
 
+impl ParseToken<ethereum_types::Address> for TokenValue {
+    fn try_parse(self) -> ContractResult<ethereum_types::Address> {
+        match self {
+            TokenValue::FixedBytes(bytes) => Ok(ethereum_types::Address::from_slice(&bytes)),
+            _ => Err(ContractError::InvalidAbi),
+        }
+    }
+}
+
+impl ParseToken<ethereum_types::H256> for TokenValue {
+    fn try_parse(self) -> ContractResult<ethereum_types::H256> {
+        match self {
+            TokenValue::FixedBytes(value) => Ok(ethereum_types::H256::from_slice(&value)),
+            _ => Err(ContractError::InvalidAbi),
+        }
+    }
+}
+
 impl ParseToken<Vec<u8>> for TokenValue {
     fn try_parse(self) -> ContractResult<Vec<u8>> {
         match self {
             TokenValue::Bytes(bytes) => Ok(bytes),
+            _ => Err(ContractError::InvalidAbi),
+        }
+    }
+}
+
+impl ParseToken<String> for TokenValue {
+    fn try_parse(self) -> ContractResult<String> {
+        match self {
+            TokenValue::Bytes(bytes) => {
+                String::from_utf8(bytes).map_err(|_| ContractError::InvalidString)
+            }
             _ => Err(ContractError::InvalidAbi),
         }
     }
@@ -181,6 +210,7 @@ where
 pub trait StandaloneToken {}
 impl StandaloneToken for MsgAddrStd {}
 impl StandaloneToken for ethereum_types::Address {}
+impl StandaloneToken for ethereum_types::H256 {}
 impl StandaloneToken for AccountId {}
 impl StandaloneToken for UInt256 {}
 impl StandaloneToken for UInt128 {}
