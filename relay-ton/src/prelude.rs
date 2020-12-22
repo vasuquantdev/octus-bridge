@@ -22,8 +22,7 @@ pub(crate) use tokio::sync::{mpsc, oneshot, watch, RwLock};
 pub use ed25519_dalek::Keypair;
 pub use ton_abi::{Contract as AbiContract, Event as AbiEvent, Function as AbiFunction};
 pub use ton_block::{MsgAddrStd, MsgAddressInt};
-pub use ton_types::{BuilderData, Cell, SliceData, UInt256};
-
+pub use ton_types::{serialize_toc, BuilderData, Cell, SliceData, UInt256};
 #[allow(clippy::derive_hash_xor_eq)]
 #[derive(Clone, Default, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct UInt128([u8; 16]);
