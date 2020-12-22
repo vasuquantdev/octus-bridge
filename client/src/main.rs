@@ -107,9 +107,8 @@ impl Client {
         );
         if let Some(rv) = Editor::new().edit(&*prompt).unwrap() {
             let text = rv
-                .split("\n")
-                .filter(|x| !x.starts_with("#"))
-                .next()
+                .split('\n')
+                .find(|x| !x.starts_with('#'))
                 .ok_or_else(|| anyhow::anyhow!("Bad input provided"))?;
             println!("Using {} as input", text);
             let datetime: DateTime<Utc> = DateTime::from_str(&text)?;

@@ -162,7 +162,7 @@ pub fn map_eth_abi_param(param: &EthParamType) -> Result<TonParamType, Error> {
         EthParamType::Tuple(params) => TonParamType::Tuple(
             params
                 .iter()
-                .map(|item: &Box<EthParamType>| {
+                .map(|item| {
                     Ok(ton_abi::Param {
                         name: String::new(),
                         kind: map_eth_abi_param(item.as_ref())?,
