@@ -77,6 +77,7 @@ impl EthListener {
     where
         S: Stream<Item = (Address, H256)> + Send + Unpin + 'static,
     {
+        log::debug!("Started iterating over ethereum blocks.");
         let from_height = self.get_block_number_on_start().await?;
 
         tokio::spawn({
@@ -349,10 +350,11 @@ async fn process_block(
                             if let Err(e) = events_tx.send(Err(e)) {
                                 log::error!("Failed sending event: {:?}", e);
                             }
-                            return;
+                            continue;
                         }
                     }
                 }
+                return;
             }
             Err(e) => {
                 attempts_number -= 1;
