@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use anyhow::Error;
-use ethabi::{ParamType as EthParamType, ParamType, Token as EthTokenValue};
+use ethabi::{ParamType as EthParamType, Token as EthTokenValue};
 use num_bigint::{BigInt, BigUint};
 use serde::{Deserialize, Serialize};
 use sha3::digest::Digest;
@@ -9,7 +9,7 @@ use ton_abi::{ParamType as TonParamType, TokenValue as TonTokenValue, TokenValue
 
 use relay_eth::ws::H256;
 use relay_ton::contracts::EthereumEventConfiguration;
-use relay_ton::prelude::{serialize_toc, Cell};
+use relay_ton::prelude::Cell;
 
 /// Returns topic hash and abi for ETH and TON
 pub fn parse_eth_abi(abi: &str) -> Result<(H256, Vec<EthParamType>, Vec<TonParamType>), Error> {
@@ -131,7 +131,7 @@ pub fn parse_ton_event_data(
 
         cursor = new_cursor;
 
-        tokens.push(map_ton_eth(token_value, eth_param_type));
+        tokens.push(map_ton_eth(token_value, eth_param_type.clone())?);
     }
 
     if cursor.remaining_references() != 0 || cursor.remaining_bits() != 0 {
@@ -212,14 +212,20 @@ pub fn map_eth_ton(eth: EthTokenValue) -> TonTokenValue {
 /// maps ton toke
 pub fn map_ton_eth(
     ton: TonTokenValue,
-    eth_param_type: &EthParamType,
+    eth_param_type: EthParamType,
 ) -> Result<EthTokenValue, Error> {
-    Ok(match ton {
-        TonTokenValue::Uint(a) => {
+    Ok(match (ton, eth_param_type) {
+        (TonTokenValue::FixedBytes(bytes), EthParamType::FixedBytes(size))
+            if bytes.len() == size =>
+        {
+            EthTokenValue::FixedBytes(bytes)
+        }
+        (TonTokenValue::Bytes(a), EthParamType::Bytes) => EthTokenValue::Bytes(a),
+        (TonTokenValue::Uint(a), EthParamType::Uint(_)) => {
             let bytes = a.number.to_bytes_le();
             EthTokenValue::Uint(ethabi::Uint::from_little_endian(&bytes))
         }
-        TonTokenValue::Int(a) => {
+        (TonTokenValue::Int(a), EthParamType::Int(_)) => {
             let mut bytes = a.number.to_signed_bytes_le();
             let sign = bytes
                 .last()
@@ -229,26 +235,42 @@ pub fn map_ton_eth(
 
             EthTokenValue::Int(ethabi::Int::from_little_endian(&bytes))
         }
-        TonTokenValue::Bytes(a) => match eth_param_type {
-            ParamType::Address if a.len() == 20 => {
-                EthTokenValue::Address(ethereum_types::Address::from_slice(&a))
-            }
-            /*ParamType::Bytes*/ _ => EthTokenValue::Bytes(a),
-        },
-        TonTokenValue::Address(a) => EthTokenValue::String(a.to_string()),
-        TonTokenValue::FixedBytes(a) => EthTokenValue::FixedBytes(a),
-        TonTokenValue::Bool(a) => EthTokenValue::Bool(a),
-        TonTokenValue::Cell(a) => {
-            EthTokenValue::Bytes(serialize_toc(&a).map_err(|e| Error::msg(e.to_string()))?)
+        (TonTokenValue::Bytes(a), EthParamType::Address) if a.len() == 20 => {
+            EthTokenValue::Address(ethereum_types::Address::from_slice(&a))
         }
-        TokenValue::Tuple(a) => EthTokenValue::Tuple(
-            a.into_iter()
-                .map(|x| map_ton_eth(x.value, eth_param_type))
-                .collect(),
+        (TonTokenValue::Bytes(a), EthParamType::String) => {
+            EthTokenValue::String(String::from_utf8(a)?)
+        }
+        (TonTokenValue::Bool(a), EthParamType::Bool) => EthTokenValue::Bool(a),
+        (TokenValue::FixedArray(tokens), EthParamType::FixedArray(eth_param_type, size))
+            if tokens.len() == size =>
+        {
+            EthTokenValue::FixedArray(
+                tokens
+                    .into_iter()
+                    .take(size)
+                    .map(|ton| map_ton_eth(ton, *eth_param_type.clone()))
+                    .collect::<Result<_, _>>()?,
+            )
+        }
+        (TokenValue::Array(tokens), EthParamType::Array(eth_param_type)) => EthTokenValue::Array(
+            tokens
+                .into_iter()
+                .map(|ton| map_ton_eth(ton, *eth_param_type.clone()))
+                .collect::<Result<_, _>>()?,
         ),
-        TokenValue::Array(a) =>EthTokenValue::Array(a.into_iter().map(|x|))
-        TokenValue::FixedArray(_) => {}
-       _ => Err(Error::msg("Unimplemented"))
+        (TokenValue::Tuple(tokens), EthParamType::Tuple(params))
+            if tokens.len() == params.len() =>
+        {
+            EthTokenValue::Tuple(
+                tokens
+                    .into_iter()
+                    .zip(params.into_iter())
+                    .map(|(ton, eth_param_type)| map_ton_eth(ton.value, *eth_param_type.clone()))
+                    .collect::<Result<_, _>>()?,
+            )
+        }
+        _ => return Err(anyhow!("unsupported type")),
     })
 }
 
@@ -401,7 +423,7 @@ mod test {
             name: "".to_string(),
             value: TonTokenValue::Bytes("hello from rust".to_string().into()),
         };
-        let eth_token_uint = ethabi::Token::Uint(EUnt::from_little_endian((&number)));
+        let eth_token_uint = ethabi::Token::Uint(EUnt::from_little_endian(&number));
         let eth_token_bytes = ethabi::Token::Bytes("hello from rust".to_string().into());
         let eth = EthTokenValue::Tuple(vec![eth_token_uint, eth_token_bytes]);
         let ton_expected = TonTokenValue::Tuple(vec![ton_token_uint, ton_token_bytes]);
@@ -411,44 +433,50 @@ mod test {
             base64::encode(serialize_toc(&pack_tokens(vec![ton_expected]).unwrap()).unwrap())
         );
     }
-    //
-    // #[test]
-    // fn ton_test_conversion_int_plus() {
-    //     use ethabi::Int as EInt;
-    //     use ton_abi::Int as TInt;
-    //
-    //     let number = make_int256_le(1234567);
-    //
-    //     let eth_expected = EthTokenValue::Int(EInt::from_little_endian(&number));
-    //     let ton = TonTokenValue::Int(TInt {
-    //         number: BigInt::from_signed_bytes_le(&number),
-    //         size: 256,
-    //     });
-    //     assert_eq!(map_ton_eth(ton), eth_expected);
-    // }
-    //
-    // #[test]
-    // fn ton_test_conversion_int() {
-    //     use ethabi::Int as EInt;
-    //     use ton_abi::Int as TInt;
-    //
-    //     let number = make_int256_le(-1234567);
-    //
-    //     let eth = EthTokenValue::Int(EInt::from_little_endian(&number));
-    //     let ton_expected = TonTokenValue::Int(TInt {
-    //         number: BigInt::from_signed_bytes_le(&number),
-    //         size: 256,
-    //     });
-    //     let got = map_ton_eth(ton_expected);
-    //     assert_eq!(got, eth);
-    // }
-    //
-    // #[test]
-    // fn ton_test_conversion_uint() {
-    //     use ethabi::Uint as EUint;
-    //     use ton_abi::Uint as TUint;
-    //     let eth = EthTokenValue::Uint(EUint::from(1234567));
-    //     let ton_expected = TonTokenValue::Uint(TUint::new(1234567, 256));
-    //     assert_eq!(map_ton_eth(ton_expected), eth);
-    // }
+
+    #[test]
+    fn ton_test_conversion_int_plus() {
+        use ethabi::Int as EInt;
+        use ton_abi::Int as TInt;
+
+        let number = make_int256_le(1234567);
+
+        let eth_expected = EthTokenValue::Int(EInt::from_little_endian(&number));
+        let ton = TonTokenValue::Int(TInt {
+            number: BigInt::from_signed_bytes_le(&number),
+            size: 256,
+        });
+        assert_eq!(
+            map_ton_eth(ton, ethabi::ParamType::Int(256)).unwrap(),
+            eth_expected
+        );
+    }
+
+    #[test]
+    fn ton_test_conversion_int() {
+        use ethabi::Int as EInt;
+        use ton_abi::Int as TInt;
+
+        let number = make_int256_le(-1234567);
+
+        let eth = EthTokenValue::Int(EInt::from_little_endian(&number));
+        let ton_expected = TonTokenValue::Int(TInt {
+            number: BigInt::from_signed_bytes_le(&number),
+            size: 256,
+        });
+        let got = map_ton_eth(ton_expected, ethabi::ParamType::Int(256));
+        assert_eq!(got.unwrap(), eth);
+    }
+
+    #[test]
+    fn ton_test_conversion_uint() {
+        use ethabi::Uint as EUint;
+        use ton_abi::Uint as TUint;
+        let eth = EthTokenValue::Uint(EUint::from(1234567));
+        let ton_expected = TonTokenValue::Uint(TUint::new(1234567, 256));
+        assert_eq!(
+            map_ton_eth(ton_expected, ethabi::ParamType::Uint(256)).unwrap(),
+            eth
+        );
+    }
 }
