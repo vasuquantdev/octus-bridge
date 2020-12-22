@@ -79,7 +79,21 @@ impl ParseToken<Cell> for TokenValue {
 impl ParseToken<ethereum_types::Address> for TokenValue {
     fn try_parse(self) -> ContractResult<ethereum_types::Address> {
         match self {
-            TokenValue::FixedBytes(bytes) => Ok(ethereum_types::Address::from_slice(&bytes)),
+            TokenValue::Uint(value) => {
+                let mut address = ethereum_types::Address::default();
+                let bytes = value.number.to_bytes_be();
+
+                const ADDRESS_SIZE: usize = 20;
+
+                // copy min(N,20) bytes into last min(N,20) elements of address
+
+                let size = bytes.len();
+                let src_offset = bytes.len() - ADDRESS_SIZE;
+                let dest_offset = ADDRESS_SIZE - size.min(ADDRESS_SIZE);
+                address.0[dest_offset..ADDRESS_SIZE].copy_from_slice(&bytes[src_offset..size]);
+
+                Ok(address)
+            }
             _ => Err(ContractError::InvalidAbi),
         }
     }
@@ -88,7 +102,21 @@ impl ParseToken<ethereum_types::Address> for TokenValue {
 impl ParseToken<ethereum_types::H256> for TokenValue {
     fn try_parse(self) -> ContractResult<ethereum_types::H256> {
         match self {
-            TokenValue::FixedBytes(value) => Ok(ethereum_types::H256::from_slice(&value)),
+            TokenValue::Uint(value) => {
+                let mut hash = ethereum_types::H256::default();
+                let bytes = value.number.to_bytes_be();
+
+                const HASH_SIZE: usize = 32;
+
+                // copy min(N,20) bytes into last min(N,20) elements of address
+
+                let size = bytes.len();
+                let src_offset = bytes.len() - HASH_SIZE;
+                let dest_offset = HASH_SIZE - size.min(HASH_SIZE);
+                hash.0[dest_offset..HASH_SIZE].copy_from_slice(&bytes[src_offset..size]);
+
+                Ok(hash)
+            }
             _ => Err(ContractError::InvalidAbi),
         }
     }
