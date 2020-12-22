@@ -10,3 +10,5 @@ config_data.json
 logs.log
 ton_dump.json
 eth_dump.json
+
+log/
