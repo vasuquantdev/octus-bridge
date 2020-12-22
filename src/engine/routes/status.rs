@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::convert::Infallible;
 use std::sync::Arc;
 
@@ -54,14 +55,20 @@ pub async fn get_status(state: Arc<RwLock<State>>) -> Result<impl Reply, Infalli
 pub async fn pending(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {
     let state = state.read().await;
     let provider = TonQueue::new(&state.state_manager).expect("Fatal db error");
-    let pending = provider.get_all_pending();
+    let pending = provider
+        .get_all_pending()
+        .map(|(hash, data)| (hex::encode(hash.as_bytes()), data))
+        .collect::<HashMap<_, _>>();
     Ok(serde_json::to_string(&pending).expect("Shouldn't fail"))
 }
 
 pub async fn failed(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {
     let state = state.read().await;
     let provider = TonQueue::new(&state.state_manager).expect("Fatal db error");
-    let failed = provider.get_all_failed();
+    let failed = provider
+        .get_all_failed()
+        .map(|(hash, data)| (hex::encode(hash.as_bytes()), data))
+        .collect::<HashMap<_, _>>();
     Ok(serde_json::to_string(&failed).expect("Shouldn't fail"))
 }
 

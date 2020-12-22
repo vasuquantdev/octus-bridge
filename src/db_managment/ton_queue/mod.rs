@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use anyhow::Error;
 use chrono::{DateTime, Utc};
 use sled::transaction::{ConflictableTransactionError, ConflictableTransactionResult};
@@ -78,30 +76,22 @@ impl TonQueue {
         Ok(())
     }
 
-    pub fn get_all_pending(&self) -> HashMap<String, EthTonTransaction> {
-        self.pending
-            .iter()
-            .filter_map(|x| x.ok())
-            .map(|x| {
-                (
-                    H256::from_slice(&*x.0).to_string(),
-                    bincode::deserialize::<EthTonTransaction>(&x.1).unwrap(),
-                )
-            })
-            .collect()
+    pub fn get_all_pending(&self) -> impl Iterator<Item = (H256, EthTonTransaction)> {
+        self.pending.iter().filter_map(|x| x.ok()).map(|x| {
+            (
+                H256::from_slice(&*x.0),
+                bincode::deserialize::<EthTonTransaction>(&x.1).unwrap(),
+            )
+        })
     }
 
-    pub fn get_all_failed(&self) -> HashMap<String, EthTonTransaction> {
-        self.failed
-            .iter()
-            .filter_map(|x| x.ok())
-            .map(|x| {
-                (
-                    H256::from_slice(&*x.0).to_string(),
-                    bincode::deserialize::<EthTonTransaction>(&x.1).unwrap(),
-                )
-            })
-            .collect()
+    pub fn get_all_failed(&self) -> impl Iterator<Item = (H256, EthTonTransaction)> {
+        self.failed.iter().filter_map(|x| x.ok()).map(|x| {
+            (
+                H256::from_slice(&*x.0),
+                bincode::deserialize::<EthTonTransaction>(&x.1).unwrap(),
+            )
+        })
     }
 
     /// removes all transactions, older than `upper_threshold`

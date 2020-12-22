@@ -125,8 +125,19 @@ impl EventConfigurationsListener {
 
         semaphore.wait().await;
 
+        for (hash, data) in self.ton_queue.get_all_pending() {
+            tokio::spawn(self.clone().ensure_sent(hash, data));
+        }
+
         // Return subscriptions stream
         subscriptions_rx
+    }
+
+    /// Restart voting for failed transactions
+    pub fn retry_failed(self: &Arc<Self>) {
+        for (hash, data) in self.ton_queue.get_all_failed() {
+            tokio::spawn(self.clone().ensure_sent(hash, data));
+        }
     }
 
     /// Adds transaction to queue, starts reliable sending
@@ -141,7 +152,7 @@ impl EventConfigurationsListener {
 
     /// Current configs state
     pub async fn get_state(&self) -> RwLockReadGuard<'_, ConfigsState> {
-        dbg!(self.configs_state.read().await)
+        self.configs_state.read().await
     }
 
     /// Find configuration contract by its address

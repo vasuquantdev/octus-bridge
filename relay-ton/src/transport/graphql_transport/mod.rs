@@ -277,7 +277,7 @@ impl GraphQLAccountSubscription {
                 };
 
                 for (_, message) in pending_messages.iter() {
-                    log::error!(
+                    log::trace!(
                         "CURRENT: {}, {}, {}",
                         block_info.gen_utime().0,
                         message.expires_at(),
@@ -287,10 +287,10 @@ impl GraphQLAccountSubscription {
 
                 pending_messages
                     .retain(|_, message| block_info.gen_utime().0 <= message.expires_at());
-                log::trace!("PENDING: {}", pending_messages.len());
-                log::info!(
-                    "TIME DIFF: {}",
-                    block_info.gen_utime().0 as i64 - Utc::now().timestamp()
+                log::debug!(
+                    "PENDING: {}. TIME DIFF: {}",
+                    pending_messages.len(),
+                    block_info.gen_utime().0 as i64 - Utc::now().timestamp(),
                 );
 
                 last_block_id = next_block_id;
