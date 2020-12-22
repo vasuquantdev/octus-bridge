@@ -121,11 +121,13 @@ impl EthListener {
     pub async fn check_transaction(&self, hash: H256) -> Result<(Address, Vec<u8>), Error> {
         let mut attempts = 100;
         loop {
-            /// Trying to get data in case of transport error
+            // Trying to get data. Retrying in case of error
             match self.web3.eth().transaction_receipt(hash).await {
                 Ok(a) => match a {
                     //if no tx with this hash
-                    None => Err(anyhow!("No transactions found by hash. Assuming it's fake")),
+                    None => {
+                        return Err(anyhow!("No transactions found by hash. Assuming it's fake"))
+                    }
                     Some(a) => {
                         // if tx status is failed, then no such tx exists
                         match a.status {
@@ -160,12 +162,12 @@ impl EthListener {
                         let event: Option<_> = events
                             .into_iter()
                             .find(|x| x.tx_hash == hash /* && x.data == data */);
-                        match event {
+                        return match event {
                             Some(a) => Ok((a.address, a.data)),
                             None => Err(anyhow!(
                                 "No events for tx. Assuming confirmation is fake.: {}"
                             )),
-                        }
+                        };
                     }
                 },
                 Err(e) => {
@@ -324,7 +326,8 @@ async fn process_block(
         .from_block(block_number) //fixme
         .to_block(block_number)
         .build();
-    let mut attempts_number = 100;
+
+    let mut attempts_number = 86400 / 5;
     let sleep_time = Duration::from_secs(5);
     loop {
         match w3.eth().logs(filter.clone()).await {
@@ -337,16 +340,16 @@ async fn process_block(
                     match event {
                         Ok(a) => {
                             if let Err(e) = events_tx.send(Ok(a)) {
-                                log::error!("Failed sending event: {:?}", e);
+                                log::error!("FATAL ERROR. Failed sending event: {:?}", e);
                             }
-                            break;
+                            continue;
                         }
                         Err(e) => {
                             log::error!("Failed parsing log to event: {:?}", e);
                             if let Err(e) = events_tx.send(Err(e)) {
                                 log::error!("Failed sending event: {:?}", e);
                             }
-                            break;
+                            return;
                         }
                     }
                 }
@@ -354,15 +357,15 @@ async fn process_block(
             Err(e) => {
                 attempts_number -= 1;
                 if attempts_number == 0 {
-                    break;
+                    return;
                 }
                 log::error!("Critical error in eth subscriber: {}", e);
                 log::error!(
-                    "Retrying to get block: {}. Attempts left: {}",
+                    "Retrying to get block: {:?}. Attempts left: {}",
+                    block_number,
                     attempts_number
                 );
                 tokio::time::delay_for(sleep_time).await;
-                //FIXME will block be skipped in case of interrupted connection?
             }
         };
     }
