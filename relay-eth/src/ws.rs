@@ -22,7 +22,7 @@ const ETH_TREE_NAME: &str = "ethereum_data";
 pub const ETH_LAST_MET_HEIGHT: &str = "last_met_height";
 
 pub struct EthListener {
-    stream: Web3<Http>,
+    web3: Web3<Http>,
     db: Tree,
     topics: Arc<RwLock<(HashSet<Address>, HashSet<H256>)>>,
 }
@@ -58,7 +58,7 @@ impl EthListener {
         let api = Web3::new(connection);
 
         Ok(Self {
-            stream: api,
+            web3: api,
             db: db.open_tree(ETH_TREE_NAME)?,
             topics: Arc::new(Default::default()),
         })
@@ -102,7 +102,7 @@ impl EthListener {
 
         let (blocks_rx, events_rx) = spawn_blocks_scanner(
             self.db.clone(),
-            self.stream.clone(),
+            self.web3.clone(),
             self.topics.clone(),
             from_height,
         );
@@ -113,51 +113,72 @@ impl EthListener {
     pub async fn get_block_number_on_start(&self) -> Result<u64, Error> {
         Ok(match self.db.get(ETH_LAST_MET_HEIGHT)? {
             Some(a) => u64::from_le_bytes(a.as_ref().try_into()?),
-            None => self.stream.eth().block_number().await?.as_u64(),
+            None => self.web3.eth().block_number().await?.as_u64(),
         })
     }
 
     // TODO
     pub async fn check_transaction(&self, hash: H256) -> Result<(Address, Vec<u8>), Error> {
-        match self.stream.eth().transaction_receipt(hash).await? {
-            //if not tx with this hash
-            None => Err(anyhow!("No transactions found by hash. Assuming it's fake")),
-            Some(a) => {
-                // if tx status is failed, then no such tx exists
-                match a.status {
+        let mut attempts = 100;
+        loop {
+            /// Trying to get data in case of transport error
+            match self.web3.eth().transaction_receipt(hash).await {
+                Ok(a) => match a {
+                    //if no tx with this hash
+                    None => Err(anyhow!("No transactions found by hash. Assuming it's fake")),
                     Some(a) => {
-                        if a.as_u64() == 0 {
-                            return Err(anyhow!("Tx has failed status"));
+                        // if tx status is failed, then no such tx exists
+                        match a.status {
+                            Some(a) => {
+                                if a.as_u64() == 0 {
+                                    return Err(anyhow!("Tx has failed status"));
+                                }
+                            }
+                            None => return Err(anyhow!("No status field in eth node answer")),
+                        };
+
+                        let logs = a.logs;
+                        //parsing logs into events
+                        let events: Result<Vec<_>, _> =
+                            logs.into_iter().map(EthListener::log_to_event).collect();
+
+                        let events = match events {
+                            Ok(a) => a,
+                            Err(e) => {
+                                log::error!(
+                                    "No events for tx. Assuming confirmation is fake.: {}",
+                                    e
+                                );
+                                return Err(anyhow!(
+                                    "No events for tx. Assuming confirmation is fake.: {}",
+                                    e
+                                ));
+                            }
+                        };
+
+                        // if any event matches
+                        let event: Option<_> = events
+                            .into_iter()
+                            .find(|x| x.tx_hash == hash /* && x.data == data */);
+                        match event {
+                            Some(a) => Ok((a.address, a.data)),
+                            None => Err(anyhow!(
+                                "No events for tx. Assuming confirmation is fake.: {}"
+                            )),
                         }
                     }
-                    None => return Err(anyhow!("No status field in eth node answer")),
-                };
-
-                let logs = a.logs;
-                //parsing logs into events
-                let events: Result<Vec<_>, _> =
-                    logs.into_iter().map(EthListener::log_to_event).collect();
-
-                let events = match events {
-                    Ok(a) => a,
-                    Err(e) => {
-                        log::error!("No events for tx. Assuming confirmation is fake.: {}", e);
-                        return Err(anyhow!(
-                            "No events for tx. Assuming confirmation is fake.: {}",
-                            e
-                        ));
+                },
+                Err(e) => {
+                    if attempts == 0 {
+                        return Err(Error::from(e));
                     }
-                };
-
-                // if any event matches
-                let event: Option<_> = events
-                    .into_iter()
-                    .find(|x| x.tx_hash == hash /* && x.data == data */);
-                match event {
-                    Some(a) => Ok((a.address, a.data)),
-                    None => Err(anyhow!(
-                        "No events for tx. Assuming confirmation is fake.: {}"
-                    )),
+                    attempts -= 0;
+                    log::error!(
+                        "Failed fetching info from eth node. Attempts left: {}",
+                        attempts
+                    );
+                    //todo move to config?
+                    tokio::time::delay_for(Duration::from_secs(5)).await;
                 }
             }
         }
@@ -264,12 +285,12 @@ fn spawn_blocks_scanner(
                     None => continue,
                 };
             }
+            process_block(&w3, topics.as_ref(), scanned_height.into(), &events_tx).await;
+
             if let Err(e) = update_eth_state(&db, scanned_height, ETH_LAST_MET_HEIGHT) {
                 let err = format!("Critical error: failed saving eth state: {}", e);
                 log::error!("{}", &err);
             };
-
-            process_block(&w3, topics.as_ref(), scanned_height.into(), &events_tx).await;
 
             if let Err(e) = blocks_tx.send(scanned_height) {
                 log::error!("Failed sending event via channel: {:?}", e);
@@ -303,35 +324,48 @@ async fn process_block(
         .from_block(block_number) //fixme
         .to_block(block_number)
         .build();
-
-    match w3.eth().logs(filter).await {
-        Ok(a) => {
-            if !a.is_empty() {
-                log::info!("There some logs in block: {:?}", block_number);
-            }
-            for log in a {
-                let event = EthListener::log_to_event(log);
-                match event {
-                    Ok(a) => {
-                        if let Err(e) = events_tx.send(Ok(a)) {
-                            log::error!("Failed sending event: {:?}", e);
+    let mut attempts_number = 100;
+    let sleep_time = Duration::from_secs(5);
+    loop {
+        match w3.eth().logs(filter.clone()).await {
+            Ok(a) => {
+                if !a.is_empty() {
+                    log::info!("There are some logs in block: {:?}", block_number);
+                }
+                for log in a {
+                    let event = EthListener::log_to_event(log);
+                    match event {
+                        Ok(a) => {
+                            if let Err(e) = events_tx.send(Ok(a)) {
+                                log::error!("Failed sending event: {:?}", e);
+                            }
+                            break;
                         }
-                    }
-                    Err(e) => {
-                        log::error!("Failed parsing log to event: {:?}", e);
-                        if let Err(e) = events_tx.send(Err(e)) {
-                            log::error!("Failed sending event: {:?}", e);
+                        Err(e) => {
+                            log::error!("Failed parsing log to event: {:?}", e);
+                            if let Err(e) = events_tx.send(Err(e)) {
+                                log::error!("Failed sending event: {:?}", e);
+                            }
+                            break;
                         }
-                        continue;
                     }
                 }
             }
-        }
-        Err(e) => {
-            log::error!("Critical error in eth subscriber: {}", e);
-            //FIXME will block be skipped in case of interrupted connection?
-        }
-    };
+            Err(e) => {
+                attempts_number -= 1;
+                if attempts_number == 0 {
+                    break;
+                }
+                log::error!("Critical error in eth subscriber: {}", e);
+                log::error!(
+                    "Retrying to get block: {}. Attempts left: {}",
+                    attempts_number
+                );
+                tokio::time::delay_for(sleep_time).await;
+                //FIXME will block be skipped in case of interrupted connection?
+            }
+        };
+    }
 }
 
 ///topics: `Keccak256("Method_Signature")`

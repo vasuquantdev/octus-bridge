@@ -467,11 +467,8 @@ impl EventConfigurationsListener {
         &self,
         event_addr: MsgAddrStd,
     ) -> Result<EthereumEventDetails, ContractError> {
-        // TODO: move into config
-        let mut retries_count = 100;
-
-        // Should be greater then account polling interval
-        let retries_interval = tokio::time::Duration::from_secs(5); // 1 sec ~= time before next block in masterchain.
+        let mut retries_count = self.timeout_params.get_event_details_retry_times;
+        let retries_interval = self.timeout_params.get_event_details_poll_interval_secs; // 1 sec ~= time before next block in masterchain.
 
         loop {
             match self.event_contract.get_details(event_addr.clone()).await {
