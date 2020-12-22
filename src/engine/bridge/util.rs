@@ -9,7 +9,7 @@ use ton_abi::{ParamType as TonParamType, TokenValue as TonTokenValue, TokenValue
 
 use relay_eth::ws::H256;
 use relay_ton::contracts::EthereumEventConfiguration;
-use relay_ton::prelude::Cell;
+use relay_ton::prelude::{serialize_toc, Cell};
 
 /// Returns topic hash and abi for ETH and TON
 pub fn parse_eth_abi(abi: &str) -> Result<(H256, Vec<EthParamType>, Vec<TonParamType>), Error> {
@@ -81,6 +81,7 @@ pub fn validate_ethereum_event_configuration(
     Ok(())
 }
 
+//TODO ADD TO README SUPPORTED TYPES
 pub fn eth_param_from_str(token: &str) -> Result<EthParamType, Error> {
     Ok(match token.to_lowercase().as_str() {
         str if str.starts_with("uint") => {
@@ -208,8 +209,12 @@ pub fn map_eth_ton(eth: EthTokenValue) -> TonTokenValue {
 }
 
 // TODO: return result
-pub fn map_ton_eth(ton: TonTokenValue, eth_param_type: &EthParamType) -> EthTokenValue {
-    match ton {
+/// maps ton toke
+pub fn map_ton_eth(
+    ton: TonTokenValue,
+    eth_param_type: &EthParamType,
+) -> Result<EthTokenValue, Error> {
+    Ok(match ton {
         TonTokenValue::Uint(a) => {
             let bytes = a.number.to_bytes_le();
             EthTokenValue::Uint(ethabi::Uint::from_little_endian(&bytes))
@@ -233,9 +238,18 @@ pub fn map_ton_eth(ton: TonTokenValue, eth_param_type: &EthParamType) -> EthToke
         TonTokenValue::Address(a) => EthTokenValue::String(a.to_string()),
         TonTokenValue::FixedBytes(a) => EthTokenValue::FixedBytes(a),
         TonTokenValue::Bool(a) => EthTokenValue::Bool(a),
-        TonTokenValue::Cell(a) => EthTokenValue::Bytes(a.data().to_vec()),
-        _ => todo!(),
-    }
+        TonTokenValue::Cell(a) => {
+            EthTokenValue::Bytes(serialize_toc(&a).map_err(|e| Error::msg(e.to_string()))?)
+        }
+        TokenValue::Tuple(a) => EthTokenValue::Tuple(
+            a.into_iter()
+                .map(|x| map_ton_eth(x.value, eth_param_type))
+                .collect(),
+        ),
+        TokenValue::Array(a) =>EthTokenValue::Array(a.into_iter().map(|x|))
+        TokenValue::FixedArray(_) => {}
+       _ => Err(Error::msg("Unimplemented"))
+    })
 }
 
 #[cfg(test)]
@@ -249,11 +263,11 @@ mod test {
 
     use relay_eth::ws::H256;
     use relay_ton::contracts::utils::pack_tokens;
+    use relay_ton::prelude::serialize_toc;
 
     use crate::engine::bridge::util::{
         eth_param_from_str, map_eth_ton, map_ton_eth, parse_eth_abi,
     };
-    use relay_ton::prelude::serialize_toc;
 
     const ABI: &str = r#"
   {
