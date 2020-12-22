@@ -6,8 +6,8 @@ use ethabi::ParamType as EthParamType;
 use ethereum_types::{Address, H256};
 use futures::{future, Stream, StreamExt};
 use num_traits::ToPrimitive;
-use tokio::sync::oneshot;
 use tokio::sync::{mpsc, Mutex, RwLock, RwLockReadGuard};
+use tokio::sync::{oneshot, Notify};
 use ton_abi::ParamType as TonParamType;
 use ton_block::{MsgAddrStd, MsgAddressInt};
 
@@ -94,6 +94,7 @@ impl EventConfigurationsListener {
                                 listener.clone().subscribe_to_events_configuration_contract(
                                     subscriptions_tx.clone(),
                                     address,
+                                    None,
                                 ),
                             );
                         }
@@ -106,13 +107,23 @@ impl EventConfigurationsListener {
         });
 
         // Get all configs before now
-        let mut known_configs = self.bridge.get_known_config_contracts();
-        while let Some(address) = known_configs.next().await {
-            tokio::spawn(
-                self.clone()
-                    .subscribe_to_events_configuration_contract(subscriptions_tx.clone(), address),
-            );
+        let mut known_contracts = Vec::new();
+        let mut stream = self.bridge.get_known_config_contracts();
+        while let Some(address) = stream.next().await {
+            known_contracts.push(address);
         }
+
+        let semaphore = Semaphore::new(known_contracts.len());
+
+        for address in known_contracts.into_iter() {
+            tokio::spawn(self.clone().subscribe_to_events_configuration_contract(
+                subscriptions_tx.clone(),
+                address,
+                Some(semaphore.clone()),
+            ));
+        }
+
+        semaphore.wait().await;
 
         // Return subscriptions stream
         subscriptions_rx
@@ -255,6 +266,7 @@ impl EventConfigurationsListener {
         self: Arc<Self>,
         subscriptions_tx: mpsc::UnboundedSender<(Address, H256)>,
         address: MsgAddrStd,
+        semaphore: Option<Semaphore>,
     ) {
         let address = MsgAddressInt::AddrStd(address);
 
@@ -265,6 +277,7 @@ impl EventConfigurationsListener {
             .await
             .insert(address.clone());
         if !new_configuration {
+            try_notify(semaphore).await;
             return;
         }
 
@@ -286,6 +299,7 @@ impl EventConfigurationsListener {
                 Ok(details) => match validate_ethereum_event_configuration(&details) {
                     Ok(_) => break details,
                     Err(e) => {
+                        try_notify(semaphore).await;
                         self.known_config_addresses.lock().await.remove(&address);
                         log::error!("got bad ethereum config: {:?}", e);
                         return;
@@ -295,7 +309,7 @@ impl EventConfigurationsListener {
                     if retries_count > 0 =>
                 {
                     retries_count -= 1;
-                    log::error!(
+                    log::warn!(
                             "failed to get events configuration contract details for {}. Retrying ({} left)",
                             address,
                             retries_count
@@ -303,6 +317,7 @@ impl EventConfigurationsListener {
                     tokio::time::delay_for(retries_interval).await;
                 }
                 Err(e) => {
+                    try_notify(semaphore).await;
                     self.known_config_addresses.lock().await.remove(&address);
                     log::error!(
                         "failed to get events configuration contract details: {:?}",
@@ -318,6 +333,7 @@ impl EventConfigurationsListener {
             .write()
             .await
             .insert(address.clone(), config_contract.clone());
+        try_notify(semaphore).await;
 
         // Prefetch required properties
         let ethereum_event_blocks_to_confirm = details
@@ -579,6 +595,39 @@ impl EthTonTransaction {
                     )
                     .await
             }
+        }
+    }
+}
+
+async fn try_notify(semaphore: Option<Semaphore>) {
+    if let Some(semaphore) = semaphore {
+        semaphore.notify().await;
+    }
+}
+
+#[derive(Clone)]
+struct Semaphore {
+    counter: Arc<Mutex<usize>>,
+    done: Arc<Notify>,
+}
+
+impl Semaphore {
+    fn new(count: usize) -> Self {
+        Self {
+            counter: Arc::new(Mutex::new(count)),
+            done: Arc::new(Notify::new()),
+        }
+    }
+
+    async fn wait(&self) {
+        self.done.notified().await
+    }
+
+    async fn notify(&self) {
+        let mut counter = self.counter.lock().await;
+        match counter.checked_sub(1) {
+            Some(new) if new != 0 => *counter = new,
+            _ => self.done.notify(),
         }
     }
 }
