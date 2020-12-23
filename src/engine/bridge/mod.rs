@@ -104,6 +104,11 @@ impl Bridge {
         Ok(())
     }
 
+    /// Restart voting for failed transactions
+    pub fn retry_failed(&self) {
+        self.event_configurations_listener.retry_failed()
+    }
+
     pub async fn get_event_configurations(
         &self,
     ) -> Result<Vec<(MsgAddressInt, EthereumEventConfiguration)>, anyhow::Error> {

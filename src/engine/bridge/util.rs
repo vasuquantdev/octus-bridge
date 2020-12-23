@@ -266,7 +266,7 @@ pub fn map_ton_eth(
                 tokens
                     .into_iter()
                     .zip(params.into_iter())
-                    .map(|(ton, eth_param_type)| map_ton_eth(ton.value, *eth_param_type.clone()))
+                    .map(|(ton, eth_param_type)| map_ton_eth(ton.value, *eth_param_type))
                     .collect::<Result<_, _>>()?,
             )
         }

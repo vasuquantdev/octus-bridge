@@ -106,6 +106,11 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
         .and(state.clone())
         .and_then(|data, (state, _)| status::remove_failed_older_than(state, data));
 
+    let retry_failed = warp::path!("status" / "failed" / "retry")
+        .and(warp::get())
+        .and(state.clone())
+        .and_then(|(state, _)| status::retry_failed(state));
+
     let routes = init
         .or(password)
         .or(status)
@@ -117,6 +122,7 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
         .or(get_event_configuration)
         .or(add_event_configuration)
         .or(gc_old_failed)
+        .or(retry_failed)
         .or(vote_for_event_configuration);
 
     let server = warp::serve(routes);

@@ -365,7 +365,7 @@ impl EventConfigurationsListener {
                                 is_active = details.active;
 
                                 listener.configs_state.write().await.eth_configs_map.insert(
-                                    details.ethereum_event_address.clone(),
+                                    details.ethereum_event_address,
                                     (address.clone(), details),
                                 );
 

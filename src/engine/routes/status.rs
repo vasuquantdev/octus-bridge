@@ -106,7 +106,7 @@ pub async fn remove_failed_older_than(
     let queue = TonQueue::new(&state.state_manager).expect("Fatal db error");
     let result = match queue.remove_failed_older_than(&dt) {
         Err(e) => {
-            let message = format!("Faied removing old entries in ton queue: {}", e);
+            let message = format!("Failed removing old entries in ton queue: {}", e);
             log::error!("{}", message);
             warp::reply::with_status(message, warp::http::StatusCode::INTERNAL_SERVER_ERROR)
         }
@@ -119,6 +119,17 @@ pub async fn remove_failed_older_than(
     Ok(result)
 }
 
+pub async fn retry_failed(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {
+    let state = state.read().await;
+    let res = match &state.bridge_state {
+        BridgeState::Running(a) => {
+            a.retry_failed();
+            warp::reply::with_status("ok", warp::http::StatusCode::OK)
+        }
+        _ => warp::reply::with_status("", warp::http::StatusCode::FORBIDDEN),
+    };
+    Ok(res)
+}
 #[derive(Deserialize, Serialize, Debug)]
 pub struct GcOlderThen {
     pub time: i64,
