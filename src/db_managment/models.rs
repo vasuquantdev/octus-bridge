@@ -1,10 +1,11 @@
 use chrono::{DateTime, Utc};
-use ton_block::MsgAddressInt;
+use ton_block::{MsgAddrStd, MsgAddressInt};
 
 use relay_eth::ws::H256;
-use relay_ton::prelude::{serde_cells, serde_int_addr, Cell};
+use relay_ton::prelude::{serde_cells, serde_int_addr, serde_std_addr, Cell};
 
 use super::prelude::*;
+use crate::engine::bridge::models::EventVote;
 
 pub mod buf_to_hex {
     use serde::{Deserialize, Deserializer, Serializer};
@@ -88,4 +89,7 @@ pub struct TxStat {
     #[serde(with = "h256_to_hex")]
     pub tx_hash: H256,
     pub met: DateTime<Utc>,
+    #[serde(with = "serde_std_addr")]
+    pub event_addr: MsgAddrStd,
+    pub vote: EventVote,
 }

@@ -15,11 +15,10 @@ use relay_ton::contracts::*;
 use relay_ton::prelude::UInt256;
 use relay_ton::transport::{Transport, TransportError};
 
+use super::models::*;
 use crate::config::TonOperationRetryParams;
 use crate::db_managment::*;
 use crate::engine::bridge::util::{parse_eth_abi, validate_ethereum_event_configuration};
-
-use super::models::*;
 
 /// Listens to config streams and maps them.
 pub struct EventConfigurationsListener {
@@ -144,7 +143,18 @@ impl EventConfigurationsListener {
     pub async fn enqueue_vote(self: &Arc<Self>, data: EthTonTransaction) -> Result<(), Error> {
         let event_address = self.get_event_contract_address(&data).await?;
 
-        tokio::spawn(self.clone().ensure_sent(event_address, data));
+        if !self // check if we are not voting for this event
+            .ton_queue
+            .has_event(&event_address)
+            .expect("Fatal db error")
+            && !self // check if we have not already voted for this event
+                .stats_db
+                .has_already_voted(&event_address, &self.relay_key)
+                .expect("Fatal db error")
+        {
+            tokio::spawn(self.clone().ensure_sent(event_address, data));
+        }
+
         Ok(())
     }
 
@@ -504,13 +514,13 @@ impl EventConfigurationsListener {
             && !event.data.proxy_callback_executed
             && !event.data.event_rejected
             && event.relay_key != self.relay_key // event from other relay
-            && !self // check if event is new
-                .stats_db
-                .has_confirmed_event(&event.event_addr)
-                .expect("Fatal db error")
-            && !self // check if we are already voting for this event
+            && !self // check if we are not voting for this event
                 .ton_queue
                 .has_event(&event.event_addr)
+                .expect("Fatal db error")
+            && !self // check if we have not already voted for this event
+                .stats_db
+                .has_already_voted(&event.event_addr, &self.relay_key)
                 .expect("Fatal db error");
 
         log::info!("Received {}, should check: {}", event, should_check);
