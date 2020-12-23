@@ -500,21 +500,20 @@ impl EventConfigurationsListener {
             data,
         };
 
-        let new_event = !self
-            .stats_db
-            .has_confirmed_event(&event.event_addr)
-            .expect("Fatal db error");
         let should_check = event.vote == EventVote::Confirm
-            && new_event
             && !event.data.proxy_callback_executed
-            && !event.data.event_rejected;
+            && !event.data.event_rejected
+            && event.relay_key != self.relay_key // event from other relay
+            && !self // check if event is new
+                .stats_db
+                .has_confirmed_event(&event.event_addr)
+                .expect("Fatal db error")
+            && !self // check if we are already voting for this event
+                .ton_queue
+                .has_event(&event.event_addr)
+                .expect("Fatal db error");
 
-        log::info!(
-            "Received {}, new event: {}, should check: {}",
-            event,
-            new_event,
-            should_check
-        );
+        log::info!("Received {}, should check: {}", event, should_check);
 
         self.stats_db
             .update_relay_stats(&event)
