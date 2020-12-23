@@ -65,7 +65,6 @@ pub struct EthTonConfirmationData {
     pub event_block: H256,
     #[serde(with = "serde_int_addr")]
     pub ethereum_event_configuration_address: MsgAddressInt,
-    pub construction_time: DateTime<Utc>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -75,16 +74,10 @@ pub enum EthTonTransaction {
 }
 
 impl EthTonTransaction {
-    pub fn get_event_transaction(&self) -> H256 {
+    pub fn inner(&self) -> &EthTonConfirmationData {
         match self {
-            EthTonTransaction::Confirm(a) => a.event_transaction,
-            EthTonTransaction::Reject(a) => a.event_transaction,
-        }
-    }
-    pub fn get_construction_time(&self) -> &DateTime<Utc> {
-        match self {
-            EthTonTransaction::Confirm(a) => &a.construction_time,
-            EthTonTransaction::Reject(a) => &a.construction_time,
+            EthTonTransaction::Confirm(data) => data,
+            EthTonTransaction::Reject(data) => data,
         }
     }
 }

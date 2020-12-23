@@ -74,11 +74,11 @@ impl EthereumEventConfigurationContract {
 
     pub async fn compute_event_address(
         &self,
-        event_transaction: Vec<u8>,
+        event_transaction: ethereum_types::H256,
         event_index: BigUint,
         event_data: Cell,
         event_block_number: BigUint,
-        event_block: Vec<u8>,
+        event_block: ethereum_types::H256,
     ) -> ContractResult<MsgAddrStd> {
         const TON: u64 = 1_000_000_000;
         const CONFIRM_VALUE: u64 = 1_000_000 * TON;

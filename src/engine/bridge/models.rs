@@ -71,7 +71,6 @@ impl From<ExtendedEventInfo> for EthTonConfirmationData {
             ethereum_event_configuration_address: MsgAddressInt::AddrStd(
                 event.data.event_configuration_address,
             ),
-            construction_time: chrono::Utc::now(),
         }
     }
 }

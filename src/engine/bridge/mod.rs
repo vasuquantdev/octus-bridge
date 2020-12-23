@@ -197,11 +197,13 @@ impl Bridge {
                         log::info!("Confirming transaction. Hash: {}", event.event_transaction);
                         self.event_configurations_listener
                             .enqueue_vote(EthTonTransaction::Confirm(event))
+                            .await
                     }
                     Err(e) => {
                         log::warn!("Rejection: {:?}", e);
                         self.event_configurations_listener
                             .enqueue_vote(EthTonTransaction::Reject(event))
+                            .await
                     }
                 } {
                     log::error!("Critical error while spawning vote: {:?}", e)
@@ -305,7 +307,6 @@ impl Bridge {
             event_block_number: event.block_number,
             event_block: event.block_hash,
             ethereum_event_configuration_address,
-            construction_time: chrono::Utc::now(),
         };
 
         let target_block_number = event.block_number + ethereum_event_blocks_to_confirm;

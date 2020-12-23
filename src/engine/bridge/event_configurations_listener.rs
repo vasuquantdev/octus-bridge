@@ -32,8 +32,8 @@ pub struct EventConfigurationsListener {
     stats_db: StatsDb,
 
     relay_key: UInt256,
-    confirmations: Mutex<HashMap<H256, oneshot::Sender<()>>>,
-    rejections: Mutex<HashMap<H256, oneshot::Sender<()>>>,
+    confirmations: Mutex<HashMap<MsgAddrStd, oneshot::Sender<()>>>,
+    rejections: Mutex<HashMap<MsgAddrStd, oneshot::Sender<()>>>,
 
     configs_state: Arc<RwLock<ConfigsState>>,
     config_contracts: Arc<RwLock<ContractsMap>>,
@@ -125,8 +125,8 @@ impl EventConfigurationsListener {
 
         semaphore.wait().await;
 
-        for (hash, data) in self.ton_queue.get_all_pending() {
-            tokio::spawn(self.clone().ensure_sent(hash, data));
+        for (event_address, data) in self.ton_queue.get_all_pending() {
+            tokio::spawn(self.clone().ensure_sent(event_address, data));
         }
 
         // Return subscriptions stream
@@ -135,18 +135,16 @@ impl EventConfigurationsListener {
 
     /// Restart voting for failed transactions
     pub fn retry_failed(self: &Arc<Self>) {
-        for (hash, data) in self.ton_queue.get_all_failed() {
-            tokio::spawn(self.clone().ensure_sent(hash, data));
+        for (event_address, data) in self.ton_queue.get_all_failed() {
+            tokio::spawn(self.clone().ensure_sent(event_address, data));
         }
     }
 
     /// Adds transaction to queue, starts reliable sending
-    pub fn enqueue_vote(self: &Arc<Self>, data: EthTonTransaction) -> Result<(), Error> {
-        let hash = data.get_event_transaction();
-        self.ton_queue.insert_pending(&hash, &data)?;
+    pub async fn enqueue_vote(self: &Arc<Self>, data: EthTonTransaction) -> Result<(), Error> {
+        let event_address = self.get_event_contract_address(&data).await?;
 
-        tokio::spawn(self.clone().ensure_sent(hash, data));
-
+        tokio::spawn(self.clone().ensure_sent(event_address, data));
         Ok(())
     }
 
@@ -163,16 +161,58 @@ impl EventConfigurationsListener {
         self.config_contracts.read().await.get(address).cloned()
     }
 
-    async fn ensure_sent(self: Arc<Self>, hash: H256, data: EthTonTransaction) {
+    async fn get_event_contract_address(
+        &self,
+        data: &EthTonTransaction,
+    ) -> Result<MsgAddrStd, Error> {
+        let data = data.inner().clone();
+
+        let config_contract = match self
+            .get_configuration_contract(&data.ethereum_event_configuration_address)
+            .await
+        {
+            Some(contract) => contract,
+            None => {
+                return Err(anyhow!(
+                    "Unknown event configuration contract: {}",
+                    data.ethereum_event_configuration_address
+                ))
+            }
+        };
+
+        let event_addr = config_contract
+            .compute_event_address(
+                data.event_transaction,
+                data.event_index.into(),
+                data.event_data,
+                data.event_block_number.into(),
+                data.event_block,
+            )
+            .await?;
+
+        Ok(event_addr)
+    }
+
+    async fn ensure_sent(self: Arc<Self>, event_address: MsgAddrStd, data: EthTonTransaction) {
+        self.ton_queue
+            .insert_pending(&event_address, &data)
+            .unwrap();
+
         let (tx, rx) = oneshot::channel();
 
         let vote = match &data {
             EthTonTransaction::Confirm(_) => {
-                self.confirmations.lock().await.insert(hash, tx);
+                self.confirmations
+                    .lock()
+                    .await
+                    .insert(event_address.clone(), tx);
                 EventVote::Confirm
             }
             EthTonTransaction::Reject(_) => {
-                self.rejections.lock().await.insert(hash, tx);
+                self.rejections
+                    .lock()
+                    .await
+                    .insert(event_address.clone(), tx);
                 EventVote::Reject
             }
         };
@@ -203,7 +243,11 @@ impl EventConfigurationsListener {
             } else if let Some(rx_fut) = rx.take() {
                 match future::select(rx_fut, delay).await {
                     future::Either::Left((Ok(()), _)) => {
-                        log::info!("Got response for voting for {:?} {}", vote, hash);
+                        log::info!(
+                            "Got response for voting for {:?} {}",
+                            vote,
+                            data.inner().event_transaction,
+                        );
                         break Ok(());
                     }
                     future::Either::Left((Err(e), _)) => {
@@ -228,26 +272,26 @@ impl EventConfigurationsListener {
             }
         };
 
-        self.cancel(&hash, vote).await;
-
         match result {
             Ok(_) => {
                 log::info!(
                     "Stopped waiting for transaction: {}",
-                    hex::encode(hash.as_bytes())
+                    hex::encode(data.inner().event_transaction.as_bytes())
                 );
             }
             Err(e) => {
                 log::error!(
                     "Stopped waiting for transaction: {}. Reason: {:?}",
-                    hex::encode(hash.as_bytes()),
+                    hex::encode(data.inner().event_transaction.as_bytes()),
                     e
                 );
-                if let Err(e) = self.ton_queue.mark_failed(&hash) {
-                    log::error!("failed to mark transaction: {:?}", e);
+                if let Err(e) = self.ton_queue.mark_failed(&event_address) {
+                    log::error!("failed to mark transaction as failed: {:?}", e);
                 }
             }
         }
+
+        self.cancel(&event_address, vote).await;
     }
 
     /// Remove transaction from TON queue and notify spawned `ensure_sent`
@@ -257,7 +301,7 @@ impl EventConfigurationsListener {
             EventVote::Reject => self.rejections.lock().await,
         };
 
-        if let Some(tx) = table.remove(&event.data.ethereum_event_transaction) {
+        if let Some(tx) = table.remove(&event.event_addr) {
             if tx.send(()).is_err() {
                 log::error!("Failed sending event notification");
             }
@@ -265,10 +309,10 @@ impl EventConfigurationsListener {
     }
 
     /// Just remove the transaction from TON queue
-    async fn cancel(&self, hash: &H256, vote: EventVote) {
+    async fn cancel(&self, event_address: &MsgAddrStd, vote: EventVote) {
         match vote {
-            EventVote::Confirm => self.confirmations.lock().await.remove(hash),
-            EventVote::Reject => self.rejections.lock().await.remove(hash),
+            EventVote::Confirm => self.confirmations.lock().await.remove(event_address),
+            EventVote::Reject => self.rejections.lock().await.remove(event_address),
         };
     }
 
@@ -478,10 +522,7 @@ impl EventConfigurationsListener {
 
         if event.relay_key == self.relay_key {
             // Stop retrying after our event response was found
-            if let Err(e) = self
-                .ton_queue
-                .mark_complete(&event.data.ethereum_event_transaction)
-            {
+            if let Err(e) = self.ton_queue.mark_complete(&event.event_addr) {
                 log::error!("Failed to mark transaction completed. {:?}", e);
             }
 
