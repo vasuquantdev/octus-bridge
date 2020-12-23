@@ -4,8 +4,8 @@ use sled::{Db, Transactional, Tree};
 
 use relay_ton::prelude::{MsgAddrStd, UInt256};
 
-use crate::db_managment::constants::{TX_TABLE_TREE_FAILED_NAME, TX_TABLE_TREE_PENDING_NAME};
-use crate::db_managment::EthTonTransaction;
+use crate::db_management::constants::{TX_TABLE_TREE_FAILED_NAME, TX_TABLE_TREE_PENDING_NAME};
+use crate::db_management::EthTonTransaction;
 
 /// Stores sent transactions for our relay
 #[derive(Clone)]

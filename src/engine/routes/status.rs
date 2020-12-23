@@ -5,7 +5,7 @@ use serde::Serialize;
 use tokio::sync::RwLock;
 use warp::Reply;
 
-use crate::db_managment::{EthQueue, EthTonTransaction, StatsDb, Table, TonQueue};
+use crate::db_management::{EthQueue, EthTonTransaction, StatsDb, Table, TonQueue};
 use crate::engine::models::{BridgeState, State};
 
 pub async fn get_status(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {

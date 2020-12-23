@@ -1,15 +1,7 @@
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
-
-use anyhow::{anyhow, Error};
 use ethabi::ParamType as EthParamType;
-use ethereum_types::{Address, H256};
-use futures::{future, Stream, StreamExt};
-use num_traits::ToPrimitive;
 use tokio::sync::{mpsc, Mutex, RwLock, RwLockReadGuard};
 use tokio::sync::{oneshot, Notify};
 use ton_abi::ParamType as TonParamType;
-use ton_block::{MsgAddrStd, MsgAddressInt};
 
 use relay_ton::contracts::*;
 use relay_ton::prelude::UInt256;
@@ -17,8 +9,9 @@ use relay_ton::transport::{Transport, TransportError};
 
 use super::models::*;
 use crate::config::TonOperationRetryParams;
-use crate::db_managment::*;
+use crate::db_management::*;
 use crate::engine::bridge::util::{parse_eth_abi, validate_ethereum_event_configuration};
+use crate::prelude::*;
 
 /// Listens to config streams and maps them.
 pub struct EventConfigurationsListener {

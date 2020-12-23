@@ -4,7 +4,7 @@ use relay_eth::ws::H256;
 use relay_ton::contracts::EthereumEventDetails;
 use relay_ton::prelude::{serde_std_addr, serde_uint256, MsgAddrStd, MsgAddressInt, UInt256};
 
-use crate::db_managment::EthTonConfirmationData;
+use crate::db_management::EthTonConfirmationData;
 
 use super::prelude::*;
 

@@ -1,13 +1,10 @@
-use anyhow::anyhow;
-use anyhow::Error;
+use crate::prelude::*;
 use ethabi::{ParamType as EthParamType, Token as EthTokenValue};
 use num_bigint::{BigInt, BigUint};
-use serde::{Deserialize, Serialize};
 use sha3::digest::Digest;
 use sha3::Keccak256;
 use ton_abi::{ParamType as TonParamType, TokenValue as TonTokenValue, TokenValue};
 
-use relay_eth::ws::H256;
 use relay_ton::contracts::EthereumEventConfiguration;
 use relay_ton::prelude::Cell;
 

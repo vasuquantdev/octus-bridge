@@ -1,11 +1,10 @@
+use crate::prelude::*;
 use std::fmt;
 use std::fmt::{Debug, Formatter};
 use std::fs::File;
 use std::num::NonZeroU32;
 use std::path::Path;
-use std::sync::Arc;
 
-use anyhow::{anyhow, Error};
 use ed25519_dalek::{ed25519, Keypair, Signer};
 use rand::prelude::*;
 use ring::{digest, pbkdf2};

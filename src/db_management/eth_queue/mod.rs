@@ -1,11 +1,9 @@
-use std::collections::{HashMap};
-
-
+use std::collections::HashMap;
 
 use tokio::sync::{Mutex, MutexGuard};
 
-use crate::db_managment::models::EthTonConfirmationData;
-use crate::db_managment::Table;
+use crate::db_management::models::EthTonConfirmationData;
+use crate::db_management::Table;
 
 use super::prelude::*;
 

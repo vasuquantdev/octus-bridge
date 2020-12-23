@@ -1,4 +1,3 @@
-use std::io::Write;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -6,7 +5,6 @@ use std::time::Duration;
 use anyhow::Error;
 use clap::Clap;
 use config::{Config, File, FileFormat};
-use serde::{Deserialize, Serialize};
 use sha3::Digest;
 
 use relay_eth::ws::{Address as EthAddr, H256};
@@ -14,6 +12,8 @@ use relay_eth::ws::{Address as EthAddr, H256};
 use relay_ton::transport::graphql_transport::Config as TonGraphQLConfig;
 #[cfg(feature = "tonlib-transport")]
 use relay_ton::transport::tonlib_transport::Config as TonTonlibConfig;
+
+use crate::prelude::*;
 
 mod serde_seconds {
     use super::*;

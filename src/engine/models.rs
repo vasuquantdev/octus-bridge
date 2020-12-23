@@ -1,19 +1,10 @@
-use std::convert::TryFrom;
-use std::str::FromStr;
-use std::sync::Arc;
-
-use anyhow::{anyhow, Error};
-use num_traits::ToPrimitive;
-use serde::{Deserialize, Serialize};
-use sled::Db;
-use ton_block::MsgAddressInt;
-
 use relay_ton::contracts;
 
 use crate::config::RelayConfig;
 use crate::crypto::key_managment::KeyData;
 use crate::engine::bridge::Bridge;
 use crate::engine::routes::create_bridge;
+use crate::prelude::*;
 
 impl State {
     pub async fn finalize(&mut self, config: RelayConfig, key_data: KeyData) -> Result<(), Error> {
