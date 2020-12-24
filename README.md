@@ -12,7 +12,8 @@ for user password derivation.
 
 In case of panic, we flush all the state to disk. In normal conditions state is
 periodically flushed on disk. In case of network error we retry to get/send
-data.
+data. We are using http and polling instead of websockets due to impossibility
+to detect the disconnect and save state for every processed block.
 
 ## How it works
 
@@ -28,8 +29,8 @@ of config change.
 Each config has ethereum address + abi + `blocks_to_confirm` constant + some
 additional data.
 
-Then we are subscribes on ethereum events from the last block in eth, using abi
-and addresses, got on the previous step. If the relay has ever started, then we
+Then we subscribe on ethereum events from the last block in eth, using abi and
+addresses, got on the previous step. If the relay has ever started, then we
 restore state in  [Persistent state](#persistent-state) section.
 
 We enqueue each received ethereum event in the persistent queue. On each
@@ -51,3 +52,48 @@ For each event received from other relays we check it validity.
   confirmed table when we see confirmation for it.
 - We resend all pending transaction after relay restart
 - All transfers between queues are atomic.
+
+## Configuration
+
+You can generate default config,
+using `relay --gen-config --crypto-store-path 'path/to/file/with/encrypted/data'`
+
+### Example config with graphql transport
+
+```json
+{
+  "encrypted_data": "config_data.json",
+  "eth_node_address": "http://address_of_eth_node",
+  "ton_contract_address": "address of bridge contract",
+  "storage_path": "./persistent_storage",
+  "listen_address": "127.0.0.1:12345",
+  "ton_config": {
+    "type": "GraphQL",
+    "addr": "https://main.ton.dev/graphql",
+    "next_block_timeout_sec": 60
+  },
+  "ton_operation_timeouts": {
+    "configuration_contract_try_poll_times": 100,
+    "get_event_details_retry_times": 100,
+    "get_event_details_poll_interval_secs": 5,
+    "broadcast_in_ton_interval_secs": 10,
+    "broadcast_in_ton_times": 10,
+    "broadcast_in_ton_interval_multiplier": 1.5
+  }
+}
+```
+
+- `encrypted_data` path to file, where encrypted data is stored.
+- `eth_node_address` address of ethereum node
+- `ton_contract_address` address of bridge contract
+- `storage_path` path for [database](#persistent-state)
+- `listen_address` address to bin control server.  **EXPOSING IT TO OUTER WORLD
+  IS PROHIBITED**, because anyone, having access to it can control relay.
+- `ton_operation_timeouts` - default values are optimal.  
+
+#### ton_config
+##### GraphQL
+ - `addr` - address of graphql endpoint
+ - `next_block_timeout_sec`  - timeout for blocks emission
+#### Cpp 
+TODO
