@@ -1,10 +1,10 @@
-use relay_ton::contracts;
-
 use crate::config::RelayConfig;
 use crate::crypto::key_managment::KeyData;
 use crate::engine::bridge::Bridge;
 use crate::engine::routes::create_bridge;
 use crate::prelude::*;
+pub use relay_models::models::{InitData, Password, RescanEthData, Status, VotingAddress};
+use relay_ton::contracts;
 
 impl State {
     pub async fn finalize(&mut self, config: RelayConfig, key_data: KeyData) -> Result<(), Error> {
@@ -31,26 +31,25 @@ pub enum BridgeState {
     Running(Arc<Bridge>),
 }
 
-#[derive(Deserialize, Debug)]
-pub struct InitData {
-    pub ton_seed: String,
-    pub eth_seed: String,
-    pub password: String,
-    pub language: String,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct Password {
-    pub password: String,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct RescanEthData {
-    pub block: u64,
-}
-
-// TODO: move into separate lib and share with client
 #[derive(Deserialize, Serialize)]
+pub struct EventConfiguration {
+    pub address: String,
+
+    pub ethereum_event_abi: String,
+    pub ethereum_event_address: String,
+    pub event_proxy_address: String,
+    pub ethereum_event_blocks_to_confirm: u64,
+    pub required_confirmations: u64,
+    pub required_rejections: u64,
+    pub event_required_confirmations: u64,
+    pub event_required_rejects: u64,
+
+    pub confirm_keys: Vec<String>,
+    pub reject_keys: Vec<String>,
+    pub active: bool,
+}
+
+#[derive(Deserialize, Serialize, opg::OpgModel)]
 pub struct NewEventConfiguration {
     pub ethereum_event_abi: String,
     pub ethereum_event_address: String,
@@ -89,23 +88,25 @@ impl TryFrom<NewEventConfiguration> for contracts::models::NewEventConfiguration
     }
 }
 
-// TODO: move into separate lib and share with client
-#[derive(Deserialize, Serialize)]
-pub struct EventConfiguration {
-    pub address: String,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase", tag = "vote", content = "address")]
+pub enum Voting {
+    Confirm(String),
+    Reject(String),
+}
 
-    pub ethereum_event_abi: String,
-    pub ethereum_event_address: String,
-    pub event_proxy_address: String,
-    pub ethereum_event_blocks_to_confirm: u64,
-    pub required_confirmations: u64,
-    pub required_rejections: u64,
-    pub event_required_confirmations: u64,
-    pub event_required_rejects: u64,
+impl TryFrom<Voting> for (MsgAddressInt, contracts::models::Voting) {
+    type Error = anyhow::Error;
 
-    pub confirm_keys: Vec<String>,
-    pub reject_keys: Vec<String>,
-    pub active: bool,
+    fn try_from(value: Voting) -> Result<Self, Self::Error> {
+        let (address, voting) = match value {
+            Voting::Confirm(address) => (address, contracts::models::Voting::Confirm),
+            Voting::Reject(address) => (address, contracts::models::Voting::Reject),
+        };
+        let address =
+            MsgAddressInt::from_str(&address).map_err(|e| anyhow!("{}", e.to_string()))?;
+        Ok((address, voting))
+    }
 }
 
 impl From<(MsgAddressInt, contracts::models::EthereumEventConfiguration)> for EventConfiguration {
@@ -144,31 +145,5 @@ impl From<(MsgAddressInt, contracts::models::EthereumEventConfiguration)> for Ev
                 .collect(),
             active: c.active,
         }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VotingAddress {
-    pub address: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase", tag = "vote", content = "address")]
-pub enum Voting {
-    Confirm(String),
-    Reject(String),
-}
-
-impl TryFrom<Voting> for (MsgAddressInt, contracts::models::Voting) {
-    type Error = anyhow::Error;
-
-    fn try_from(value: Voting) -> Result<Self, Self::Error> {
-        let (address, voting) = match value {
-            Voting::Confirm(address) => (address, contracts::models::Voting::Confirm),
-            Voting::Reject(address) => (address, contracts::models::Voting::Reject),
-        };
-        let address =
-            MsgAddressInt::from_str(&address).map_err(|e| anyhow!("{}", e.to_string()))?;
-        Ok((address, voting))
     }
 }

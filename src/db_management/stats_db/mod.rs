@@ -2,11 +2,13 @@ use chrono::{DateTime, Utc};
 
 use relay_ton::prelude::UInt256;
 
-use crate::db_management::{constants::STATS_TREE_NAME, Table, TxStat};
-use crate::engine::bridge::models::{EventVote, ExtendedEventInfo};
+use crate::db_management::{constants::STATS_TREE_NAME, Table};
+use crate::engine::bridge::models::ExtendedEventInfo;
 use crate::prelude::*;
 
 use super::prelude::{Error, Tree};
+use relay_models::models::{EventVote, TxStatView};
+use sled::IVec;
 
 #[derive(Clone)]
 pub struct StatsDb {
@@ -57,8 +59,14 @@ impl StatsDb {
             .keys()
             .next()
             .and_then(|key| {
-                key.ok()
-                    .and_then(|item| bincode::deserialize::<TxStat>(&item).ok())
+                let key = match key {
+                    Ok(a) => Some(a),
+                    Err(e) => {
+                        log::error!("Failed getting key: {}", e);
+                        None
+                    }
+                };
+                key.and_then(|item| Some(bincode::deserialize::<StoredTxStat>(&item).unwrap()))
             })
             .is_some())
     }
@@ -66,7 +74,7 @@ impl StatsDb {
 
 impl Table for StatsDb {
     type Key = String;
-    type Value = Vec<TxStat>;
+    type Value = Vec<TxStatView>;
 
     fn dump_elements(&self) -> HashMap<Self::Key, Self::Value> {
         self.tree
@@ -90,10 +98,10 @@ impl Table for StatsDb {
                 result
                     .entry(hex::encode(&relay_key))
                     .or_insert(Vec::new())
-                    .push(TxStat {
-                        tx_hash: stats.tx_hash,
-                        met: stats.met,
-                        event_addr,
+                    .push(TxStatView {
+                        tx_hash: hex::encode(stats.tx_hash),
+                        met: stats.met.timestamp(),
+                        event_addr: event_addr.to_string(),
                         vote,
                     });
 

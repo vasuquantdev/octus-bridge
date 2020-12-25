@@ -2089,6 +2089,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "opg"
+version = "0.0.30"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "91aee4cf7b32dc3dc51c8a043a4b17f81ff361ff3d0c03af1b9b5f62a16b2f97"
+dependencies = [
+ "chrono",
+ "either",
+ "http",
+ "opg_derive",
+ "serde 1.0.118",
+]
+
+[[package]]
+name = "opg_derive"
+version = "0.0.30"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c303a4e0fd45d944ece81e69571b3ce7fd988a5be5221d037a976acd1122ead"
+dependencies = [
+ "either",
+ "proc-macro2 1.0.24",
+ "quote 1.0.7",
+ "syn 1.0.54",
+]
+
+[[package]]
 name = "ordered-float"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2591,15 +2616,18 @@ dependencies = [
  "log4rs",
  "num-bigint 0.2.6",
  "num-traits 0.2.14",
+ "opg",
  "pretty_assertions 0.6.1",
  "rand 0.6.5",
  "relay-eth",
+ "relay-models",
  "relay-ton",
  "ring",
  "secp256k1",
  "secstr",
  "serde 1.0.118",
  "serde_json",
+ "serde_yaml",
  "sha3",
  "sled",
  "sodiumoxide",
@@ -2630,6 +2658,15 @@ dependencies = [
  "tokio 0.2.24",
  "url",
  "web3",
+]
+
+[[package]]
+name = "relay-models"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "opg",
+ "serde 1.0.118",
 ]
 
 [[package]]

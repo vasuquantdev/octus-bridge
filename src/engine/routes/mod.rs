@@ -14,8 +14,10 @@ use crate::crypto::key_managment::KeyData;
 use crate::crypto::recovery::*;
 use crate::engine::bridge::Bridge;
 use crate::engine::models::*;
+use crate::engine::routes::api::get_api;
 use crate::prelude::*;
 
+mod api;
 mod status;
 
 pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handler: Receiver<()>) {
@@ -95,6 +97,8 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
         .and(state.clone())
         .and_then(|(state, _)| status::retry_failed(state));
 
+    let swagger = warp::path!("swagger.yaml").and(warp::get()).map(get_api);
+
     let routes = init
         .or(password)
         .or(status)
@@ -106,7 +110,8 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
         .or(get_event_configuration)
         .or(add_event_configuration)
         .or(retry_failed)
-        .or(vote_for_event_configuration);
+        .or(vote_for_event_configuration)
+        .or(swagger);
 
     let server = warp::serve(routes);
     let (_, server) = server.bind_with_graceful_shutdown(serve_address, async {

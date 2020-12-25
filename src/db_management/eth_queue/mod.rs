@@ -6,6 +6,7 @@ use crate::db_management::models::EthTonConfirmationData;
 use crate::db_management::Table;
 
 use super::prelude::*;
+use relay_models::models::EthTonConfirmationDataView;
 
 const RANGE_LOWER_BOUND: [u8; 8] = [0; 8];
 
@@ -69,7 +70,7 @@ fn make_key(target_block_number: u64, value: &EthTonConfirmationData) -> Vec<u8>
 
 impl Table for EthQueue {
     type Key = u64;
-    type Value = Vec<EthTonConfirmationData>;
+    type Value = Vec<EthTonConfirmationDataView>;
 
     fn dump_elements(&self) -> HashMap<Self::Key, Self::Value> {
         self.db
@@ -81,7 +82,8 @@ impl Table for EthQueue {
                 let block_number = u64::from_be_bytes(block_number);
 
                 let value = bincode::deserialize::<EthTonConfirmationData>(&k[8..])
-                    .expect("Shouldn't fail");
+                    .expect("Shouldn't fail")
+                    .into();
 
                 result.entry(block_number).or_insert(Vec::new()).push(value);
                 result

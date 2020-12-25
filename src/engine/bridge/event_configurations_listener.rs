@@ -12,6 +12,7 @@ use crate::config::TonOperationRetryParams;
 use crate::db_management::*;
 use crate::engine::bridge::util::{parse_eth_abi, validate_ethereum_event_configuration};
 use crate::prelude::*;
+use relay_models::models::EventVote;
 
 /// Listens to config streams and maps them.
 pub struct EventConfigurationsListener {

@@ -5,20 +5,14 @@ use serde::Serialize;
 use tokio::sync::RwLock;
 use warp::Reply;
 
+use relay_models::models::EthTonTransactionView;
+
 use crate::db_management::{EthQueue, EthTonTransaction, StatsDb, Table, TonQueue};
-use crate::engine::models::{BridgeState, State};
+use crate::engine::models::{BridgeState, State, Status};
 
 pub async fn get_status(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {
     let state = state.read().await;
 
-    #[derive(Serialize)]
-    struct Status {
-        password_needed: bool,
-        init_data_needed: bool,
-        is_working: bool,
-        ton_pubkey: Option<String>,
-        eth_pubkey: Option<String>,
-    }
     let result = match &state.bridge_state {
         BridgeState::Uninitialized => Status {
             password_needed: true,
@@ -90,9 +84,9 @@ pub async fn retry_failed(state: Arc<RwLock<State>>) -> Result<impl Reply, Infal
     Ok(res)
 }
 
-fn fold_ton_stats<I, T>(iter: I) -> Vec<EthTonTransaction>
+fn fold_ton_stats<I, T>(iter: I) -> Vec<EthTonTransactionView>
 where
     I: Iterator<Item = (T, EthTonTransaction)>,
 {
-    iter.map(|(_, data)| data).collect()
+    iter.map(|(_, data)| data.into()).collect()
 }

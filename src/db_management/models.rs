@@ -1,11 +1,13 @@
 use chrono::{DateTime, Utc};
-use ton_block::{MsgAddrStd, MsgAddressInt};
+use ton_block::MsgAddressInt;
 
 use relay_eth::ws::H256;
-use relay_ton::prelude::{serde_cells, serde_int_addr, serde_std_addr, Cell};
+use relay_models::models::{
+    EthTonConfirmationDataView, EthTonTransactionView, EventVote, TxStatView,
+};
+use relay_ton::prelude::{serde_cells, serde_int_addr, serde_std_addr, serialize_toc, Cell};
 
 use super::prelude::*;
-use crate::engine::bridge::models::EventVote;
 
 pub mod buf_to_hex {
     use serde::{Deserialize, Deserializer, Serializer};
@@ -83,13 +85,33 @@ impl EthTonTransaction {
     }
 }
 
-#[derive(Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub struct TxStat {
-    #[serde(with = "h256_to_hex")]
-    pub tx_hash: H256,
-    pub met: DateTime<Utc>,
-    #[serde(with = "serde_std_addr")]
-    pub event_addr: MsgAddrStd,
-    pub vote: EventVote,
+impl From<EthTonConfirmationData> for EthTonConfirmationDataView {
+    fn from(data: EthTonConfirmationData) -> Self {
+        let event_block = match serialize_toc(&data.event_data) {
+            Ok(a) => hex::encode(a),
+            Err(e) => {
+                log::error!("Failed serializing boc: {}", e);
+                "BAD DATA IN BLOCK".to_string()
+            }
+        };
+        EthTonConfirmationDataView {
+            event_transaction: hex::encode(&data.event_transaction.0),
+            event_index: data.event_index,
+            event_data: event_block,
+            event_block_number: data.event_block_number,
+            event_block: hex::encode(&data.event_block.0),
+            ethereum_event_configuration_address: data
+                .ethereum_event_configuration_address
+                .to_string(),
+        }
+    }
+}
+
+impl From<EthTonTransaction> for EthTonTransactionView {
+    fn from(data: EthTonTransaction) -> Self {
+        match data {
+            EthTonTransaction::Confirm(a) => EthTonTransactionView::Confirm(a.into()),
+            EthTonTransaction::Reject(a) => EthTonTransactionView::Reject(a.into()),
+        }
+    }
 }

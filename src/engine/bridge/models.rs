@@ -7,6 +7,7 @@ use relay_ton::prelude::{serde_std_addr, serde_uint256, MsgAddrStd, MsgAddressIn
 use crate::db_management::EthTonConfirmationData;
 
 use super::prelude::*;
+use relay_models::models::EventVote;
 
 /// Event received from TON
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -78,11 +79,4 @@ impl From<ExtendedEventInfo> for EthTonConfirmationData {
 pub struct Status {
     pub hash: H256,
     pub success: bool,
-}
-
-#[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum EventVote {
-    Confirm,
-    Reject,
 }
