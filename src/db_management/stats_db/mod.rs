@@ -1,14 +1,12 @@
 use chrono::{DateTime, Utc};
 
+use relay_models::models::{EventVote, TxStatView};
 use relay_ton::prelude::UInt256;
 
+use super::prelude::{Error, Tree};
 use crate::db_management::{constants::STATS_TREE_NAME, Table};
 use crate::engine::bridge::models::ExtendedEventInfo;
 use crate::prelude::*;
-
-use super::prelude::{Error, Tree};
-use relay_models::models::{EventVote, TxStatView};
-use sled::IVec;
 
 #[derive(Clone)]
 pub struct StatsDb {

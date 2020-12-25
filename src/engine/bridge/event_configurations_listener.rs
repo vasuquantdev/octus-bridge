@@ -1,8 +1,11 @@
+use std::collections::hash_map::Entry;
+
 use ethabi::ParamType as EthParamType;
 use tokio::sync::{mpsc, Mutex, RwLock, RwLockReadGuard};
 use tokio::sync::{oneshot, Notify};
 use ton_abi::ParamType as TonParamType;
 
+use relay_models::models::EventVote;
 use relay_ton::contracts::*;
 use relay_ton::prelude::UInt256;
 use relay_ton::transport::{Transport, TransportError};
@@ -12,7 +15,6 @@ use crate::config::TonOperationRetryParams;
 use crate::db_management::*;
 use crate::engine::bridge::util::{parse_eth_abi, validate_ethereum_event_configuration};
 use crate::prelude::*;
-use relay_models::models::EventVote;
 
 /// Listens to config streams and maps them.
 pub struct EventConfigurationsListener {
@@ -137,19 +139,19 @@ impl EventConfigurationsListener {
     pub async fn enqueue_vote(self: &Arc<Self>, data: EthTonTransaction) -> Result<(), Error> {
         let event_address = self.get_event_contract_address(&data).await?;
 
-        if !self // check if we are not voting for this event
-            .ton_queue
-            .has_event(&event_address)
-            .expect("Fatal db error")
-            && !self // check if we have not already voted for this event
-                .stats_db
-                .has_already_voted(&event_address, &self.relay_key)
-                .expect("Fatal db error")
-        {
-            tokio::spawn(self.clone().ensure_sent(event_address, data));
-        }
+        tokio::spawn(self.clone().ensure_sent(event_address, data));
 
         Ok(())
+    }
+
+    fn has_already_voted(&self, event_address: &MsgAddrStd) -> bool {
+        self.ton_queue
+            .has_event(event_address)
+            .expect("Fatal db error")
+            || self
+                .stats_db
+                .has_already_voted(event_address, &self.relay_key)
+                .expect("Fatal db error")
     }
 
     /// Current configs state
@@ -198,26 +200,32 @@ impl EventConfigurationsListener {
     }
 
     async fn ensure_sent(self: Arc<Self>, event_address: MsgAddrStd, data: EthTonTransaction) {
+        if self.has_already_voted(&event_address) {
+            return;
+        }
+
         self.ton_queue
             .insert_pending(&event_address, &data)
             .unwrap();
 
         let (tx, rx) = oneshot::channel();
 
-        let vote = match &data {
-            EthTonTransaction::Confirm(_) => {
-                self.confirmations
-                    .lock()
-                    .await
-                    .insert(event_address.clone(), tx);
-                EventVote::Confirm
-            }
-            EthTonTransaction::Reject(_) => {
-                self.rejections
-                    .lock()
-                    .await
-                    .insert(event_address.clone(), tx);
-                EventVote::Reject
+        let vote = {
+            let (mut runtime_queue, vote) = match &data {
+                EthTonTransaction::Confirm(_) => {
+                    (self.confirmations.lock().await, EventVote::Confirm)
+                }
+                EthTonTransaction::Reject(_) => (self.rejections.lock().await, EventVote::Reject),
+            };
+
+            match runtime_queue.entry(event_address.clone()) {
+                Entry::Occupied(_) => {
+                    return;
+                }
+                Entry::Vacant(entry) => {
+                    entry.insert(tx);
+                    vote
+                }
             }
         };
 
@@ -276,21 +284,19 @@ impl EventConfigurationsListener {
             }
         };
 
+        let hash = hex::encode(data.inner().event_transaction.as_bytes());
         match result {
             Ok(_) => {
-                log::info!(
-                    "Stopped waiting for transaction: {}",
-                    hex::encode(data.inner().event_transaction.as_bytes())
-                );
+                log::info!("Stopped waiting for transaction: {}", hash);
             }
             Err(e) => {
-                log::error!(
-                    "Stopped waiting for transaction: {}. Reason: {:?}",
-                    hex::encode(data.inner().event_transaction.as_bytes()),
-                    e
-                );
+                log::error!("Stopped waiting for transaction: {}. Reason: {:?}", hash, e);
                 if let Err(e) = self.ton_queue.mark_failed(&event_address) {
-                    log::error!("failed to mark transaction as failed: {:?}", e);
+                    log::error!(
+                        "failed to mark transaction with hash {} as failed: {:?}",
+                        hash,
+                        e
+                    );
                 }
             }
         }
@@ -508,14 +514,7 @@ impl EventConfigurationsListener {
             && !event.data.proxy_callback_executed
             && !event.data.event_rejected
             && event.relay_key != self.relay_key // event from other relay
-            && !self // check if we are not voting for this event
-                .ton_queue
-                .has_event(&event.event_addr)
-                .expect("Fatal db error")
-            && !self // check if we have not already voted for this event
-                .stats_db
-                .has_already_voted(&event.event_addr, &self.relay_key)
-                .expect("Fatal db error");
+            && !self.has_already_voted(&event.event_addr);
 
         log::info!("Received {}, should check: {}", event, should_check);
 
@@ -578,10 +577,10 @@ impl EventConfigurationsListener {
                 {
                     retries_count -= 1;
                     log::warn!(
-                        "failed to get events configuration contract details for {}. Retrying ({} left)",
-                        config_contract.address(),
-                        retries_count
-                    );
+                            "failed to get events configuration contract details for {}. Retrying ({} left)",
+                            config_contract.address(),
+                            retries_count
+                        );
                     tokio::time::delay_for(retries_interval).await;
                 }
                 Err(e) => {

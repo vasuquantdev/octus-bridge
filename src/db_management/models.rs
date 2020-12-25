@@ -1,11 +1,8 @@
-use chrono::{DateTime, Utc};
 use ton_block::MsgAddressInt;
 
 use relay_eth::ws::H256;
-use relay_models::models::{
-    EthTonConfirmationDataView, EthTonTransactionView, EventVote, TxStatView,
-};
-use relay_ton::prelude::{serde_cells, serde_int_addr, serde_std_addr, serialize_toc, Cell};
+use relay_models::models::{EthTonConfirmationDataView, EthTonTransactionView};
+use relay_ton::prelude::{serde_cells, serde_int_addr, serialize_toc, Cell};
 
 use super::prelude::*;
 

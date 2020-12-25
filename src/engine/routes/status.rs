@@ -1,7 +1,6 @@
 use std::convert::Infallible;
 use std::sync::Arc;
 
-use serde::Serialize;
 use tokio::sync::RwLock;
 use warp::Reply;
 

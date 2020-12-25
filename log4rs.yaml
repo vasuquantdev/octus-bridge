@@ -20,3 +20,15 @@ loggers:
       - all
       - stdout
     additive: false
+  relay_eth:
+    level: debug
+    appenders:
+      - all
+      - stdout
+    additive: false
+  relay_ton:
+    level: debug
+    appenders:
+      - all
+      - stdout
+    additive: false

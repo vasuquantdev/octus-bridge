@@ -27,8 +27,14 @@ impl TonQueue {
         event_address: &MsgAddrStd,
         data: &EthTonTransaction,
     ) -> Result<(), Error> {
-        self.pending
-            .insert(make_key(event_address), bincode::serialize(data).unwrap())?;
+        let key = make_key(event_address);
+
+        (&self.pending, &self.failed).transaction(|(pending, failed)| {
+            failed.remove(key.clone())?;
+            pending.insert(key.clone(), bincode::serialize(data).unwrap())?;
+            ConflictableTransactionResult::<(), std::io::Error>::Ok(())
+        })?;
+
         Ok(())
     }
 
@@ -36,13 +42,9 @@ impl TonQueue {
         let key = make_key(event_address);
 
         (&self.pending, &self.failed).transaction(|(pending, failed)| {
-            match pending.remove(key.clone())? {
-                Some(_) => Ok(()),
-                None => {
-                    failed.remove(key.clone())?;
-                    ConflictableTransactionResult::<(), std::io::Error>::Ok(())
-                }
-            }
+            pending.remove(key.clone())?;
+            failed.remove(key.clone())?;
+            ConflictableTransactionResult::<(), std::io::Error>::Ok(())
         })?;
 
         Ok(())

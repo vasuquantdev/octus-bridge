@@ -3,7 +3,6 @@ use opg::*;
 use relay_models::models::{EthTonConfirmationDataView, EthTonTransactionView, TxStatView};
 
 use super::*;
-use crate::db_management::EthTonTransaction;
 
 pub fn get_api() -> String {
     let api = describe_api! {
