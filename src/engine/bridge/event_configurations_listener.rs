@@ -108,8 +108,8 @@ impl EventConfigurationsListener {
             known_contracts.push(address);
         }
 
+        // Wait for all existing configuration contracts subscriptions to start ETH part properly
         let semaphore = Semaphore::new(known_contracts.len());
-
         for address in known_contracts.into_iter() {
             tokio::spawn(self.clone().subscribe_to_events_configuration_contract(
                 subscriptions_tx.clone(),
@@ -118,8 +118,10 @@ impl EventConfigurationsListener {
             ));
         }
 
+        // Wait until all initial subscriptions done
         semaphore.wait().await;
 
+        // Restart sending for all enqueued confirmations
         for (event_address, data) in self.ton_queue.get_all_pending() {
             tokio::spawn(self.clone().ensure_sent(event_address, data));
         }
@@ -144,6 +146,7 @@ impl EventConfigurationsListener {
         Ok(())
     }
 
+    /// Check statistics and current queue wether transaction exists
     fn has_already_voted(&self, event_address: &MsgAddrStd) -> bool {
         self.ton_queue
             .has_event(event_address)
@@ -167,6 +170,7 @@ impl EventConfigurationsListener {
         self.config_contracts.read().await.get(address).cloned()
     }
 
+    /// Compute event address based on its data
     async fn get_event_contract_address(
         &self,
         data: &EthTonTransaction,
@@ -199,18 +203,22 @@ impl EventConfigurationsListener {
         Ok(event_addr)
     }
 
+    /// Sends message to TON with small amount of retries on failures.
+    /// Can be stopped using `cancel` or `notify_found`
     async fn ensure_sent(self: Arc<Self>, event_address: MsgAddrStd, data: EthTonTransaction) {
+        // Skip voting for events which are already in stats db and TON queue
         if self.has_already_voted(&event_address) {
             return;
         }
 
+        // Insert specified data in TON queue, replacing failed transaction if it exists
         self.ton_queue
             .insert_pending(&event_address, &data)
             .unwrap();
 
-        let (tx, rx) = oneshot::channel();
-
-        let vote = {
+        // Start listening for cancellation
+        let (rx, vote) = {
+            // Get suitable channels map
             let (mut runtime_queue, vote) = match &data {
                 EthTonTransaction::Confirm(_) => {
                     (self.confirmations.lock().await, EventVote::Confirm)
@@ -218,13 +226,16 @@ impl EventConfigurationsListener {
                 EthTonTransaction::Reject(_) => (self.rejections.lock().await, EventVote::Reject),
             };
 
+            // Just in case of duplication, check if we are already waiting cancellation for this
+            // event data set
             match runtime_queue.entry(event_address.clone()) {
                 Entry::Occupied(_) => {
                     return;
                 }
                 Entry::Vacant(entry) => {
+                    let (tx, rx) = oneshot::channel();
                     entry.insert(tx);
-                    vote
+                    (rx, vote)
                 }
             }
         };
@@ -233,12 +244,16 @@ impl EventConfigurationsListener {
         let mut retries_count = self.timeout_params.broadcast_in_ton_times;
         let mut retries_interval = self.timeout_params.broadcast_in_ton_interval_secs;
 
+        // Send message with several retries on failure
         let result = loop {
+            // Prepare delay future
             let delay = tokio::time::delay_for(retries_interval);
             retries_interval = std::time::Duration::from_secs_f64(
                 retries_interval.as_secs_f64()
                     * self.timeout_params.broadcast_in_ton_interval_multiplier,
             );
+
+            // Try send message
             if let Err(e) = data.send(&self.bridge).await {
                 log::error!(
                     "Failed to vote for event: {:?}. Retrying ({} left)",
@@ -251,9 +266,12 @@ impl EventConfigurationsListener {
                     break Err(e.into());
                 }
 
+                // Wait for prepared delay on failure
                 delay.await;
             } else if let Some(rx_fut) = rx.take() {
+                // Handle future results
                 match future::select(rx_fut, delay).await {
+                    // Got cancellation notification
                     future::Either::Left((Ok(()), _)) => {
                         log::info!(
                             "Got response for voting for {:?} {}",
@@ -262,9 +280,11 @@ impl EventConfigurationsListener {
                         );
                         break Ok(());
                     }
+                    // Stopped waiting for notification
                     future::Either::Left((Err(e), _)) => {
                         break Err(e.into());
                     }
+                    // Timeout reached
                     future::Either::Right((_, new_rx)) => {
                         log::error!(
                             "Failed to get voting event response: timeout reached. Retrying ({} left)",
@@ -286,9 +306,11 @@ impl EventConfigurationsListener {
 
         let hash = hex::encode(data.inner().event_transaction.as_bytes());
         match result {
+            // Do nothing on success
             Ok(_) => {
                 log::info!("Stopped waiting for transaction: {}", hash);
             }
+            // When ran out of retries count, stop waiting for transaction and mark it as failed
             Err(e) => {
                 log::error!("Stopped waiting for transaction: {}. Reason: {:?}", hash, e);
                 if let Err(e) = self.ton_queue.mark_failed(&event_address) {
@@ -301,6 +323,7 @@ impl EventConfigurationsListener {
             }
         }
 
+        // Remove cancellation channel
         self.cancel(&event_address, vote).await;
     }
 
@@ -326,7 +349,7 @@ impl EventConfigurationsListener {
         };
     }
 
-    // Creates listener for new event configuration contract
+    /// Creates listener for new event configuration contract
     async fn subscribe_to_events_configuration_contract(
         self: Arc<Self>,
         subscriptions_tx: mpsc::UnboundedSender<(Address, H256)>,
@@ -346,6 +369,7 @@ impl EventConfigurationsListener {
             return;
         }
 
+        // Create config contract
         let config_contract = make_config_contract(
             self.transport.clone(),
             address.clone(),
@@ -353,6 +377,7 @@ impl EventConfigurationsListener {
         )
         .await;
 
+        // Get it's data
         let details = match self
             .get_event_configuration_details(config_contract.as_ref(), semaphore.clone())
             .await
@@ -379,13 +404,14 @@ impl EventConfigurationsListener {
         let mut is_active = details.active;
         let mut subscription_data = Some((subscriptions_tx, details.ethereum_event_address));
 
-        //
+        // Store configuration contract details
         self.configs_state
             .write()
             .await
             .insert_configuration(address.clone(), details);
 
         if is_active {
+            // Subscribe to topic in ETH if configuration contract is active
             if let Some((subscriptions_tx, ethereum_event_address)) = subscription_data.take() {
                 self.notify_subscription(subscriptions_tx, ethereum_event_address)
                     .await;
