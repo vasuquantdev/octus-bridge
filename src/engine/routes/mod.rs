@@ -402,6 +402,7 @@ pub async fn create_bridge(
             Url::parse(config.eth_node_address.as_str())
                 .map_err(|e| Error::new(e).context("Bad url for eth_config provided"))?,
             state_manager.clone(),
+            100 //todo move to config
         )
         .await?,
     );

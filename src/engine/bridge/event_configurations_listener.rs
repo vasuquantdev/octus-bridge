@@ -215,6 +215,7 @@ impl EventConfigurationsListener {
         // Insert specified data in TON queue, replacing failed transaction if it exists
         self.ton_queue
             .insert_pending(&event_address, &data)
+            .await
             .unwrap();
 
         // Start listening for cancellation

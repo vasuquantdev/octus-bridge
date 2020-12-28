@@ -9,11 +9,12 @@ use serde::{Deserialize, Serialize};
 use sled::{Db, Tree};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::sync::RwLock;
+use tokio::sync::Semaphore;
 use url::Url;
+use web3::{Transport, Web3};
 use web3::transports::http::Http;
 pub use web3::types::{Address, BlockNumber, H256};
 use web3::types::{FilterBuilder, Log};
-use web3::{Transport, Web3};
 
 const ETH_POLL_INTERVAL: Duration = Duration::from_secs(5);
 const ETH_TIMEOUT: Duration = Duration::from_secs(2);
@@ -25,11 +26,13 @@ pub struct EthListener {
     web3: Web3<Http>,
     db: Tree,
     topics: Arc<RwLock<(HashSet<Address>, HashSet<H256>)>>,
+    connections_pool: Arc<Semaphore>,
 }
 
-async fn get_actual_eth_height<T: Transport>(w3: &Web3<T>) -> Option<u64> {
+async fn get_actual_eth_height<T: Transport>(w3: &Web3<T>, connection_pool: &Arc<Semaphore>) -> Option<u64> {
     use tokio::time::timeout;
     log::debug!("Getting height");
+    let _permission = connection_pool.acquire().await;
     match timeout(ETH_TIMEOUT, w3.eth().block_number()).await {
         Ok(a) => match a {
             Ok(a) => Some(a.as_u64()),
@@ -52,7 +55,7 @@ async fn get_actual_eth_height<T: Transport>(w3: &Web3<T>) -> Option<u64> {
 }
 
 impl EthListener {
-    pub async fn new(url: Url, db: Db) -> Result<Self, Error> {
+    pub async fn new(url: Url, db: Db, connections_number: usize) -> Result<Self, Error> {
         let connection = Http::new(url.as_str()).expect("Failed connecting to ethereum node");
         log::info!("Connected to: {}", &url);
         let api = Web3::new(connection);
@@ -61,6 +64,7 @@ impl EthListener {
             web3: api,
             db: db.open_tree(ETH_TREE_NAME)?,
             topics: Arc::new(Default::default()),
+            connections_pool: Arc::new(Semaphore::new(connections_number)),
         })
     }
 
@@ -69,13 +73,13 @@ impl EthListener {
         subscriptions: S,
     ) -> Result<
         (
-            impl Stream<Item = u64>,
-            impl Stream<Item = Result<Event, Error>>,
+            impl Stream<Item=u64>,
+            impl Stream<Item=Result<Event, Error>>,
         ),
         Error,
     >
-    where
-        S: Stream<Item = (Address, H256)> + Send + Unpin + 'static,
+        where
+            S: Stream<Item=(Address, H256)> + Send + Unpin + 'static,
     {
         log::debug!("Started iterating over ethereum blocks.");
         let from_height = self.get_block_number_on_start().await?;
@@ -106,6 +110,7 @@ impl EthListener {
             self.web3.clone(),
             self.topics.clone(),
             from_height,
+            self.connections_pool.clone()
         );
 
         Ok((blocks_rx, events_rx))
@@ -123,11 +128,12 @@ impl EthListener {
         let mut attempts = 100;
         loop {
             // Trying to get data. Retrying in case of error
+            let _permission = self.connections_pool.acquire().await;
             match self.web3.eth().transaction_receipt(hash).await {
                 Ok(a) => match a {
                     //if no tx with this hash
                     None => {
-                        return Err(anyhow!("No transactions found by hash. Assuming it's fake"))
+                        return Err(anyhow!("No transactions found by hash. Assuming it's fake"));
                     }
                     Some(a) => {
                         // if tx status is failed, then no such tx exists
@@ -248,9 +254,10 @@ fn spawn_blocks_scanner(
     w3: Web3<Http>,
     topics: Arc<RwLock<(HashSet<Address>, HashSet<H256>)>>,
     from_height: u64,
+    connections_pool: Arc<Semaphore>
 ) -> (
-    impl Stream<Item = u64>,
-    impl Stream<Item = Result<Event, Error>>,
+    impl Stream<Item=u64>,
+    impl Stream<Item=Result<Event, Error>>,
 ) {
     let (blocks_tx, blocks_rx) = unbounded_channel();
     let (events_tx, events_rx) = unbounded_channel();
@@ -259,8 +266,9 @@ fn spawn_blocks_scanner(
         //
         //
         let w3 = w3.clone();
+        let connection_pool =connections_pool.clone();
         let mut ethereum_actual_height = loop {
-            match get_actual_eth_height(&w3).await {
+            match get_actual_eth_height(&w3, &connection_pool).await {
                 Some(a) => break a,
                 None => {
                     tokio::time::delay_for(ETH_POLL_INTERVAL).await;
@@ -274,21 +282,21 @@ fn spawn_blocks_scanner(
             //sleeping if we are on head
             if ethereum_actual_height <= scanned_height {
                 tokio::time::delay_for(ETH_POLL_INTERVAL).await;
-                ethereum_actual_height = match get_actual_eth_height(&w3).await {
+                ethereum_actual_height = match get_actual_eth_height(&w3, &connection_pool).await {
                     Some(a) => a,
                     None => continue,
                 };
                 if ethereum_actual_height <= scanned_height {
                     continue;
                 }
-            // polling if we are near head
+                // polling if we are near head
             } else if (ethereum_actual_height - scanned_height) < 2 {
-                ethereum_actual_height = match get_actual_eth_height(&w3).await {
+                ethereum_actual_height = match get_actual_eth_height(&w3, &connection_pool).await {
                     Some(a) => a,
                     None => continue,
                 };
             }
-            process_block(&w3, topics.as_ref(), scanned_height.into(), &events_tx).await;
+            process_block(&w3, topics.as_ref(), scanned_height.into(), &events_tx, &connection_pool).await;
 
             if let Err(e) = update_eth_state(&db, scanned_height, ETH_LAST_MET_HEIGHT) {
                 let err = format!("Critical error: failed saving eth state: {}", e);
@@ -311,6 +319,7 @@ async fn process_block(
     topics: &RwLock<(HashSet<Address>, HashSet<H256>)>,
     block_number: BlockNumber,
     events_tx: &UnboundedSender<Result<Event, Error>>,
+    connection_pool: &Arc<Semaphore>
 ) {
     // TODO: optimize
     let (addresses, topics): (Vec<_>, Vec<_>) = {
@@ -331,6 +340,7 @@ async fn process_block(
     let mut attempts_number = 86400 / 5;
     let sleep_time = Duration::from_secs(5);
     loop {
+        let _permit = connection_pool.acquire().await;
         match w3.eth().logs(filter.clone()).await {
             Ok(a) => {
                 if !a.is_empty() {
