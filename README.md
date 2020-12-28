@@ -41,6 +41,43 @@ has not been collected).
 
 For each event received from other relays we check it validity.
 
+#### Supported types in ethereum abi
+
+- uint
+- int
+- address
+- bool
+- string
+- bytes
+
+#### Supported conversions
+
+Eth -> Ton
+
+| Ethereum type      | Ton type |
+| ----------- | ----------- |
+| Address      | Bytes       |
+| Bytes | Bytes|
+|Int|Int|
+|Bool|Bool|
+|String|Bytes|
+|Array|Array|
+|FixedBytes|FixedBytes|
+|FixedArray|FixedArray|
+|Tuple|Tuple|
+
+Ton -> Eth
+
+| Ton type      | Ethereum type |
+| ----------- | ----------- |
+|FixedBytes|FixedBytes|
+|Bytes|Bytes|
+|Uint|Uint|
+|Int|Int|
+
+For different abi we can do different conversions.
+For example, 
+# **TODO update after reverse chain implementation**
 ### Persistent state.
 
 - We use embedded key value db for persistent storage and queuing.
@@ -89,11 +126,15 @@ using `relay --gen-config --crypto-store-path 'path/to/file/with/encrypted/data'
 - `storage_path` path for [database](#persistent-state)
 - `listen_address` address to bin control server.  **EXPOSING IT TO OUTER WORLD
   IS PROHIBITED**, because anyone, having access to it can control relay.
-- `ton_operation_timeouts` - default values are optimal.  
+- `ton_operation_timeouts` - default values are optimal.
 
 #### ton_config
+
 ##### GraphQL
- - `addr` - address of graphql endpoint
- - `next_block_timeout_sec`  - timeout for blocks emission
-#### Cpp 
+
+- `addr` - address of graphql endpoint
+- `next_block_timeout_sec`  - timeout for blocks emission
+
+#### Cpp
+
 TODO

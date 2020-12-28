@@ -205,8 +205,7 @@ pub fn map_eth_ton(eth: EthTokenValue) -> TonTokenValue {
     }
 }
 
-// TODO: return result
-/// maps ton toke
+/// maps ton token to ethereum token
 pub fn map_ton_eth(
     ton: TonTokenValue,
     eth_param_type: EthParamType,
