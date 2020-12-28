@@ -20,7 +20,7 @@ impl StatsDb {
         })
     }
 
-    pub fn update_relay_stats(&self, event: &ExtendedEventInfo) -> Result<(), Error> {
+    pub async fn update_relay_stats(&self, event: &ExtendedEventInfo) -> Result<(), Error> {
         log::debug!("Inserting stats");
 
         let event_addr = event.event_addr.address.get_bytestring(0);
@@ -38,7 +38,7 @@ impl StatsDb {
             })
             .unwrap(),
         )?;
-
+        self.tree.flush_async().await?;
         Ok(())
     }
 

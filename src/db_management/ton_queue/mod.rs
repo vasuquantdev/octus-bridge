@@ -22,7 +22,7 @@ impl TonQueue {
         })
     }
 
-    pub fn insert_pending(
+    pub async fn insert_pending(
         &self,
         event_address: &MsgAddrStd,
         data: &EthTonTransaction,
@@ -34,7 +34,8 @@ impl TonQueue {
             pending.insert(key.clone(), bincode::serialize(data).unwrap())?;
             ConflictableTransactionResult::<(), std::io::Error>::Ok(())
         })?;
-
+        self.failed.flush_async().await?;
+        self.pending.flush_async().await?;  
         Ok(())
     }
 

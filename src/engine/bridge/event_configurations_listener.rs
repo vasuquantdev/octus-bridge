@@ -2,7 +2,7 @@ use std::collections::hash_map::Entry;
 
 use ethabi::ParamType as EthParamType;
 use tokio::sync::{mpsc, Mutex, RwLock, RwLockReadGuard};
-use tokio::sync::{oneshot, Notify};
+use tokio::sync::{Notify, oneshot};
 use ton_abi::ParamType as TonParamType;
 
 use relay_models::models::EventVote;
@@ -10,11 +10,12 @@ use relay_ton::contracts::*;
 use relay_ton::prelude::UInt256;
 use relay_ton::transport::{Transport, TransportError};
 
-use super::models::*;
 use crate::config::TonOperationRetryParams;
 use crate::db_management::*;
 use crate::engine::bridge::util::{parse_eth_abi, validate_ethereum_event_configuration};
 use crate::prelude::*;
+
+use super::models::*;
 
 /// Listens to config streams and maps them.
 pub struct EventConfigurationsListener {
@@ -72,7 +73,7 @@ impl EventConfigurationsListener {
     }
 
     /// Spawn configuration contracts listeners
-    pub async fn start(self: &Arc<Self>) -> impl Stream<Item = (Address, H256)> {
+    pub async fn start(self: &Arc<Self>) -> impl Stream<Item=(Address, H256)> {
         let (subscriptions_tx, subscriptions_rx) = mpsc::unbounded_channel();
 
         // Subscribe to bridge events
@@ -152,9 +153,9 @@ impl EventConfigurationsListener {
             .has_event(event_address)
             .expect("Fatal db error")
             || self
-                .stats_db
-                .has_already_voted(event_address, &self.relay_key)
-                .expect("Fatal db error")
+            .stats_db
+            .has_already_voted(event_address, &self.relay_key)
+            .expect("Fatal db error")
     }
 
     /// Current configs state
@@ -186,7 +187,7 @@ impl EventConfigurationsListener {
                 return Err(anyhow!(
                     "Unknown event configuration contract: {}",
                     data.ethereum_event_configuration_address
-                ))
+                ));
             }
         };
 
@@ -375,7 +376,7 @@ impl EventConfigurationsListener {
             address.clone(),
             self.bridge.address().clone(),
         )
-        .await;
+            .await;
 
         // Get it's data
         let details = match self
@@ -451,7 +452,7 @@ impl EventConfigurationsListener {
 
                                 if is_active {
                                     if let Some((subscriptions_tx, ethereum_event_address)) =
-                                        subscription_data.take()
+                                    subscription_data.take()
                                     {
                                         listener
                                             .notify_subscription(
@@ -546,6 +547,7 @@ impl EventConfigurationsListener {
 
         self.stats_db
             .update_relay_stats(&event)
+            .await
             .expect("Fatal db error");
 
         if event.relay_key == self.relay_key {
@@ -599,16 +601,16 @@ impl EventConfigurationsListener {
                     }
                 },
                 Err(ContractError::TransportError(TransportError::AccountNotFound))
-                    if retries_count > 0 =>
-                {
-                    retries_count -= 1;
-                    log::warn!(
+                if retries_count > 0 =>
+                    {
+                        retries_count -= 1;
+                        log::warn!(
                             "failed to get events configuration contract details for {}. Retrying ({} left)",
                             config_contract.address(),
                             retries_count
                         );
-                    tokio::time::delay_for(retries_interval).await;
-                }
+                        tokio::time::delay_for(retries_interval).await;
+                    }
                 Err(e) => {
                     notify_if_init().await;
                     break Err(anyhow!(
@@ -631,16 +633,16 @@ impl EventConfigurationsListener {
             match self.event_contract.get_details(event_addr.clone()).await {
                 Ok(details) => break Ok(details),
                 Err(ContractError::TransportError(TransportError::AccountNotFound))
-                    if retries_count > 0 =>
-                {
-                    retries_count -= 1;
-                    log::error!(
-                        "Failed to get event details for {}. Retrying ({} left)",
-                        event_addr,
-                        retries_count
-                    );
-                    tokio::time::delay_for(retries_interval).await;
-                }
+                if retries_count > 0 =>
+                    {
+                        retries_count -= 1;
+                        log::error!(
+                            "Failed to get event details for {}. Retrying ({} left)",
+                            event_addr,
+                            retries_count
+                        );
+                        tokio::time::delay_for(retries_interval).await;
+                    }
                 Err(e) => break Err(e),
             };
         }

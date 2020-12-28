@@ -2,11 +2,12 @@ use std::collections::HashMap;
 
 use tokio::sync::{Mutex, MutexGuard};
 
+use relay_models::models::EthTonConfirmationDataView;
+
 use crate::db_management::models::EthTonConfirmationData;
 use crate::db_management::Table;
 
 use super::prelude::*;
-use relay_models::models::EthTonConfirmationDataView;
 
 const RANGE_LOWER_BOUND: [u8; 8] = [0; 8];
 
@@ -54,6 +55,7 @@ impl EthQueue {
     ) -> Result<(), Error> {
         let _guard = self.guard.lock().await;
         self.db.insert(make_key(target_block_number, value), &[])?;
+        self.db.flush_async().await?;
         Ok(())
     }
 }
@@ -128,6 +130,7 @@ pub struct EthQueueLockEntry<'a> {
 impl<'a> EthQueueLockEntry<'a> {
     pub fn remove(self) -> Result<(), Error> {
         self.queue.db.remove(self.key)?;
+        self.queue.db.flush()?;
         Ok(())
     }
 }
