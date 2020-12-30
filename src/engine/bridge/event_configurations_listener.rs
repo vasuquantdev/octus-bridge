@@ -2,7 +2,7 @@ use std::collections::hash_map::Entry;
 
 use ethabi::ParamType as EthParamType;
 use tokio::sync::{mpsc, Mutex, RwLock, RwLockReadGuard};
-use tokio::sync::{Notify, oneshot};
+use tokio::sync::{oneshot, Notify};
 use ton_abi::ParamType as TonParamType;
 
 use relay_models::models::EventVote;
@@ -73,7 +73,7 @@ impl EventConfigurationsListener {
     }
 
     /// Spawn configuration contracts listeners
-    pub async fn start(self: &Arc<Self>) -> impl Stream<Item=(Address, H256)> {
+    pub async fn start(self: &Arc<Self>) -> impl Stream<Item = (Address, H256)> {
         let (subscriptions_tx, subscriptions_rx) = mpsc::unbounded_channel();
 
         // Subscribe to bridge events
@@ -85,7 +85,10 @@ impl EventConfigurationsListener {
             async move {
                 while let Some(event) = bridge_events.next().await {
                     match event {
-                        BridgeContractEvent::NewEthereumEventConfiguration { address } => {
+                        BridgeContractEvent::EventConfigurationCreationEnd {
+                            address,
+                            active: true,
+                        } => {
                             tokio::spawn(
                                 listener.clone().subscribe_to_events_configuration_contract(
                                     subscriptions_tx.clone(),
@@ -94,8 +97,8 @@ impl EventConfigurationsListener {
                                 ),
                             );
                         }
-                        BridgeContractEvent::NewBridgeConfigurationUpdate { .. } => {
-                            //TODO: handle new bridge configuration
+                        _ => {
+                            // TODO: handle other events
                         }
                     }
                 }
@@ -103,11 +106,11 @@ impl EventConfigurationsListener {
         });
 
         // Get all configs before now
-        let mut known_contracts = Vec::new();
-        let mut stream = self.bridge.get_known_config_contracts();
-        while let Some(address) = stream.next().await {
-            known_contracts.push(address);
-        }
+        let known_contracts = self
+            .bridge
+            .get_active_event_configurations()
+            .await
+            .expect("Failed to get known event configurations"); // TODO: is it really a fatal error?
 
         // Wait for all existing configuration contracts subscriptions to start ETH part properly
         let semaphore = Semaphore::new(known_contracts.len());
@@ -153,9 +156,9 @@ impl EventConfigurationsListener {
             .has_event(event_address)
             .expect("Fatal db error")
             || self
-            .stats_db
-            .has_already_voted(event_address, &self.relay_key)
-            .expect("Fatal db error")
+                .stats_db
+                .has_already_voted(event_address, &self.relay_key)
+                .expect("Fatal db error")
     }
 
     /// Current configs state
@@ -355,11 +358,9 @@ impl EventConfigurationsListener {
     async fn subscribe_to_events_configuration_contract(
         self: Arc<Self>,
         subscriptions_tx: mpsc::UnboundedSender<(Address, H256)>,
-        address: MsgAddrStd,
+        address: MsgAddressInt,
         semaphore: Option<Semaphore>,
     ) {
-        let address = MsgAddressInt::AddrStd(address);
-
         // Ensure identity
         let new_configuration = self
             .known_config_addresses
@@ -377,7 +378,7 @@ impl EventConfigurationsListener {
             address.clone(),
             self.bridge.address().clone(),
         )
-            .await;
+        .await;
 
         // Get it's data
         let details = match self
@@ -403,8 +404,7 @@ impl EventConfigurationsListener {
             .ethereum_event_blocks_to_confirm
             .to_u64()
             .unwrap_or_else(u64::max_value);
-        let mut is_active = details.active;
-        let mut subscription_data = Some((subscriptions_tx, details.ethereum_event_address));
+        let ethereum_event_address = details.ethereum_event_address;
 
         // Store configuration contract details
         self.configs_state
@@ -412,13 +412,30 @@ impl EventConfigurationsListener {
             .await
             .insert_configuration(address.clone(), details);
 
-        if is_active {
-            // Subscribe to topic in ETH if configuration contract is active
-            if let Some((subscriptions_tx, ethereum_event_address)) = subscription_data.take() {
-                self.notify_subscription(subscriptions_tx, ethereum_event_address)
-                    .await;
-            }
-        }
+        // Start listening ETH events
+        self.notify_subscription(subscriptions_tx, ethereum_event_address)
+            .await;
+
+        let handle_event = move |listener: Arc<Self>, event| {
+            log::debug!("got event confirmation event: {:?}", event);
+
+            let (address, relay_key, vote) = match event {
+                EthereumEventConfigurationContractEvent::EventConfirmation {
+                    address,
+                    relay_key,
+                } => (address, relay_key, EventVote::Confirm),
+                EthereumEventConfigurationContractEvent::EventReject { address, relay_key } => {
+                    (address, relay_key, EventVote::Reject)
+                }
+            };
+
+            tokio::spawn(listener.handle_event(
+                ethereum_event_blocks_to_confirm,
+                address,
+                relay_key,
+                vote,
+            ));
+        };
 
         // Spawn listener of new events
         tokio::spawn({
@@ -428,54 +445,7 @@ impl EventConfigurationsListener {
             let mut eth_events = config_contract.events();
             async move {
                 while let Some(event) = eth_events.next().await {
-                    log::debug!("got event confirmation event: {:?}", event);
-
-                    let (address, relay_key, vote) = match event {
-                        EthereumEventConfigurationContractEvent::NewEthereumEventConfirmation {
-                            address,
-                            relay_key,
-                        } => (address, relay_key, EventVote::Confirm),
-                        EthereumEventConfigurationContractEvent::NewEthereumEventReject {
-                            address,
-                            relay_key,
-                        } => (address, relay_key, EventVote::Reject),
-                        _ if !is_active => {
-                            if let Ok(details) = listener
-                                .get_event_configuration_details(config_contract.as_ref(), None)
-                                .await
-                            {
-                                is_active = details.active;
-
-                                listener.configs_state.write().await.eth_configs_map.insert(
-                                    details.ethereum_event_address,
-                                    (address.clone(), details),
-                                );
-
-                                if is_active {
-                                    if let Some((subscriptions_tx, ethereum_event_address)) =
-                                    subscription_data.take()
-                                    {
-                                        listener
-                                            .notify_subscription(
-                                                subscriptions_tx,
-                                                ethereum_event_address,
-                                            )
-                                            .await;
-                                    }
-                                }
-                            }
-
-                            continue;
-                        }
-                        _ => continue,
-                    };
-
-                    tokio::spawn(listener.clone().handle_event(
-                        ethereum_event_blocks_to_confirm,
-                        address,
-                        relay_key,
-                        vote,
-                    ));
+                    handle_event(listener.clone(), event);
                 }
             }
         });
@@ -483,24 +453,7 @@ impl EventConfigurationsListener {
         // Process all past events
         let mut known_events = config_contract.get_known_events();
         while let Some(event) = known_events.next().await {
-            let (address, relay_key, vote) = match event {
-                EthereumEventConfigurationContractEvent::NewEthereumEventConfirmation {
-                    address,
-                    relay_key,
-                } => (address, relay_key, EventVote::Confirm),
-                EthereumEventConfigurationContractEvent::NewEthereumEventReject {
-                    address,
-                    relay_key,
-                } => (address, relay_key, EventVote::Reject),
-                _ => continue, // ignore votes for configuration
-            };
-
-            tokio::spawn(self.clone().handle_event(
-                ethereum_event_blocks_to_confirm,
-                address,
-                relay_key,
-                vote,
-            ));
+            handle_event(self.clone(), event);
         }
     }
 
@@ -602,16 +555,16 @@ impl EventConfigurationsListener {
                     }
                 },
                 Err(ContractError::TransportError(TransportError::AccountNotFound))
-                if retries_count > 0 =>
-                    {
-                        retries_count -= 1;
-                        log::warn!(
+                    if retries_count > 0 =>
+                {
+                    retries_count -= 1;
+                    log::warn!(
                             "failed to get events configuration contract details for {}. Retrying ({} left)",
                             config_contract.address(),
                             retries_count
                         );
-                        tokio::time::delay_for(retries_interval).await;
-                    }
+                    tokio::time::delay_for(retries_interval).await;
+                }
                 Err(e) => {
                     notify_if_init().await;
                     break Err(anyhow!(
@@ -634,16 +587,16 @@ impl EventConfigurationsListener {
             match self.event_contract.get_details(event_addr.clone()).await {
                 Ok(details) => break Ok(details),
                 Err(ContractError::TransportError(TransportError::AccountNotFound))
-                if retries_count > 0 =>
-                    {
-                        retries_count -= 1;
-                        log::error!(
-                            "Failed to get event details for {}. Retrying ({} left)",
-                            event_addr,
-                            retries_count
-                        );
-                        tokio::time::delay_for(retries_interval).await;
-                    }
+                    if retries_count > 0 =>
+                {
+                    retries_count -= 1;
+                    log::error!(
+                        "Failed to get event details for {}. Retrying ({} left)",
+                        event_addr,
+                        retries_count
+                    );
+                    tokio::time::delay_for(retries_interval).await;
+                }
                 Err(e) => break Err(e),
             };
         }

@@ -282,7 +282,7 @@ impl FunctionArg for ethereum_types::Address {
     fn token_value(self) -> TokenValue {
         TokenValue::Uint(ton_abi::Uint {
             number: num_bigint::BigUint::from_bytes_be(self.as_bytes()),
-            size: 256, // TODO: shrink to 160 bits when contract will be ready
+            size: 160,
         })
     }
 }
@@ -332,6 +332,15 @@ impl FunctionArg for u8 {
         TokenValue::Uint(ton_abi::Uint {
             number: BigUint::from(self),
             size: 8,
+        })
+    }
+}
+
+impl FunctionArg for u16 {
+    fn token_value(self) -> TokenValue {
+        TokenValue::Uint(ton_abi::Uint {
+            number: BigUint::from(self),
+            size: 16,
         })
     }
 }

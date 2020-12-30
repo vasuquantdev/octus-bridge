@@ -141,7 +141,7 @@ impl TonlibAccountSubscription {
                 reason: e.to_string(),
             }
         })? {
-            Some(data) => {
+            Some(_data) => {
                 // let mut lt = 0;
                 // for (i, &byte) in data.iter().take(4).enumerate() {
                 //     lt += (byte as u64) << i;

@@ -6,7 +6,7 @@ use warp::http::StatusCode;
 use warp::{reply, Filter, Reply};
 
 use relay_eth::ws::{update_height, EthListener};
-use relay_ton::contracts::{self, BridgeContract};
+use relay_ton::contracts::BridgeContract;
 use relay_ton::transport::Transport;
 
 use crate::config::{RelayConfig, TonConfig};
@@ -60,17 +60,11 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
         .and(state.clone())
         .and_then(|(state, _)| get_event_configurations(state));
 
-    let add_event_configuration = warp::path!("event_configurations")
-        .and(warp::post())
-        .and(json_data::<NewEventConfiguration>())
-        .and(state.clone())
-        .and_then(|data, (state, _)| start_voting_for_event_configuration(state, data));
-
-    let vote_for_event_configuration = warp::path!("event_configurations" / "vote")
+    let vote_for_ethereum_event_configuration = warp::path!("event_configurations" / "vote")
         .and(warp::post())
         .and(json_data::<Voting>())
         .and(state.clone())
-        .and_then(|data, (state, _)| vote_for_event_configuration(state, data));
+        .and_then(|data, (state, _)| vote_for_ethereum_event_configuration(state, data));
 
     let pending_transactions = warp::path!("status" / "pending")
         .and(warp::get())
@@ -108,9 +102,8 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
         .or(relay_stats)
         .or(rescan_from_block_eth)
         .or(get_event_configuration)
-        .or(add_event_configuration)
         .or(retry_failed)
-        .or(vote_for_event_configuration)
+        .or(vote_for_ethereum_event_configuration)
         .or(swagger);
 
     let server = warp::serve(routes);
@@ -120,7 +113,7 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
     server.await;
 }
 
-async fn vote_for_event_configuration(
+async fn vote_for_ethereum_event_configuration(
     state: Arc<RwLock<State>>,
     voting: Voting,
 ) -> Result<impl Reply, Infallible> {
@@ -144,7 +137,7 @@ async fn vote_for_event_configuration(
 
     Ok(
         match bridge
-            .vote_for_new_event_configuration(&address, voting)
+            .vote_for_ethereum_event_configuration(&address, voting)
             .await
         {
             Ok(_) => reply::with_status(String::new(), StatusCode::OK),
@@ -185,56 +178,6 @@ async fn get_event_configurations(state: Arc<RwLock<State>>) -> Result<impl Repl
             Err(err) => {
                 let err = format!("Failed getting configuration events: {}", err);
                 log::error!("{}", err);
-                reply::with_status(err, StatusCode::INTERNAL_SERVER_ERROR)
-            }
-        },
-    )
-}
-
-async fn start_voting_for_event_configuration(
-    state: Arc<RwLock<State>>,
-    new_configuration: NewEventConfiguration,
-) -> Result<impl Reply, Infallible> {
-    let new_configuration: contracts::models::NewEventConfiguration =
-        match new_configuration.try_into() {
-            Ok(configuration) => configuration,
-            Err(err) => {
-                log::error!("{}", err);
-                return Ok(reply::with_status(err.to_string(), StatusCode::BAD_REQUEST));
-            }
-        };
-
-    let state = state.write().await;
-    let bridge = match &state.bridge_state {
-        BridgeState::Running(bridge) => bridge,
-        _ => {
-            let err = "Bridge was not initialized".to_owned();
-            log::error!("{}", err);
-            return Ok(reply::with_status(err, StatusCode::BAD_REQUEST));
-        }
-    };
-
-    Ok(
-        match bridge
-            .start_voting_for_new_event_configuration(new_configuration)
-            .await
-        {
-            Ok(address) => reply::with_status(
-                serde_json::to_string(&VotingAddress {
-                    address: address.to_string(),
-                })
-                .expect("shouldn't fail"),
-                StatusCode::OK,
-            ),
-            Err(err) => {
-                log::error!(
-                    "Failed starting voting for new configuration event: {:?}",
-                    err
-                );
-                let err = format!(
-                    "Failed starting voting for new configuration event: {}",
-                    err
-                );
                 reply::with_status(err, StatusCode::INTERNAL_SERVER_ERROR)
             }
         },
@@ -402,7 +345,7 @@ pub async fn create_bridge(
             Url::parse(config.eth_node_address.as_str())
                 .map_err(|e| Error::new(e).context("Bad url for eth_config provided"))?,
             state_manager.clone(),
-            100 //todo move to config
+            100, //todo move to config
         )
         .await?,
     );

@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use structopt::StructOpt;
 
+use relay_models::models::{EventConfiguration, Voting};
+
 #[derive(StructOpt)]
 struct Arguments {
     #[structopt(short, long, parse(try_from_str = parse_url))]
@@ -27,10 +29,9 @@ fn main() -> Result<(), Error> {
         .item("Provide password", Client::unlock_bridge)
         .item("Set eth block", Client::set_eth_block)
         .item("Remove old blocks", Client::gc_old_failed)
-        .item("Add event configuration", Client::add_event_configuration)
         .item(
-            "Vote for event configuration",
-            Client::vote_event_configuration,
+            "Vote for ETH event configuration",
+            Client::vote_for_ethereum_event_configuration,
         )
         .execute()
 }
@@ -130,59 +131,7 @@ impl Client {
         Ok(())
     }
 
-    pub fn add_event_configuration(&self) -> Result<(), Error> {
-        let theme = ColorfulTheme::default();
-
-        let ethereum_event_abi: String = Input::with_theme(&theme)
-            .with_prompt("Path to ETH event ABI")
-            .interact()?;
-        let ethereum_event_abi = std::fs::read_to_string(ethereum_event_abi)?;
-
-        let ethereum_event_address = Input::with_theme(&theme)
-            .with_prompt("ETH event address")
-            .interact()?;
-        let ethereum_event_blocks_to_confirm = Input::with_theme(&theme)
-            .with_prompt("ETH blocks to confirm")
-            .default(10)
-            .interact()?;
-        let required_confirmations = Input::with_theme(&theme)
-            .with_prompt("Required confirmations")
-            .interact()?;
-        let required_rejections = Input::with_theme(&theme)
-            .with_prompt("Required rejections")
-            .interact()?;
-        let ethereum_event_initial_balance: f64 = Input::with_theme(&theme)
-            .with_prompt("ETH event initial balance")
-            .default(2.0)
-            .interact()?;
-        let ethereum_event_initial_balance = match ethereum_event_initial_balance {
-            x if x > 1000.0 => return Err(anyhow!("{} TON is too much for event balance", x)),
-            x if x < 0.5 => {
-                return Err(anyhow!("{} TON is not enough to initialize event contract"))
-            }
-            x => (x * 1_000_000_000.0) as u64,
-        };
-        let event_proxy_address = Input::with_theme(&theme)
-            .with_prompt("Event proxy address")
-            .interact()?;
-
-        let request = NewEventConfiguration {
-            ethereum_event_abi,
-            ethereum_event_address,
-            event_proxy_address,
-            ethereum_event_blocks_to_confirm,
-            required_confirmations,
-            required_rejections,
-            ethereum_event_initial_balance,
-        };
-
-        let result: VotingAddress = self.post_json("event_configurations", &request)?;
-
-        println!("Success! New voting address: {}", result.address);
-        Ok(())
-    }
-
-    pub fn vote_event_configuration(&self) -> Result<(), Error> {
+    pub fn vote_for_ethereum_event_configuration(&self) -> Result<(), Error> {
         let theme = ColorfulTheme::default();
 
         let known_configs: Vec<EventConfiguration> = self.get("event_configurations")?;
@@ -191,7 +140,11 @@ impl Client {
         selection.with_prompt("Select config to vote").default(0);
 
         for (i, config) in known_configs.iter().enumerate() {
-            selection.item(format!("Config #{}: {}", i, config));
+            selection.item(format!(
+                "Config #{}: {}",
+                i,
+                EventConfigurationWrapper(&config)
+            ));
         }
 
         let selected_config = &known_configs[selection.interact()?];
@@ -231,6 +184,7 @@ impl Client {
         Ok(response.json()?)
     }
 
+    #[allow(dead_code)]
     fn post_json<T, B>(&self, url: &str, body: &B) -> Result<T, Error>
     where
         for<'de> T: Deserialize<'de>,
@@ -345,58 +299,21 @@ pub struct VotingAddress {
     pub address: String,
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "lowercase", tag = "vote", content = "address")]
-pub enum Voting {
-    Confirm(String),
-    Reject(String),
-}
+struct EventConfigurationWrapper<'a>(&'a EventConfiguration);
 
-// TODO: move into separate lib and share with client
-#[derive(Deserialize, Serialize)]
-pub struct NewEventConfiguration {
-    pub ethereum_event_abi: String,
-    pub ethereum_event_address: String,
-    pub ethereum_event_blocks_to_confirm: u64,
-    pub required_confirmations: u64,
-    pub required_rejections: u64,
-    pub ethereum_event_initial_balance: u64,
-    pub event_proxy_address: String,
-}
-
-#[derive(Deserialize, Serialize)]
-pub struct EventConfiguration {
-    pub address: String,
-
-    pub ethereum_event_abi: String,
-    pub ethereum_event_address: String,
-    pub event_proxy_address: String,
-    pub ethereum_event_blocks_to_confirm: u64,
-    pub required_confirmations: u64,
-    pub required_rejections: u64,
-    pub event_required_confirmations: u64,
-    pub event_required_rejects: u64,
-
-    pub confirm_keys: Vec<String>,
-    pub reject_keys: Vec<String>,
-    pub active: bool,
-}
-
-impl std::fmt::Display for EventConfiguration {
+impl<'a> std::fmt::Display for EventConfigurationWrapper<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let eth_addr_len = self.ethereum_event_address.len();
-        let ton_addr_len = self.address.len();
+        let config = self.0;
+
+        let eth_addr_len = config.ethereum_event_address.len();
+        let ton_addr_len = config.address.len();
 
         f.write_fmt(format_args!(
-            "ETH 0x{}...{} -> TON {}...{}, confirms {}/{}, rejects {}/{}",
-            &self.ethereum_event_address[0..4],
-            &self.ethereum_event_address[eth_addr_len - 4..eth_addr_len],
-            &self.address[0..6],
-            &self.address[ton_addr_len - 4..ton_addr_len],
-            self.confirm_keys.len(),
-            self.required_confirmations,
-            self.reject_keys.len(),
-            self.required_rejections
+            "ETH 0x{}...{} -> TON {}...{}",
+            &config.ethereum_event_address[0..4],
+            &config.ethereum_event_address[eth_addr_len - 4..eth_addr_len],
+            &config.address[0..6],
+            &config.address[ton_addr_len - 4..ton_addr_len],
         ))
     }
 }

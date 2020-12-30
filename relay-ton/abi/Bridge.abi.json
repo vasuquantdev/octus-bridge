@@ -6,57 +6,45 @@
       "name": "constructor",
       "inputs": [
         {"name":"_relayKeys","type":"uint256[]"},
-        {"components":[{"name":"ethereumEventConfigurationCode","type":"cell"},{"name":"ethereumEventConfigurationRequiredConfirmations","type":"uint256"},{"name":"ethereumEventConfigurationRequiredRejects","type":"uint256"},{"name":"ethereumEventConfigurationInitialBalance","type":"uint128"},{"name":"ethereumEventCode","type":"cell"},{"name":"bridgeConfigurationUpdateCode","type":"cell"},{"name":"bridgeConfigurationUpdateRequiredConfirmations","type":"uint256"},{"name":"bridgeConfigurationUpdateRequiredRejects","type":"uint256"},{"name":"bridgeConfigurationUpdateInitialBalance","type":"uint128"},{"name":"active","type":"bool"}],"name":"_bridgeConfiguration","type":"tuple"}
+        {"components":[{"name":"eventConfigurationRequiredConfirmations","type":"uint16"},{"name":"eventConfigurationRequiredRejects","type":"uint16"},{"name":"bridgeConfigurationUpdateRequiredConfirmations","type":"uint16"},{"name":"bridgeConfigurationUpdateRequiredRejects","type":"uint16"},{"name":"bridgeRelayUpdateRequiredConfirmations","type":"uint16"},{"name":"bridgeRelayUpdateRequiredRejects","type":"uint16"},{"name":"active","type":"bool"}],"name":"_bridgeConfiguration","type":"tuple"}
       ],
       "outputs": [
       ]
     },
     {
-      "name": "confirmBridgeConfigurationUpdate",
+      "name": "updateEventConfiguration",
       "inputs": [
-        {"components":[{"name":"ethereumEventConfigurationCode","type":"cell"},{"name":"ethereumEventConfigurationRequiredConfirmations","type":"uint256"},{"name":"ethereumEventConfigurationRequiredRejects","type":"uint256"},{"name":"ethereumEventConfigurationInitialBalance","type":"uint128"},{"name":"ethereumEventCode","type":"cell"},{"name":"bridgeConfigurationUpdateCode","type":"cell"},{"name":"bridgeConfigurationUpdateRequiredConfirmations","type":"uint256"},{"name":"bridgeConfigurationUpdateRequiredRejects","type":"uint256"},{"name":"bridgeConfigurationUpdateInitialBalance","type":"uint128"},{"name":"active","type":"bool"}],"name":"_bridgeConfiguration","type":"tuple"}
-      ],
-      "outputs": [
-        {"name":"value0","type":"address"}
-      ]
-    },
-    {
-      "name": "updateBridgeConfiguration",
-      "inputs": [
-        {"components":[{"name":"ethereumEventConfigurationCode","type":"cell"},{"name":"ethereumEventConfigurationRequiredConfirmations","type":"uint256"},{"name":"ethereumEventConfigurationRequiredRejects","type":"uint256"},{"name":"ethereumEventConfigurationInitialBalance","type":"uint128"},{"name":"ethereumEventCode","type":"cell"},{"name":"bridgeConfigurationUpdateCode","type":"cell"},{"name":"bridgeConfigurationUpdateRequiredConfirmations","type":"uint256"},{"name":"bridgeConfigurationUpdateRequiredRejects","type":"uint256"},{"name":"bridgeConfigurationUpdateInitialBalance","type":"uint128"},{"name":"active","type":"bool"}],"name":"_bridgeConfiguration","type":"tuple"}
+        {"name":"eventConfiguration","type":"address"},
+        {"name":"vote","type":"bool"}
       ],
       "outputs": [
       ]
     },
     {
-      "name": "addEthereumEventConfiguration",
+      "name": "getDetails",
       "inputs": [
-        {"name":"ethereumEventABI","type":"bytes"},
-        {"name":"ethereumAddress","type":"bytes"},
-        {"name":"ethereumEventBlocksToConfirm","type":"uint256"},
-        {"name":"ethereumEventRequiredConfirmations","type":"uint256"},
-        {"name":"ethereumEventRequiredRejects","type":"uint256"},
-        {"name":"ethereumEventInitialBalance","type":"uint128"},
-        {"name":"eventProxyAddress","type":"address"}
       ],
       "outputs": [
-        {"name":"value0","type":"address"}
+        {"components":[{"name":"eventConfigurationRequiredConfirmations","type":"uint16"},{"name":"eventConfigurationRequiredRejects","type":"uint16"},{"name":"bridgeConfigurationUpdateRequiredConfirmations","type":"uint16"},{"name":"bridgeConfigurationUpdateRequiredRejects","type":"uint16"},{"name":"bridgeRelayUpdateRequiredConfirmations","type":"uint16"},{"name":"bridgeRelayUpdateRequiredRejects","type":"uint16"},{"name":"active","type":"bool"}],"name":"_bridgeConfiguration","type":"tuple"}
       ]
     },
     {
-      "name": "confirmEthereumEventConfiguration",
+      "name": "getEventConfigurationStatus",
       "inputs": [
-        {"name":"ethereumEventConfigurationAddress","type":"address"}
+        {"name":"eventConfiguration","type":"address"}
       ],
       "outputs": [
+        {"name":"confirmKeys","type":"uint256[]"},
+        {"name":"rejectKeys","type":"uint256[]"},
+        {"name":"status","type":"bool"}
       ]
     },
     {
-      "name": "rejectEthereumEventConfiguration",
+      "name": "getActiveEventConfigurations",
       "inputs": [
-        {"name":"ethereumEventConfigurationAddress","type":"address"}
       ],
       "outputs": [
+        {"name":"contracts","type":"address[]"}
       ]
     },
     {
@@ -67,7 +55,7 @@
         {"name":"eventData","type":"cell"},
         {"name":"eventBlockNumber","type":"uint256"},
         {"name":"eventBlock","type":"uint256"},
-        {"name":"ethereumEventConfigurationAddress","type":"address"}
+        {"name":"eventConfiguration","type":"address"}
       ],
       "outputs": [
       ]
@@ -80,18 +68,83 @@
         {"name":"eventData","type":"cell"},
         {"name":"eventBlockNumber","type":"uint256"},
         {"name":"eventBlock","type":"uint256"},
-        {"name":"ethereumEventConfigurationAddress","type":"address"}
+        {"name":"eventConfiguration","type":"address"}
       ],
       "outputs": [
       ]
     },
     {
-      "name": "getDetails",
+      "name": "confirmTonEvent",
       "inputs": [
+        {"name":"eventTransaction","type":"uint256"},
+        {"name":"eventIndex","type":"uint256"},
+        {"name":"eventData","type":"cell"},
+        {"name":"eventBlockNumber","type":"uint256"},
+        {"name":"eventBlock","type":"uint256"},
+        {"name":"eventDataSignature","type":"bytes"},
+        {"name":"eventConfiguration","type":"address"}
       ],
       "outputs": [
-        {"components":[{"name":"ethereumEventConfigurationCode","type":"cell"},{"name":"ethereumEventConfigurationRequiredConfirmations","type":"uint256"},{"name":"ethereumEventConfigurationRequiredRejects","type":"uint256"},{"name":"ethereumEventConfigurationInitialBalance","type":"uint128"},{"name":"ethereumEventCode","type":"cell"},{"name":"bridgeConfigurationUpdateCode","type":"cell"},{"name":"bridgeConfigurationUpdateRequiredConfirmations","type":"uint256"},{"name":"bridgeConfigurationUpdateRequiredRejects","type":"uint256"},{"name":"bridgeConfigurationUpdateInitialBalance","type":"uint128"},{"name":"active","type":"bool"}],"name":"_bridgeConfiguration","type":"tuple"},
-        {"components":[{"name":"ethereumEventConfiguration","type":"uint256"},{"name":"bridgeConfigurationUpdateVoting","type":"uint256"}],"name":"_sequentialIndex","type":"tuple"}
+      ]
+    },
+    {
+      "name": "rejectTonEvent",
+      "inputs": [
+        {"name":"eventTransaction","type":"uint256"},
+        {"name":"eventIndex","type":"uint256"},
+        {"name":"eventData","type":"cell"},
+        {"name":"eventBlockNumber","type":"uint256"},
+        {"name":"eventBlock","type":"uint256"},
+        {"name":"eventConfiguration","type":"address"}
+      ],
+      "outputs": [
+      ]
+    },
+    {
+      "name": "getVotingDirection",
+      "inputs": [
+        {"components":[{"name":"signature","type":"bytes"},{"name":"payload","type":"bytes"}],"name":"_vote","type":"tuple"}
+      ],
+      "outputs": [
+        {"name":"vote","type":"bool"}
+      ]
+    },
+    {
+      "name": "updateBridgeConfiguration",
+      "inputs": [
+        {"components":[{"name":"eventConfigurationRequiredConfirmations","type":"uint16"},{"name":"eventConfigurationRequiredRejects","type":"uint16"},{"name":"bridgeConfigurationUpdateRequiredConfirmations","type":"uint16"},{"name":"bridgeConfigurationUpdateRequiredRejects","type":"uint16"},{"name":"bridgeRelayUpdateRequiredConfirmations","type":"uint16"},{"name":"bridgeRelayUpdateRequiredRejects","type":"uint16"},{"name":"active","type":"bool"}],"name":"_bridgeConfiguration","type":"tuple"},
+        {"components":[{"name":"signature","type":"bytes"},{"name":"payload","type":"bytes"}],"name":"_vote","type":"tuple"}
+      ],
+      "outputs": [
+      ]
+    },
+    {
+      "name": "getBridgeConfigurationVotes",
+      "inputs": [
+        {"components":[{"name":"eventConfigurationRequiredConfirmations","type":"uint16"},{"name":"eventConfigurationRequiredRejects","type":"uint16"},{"name":"bridgeConfigurationUpdateRequiredConfirmations","type":"uint16"},{"name":"bridgeConfigurationUpdateRequiredRejects","type":"uint16"},{"name":"bridgeRelayUpdateRequiredConfirmations","type":"uint16"},{"name":"bridgeRelayUpdateRequiredRejects","type":"uint16"},{"name":"active","type":"bool"}],"name":"_bridgeConfiguration","type":"tuple"}
+      ],
+      "outputs": [
+        {"name":"confirmKeys","type":"uint256[]"},
+        {"name":"rejectKeys","type":"uint256[]"}
+      ]
+    },
+    {
+      "name": "updateBridgeRelays",
+      "inputs": [
+        {"components":[{"name":"key","type":"uint256"},{"name":"action","type":"bool"}],"name":"target","type":"tuple"},
+        {"components":[{"name":"signature","type":"bytes"},{"name":"payload","type":"bytes"}],"name":"_vote","type":"tuple"}
+      ],
+      "outputs": [
+      ]
+    },
+    {
+      "name": "getBridgeRelayVotes",
+      "inputs": [
+        {"components":[{"name":"key","type":"uint256"},{"name":"action","type":"bool"}],"name":"target","type":"tuple"}
+      ],
+      "outputs": [
+        {"name":"confirmKeys","type":"uint256[]"},
+        {"name":"rejectKeys","type":"uint256[]"}
       ]
     },
     {
@@ -109,17 +162,58 @@
   ],
   "events": [
     {
-      "name": "NewEthereumEventConfiguration",
+      "name": "EventConfigurationCreationVote",
       "inputs": [
-        {"name":"addr","type":"address"}
+        {"name":"addr","type":"address"},
+        {"name":"relayKey","type":"uint256"},
+        {"name":"vote","type":"bool"}
       ],
       "outputs": [
       ]
     },
     {
-      "name": "NewBridgeConfigurationUpdate",
+      "name": "EventConfigurationCreationEnd",
       "inputs": [
-        {"name":"addr","type":"address"}
+        {"name":"addr","type":"address"},
+        {"name":"active","type":"bool"}
+      ],
+      "outputs": [
+      ]
+    },
+    {
+      "name": "BridgeConfigurationUpdateVote",
+      "inputs": [
+        {"components":[{"name":"eventConfigurationRequiredConfirmations","type":"uint16"},{"name":"eventConfigurationRequiredRejects","type":"uint16"},{"name":"bridgeConfigurationUpdateRequiredConfirmations","type":"uint16"},{"name":"bridgeConfigurationUpdateRequiredRejects","type":"uint16"},{"name":"bridgeRelayUpdateRequiredConfirmations","type":"uint16"},{"name":"bridgeRelayUpdateRequiredRejects","type":"uint16"},{"name":"active","type":"bool"}],"name":"_bridgeConfiguration","type":"tuple"},
+        {"name":"relayKey","type":"uint256"},
+        {"components":[{"name":"signature","type":"bytes"},{"name":"payload","type":"bytes"}],"name":"vote","type":"tuple"}
+      ],
+      "outputs": [
+      ]
+    },
+    {
+      "name": "BridgeConfigurationUpdateEnd",
+      "inputs": [
+        {"components":[{"name":"eventConfigurationRequiredConfirmations","type":"uint16"},{"name":"eventConfigurationRequiredRejects","type":"uint16"},{"name":"bridgeConfigurationUpdateRequiredConfirmations","type":"uint16"},{"name":"bridgeConfigurationUpdateRequiredRejects","type":"uint16"},{"name":"bridgeRelayUpdateRequiredConfirmations","type":"uint16"},{"name":"bridgeRelayUpdateRequiredRejects","type":"uint16"},{"name":"active","type":"bool"}],"name":"_bridgeConfiguration","type":"tuple"},
+        {"name":"status","type":"bool"}
+      ],
+      "outputs": [
+      ]
+    },
+    {
+      "name": "BridgeRelaysUpdateVote",
+      "inputs": [
+        {"components":[{"name":"key","type":"uint256"},{"name":"action","type":"bool"}],"name":"target","type":"tuple"},
+        {"name":"relayKey","type":"uint256"},
+        {"components":[{"name":"signature","type":"bytes"},{"name":"payload","type":"bytes"}],"name":"vote","type":"tuple"}
+      ],
+      "outputs": [
+      ]
+    },
+    {
+      "name": "BridgeRelaysUpdateEnd",
+      "inputs": [
+        {"components":[{"name":"key","type":"uint256"},{"name":"action","type":"bool"}],"name":"target","type":"tuple"},
+        {"name":"status","type":"bool"}
       ],
       "outputs": [
       ]

@@ -104,7 +104,7 @@ impl EthereumEventConfigurationContract {
             })?;
 
             type Event = <EthereumEventConfigurationContract as ContractWithEvents>::Event;
-            if let Ok(Event::NewEthereumEventConfirmation { address, .. }) =
+            if let Ok(Event::EventConfirmation { address, .. }) =
                 Self::parse_event(&self.events_map, &body)
             {
                 return Ok(address);
@@ -116,10 +116,6 @@ impl EthereumEventConfigurationContract {
 
     pub async fn get_details(&self) -> ContractResult<EthereumEventConfiguration> {
         self.message("getDetails")?.run_local().await?.parse_all()
-    }
-
-    pub async fn get_details_hash(&self) -> ContractResult<UInt256> {
-        self.message("getDetails")?.run_local().await?.hash()
     }
 }
 

@@ -11,6 +11,33 @@ use super::utils::*;
 use crate::models::*;
 use crate::prelude::*;
 
+pub trait TokenValueExt {
+    fn unnamed(self) -> Token;
+
+    fn named<T>(self, name: T) -> Token
+    where
+        T: ToString;
+}
+
+impl TokenValueExt for TokenValue {
+    fn unnamed(self) -> Token {
+        Token {
+            name: String::new(),
+            value: self,
+        }
+    }
+
+    fn named<T>(self, name: T) -> Token
+    where
+        T: ToString,
+    {
+        Token {
+            name: name.to_string(),
+            value: self,
+        }
+    }
+}
+
 pub trait IgnoreOutput: Sized {
     fn ignore_output(self) -> Result<(), ContractError> {
         Ok(())
@@ -43,6 +70,28 @@ impl ContractOutput {
     }
 }
 
+macro_rules! impl_contract_output_tuple {
+    ($($type:ident),+) => {
+        impl<$($type),*> TryFrom<ContractOutput> for ($($type),*)
+        where
+            $(TokenValue: ParseToken<$type>),*
+        {
+            type Error = ContractError;
+
+            fn try_from(value: ContractOutput) -> Result<Self, Self::Error> {
+                let mut tokens = value.tokens.into_iter();
+                Ok((
+                    $(ParseToken::<$type>::try_parse(tokens.next())?),*
+                ))
+            }
+        }
+    };
+}
+
+impl_contract_output_tuple!(T1, T2);
+impl_contract_output_tuple!(T1, T2, T3);
+impl_contract_output_tuple!(T1, T2, T3, T4);
+
 pub struct ContractOutputParser<I>(I);
 
 impl<I: Iterator<Item = Token>> ContractOutputParser<I> {
@@ -62,6 +111,20 @@ impl ParseToken<MsgAddrStd> for TokenValue {
     fn try_parse(self) -> ContractResult<MsgAddrStd> {
         match self {
             TokenValue::Address(ton_block::MsgAddress::AddrStd(address)) => Ok(address),
+            _ => Err(ContractError::InvalidAbi),
+        }
+    }
+}
+
+impl ParseToken<MsgAddressInt> for TokenValue {
+    fn try_parse(self) -> ContractResult<MsgAddressInt> {
+        match self {
+            TokenValue::Address(ton_block::MsgAddress::AddrStd(addr)) => {
+                Ok(MsgAddressInt::AddrStd(addr))
+            }
+            TokenValue::Address(ton_block::MsgAddress::AddrVar(addr)) => {
+                Ok(MsgAddressInt::AddrVar(addr))
+            }
             _ => Err(ContractError::InvalidAbi),
         }
     }
@@ -108,7 +171,7 @@ impl ParseToken<ethereum_types::H256> for TokenValue {
 
                 const HASH_SIZE: usize = 32;
 
-                // copy min(N,20) bytes into last min(N,20) elements of address
+                // copy min(N,32) bytes into last min(N,32) elements of address
 
                 let size = bytes.len();
                 let src_offset = size - HASH_SIZE.min(size);
@@ -177,6 +240,14 @@ impl ParseToken<u8> for TokenValue {
     }
 }
 
+impl ParseToken<u16> for TokenValue {
+    fn try_parse(self) -> ContractResult<u16> {
+        ParseToken::<BigUint>::try_parse(self)?
+            .to_u16()
+            .ok_or(ContractError::InvalidAbi)
+    }
+}
+
 impl ParseToken<bool> for TokenValue {
     fn try_parse(self) -> ContractResult<bool> {
         match self {
@@ -236,6 +307,7 @@ where
 }
 
 pub trait StandaloneToken {}
+impl StandaloneToken for MsgAddressInt {}
 impl StandaloneToken for MsgAddrStd {}
 impl StandaloneToken for ethereum_types::Address {}
 impl StandaloneToken for ethereum_types::H256 {}
@@ -243,6 +315,7 @@ impl StandaloneToken for AccountId {}
 impl StandaloneToken for UInt256 {}
 impl StandaloneToken for UInt128 {}
 impl StandaloneToken for BigUint {}
+impl StandaloneToken for u16 {}
 impl StandaloneToken for bool {}
 impl StandaloneToken for Vec<u8> {}
 

@@ -1,5 +1,4 @@
 pub use bridge::*;
-pub use bridge_configuration_update::*;
 pub use contract::*;
 pub use errors::*;
 pub use ethereum_event::*;
@@ -7,7 +6,6 @@ pub use ethereum_event_configuration::*;
 pub use models::*;
 
 pub mod bridge;
-pub mod bridge_configuration_update;
 pub mod ethereum_event;
 pub mod ethereum_event_configuration;
 

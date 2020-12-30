@@ -21,9 +21,11 @@ pub fn get_api() -> String {
             ("event_configurations"): {
                 GET: {
                     200: String, // todo: change to models
-                },
+                }
+            },
+            ("event_configurations" / "vote"): {
                 POST: {
-                    body: NewEventConfiguration,
+                    body: Voting,
                     200: (),
                 }
             },
@@ -41,32 +43,32 @@ pub fn get_api() -> String {
                     405: String
                 }
             },
-            ("status" / "pending") :{
-                 GET: {
-                        200: Vec<EthTonTransactionView>
-                    }
-                },
-                ("status" / "failed") :{
-                 GET: {
-                        200: Vec<EthTonTransactionView>
-                    }
-                },
-                ("status" / "eth") :{
-                 GET: {
-                        200: HashMap<u64, EthTonConfirmationDataView>
-                    }
-                },
-                ("status" / "relay") :{
-                 GET: {
-                        summary: "Returns object, where key is relay key and values is list of confirmed transactions",
-                        200: HashMap<String, Vec<TxStatView>>
-                    }
-                },
-                ("status" / "failed" / "retry") :{
-                 GET: {
-                        200: Vec<EthTonTransactionView>
-                    }
-                },
+            ("status" / "pending"): {
+                GET: {
+                    200: Vec<EthTonTransactionView>
+                }
+            },
+            ("status" / "failed"): {
+                GET: {
+                    200: Vec<EthTonTransactionView>
+                }
+            },
+            ("status" / "eth") :{
+                GET: {
+                    200: HashMap<u64, EthTonConfirmationDataView>
+                }
+            },
+            ("status" / "relay") :{
+                GET: {
+                    summary: "Returns object, where key is relay key and values is list of confirmed transactions",
+                    200: HashMap<String, Vec<TxStatView>>
+                }
+            },
+            ("status" / "failed" / "retry") :{
+                GET: {
+                    200: Vec<EthTonTransactionView>
+                }
+            },
         }
     };
     serde_yaml::to_string(&api).unwrap()

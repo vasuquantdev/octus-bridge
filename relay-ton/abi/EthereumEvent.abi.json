@@ -5,9 +5,7 @@
     {
       "name": "constructor",
       "inputs": [
-        {"name":"relayKey","type":"uint256"},
-        {"name":"_requiredConfirmations","type":"uint256"},
-        {"name":"_requiredRejects","type":"uint256"}
+        {"name":"relayKey","type":"uint256"}
       ],
       "outputs": [
       ]
@@ -56,7 +54,9 @@
     {"key":4,"name":"proxyAddress","type":"address"},
     {"key":5,"name":"eventBlockNumber","type":"uint256"},
     {"key":6,"name":"eventBlock","type":"uint256"},
-    {"key":7,"name":"ethereumEventConfirguration","type":"address"}
+    {"key":7,"name":"ethereumEventConfirguration","type":"address"},
+    {"key":8,"name":"requiredConfirmations","type":"uint256"},
+    {"key":9,"name":"requiredRejects","type":"uint256"}
   ],
   "events": [
   ]

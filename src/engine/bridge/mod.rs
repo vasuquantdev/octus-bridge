@@ -1,7 +1,6 @@
 use ethabi::Address;
 use secp256k1::PublicKey;
 use sled::Db;
-use ton_block::MsgAddrStd;
 
 use relay_eth::ws::EthListener;
 use relay_ton::contracts::utils::pack_tokens;
@@ -113,35 +112,14 @@ impl Bridge {
         Ok(state.eth_configs_map.values().cloned().collect())
     }
 
-    pub async fn start_voting_for_new_event_configuration(
+    pub async fn vote_for_ethereum_event_configuration(
         &self,
-        new_configuration: NewEventConfiguration,
-    ) -> Result<MsgAddrStd, anyhow::Error> {
-        let address = self
-            .ton_client
-            .add_ethereum_event_configuration(new_configuration)
-            .await?;
-
-        Ok(address)
-    }
-
-    pub async fn vote_for_new_event_configuration(
-        &self,
-        address: &MsgAddressInt,
+        event_configuration: &MsgAddressInt,
         voting: Voting,
     ) -> Result<(), anyhow::Error> {
-        match voting {
-            Voting::Confirm => {
-                self.ton_client
-                    .confirm_ethereum_event_configuration(address)
-                    .await?
-            }
-            Voting::Reject => {
-                self.ton_client
-                    .reject_ethereum_event_configuration(address)
-                    .await?
-            }
-        };
+        self.ton_client
+            .update_event_configuration(event_configuration, voting)
+            .await?;
         Ok(())
     }
 
