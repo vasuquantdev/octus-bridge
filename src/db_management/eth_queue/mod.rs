@@ -77,7 +77,13 @@ impl Table for EthQueue {
     fn dump_elements(&self) -> HashMap<Self::Key, Self::Value> {
         self.db
             .iter()
-            .filter_map(|x| x.ok())
+            .filter_map(|x| match  x {
+                Ok(a)=>Some(a),
+                Err(e)=>{
+                    log::error!("Failed getting stats from db. Db corruption?: {}",e);
+                    None
+                }
+            })
             .fold(HashMap::new(), |mut result, (k, _)| {
                 let mut block_number = [0; 8];
                 block_number.copy_from_slice(&k[0..8]);

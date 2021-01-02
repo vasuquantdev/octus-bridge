@@ -76,7 +76,13 @@ impl TonQueue {
     pub fn get_all_pending(&self) -> impl Iterator<Item = (MsgAddrStd, EthTonTransaction)> {
         self.pending
             .iter()
-            .filter_map(|x| x.ok())
+            .filter_map(|x| match  x {
+                Ok(a)=>Some(a),
+                Err(e)=>{
+                    log::error!("Failed getting pending from db. Db corruption?: {}",e);
+                    None
+                }
+            })
             .map(|(key, value)| {
                 (
                     parse_key(&key),
@@ -88,7 +94,13 @@ impl TonQueue {
     pub fn get_all_failed(&self) -> impl Iterator<Item = (MsgAddrStd, EthTonTransaction)> {
         self.failed
             .iter()
-            .filter_map(|x| x.ok())
+            .filter_map(|x| match  x {
+                Ok(a)=>Some(a),
+                Err(e)=>{
+                    log::error!("Failed getting failed from db. Db corruption?: {}",e);
+                    None
+                }
+            })
             .map(|(key, value)| {
                 (
                     parse_key(&key),

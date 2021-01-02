@@ -77,7 +77,13 @@ impl Table for StatsDb {
     fn dump_elements(&self) -> HashMap<Self::Key, Self::Value> {
         self.tree
             .iter()
-            .filter_map(|x| x.ok())
+            .filter_map(|x| match  x {
+                Ok(a)=>Some(a),
+                Err(e)=>{
+                    log::error!("Failed getting stats from db. Db corruption?: {}",e);
+                    None
+                }
+            })
             .fold(HashMap::new(), |mut result, (key, value)| {
                 let event_addr = MsgAddrStd {
                     anycast: None,
