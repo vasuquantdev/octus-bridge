@@ -292,8 +292,9 @@ impl EventConfigurationsListener {
                     // Timeout reached
                     future::Either::Right((_, new_rx)) => {
                         log::error!(
-                            "Failed to get voting event response: timeout reached. Retrying ({} left)",
-                            retries_count
+                            "Failed to get voting event response: timeout reached. Retrying ({} left for {})",
+                            retries_count,
+                            data.inner().event_transaction
                         );
 
                         retries_count -= 1;
@@ -306,6 +307,11 @@ impl EventConfigurationsListener {
                 }
             } else {
                 unreachable!()
+            }
+
+            // Check if event arrived nevertheless unsuccessful sending
+            if self.has_already_voted(&event_address) {
+                break Ok(());
             }
         };
 
