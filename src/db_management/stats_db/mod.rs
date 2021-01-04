@@ -50,23 +50,7 @@ impl StatsDb {
         let mut key = Vec::with_capacity(64);
         key.extend_from_slice(&event_addr.address.get_bytestring(0));
         key.extend_from_slice(relay_key.as_slice());
-
-        Ok(self
-            .tree
-            .scan_prefix(&key)
-            .keys()
-            .next()
-            .and_then(|key| {
-                let key = match key {
-                    Ok(a) => Some(a),
-                    Err(e) => {
-                        log::error!("Failed getting key: {}", e);
-                        None
-                    }
-                };
-                key.and_then(|item| Some(bincode::deserialize::<StoredTxStat>(&item).unwrap()))
-            })
-            .is_some())
+        Ok(self.tree.scan_prefix(&key).keys().next().is_some())
     }
 }
 
@@ -77,10 +61,10 @@ impl Table for StatsDb {
     fn dump_elements(&self) -> HashMap<Self::Key, Self::Value> {
         self.tree
             .iter()
-            .filter_map(|x| match  x {
-                Ok(a)=>Some(a),
-                Err(e)=>{
-                    log::error!("Failed getting stats from db. Db corruption?: {}",e);
+            .filter_map(|x| match x {
+                Ok(a) => Some(a),
+                Err(e) => {
+                    log::error!("Failed getting stats from db. Db corruption?: {}", e);
                     None
                 }
             })
