@@ -310,7 +310,11 @@ impl EventConfigurationsListener {
             }
 
             // Check if event arrived nevertheless unsuccessful sending
-            if self.has_already_voted(&event_address) {
+            if self
+                .stats_db
+                .has_already_voted(&event_address, &self.relay_key)
+                .expect("Fatal db error")
+            {
                 break Ok(());
             }
         };
