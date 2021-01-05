@@ -21,7 +21,7 @@ use super::utils::*;
 use crate::models::*;
 use crate::prelude::*;
 use crate::transport::errors::*;
-use crate::transport::{AccountSubscription, RunLocal, Transport};
+use crate::transport::{AccountSubscription, RunLocal, Transport, TransportDb};
 
 pub struct GraphQLTransport {
     db: Db,
@@ -104,7 +104,7 @@ impl Transport for GraphQLTransport {
 }
 
 struct GraphQLAccountSubscription {
-    _db: Db,
+    db: Arc<SledTransportDb>,
     client: NodeClient,
     account: MsgAddressInt,
     account_id: UInt256,
@@ -122,10 +122,12 @@ impl GraphQLAccountSubscription {
         let client = client.clone();
         let known_block_id = client.get_latest_block(&addr).await?;
 
+        let db = Arc::new(SledTransportDb::new(&db));
+
         let (tx, rx) = mpsc::unbounded_channel();
 
         let subscription = Arc::new(Self {
-            _db: db,
+            db,
             client,
             account: addr.clone(),
             account_id: addr
@@ -214,6 +216,8 @@ impl GraphQLAccountSubscription {
                     Ok(Some(data)) => {
                         log::trace!("got account block. {:?}", data);
 
+                        let mut latest_lt = 0;
+
                         for item in data.transactions().iter() {
                             let transaction = match item.and_then(|(_, mut value)| {
                                 InRefValue::<Transaction>::construct_from(&mut value)
@@ -227,6 +231,10 @@ impl GraphQLAccountSubscription {
                                     continue 'subscription_loop;
                                 }
                             };
+
+                            if transaction.lt > latest_lt {
+                                latest_lt = transaction.lt;
+                            }
 
                             let out_messages = match parse_transaction_messages(&transaction) {
                                 Ok(messages) => messages,
@@ -265,6 +273,12 @@ impl GraphQLAccountSubscription {
                                     // Just ignore
                                 }
                             }
+                        }
+
+                        if latest_lt > 0 {
+                            subscription
+                                .db
+                                .update_latest_lt(&subscription.account, latest_lt);
                         }
                     }
                     Ok(None) => {
@@ -319,6 +333,10 @@ impl RunLocal for GraphQLAccountSubscription {
 
 #[async_trait]
 impl AccountSubscription for GraphQLAccountSubscription {
+    fn db(&self) -> Arc<dyn TransportDb> {
+        self.db.clone()
+    }
+
     async fn simulate_call(&self, message: InternalMessage) -> TransportResult<Vec<Message>> {
         run_local(&self.client, message).await
     }

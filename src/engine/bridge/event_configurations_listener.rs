@@ -469,7 +469,8 @@ impl EventConfigurationsListener {
         });
 
         // Process all past events
-        let mut known_events = config_contract.get_known_events();
+        let latest_known_lt = config_contract.latest_known_lt();
+        let mut known_events = config_contract.get_known_events(Some(latest_known_lt));
         while let Some(event) = known_events.next().await {
             handle_event(self.clone(), event);
         }

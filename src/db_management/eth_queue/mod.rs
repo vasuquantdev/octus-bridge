@@ -33,7 +33,7 @@ impl EthQueue {
 
         let results = self
             .db
-            .range(RANGE_LOWER_BOUND..=(block_number.to_be_bytes()))
+            .range(RANGE_LOWER_BOUND..=((block_number + 1).to_be_bytes()))
             .keys()
             .filter_map(|key| {
                 let key = key.ok()?;
