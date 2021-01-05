@@ -34,8 +34,8 @@ impl TonQueue {
             pending.insert(key.clone(), bincode::serialize(data).unwrap())?;
             ConflictableTransactionResult::<(), std::io::Error>::Ok(())
         })?;
-        self.failed.flush_async().await?;
-        self.pending.flush_async().await?;  
+        self.failed.flush()?;
+        self.pending.flush()?;
         Ok(())
     }
 
@@ -76,10 +76,10 @@ impl TonQueue {
     pub fn get_all_pending(&self) -> impl Iterator<Item = (MsgAddrStd, EthTonTransaction)> {
         self.pending
             .iter()
-            .filter_map(|x| match  x {
-                Ok(a)=>Some(a),
-                Err(e)=>{
-                    log::error!("Failed getting pending from db. Db corruption?: {}",e);
+            .filter_map(|x| match x {
+                Ok(a) => Some(a),
+                Err(e) => {
+                    log::error!("Failed getting pending from db. Db corruption?: {}", e);
                     None
                 }
             })
@@ -94,10 +94,10 @@ impl TonQueue {
     pub fn get_all_failed(&self) -> impl Iterator<Item = (MsgAddrStd, EthTonTransaction)> {
         self.failed
             .iter()
-            .filter_map(|x| match  x {
-                Ok(a)=>Some(a),
-                Err(e)=>{
-                    log::error!("Failed getting failed from db. Db corruption?: {}",e);
+            .filter_map(|x| match x {
+                Ok(a) => Some(a),
+                Err(e) => {
+                    log::error!("Failed getting failed from db. Db corruption?: {}", e);
                     None
                 }
             })

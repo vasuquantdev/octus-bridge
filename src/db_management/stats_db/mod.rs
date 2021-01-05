@@ -38,7 +38,7 @@ impl StatsDb {
             })
             .unwrap(),
         )?;
-        self.tree.flush_async().await?;
+        self.tree.flush()?;
         Ok(())
     }
 

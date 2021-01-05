@@ -55,7 +55,7 @@ impl EthQueue {
     ) -> Result<(), Error> {
         let _guard = self.guard.lock().await;
         self.db.insert(make_key(target_block_number, value), &[])?;
-        self.db.flush_async().await?;
+        self.db.flush()?;
         Ok(())
     }
 }
