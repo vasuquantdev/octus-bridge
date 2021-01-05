@@ -122,6 +122,6 @@ fn parse_key(key: &[u8]) -> MsgAddrStd {
     MsgAddrStd {
         anycast: None,
         workchain_id: 0,
-        address: UInt256::from(&key[32..]).into(),
+        address: UInt256::from(key).into(),
     }
 }

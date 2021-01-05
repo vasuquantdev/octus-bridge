@@ -70,6 +70,14 @@ pub struct Status {
 }
 
 #[derive(Serialize, Deserialize, Clone, opg::OpgModel)]
+pub struct EthTonVoteView {
+    pub event_address: String,
+    #[serde(flatten)]
+    pub transaction: EthTonTransactionView,
+}
+
+#[derive(Serialize, Deserialize, Clone, opg::OpgModel)]
+#[serde(tag = "type")]
 pub enum EthTonTransactionView {
     Confirm(EthTonConfirmationDataView),
     Reject(EthTonConfirmationDataView),

@@ -2,9 +2,10 @@ use std::convert::Infallible;
 use std::sync::Arc;
 
 use tokio::sync::RwLock;
+use ton_block::MsgAddrStd;
 use warp::Reply;
 
-use relay_models::models::EthTonTransactionView;
+use relay_models::models::EthTonVoteView;
 
 use crate::db_management::{EthQueue, EthTonTransaction, StatsDb, Table, TonQueue};
 use crate::engine::models::{BridgeState, State, Status};
@@ -83,9 +84,13 @@ pub async fn retry_failed(state: Arc<RwLock<State>>) -> Result<impl Reply, Infal
     Ok(res)
 }
 
-fn fold_ton_stats<I, T>(iter: I) -> Vec<EthTonTransactionView>
+fn fold_ton_stats<I>(iter: I) -> Vec<EthTonVoteView>
 where
-    I: Iterator<Item = (T, EthTonTransaction)>,
+    I: Iterator<Item = (MsgAddrStd, EthTonTransaction)>,
 {
-    iter.map(|(_, data)| data.into()).collect()
+    iter.map(|(event_address, transaction)| EthTonVoteView {
+        event_address: event_address.to_string(),
+        transaction: transaction.into(),
+    })
+    .collect()
 }
