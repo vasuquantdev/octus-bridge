@@ -12,3 +12,4 @@ ton_dump.json
 eth_dump.json
 
 log/
+scripts/relay*
