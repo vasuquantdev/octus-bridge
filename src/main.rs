@@ -47,14 +47,6 @@ fn main() -> Result<(), Error> {
     let config = read_config(&args.config)?;
     log::info!("Relay ready.");
 
-    #[cfg(feature = "daemonizeable")]
-    {
-        match daemonize::Daemonize::new().start() {
-            Ok(_) => run(config)?,
-            Err(e) => log::error!("Error daemonizing app: {}", e),
-        };
-    }
-    #[cfg(not(feature = "daemonizeable"))]
     run(config)?;
 
     Ok(())

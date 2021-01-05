@@ -34,8 +34,11 @@ impl TonQueue {
             pending.insert(key.clone(), bincode::serialize(data).unwrap())?;
             ConflictableTransactionResult::<(), std::io::Error>::Ok(())
         })?;
-        self.failed.flush()?;
-        self.pending.flush()?;
+        #[cfg(feature = "paranoid")]
+        {
+            self.failed.flush()?;
+            self.pending.flush()?;
+        }
         Ok(())
     }
 

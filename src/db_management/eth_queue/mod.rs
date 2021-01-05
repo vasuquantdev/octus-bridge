@@ -55,6 +55,7 @@ impl EthQueue {
     ) -> Result<(), Error> {
         let _guard = self.guard.lock().await;
         self.db.insert(make_key(target_block_number, value), &[])?;
+        #[cfg(feature = "paranoid")]
         self.db.flush()?;
         Ok(())
     }
@@ -139,6 +140,7 @@ pub struct EthQueueLockEntry<'a> {
 impl<'a> EthQueueLockEntry<'a> {
     pub fn remove(self) -> Result<(), Error> {
         self.queue.db.remove(self.key)?;
+        #[cfg(feature = "paranoid")]
         self.queue.db.flush()?;
         Ok(())
     }
