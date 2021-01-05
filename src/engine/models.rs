@@ -1,19 +1,15 @@
 use crate::config::RelayConfig;
 use crate::crypto::key_managment::KeyData;
-use crate::engine::bridge::Bridge;
-use crate::engine::routes::create_bridge;
+use crate::engine::bridge::*;
 use crate::prelude::*;
 pub use relay_models::models::{InitData, Password, RescanEthData, Status, VotingAddress};
 use relay_ton::contracts;
 
 impl State {
     pub async fn finalize(&mut self, config: RelayConfig, key_data: KeyData) -> Result<(), Error> {
-        let bridge = create_bridge(self.state_manager.clone(), config, key_data).await?;
+        let bridge = make_bridge(self.state_manager.clone(), config, key_data).await?;
 
         log::info!("Successfully initialized");
-
-        let spawned_bridge = bridge.clone();
-        tokio::spawn(async move { spawned_bridge.run().await });
 
         self.bridge_state = BridgeState::Running(bridge);
         Ok(())

@@ -85,7 +85,7 @@ impl Table for StatsDb {
 
                 result
                     .entry(hex::encode(&relay_key))
-                    .or_insert(Vec::new())
+                    .or_insert_with(Vec::new)
                     .push(TxStatView {
                         tx_hash: hex::encode(stats.tx_hash),
                         met: stats.met.timestamp(),

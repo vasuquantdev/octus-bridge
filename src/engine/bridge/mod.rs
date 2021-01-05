@@ -1,15 +1,15 @@
 use ethabi::Address;
 use secp256k1::PublicKey;
 use sled::Db;
+use url::Url;
 
 use relay_eth::ws::EthListener;
 use relay_ton::contracts::utils::pack_tokens;
 use relay_ton::contracts::*;
 use relay_ton::prelude::{MsgAddressInt, UInt256};
-use relay_ton::transport::Transport;
 
-use crate::config::TonOperationRetryParams;
-use crate::crypto::key_managment::EthSigner;
+use crate::config::RelayConfig;
+use crate::crypto::key_managment::{EthSigner, KeyData};
 use crate::db_management::{
     EthQueue, EthTonConfirmationData, EthTonTransaction, StatsDb, TonQueue,
 };
@@ -20,62 +20,94 @@ use crate::engine::bridge::util::map_eth_ton;
 use crate::prelude::*;
 
 pub(crate) mod event_configurations_listener;
-
 pub mod models;
 mod prelude;
 mod util;
+
+pub async fn make_bridge(
+    state_manager: Db,
+    config: RelayConfig,
+    key_data: KeyData,
+) -> Result<Arc<Bridge>, Error> {
+    let transport = config
+        .ton_config
+        .make_transport(state_manager.clone())
+        .await?;
+
+    let ton_contract_address = MsgAddressInt::from_str(&*config.ton_contract_address.0)
+        .map_err(|e| Error::msg(e.to_string()))?;
+
+    let (bridge_contract, bridge_contract_events) = make_bridge_contract(
+        transport.clone(),
+        ton_contract_address,
+        key_data.ton.keypair(),
+    )
+    .await?;
+
+    let eth_listener = Arc::new(
+        EthListener::new(
+            Url::parse(config.eth_node_address.as_str())
+                .map_err(|e| Error::new(e).context("Bad url for eth_config provided"))?,
+            state_manager.clone(),
+            100, //todo move to config
+        )
+        .await?,
+    );
+
+    let eth_queue = EthQueue::new(&state_manager)?;
+    let ton_queue = TonQueue::new(&state_manager)?;
+    let stats_db = StatsDb::new(&state_manager)?;
+
+    let event_configurations_listener = EventConfigurationsListener::new(
+        transport,
+        bridge_contract.clone(),
+        eth_queue.clone(),
+        ton_queue,
+        stats_db,
+        config.ton_operation_timeouts.clone(),
+    )
+    .await;
+
+    let bridge = Arc::new(Bridge {
+        eth_signer: key_data.eth,
+        eth_listener,
+        event_configurations_listener,
+        bridge_contract,
+        eth_queue,
+    });
+
+    tokio::spawn({
+        let bridge = bridge.clone();
+        async move { bridge.run(bridge_contract_events).await }
+    });
+
+    Ok(bridge)
+}
 
 pub struct Bridge {
     eth_signer: EthSigner,
     eth_listener: Arc<EthListener>,
     event_configurations_listener: Arc<EventConfigurationsListener>,
 
-    ton_client: Arc<BridgeContract>,
+    bridge_contract: Arc<BridgeContract>,
     eth_queue: EthQueue,
 }
 
 impl Bridge {
-    pub async fn new(
-        eth_signer: EthSigner,
-        eth_client: Arc<EthListener>,
-        ton_client: Arc<BridgeContract>,
-        ton_transport: Arc<dyn Transport>,
-        ton_operation_timeouts: TonOperationRetryParams,
-        db: Db,
-    ) -> Result<Self, Error> {
-        let eth_queue = EthQueue::new(&db)?;
-        let ton_queue = TonQueue::new(&db)?;
-        let stats_db = StatsDb::new(&db)?;
-
-        let event_configurations_listener = EventConfigurationsListener::new(
-            ton_transport.clone(),
-            ton_client.clone(),
-            eth_queue.clone(),
-            ton_queue,
-            stats_db,
-            ton_operation_timeouts,
-        )
-        .await;
-
-        Ok(Self {
-            eth_signer,
-            eth_listener: eth_client,
-
-            event_configurations_listener,
-
-            ton_client,
-            eth_queue,
-        })
-    }
-
-    pub async fn run(self: Arc<Self>) -> Result<(), Error> {
+    async fn run<T>(self: Arc<Self>, bridge_contract_events: T) -> Result<(), Error>
+    where
+        T: Stream<Item = BridgeContractEvent> + Send + Unpin + 'static,
+    {
         log::info!(
             "Bridge started. Pubkey: {}",
-            self.ton_client.pubkey().to_hex_string()
+            self.bridge_contract.pubkey().to_hex_string()
         );
 
         // Subscribe for new event configuration contracts
-        let subscriptions = self.event_configurations_listener.start().await;
+        let subscriptions = self
+            .event_configurations_listener
+            .start(bridge_contract_events)
+            .await;
 
         // Subscribe for ETH blocks and events
         let (blocks_rx, mut eth_events_rx) = self.eth_listener.start(subscriptions).await?;
@@ -117,7 +149,7 @@ impl Bridge {
         event_configuration: &MsgAddressInt,
         voting: Voting,
     ) -> Result<(), anyhow::Error> {
-        self.ton_client
+        self.bridge_contract
             .update_event_configuration(event_configuration, voting)
             .await?;
         Ok(())
@@ -298,7 +330,7 @@ impl Bridge {
     }
 
     pub fn ton_pubkey(&self) -> UInt256 {
-        self.ton_client.pubkey()
+        self.bridge_contract.pubkey()
     }
 
     pub fn eth_pubkey(&self) -> PublicKey {

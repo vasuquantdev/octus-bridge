@@ -7,6 +7,36 @@ use crate::models::*;
 use crate::prelude::*;
 use crate::transport::*;
 
+pub async fn make_bridge_contract(
+    transport: Arc<dyn Transport>,
+    account: MsgAddressInt,
+    keypair: Arc<Keypair>,
+) -> ContractResult<(
+    Arc<BridgeContract>,
+    EventsRx<<BridgeContract as ContractWithEvents>::Event>,
+)> {
+    let (transport, events_rx) = transport.subscribe(account.clone()).await?;
+    let contract = abi();
+    let events_map = shared_events_map();
+
+    let config = ContractConfig {
+        account,
+        timeout_sec: 60,
+    };
+
+    let contract = Arc::new(BridgeContract {
+        transport,
+        keypair,
+        config,
+        events_map,
+        contract,
+    });
+
+    let events_rx = start_processing_events(&contract, events_rx);
+
+    Ok((contract, events_rx))
+}
+
 #[derive(Clone)]
 pub struct BridgeContract {
     transport: Arc<dyn AccountSubscription>,
@@ -17,29 +47,6 @@ pub struct BridgeContract {
 }
 
 impl BridgeContract {
-    pub async fn new(
-        transport: Arc<dyn Transport>,
-        account: MsgAddressInt,
-        keypair: Arc<Keypair>,
-    ) -> ContractResult<Self> {
-        let transport = transport.subscribe(account.clone()).await?;
-        let contract = abi();
-        let events_map = shared_events_map();
-
-        let config = ContractConfig {
-            account,
-            timeout_sec: 60,
-        };
-
-        Ok(Self {
-            transport,
-            keypair,
-            config,
-            events_map,
-            contract,
-        })
-    }
-
     #[inline]
     fn message(&self, name: &str) -> ContractResult<SignedMessageBuilder> {
         SignedMessageBuilder::new(
@@ -255,11 +262,6 @@ impl Contract for BridgeContract {
 impl ContractWithEvents for BridgeContract {
     type Event = BridgeContractEvent;
     type EventKind = BridgeContractEventKind;
-
-    #[inline]
-    fn subscription(&self) -> &Arc<dyn AccountSubscription> {
-        &self.transport
-    }
 }
 
 static ABI: OnceCell<Arc<AbiContract>> = OnceCell::new();

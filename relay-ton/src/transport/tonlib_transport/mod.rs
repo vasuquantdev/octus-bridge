@@ -87,8 +87,8 @@ impl Transport for TonlibTransport {
     async fn subscribe(
         &self,
         account: MsgAddressInt,
-    ) -> TransportResult<Arc<dyn AccountSubscription>> {
-        let subscription: Arc<dyn AccountSubscription> = TonlibAccountSubscription::new(
+    ) -> TransportResult<(Arc<dyn AccountSubscription>, RawEventsRx)> {
+        let (subscription, rx): (Arc<dyn AccountSubscription>, _) = TonlibAccountSubscription::new(
             &self.db,
             &self.client,
             &self.subscription_polling_interval,
@@ -98,7 +98,7 @@ impl Transport for TonlibTransport {
         )
         .await?;
 
-        Ok(subscription)
+        Ok((subscription, rx))
     }
 
     fn rescan_events(
@@ -114,7 +114,6 @@ impl Transport for TonlibTransport {
 struct TonlibAccountSubscription {
     db: Db,
     client: Arc<tonlib::TonlibClient>,
-    event_notifier: watch::Receiver<AccountEvent>,
     account: MsgAddressInt,
     known_state: RwLock<(AccountStats, AccountStuff)>,
     pending_messages: RwLock<HashMap<UInt256, PendingMessage<(u32, u64)>>>,
@@ -128,7 +127,7 @@ impl TonlibAccountSubscription {
         max_initial_rescan_gap: Option<u32>,
         max_rescan_gap: Option<u32>,
         account: MsgAddressInt,
-    ) -> TransportResult<Arc<Self>> {
+    ) -> TransportResult<(Arc<Self>, RawEventsRx)> {
         let db = db.clone();
         let client = client.clone();
         let (stats, known_state) = client
@@ -153,12 +152,11 @@ impl TonlibAccountSubscription {
             None => stats.last_trans_lt as u64,
         };
 
-        let (tx, rx) = watch::channel(AccountEvent::StateChanged);
+        let (tx, rx) = mpsc::unbounded_channel();
 
         let subscription = Arc::new(Self {
             db,
             client,
-            event_notifier: rx,
             account,
             known_state: RwLock::new((stats, known_state)),
             pending_messages: RwLock::new(HashMap::new()),
@@ -171,12 +169,12 @@ impl TonlibAccountSubscription {
             max_rescan_gap,
         );
 
-        Ok(subscription)
+        Ok((subscription, rx))
     }
 
     fn start_loop(
         self: &Arc<Self>,
-        state_notifier: watch::Sender<AccountEvent>,
+        state_notifier: RawEventsTx,
         mut last_trans_lt: u64,
         interval: Duration,
         mut max_initial_rescan_gap: Option<u32>,
@@ -220,7 +218,6 @@ impl TonlibAccountSubscription {
                     let mut known_state = subscription.known_state.write().await;
                     *known_state = (stats, account_state);
                 }
-                let _ = state_notifier.broadcast(AccountEvent::StateChanged);
 
                 let mut pending_messages = subscription.pending_messages.write().await;
 
@@ -342,10 +339,6 @@ impl RunLocal for TonlibAccountSubscription {
 
 #[async_trait]
 impl AccountSubscription for TonlibAccountSubscription {
-    fn events(&self) -> watch::Receiver<AccountEvent> {
-        self.event_notifier.clone()
-    }
-
     async fn simulate_call(
         &self,
         message: InternalMessage,

@@ -1,18 +1,15 @@
 use bip39::Language;
 use tokio::sync::oneshot::Receiver;
 use tokio::sync::RwLock;
-use url::Url;
 use warp::http::StatusCode;
 use warp::{reply, Filter, Reply};
 
-use relay_eth::ws::{update_height, EthListener};
-use relay_ton::contracts::BridgeContract;
+use relay_eth::ws::update_height;
 use relay_ton::transport::Transport;
 
 use crate::config::{RelayConfig, TonConfig};
 use crate::crypto::key_managment::KeyData;
 use crate::crypto::recovery::*;
-use crate::engine::bridge::Bridge;
 use crate::engine::models::*;
 use crate::engine::routes::api::get_api;
 use crate::prelude::*;
@@ -320,46 +317,6 @@ async fn wait_for_password(
     Ok(reply::with_status(
         "Password accepted".to_string(),
         StatusCode::ACCEPTED,
-    ))
-}
-
-pub async fn create_bridge(
-    state_manager: Db,
-    config: RelayConfig,
-    key_data: KeyData,
-) -> Result<Arc<Bridge>, Error> {
-    let transport = config
-        .ton_config
-        .make_transport(state_manager.clone())
-        .await?;
-
-    let contract_address = MsgAddressInt::from_str(&*config.ton_contract_address.0)
-        .map_err(|e| Error::msg(e.to_string()))?;
-
-    let ton_client = Arc::new(
-        BridgeContract::new(transport.clone(), contract_address, key_data.ton.keypair()).await?,
-    );
-
-    let eth_client = Arc::new(
-        EthListener::new(
-            Url::parse(config.eth_node_address.as_str())
-                .map_err(|e| Error::new(e).context("Bad url for eth_config provided"))?,
-            state_manager.clone(),
-            100, //todo move to config
-        )
-        .await?,
-    );
-
-    Ok(Arc::new(
-        Bridge::new(
-            key_data.eth,
-            eth_client,
-            ton_client,
-            transport,
-            config.ton_operation_timeouts.clone(),
-            state_manager.clone(),
-        )
-        .await?,
     ))
 }
 

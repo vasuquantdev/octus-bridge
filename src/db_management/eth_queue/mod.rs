@@ -77,10 +77,10 @@ impl Table for EthQueue {
     fn dump_elements(&self) -> HashMap<Self::Key, Self::Value> {
         self.db
             .iter()
-            .filter_map(|x| match  x {
-                Ok(a)=>Some(a),
-                Err(e)=>{
-                    log::error!("Failed getting stats from db. Db corruption?: {}",e);
+            .filter_map(|x| match x {
+                Ok(a) => Some(a),
+                Err(e) => {
+                    log::error!("Failed getting stats from db. Db corruption?: {}", e);
                     None
                 }
             })
@@ -93,7 +93,10 @@ impl Table for EthQueue {
                     .expect("Shouldn't fail")
                     .into();
 
-                result.entry(block_number).or_insert(Vec::new()).push(value);
+                result
+                    .entry(block_number)
+                    .or_insert_with(Vec::new)
+                    .push(value);
                 result
             })
     }

@@ -5,6 +5,37 @@ use crate::models::*;
 use crate::prelude::*;
 use crate::transport::*;
 
+pub async fn make_eth_event_configuration_contract(
+    transport: Arc<dyn Transport>,
+    account: MsgAddressInt,
+    bridge_address: MsgAddressInt,
+) -> ContractResult<(
+    Arc<EthereumEventConfigurationContract>,
+    EventsRx<<EthereumEventConfigurationContract as ContractWithEvents>::Event>,
+)> {
+    let (subscription, events_rx) = transport.subscribe(account.clone()).await?;
+    let contract = abi();
+    let events_map = shared_events_map();
+
+    let config = ContractConfig {
+        account,
+        timeout_sec: 60,
+    };
+
+    let contract = Arc::new(EthereumEventConfigurationContract {
+        transport,
+        subscription,
+        contract,
+        events_map,
+        config,
+        bridge_address,
+    });
+
+    let events_rx = start_processing_events(&contract, events_rx);
+
+    Ok((contract, events_rx))
+}
+
 #[derive(Clone)]
 pub struct EthereumEventConfigurationContract {
     transport: Arc<dyn Transport>,
@@ -16,30 +47,6 @@ pub struct EthereumEventConfigurationContract {
 }
 
 impl EthereumEventConfigurationContract {
-    pub async fn new(
-        transport: Arc<dyn Transport>,
-        account: MsgAddressInt,
-        bridge_address: MsgAddressInt,
-    ) -> ContractResult<Self> {
-        let subscription = transport.subscribe(account.clone()).await?;
-        let contract = abi();
-        let events_map = shared_events_map();
-
-        let config = ContractConfig {
-            account,
-            timeout_sec: 60,
-        };
-
-        Ok(Self {
-            transport,
-            subscription,
-            contract,
-            events_map,
-            config,
-            bridge_address,
-        })
-    }
-
     #[inline]
     fn message(&self, name: &str) -> ContractResult<MessageBuilder> {
         MessageBuilder::new(
@@ -129,10 +136,6 @@ impl Contract for EthereumEventConfigurationContract {
 impl ContractWithEvents for EthereumEventConfigurationContract {
     type Event = EthereumEventConfigurationContractEvent;
     type EventKind = EthereumEventConfigurationContractEventKind;
-
-    fn subscription(&self) -> &Arc<dyn AccountSubscription> {
-        &self.subscription
-    }
 }
 
 fn abi() -> Arc<AbiContract> {

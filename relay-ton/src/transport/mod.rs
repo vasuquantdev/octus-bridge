@@ -30,7 +30,7 @@ pub trait Transport: RunLocal {
     async fn subscribe(
         &self,
         account: MsgAddressInt,
-    ) -> TransportResult<Arc<dyn AccountSubscription>>;
+    ) -> TransportResult<(Arc<dyn AccountSubscription>, RawEventsRx)>;
 
     fn rescan_events(
         &self,
@@ -42,8 +42,6 @@ pub trait Transport: RunLocal {
 
 #[async_trait]
 pub trait AccountSubscription: RunLocal {
-    fn events(&self) -> watch::Receiver<AccountEvent>;
-
     async fn simulate_call(
         &self,
         message: InternalMessage,
@@ -60,10 +58,4 @@ pub trait AccountSubscription: RunLocal {
         since_lt: Option<u64>,
         until_lt: Option<u64>,
     ) -> BoxStream<TransportResult<SliceData>>;
-}
-
-#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]
-pub enum AccountEvent {
-    StateChanged,
-    OutboundEvent(Arc<SliceData>),
 }

@@ -17,12 +17,18 @@ pub(crate) use num_bigint::{BigInt, BigUint};
 pub(crate) use once_cell::sync::OnceCell;
 pub(crate) use serde::{Deserialize, Serialize};
 pub(crate) use sled::Db;
-pub(crate) use tokio::sync::{mpsc, oneshot, watch, RwLock};
+pub(crate) use tokio::sync::{mpsc, oneshot, RwLock};
 
 pub use ed25519_dalek::Keypair;
 pub use ton_abi::{Contract as AbiContract, Event as AbiEvent, Function as AbiFunction};
 pub use ton_block::{MsgAddrStd, MsgAddressInt};
 pub use ton_types::{serialize_toc, BuilderData, Cell, SliceData, UInt256};
+
+pub(crate) type RawEventsTx = mpsc::UnboundedSender<SliceData>;
+pub(crate) type RawEventsRx = mpsc::UnboundedReceiver<SliceData>;
+pub type EventsTx<T> = mpsc::UnboundedSender<T>;
+pub type EventsRx<T> = mpsc::UnboundedReceiver<T>;
+
 #[allow(clippy::derive_hash_xor_eq)]
 #[derive(Clone, Default, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct UInt128([u8; 16]);

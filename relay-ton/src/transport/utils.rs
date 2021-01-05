@@ -6,7 +6,6 @@ use ton_block::{
 use super::errors::*;
 use crate::models::*;
 use crate::prelude::*;
-use crate::transport::AccountEvent;
 
 pub struct PendingMessage<T> {
     data: T,
@@ -61,8 +60,10 @@ impl ExecutableMessage for ExternalMessage {
     }
 
     fn encode(self) -> Message {
-        let mut message_header = ExternalInboundMessageHeader::default();
-        message_header.dst = self.dest.clone();
+        let message_header = ExternalInboundMessageHeader {
+            dst: self.dest.clone(),
+            ..Default::default()
+        };
 
         let mut msg = Message::with_ext_in_header(message_header);
         if let Some(body) = self.body {
@@ -127,7 +128,7 @@ pub fn parse_transaction_messages(transaction: &Transaction) -> TransportResult<
 
 pub struct MessageProcessingParams<'a> {
     pub abi_function: Option<&'a Function>,
-    pub events_tx: Option<&'a watch::Sender<AccountEvent>>,
+    pub events_tx: Option<&'a RawEventsTx>,
 }
 
 pub fn process_out_messages<'a>(
@@ -166,7 +167,7 @@ pub fn process_out_messages<'a>(
                 });
             }
             (_, Some(events_tx)) => {
-                let _ = events_tx.broadcast(AccountEvent::OutboundEvent(Arc::new(body)));
+                let _ = events_tx.send(body);
             }
             _ => {
                 log::debug!("Unknown");

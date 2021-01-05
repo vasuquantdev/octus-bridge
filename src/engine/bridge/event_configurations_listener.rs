@@ -20,7 +20,7 @@ use super::models::*;
 /// Listens to config streams and maps them.
 pub struct EventConfigurationsListener {
     transport: Arc<dyn Transport>,
-    bridge: Arc<BridgeContract>,
+    bridge_contract: Arc<BridgeContract>,
     event_contract: Arc<EthereumEventContract>,
 
     eth_queue: EthQueue,
@@ -34,7 +34,7 @@ pub struct EventConfigurationsListener {
     configs_state: Arc<RwLock<ConfigsState>>,
     config_contracts: Arc<RwLock<ContractsMap>>,
     known_config_addresses: Arc<Mutex<HashSet<MsgAddressInt>>>,
-    timeout_params: TonOperationRetryParams,
+    timeouts: TonOperationRetryParams,
 }
 
 type ContractsMap = HashMap<MsgAddressInt, Arc<EthereumEventConfigurationContract>>;
@@ -42,19 +42,19 @@ type ContractsMap = HashMap<MsgAddressInt, Arc<EthereumEventConfigurationContrac
 impl EventConfigurationsListener {
     pub async fn new(
         transport: Arc<dyn Transport>,
-        bridge: Arc<BridgeContract>,
+        bridge_contract: Arc<BridgeContract>,
         eth_queue: EthQueue,
         ton_queue: TonQueue,
         stats_db: StatsDb,
-        timeout_params: TonOperationRetryParams,
+        timeouts: TonOperationRetryParams,
     ) -> Arc<Self> {
-        let relay_key = bridge.pubkey();
+        let relay_key = bridge_contract.pubkey();
 
         let event_contract = Arc::new(EthereumEventContract::new(transport.clone()).await.unwrap());
 
         Arc::new(Self {
             transport,
-            bridge,
+            bridge_contract,
             event_contract,
 
             eth_queue,
@@ -68,12 +68,18 @@ impl EventConfigurationsListener {
             configs_state: Arc::new(RwLock::new(ConfigsState::new())),
             config_contracts: Arc::new(RwLock::new(HashMap::new())),
             known_config_addresses: Arc::new(Mutex::new(HashSet::new())),
-            timeout_params,
+            timeouts,
         })
     }
 
     /// Spawn configuration contracts listeners
-    pub async fn start(self: &Arc<Self>) -> impl Stream<Item = (Address, H256)> {
+    pub async fn start<T>(
+        self: &Arc<Self>,
+        mut bridge_contract_events: T,
+    ) -> impl Stream<Item = (Address, H256)>
+    where
+        T: Stream<Item = BridgeContractEvent> + Send + Unpin + 'static,
+    {
         let (subscriptions_tx, subscriptions_rx) = mpsc::unbounded_channel();
 
         // Subscribe to bridge events
@@ -81,9 +87,8 @@ impl EventConfigurationsListener {
             let listener = self.clone();
             let subscriptions_tx = subscriptions_tx.clone();
 
-            let mut bridge_events = self.bridge.events();
             async move {
-                while let Some(event) = bridge_events.next().await {
+                while let Some(event) = bridge_contract_events.next().await {
                     match event {
                         BridgeContractEvent::EventConfigurationCreationEnd {
                             address,
@@ -107,7 +112,7 @@ impl EventConfigurationsListener {
 
         // Get all configs before now
         let known_contracts = self
-            .bridge
+            .bridge_contract
             .get_active_event_configurations()
             .await
             .expect("Failed to get known event configurations"); // TODO: is it really a fatal error?
@@ -246,20 +251,19 @@ impl EventConfigurationsListener {
         };
 
         let mut rx = Some(rx);
-        let mut retries_count = self.timeout_params.broadcast_in_ton_times;
-        let mut retries_interval = self.timeout_params.broadcast_in_ton_interval_secs;
+        let mut retries_count = self.timeouts.broadcast_in_ton_times;
+        let mut retries_interval = self.timeouts.broadcast_in_ton_interval_secs;
 
         // Send message with several retries on failure
         let result = loop {
             // Prepare delay future
             let delay = tokio::time::delay_for(retries_interval);
             retries_interval = std::time::Duration::from_secs_f64(
-                retries_interval.as_secs_f64()
-                    * self.timeout_params.broadcast_in_ton_interval_multiplier,
+                retries_interval.as_secs_f64() * self.timeouts.broadcast_in_ton_interval_multiplier,
             );
 
             // Try send message
-            if let Err(e) = data.send(&self.bridge).await {
+            if let Err(e) = data.send(&self.bridge_contract).await {
                 log::error!(
                     "Failed to vote for event: {:?}. Retrying ({} left)",
                     e,
@@ -383,12 +387,13 @@ impl EventConfigurationsListener {
         }
 
         // Create config contract
-        let config_contract = make_config_contract(
+        let (config_contract, mut config_contract_events) = make_eth_event_configuration_contract(
             self.transport.clone(),
             address.clone(),
-            self.bridge.address().clone(),
+            self.bridge_contract.address().clone(),
         )
-        .await;
+        .await
+        .unwrap();
 
         // Get it's data
         let details = match self
@@ -450,11 +455,9 @@ impl EventConfigurationsListener {
         // Spawn listener of new events
         tokio::spawn({
             let listener = self.clone();
-            let config_contract = config_contract.clone();
 
-            let mut eth_events = config_contract.events();
             async move {
-                while let Some(event) = eth_events.next().await {
+                while let Some(event) = config_contract_events.next().await {
                     handle_event(listener.clone(), event);
                 }
             }
@@ -540,10 +543,10 @@ impl EventConfigurationsListener {
         semaphore: Option<Semaphore>,
     ) -> Result<EthereumEventConfiguration, Error> {
         // retry connection to configuration contract
-        let mut retries_count = self.timeout_params.configuration_contract_try_poll_times;
+        let mut retries_count = self.timeouts.configuration_contract_try_poll_times;
         // 1 sec ~= time before next block in masterchain.
         // Should be greater then account polling interval
-        let retries_interval = self.timeout_params.get_event_details_poll_interval_secs;
+        let retries_interval = self.timeouts.get_event_details_poll_interval_secs;
 
         let notify_if_init = || async {
             if semaphore.is_some() {
@@ -590,8 +593,8 @@ impl EventConfigurationsListener {
         &self,
         event_addr: MsgAddrStd,
     ) -> Result<EthereumEventDetails, ContractError> {
-        let mut retries_count = self.timeout_params.get_event_details_retry_times;
-        let retries_interval = self.timeout_params.get_event_details_poll_interval_secs; // 1 sec ~= time before next block in masterchain.
+        let mut retries_count = self.timeouts.get_event_details_retry_times;
+        let retries_interval = self.timeouts.get_event_details_poll_interval_secs; // 1 sec ~= time before next block in masterchain.
 
         loop {
             match self.event_contract.get_details(event_addr.clone()).await {
@@ -661,18 +664,6 @@ impl ConfigsState {
             (contract_addr, configuration),
         );
     }
-}
-
-async fn make_config_contract(
-    transport: Arc<dyn Transport>,
-    address: MsgAddressInt,
-    bridge_address: MsgAddressInt,
-) -> Arc<EthereumEventConfigurationContract> {
-    Arc::new(
-        EthereumEventConfigurationContract::new(transport, address, bridge_address)
-            .await
-            .unwrap(),
-    )
 }
 
 impl EthTonTransaction {

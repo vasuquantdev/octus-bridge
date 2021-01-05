@@ -1,7 +1,6 @@
 use super::errors::*;
 use super::prelude::*;
 use crate::prelude::*;
-use crate::transport::*;
 
 pub trait Contract: Send + Sync + 'static {
     fn abi(&self) -> &Arc<ton_abi::Contract>;
@@ -9,9 +8,7 @@ pub trait Contract: Send + Sync + 'static {
 
 pub trait ContractWithEvents: Contract + Sized {
     type Event: TryFrom<(Self::EventKind, Vec<Token>), Error = ContractError> + Send;
-    type EventKind: for<'a> TryFrom<&'a str, Error = ContractError> + Send + Copy + Clone;
-
-    fn subscription(&self) -> &Arc<dyn AccountSubscription>;
+    type EventKind: for<'a> TryFrom<&'a str, Error = ContractError> + Send + Copy;
 
     fn events_map(&self) -> HashMap<u32, (Self::EventKind, AbiEvent)> {
         make_events_map::<Self>(self.abi())
@@ -38,38 +35,41 @@ pub trait ContractWithEvents: Contract + Sized {
             })
             .and_then(move |data| Self::Event::try_from((*kind, data)))
     }
+}
 
-    fn events(self: &Arc<Self>) -> mpsc::UnboundedReceiver<Self::Event> {
-        let events_map = self.events_map();
+pub fn start_processing_events<T>(
+    contract: &Arc<T>,
+    mut events_rx: RawEventsRx,
+) -> EventsRx<T::Event>
+where
+    T: ContractWithEvents,
+{
+    let events_map = contract.events_map();
 
-        let mut events_rx = self.subscription().events();
-        let this = Arc::downgrade(self);
-        let (tx, rx) = mpsc::unbounded_channel();
-        tokio::spawn(async move {
-            while let Some(event) = events_rx.recv().await {
-                let _this = match this.upgrade() {
-                    Some(this) => this,
-                    _ => return,
-                };
+    let this = Arc::downgrade(contract);
+    let (tx, rx) = mpsc::unbounded_channel();
+    tokio::spawn(async move {
+        while let Some(body) = events_rx.next().await {
+            let _this = match this.upgrade() {
+                Some(this) => this,
+                _ => return,
+            };
 
-                if let AccountEvent::OutboundEvent(body) = event {
-                    let event = match Self::parse_event(&events_map, body.as_ref()) {
-                        Ok(event) => event,
-                        Err(e) => {
-                            log::error!("event processing error. {:?}", e);
-                            continue;
-                        }
-                    };
+            let event = match T::parse_event(&events_map, &body) {
+                Ok(event) => event,
+                Err(e) => {
+                    log::error!("event processing error. {:?}", e);
+                    continue;
+                }
+            };
 
-                    if tx.send(event).is_err() {
-                        return;
-                    }
-                };
+            if tx.send(event).is_err() {
+                return;
             }
-        });
+        }
+    });
 
-        rx
-    }
+    rx
 }
 
 pub fn make_events_map<T>(abi: &AbiContract) -> HashMap<u32, (T::EventKind, AbiEvent)>

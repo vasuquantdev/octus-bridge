@@ -21,7 +21,7 @@ use super::utils::*;
 use crate::models::*;
 use crate::prelude::*;
 use crate::transport::errors::*;
-use crate::transport::{AccountEvent, AccountSubscription, RunLocal, Transport};
+use crate::transport::{AccountSubscription, RunLocal, Transport};
 
 pub struct GraphQLTransport {
     db: Db,
@@ -71,8 +71,8 @@ impl Transport for GraphQLTransport {
     async fn subscribe(
         &self,
         addr: MsgAddressInt,
-    ) -> TransportResult<Arc<dyn AccountSubscription>> {
-        let subscription: Arc<dyn AccountSubscription> = GraphQLAccountSubscription::new(
+    ) -> TransportResult<(Arc<dyn AccountSubscription>, RawEventsRx)> {
+        let (subscription, rx) = GraphQLAccountSubscription::new(
             self.db.clone(),
             self.client.clone(),
             None,
@@ -81,7 +81,7 @@ impl Transport for GraphQLTransport {
         )
         .await?;
 
-        Ok(subscription)
+        Ok((subscription, rx))
     }
 
     fn rescan_events(
@@ -106,7 +106,6 @@ impl Transport for GraphQLTransport {
 struct GraphQLAccountSubscription {
     _db: Db,
     client: NodeClient,
-    event_notifier: watch::Receiver<AccountEvent>,
     account: MsgAddressInt,
     account_id: UInt256,
     pending_messages: RwLock<HashMap<UInt256, PendingMessage<u32>>>,
@@ -119,16 +118,15 @@ impl GraphQLAccountSubscription {
         max_initial_rescan_gap: Option<u32>,
         next_block_timeout: u32,
         addr: MsgAddressInt,
-    ) -> TransportResult<Arc<Self>> {
+    ) -> TransportResult<(Arc<Self>, RawEventsRx)> {
         let client = client.clone();
         let known_block_id = client.get_latest_block(&addr).await?;
 
-        let (tx, rx) = watch::channel(AccountEvent::StateChanged);
+        let (tx, rx) = mpsc::unbounded_channel();
 
         let subscription = Arc::new(Self {
             _db: db,
             client,
-            event_notifier: rx,
             account: addr.clone(),
             account_id: addr
                 .address()
@@ -147,16 +145,17 @@ impl GraphQLAccountSubscription {
             next_block_timeout,
         );
 
-        Ok(subscription)
+        Ok((subscription, rx))
     }
 
     fn start_loop(
         self: &Arc<Self>,
-        state_notifier: watch::Sender<AccountEvent>,
+        state_notifier: RawEventsTx,
         mut last_block_id: String,
         _max_interval_rescan_gap: Option<u32>,
         next_block_timeout: u32,
     ) {
+        let account = self.account.clone();
         let subscription = Arc::downgrade(self);
 
         log::debug!("started polling account {}", self.account);
@@ -165,12 +164,15 @@ impl GraphQLAccountSubscription {
             'subscription_loop: loop {
                 let subscription = match subscription.upgrade() {
                     Some(s) => s,
-                    None => return,
+                    None => {
+                        log::info!("stopped account subscription loop for {}", account);
+                        return;
+                    }
                 };
 
                 let next_block_id = match subscription
                     .client
-                    .wait_for_next_block(&last_block_id, &subscription.account, next_block_timeout)
+                    .wait_for_next_block(&last_block_id, &account, next_block_timeout)
                     .await
                 {
                     Ok(id) => id,
@@ -211,8 +213,6 @@ impl GraphQLAccountSubscription {
                 {
                     Ok(Some(data)) => {
                         log::trace!("got account block. {:?}", data);
-
-                        let _ = state_notifier.broadcast(AccountEvent::StateChanged);
 
                         for item in data.transactions().iter() {
                             let transaction = match item.and_then(|(_, mut value)| {
@@ -319,10 +319,6 @@ impl RunLocal for GraphQLAccountSubscription {
 
 #[async_trait]
 impl AccountSubscription for GraphQLAccountSubscription {
-    fn events(&self) -> watch::Receiver<AccountEvent> {
-        self.event_notifier.clone()
-    }
-
     async fn simulate_call(&self, message: InternalMessage) -> TransportResult<Vec<Message>> {
         run_local(&self.client, message).await
     }
