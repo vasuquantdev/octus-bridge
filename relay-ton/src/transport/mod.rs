@@ -42,6 +42,8 @@ pub trait Transport: RunLocal {
 
 #[async_trait]
 pub trait AccountSubscription: RunLocal {
+    fn db(&self) -> Arc<dyn TransportDb>;
+
     async fn simulate_call(
         &self,
         message: InternalMessage,
@@ -58,4 +60,9 @@ pub trait AccountSubscription: RunLocal {
         since_lt: Option<u64>,
         until_lt: Option<u64>,
     ) -> BoxStream<TransportResult<SliceData>>;
+}
+
+pub trait TransportDb {
+    fn update_latest_lt(&self, addr: &MsgAddressInt, lt: u64);
+    fn get_latest_lt(&self, addr: &MsgAddressInt) -> u64;
 }

@@ -19,6 +19,7 @@ use super::utils::*;
 use super::{AccountEvent, AccountSubscription, RunLocal, Transport};
 use crate::models::*;
 use crate::prelude::*;
+use crate::transport::TransportDb;
 
 pub struct TonlibTransport {
     db: Db,
@@ -112,7 +113,7 @@ impl Transport for TonlibTransport {
 }
 
 struct TonlibAccountSubscription {
-    db: Db,
+    db: Arc<SledTransportDb>,
     client: Arc<tonlib::TonlibClient>,
     account: MsgAddressInt,
     known_state: RwLock<(AccountStats, AccountStuff)>,
@@ -128,29 +129,14 @@ impl TonlibAccountSubscription {
         max_rescan_gap: Option<u32>,
         account: MsgAddressInt,
     ) -> TransportResult<(Arc<Self>, RawEventsRx)> {
-        let db = db.clone();
+        let db = Arc::new(SledTransportDb::new(&db);
         let client = client.clone();
         let (stats, known_state) = client
             .get_account_state(&account)
             .await
             .map_err(to_api_error)?;
 
-        let last_trans_lt = match db.get(account.address().get_bytestring(0)).map_err(|e| {
-            TransportError::FailedToInitialize {
-                reason: e.to_string(),
-            }
-        })? {
-            Some(_data) => {
-                // let mut lt = 0;
-                // for (i, &byte) in data.iter().take(4).enumerate() {
-                //     lt += (byte as u64) << i;
-                // }
-                // lt
-
-                stats.last_trans_lt as u64
-            }
-            None => stats.last_trans_lt as u64,
-        };
+        let last_trans_lt = stats.last_trans_lt;
 
         let (tx, rx) = mpsc::unbounded_channel();
 
@@ -298,12 +284,7 @@ impl TonlibAccountSubscription {
                 pending_messages.retain(|_, message| gen_utime <= message.expires_at());
 
                 last_trans_lt = new_trans_lt;
-                if let Err(e) = subscription.db.insert(
-                    subscription.account.address().get_bytestring(0),
-                    &new_trans_lt.to_le_bytes(),
-                ) {
-                    log::error!("failed to save state into db. {}", e);
-                }
+                subscription.db.update_latest_lt(&subscription.account, last_trans_lt);
             }
         });
     }
@@ -339,6 +320,10 @@ impl RunLocal for TonlibAccountSubscription {
 
 #[async_trait]
 impl AccountSubscription for TonlibAccountSubscription {
+    fn db(&self) -> Arc<dyn TransportDb> {
+        self.db.clone()
+    }
+
     async fn simulate_call(
         &self,
         message: InternalMessage,

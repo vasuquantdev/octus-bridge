@@ -6,6 +6,8 @@ use ton_block::{
 use super::errors::*;
 use crate::models::*;
 use crate::prelude::*;
+use crate::transport::TransportDb;
+use sled::Tree;
 
 pub struct PendingMessage<T> {
     data: T,
@@ -184,3 +186,48 @@ pub fn process_out_messages<'a>(
         }),
     }
 }
+
+#[derive(Clone)]
+pub struct SledTransportDb {
+    tree: Tree,
+}
+
+impl SledTransportDb {
+    pub fn new(db: &Db) -> Self {
+        Self {
+            tree: db.open_tree(TON_ADDRESS_LATEST_LT).unwrap(),
+        }
+    }
+}
+
+impl TransportDb for SledTransportDb {
+    fn update_latest_lt(&self, addr: &MsgAddressInt, lt: u64) {
+        match self
+            .tree
+            .insert(&addr.address().get_bytestring(0), &lt.to_be_bytes())
+        {
+            Ok(_) => {
+                #[cfg(feature = "paranoid")]
+                let _ = self.tx_stats.flush();
+            }
+            Err(e) => {
+                log::trace!("Failed to update address lt: {}", e);
+            }
+        }
+    }
+
+    fn get_latest_lt(&self, addr: &MsgAddressInt) -> u64 {
+        self.tree
+            .get(&addr.address().get_bytestring(0))
+            .ok()
+            .flatten()
+            .and_then(|value| {
+                let mut buf = [0u8; 8];
+                buf.copy_from_slice(&value[0..8]);
+                Some(u64::from_be_bytes(buf))
+            })
+            .unwrap_or_default()
+    }
+}
+
+pub const TON_ADDRESS_LATEST_LT: &str = "ton_address_latest_lt";

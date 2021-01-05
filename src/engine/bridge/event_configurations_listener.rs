@@ -155,15 +155,18 @@ impl EventConfigurationsListener {
         Ok(())
     }
 
-    /// Check statistics and current queue wether transaction exists
-    fn has_already_voted(&self, event_address: &MsgAddrStd) -> bool {
+    /// Check current queue whether transaction exists
+    fn is_in_queue(&self, event_address: &MsgAddrStd) -> bool {
         self.ton_queue
             .has_event(event_address)
             .expect("Fatal db error")
-            || self
-                .stats_db
-                .has_already_voted(event_address, &self.relay_key)
-                .expect("Fatal db error")
+    }
+
+    /// Check statistics whether transaction exists
+    fn has_already_voted(&self, event_address: &MsgAddrStd) -> bool {
+        self.stats_db
+            .has_already_voted(event_address, &self.relay_key)
+            .expect("Fatal db error")
     }
 
     /// Current configs state
@@ -217,6 +220,8 @@ impl EventConfigurationsListener {
     async fn ensure_sent(self: Arc<Self>, event_address: MsgAddrStd, data: EthTonTransaction) {
         // Skip voting for events which are already in stats db and TON queue
         if self.has_already_voted(&event_address) {
+            // Make sure that TON queue doesn't contain this event
+            self.ton_queue.mark_complete(&event_address).unwrap();
             return;
         }
 
@@ -464,7 +469,8 @@ impl EventConfigurationsListener {
         });
 
         // Process all past events
-        let mut known_events = config_contract.get_known_events();
+        let latest_known_lt = config_contract.latest_known_lt();
+        let mut known_events = config_contract.get_known_events(Some(latest_known_lt));
         while let Some(event) = known_events.next().await {
             handle_event(self.clone(), event);
         }
@@ -508,6 +514,7 @@ impl EventConfigurationsListener {
             && !event.data.proxy_callback_executed
             && !event.data.event_rejected
             && event.relay_key != self.relay_key // event from other relay
+            && !self.is_in_queue(&event.event_addr)
             && !self.has_already_voted(&event.event_addr);
 
         log::info!("Received {}, should check: {}", event, should_check);

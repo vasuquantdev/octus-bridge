@@ -38,6 +38,7 @@ impl StatsDb {
             })
             .unwrap(),
         )?;
+        #[cfg(feature = "paranoid")]
         self.tree.flush()?;
         Ok(())
     }

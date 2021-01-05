@@ -61,9 +61,16 @@ impl EthereumEventConfigurationContract {
         &self.config.account
     }
 
-    pub fn get_known_events(&self) -> BoxStream<'_, EthereumEventConfigurationContractEvent> {
+    pub fn latest_known_lt(&self) -> u64 {
+        self.subscription.db().get_latest_lt(&self.config.account)
+    }
+
+    pub fn get_known_events(
+        &self,
+        since_lt: Option<u64>,
+    ) -> BoxStream<'_, EthereumEventConfigurationContractEvent> {
         self.subscription
-            .rescan_events(None, None)
+            .rescan_events(since_lt, None)
             .filter_map(move |event_body| async move {
                 match event_body
                     .map_err(ContractError::TransportError)

@@ -34,8 +34,11 @@ impl TonQueue {
             pending.insert(key.clone(), bincode::serialize(data).unwrap())?;
             ConflictableTransactionResult::<(), std::io::Error>::Ok(())
         })?;
-        self.failed.flush()?;
-        self.pending.flush()?;
+        #[cfg(feature = "paranoid")]
+        {
+            self.failed.flush()?;
+            self.pending.flush()?;
+        }
         Ok(())
     }
 
@@ -122,6 +125,6 @@ fn parse_key(key: &[u8]) -> MsgAddrStd {
     MsgAddrStd {
         anycast: None,
         workchain_id: 0,
-        address: UInt256::from(&key[32..]).into(),
+        address: UInt256::from(key).into(),
     }
 }
