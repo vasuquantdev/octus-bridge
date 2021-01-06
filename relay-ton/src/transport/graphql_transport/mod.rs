@@ -21,16 +21,15 @@ use super::utils::*;
 use crate::models::*;
 use crate::prelude::*;
 use crate::transport::errors::*;
-use crate::transport::{AccountSubscription, RunLocal, Transport, TransportDb};
+use crate::transport::{AccountSubscription, RunLocal, Transport};
 
 pub struct GraphQLTransport {
-    db: Db,
     client: NodeClient,
     config: Config,
 }
 
 impl GraphQLTransport {
-    pub async fn new(config: Config, db: Db) -> TransportResult<Self> {
+    pub async fn new(config: Config) -> TransportResult<Self> {
         let mut headers = HeaderMap::new();
         headers.insert(
             header::CONTENT_TYPE,
@@ -44,7 +43,7 @@ impl GraphQLTransport {
 
         let client = NodeClient::new(client, config.addr.clone());
 
-        Ok(Self { db, client, config })
+        Ok(Self { client, config })
     }
 }
 
@@ -73,9 +72,7 @@ impl Transport for GraphQLTransport {
         addr: MsgAddressInt,
     ) -> TransportResult<(Arc<dyn AccountSubscription>, RawEventsRx)> {
         let (subscription, rx) = GraphQLAccountSubscription::new(
-            self.db.clone(),
             self.client.clone(),
-            None,
             self.config.next_block_timeout_sec,
             addr,
         )
@@ -104,7 +101,7 @@ impl Transport for GraphQLTransport {
 }
 
 struct GraphQLAccountSubscription {
-    db: Arc<SledTransportDb>,
+    since_lt: u64,
     client: NodeClient,
     account: MsgAddressInt,
     account_id: UInt256,
@@ -113,21 +110,17 @@ struct GraphQLAccountSubscription {
 
 impl GraphQLAccountSubscription {
     async fn new(
-        db: Db,
         client: NodeClient,
-        max_initial_rescan_gap: Option<u32>,
         next_block_timeout: u32,
         addr: MsgAddressInt,
     ) -> TransportResult<(Arc<Self>, RawEventsRx)> {
         let client = client.clone();
-        let known_block_id = client.get_latest_block(&addr).await?;
+        let last_block = client.get_latest_block(&addr).await?;
 
-        let db = Arc::new(SledTransportDb::new(&db));
-
-        let (tx, rx) = mpsc::unbounded_channel();
+        let (events_tx, rx) = mpsc::unbounded_channel();
 
         let subscription = Arc::new(Self {
-            db,
+            since_lt: last_block.end_lt,
             client,
             account: addr.clone(),
             account_id: addr
@@ -140,21 +133,15 @@ impl GraphQLAccountSubscription {
                 .into(),
             pending_messages: RwLock::new(HashMap::new()),
         });
-        subscription.start_loop(
-            tx,
-            known_block_id,
-            max_initial_rescan_gap,
-            next_block_timeout,
-        );
+        subscription.start_loop(events_tx, last_block.id, next_block_timeout);
 
         Ok((subscription, rx))
     }
 
     fn start_loop(
         self: &Arc<Self>,
-        state_notifier: RawEventsTx,
+        events_tx: RawEventsTx,
         mut last_block_id: String,
-        _max_interval_rescan_gap: Option<u32>,
         next_block_timeout: u32,
     ) {
         let account = self.account.clone();
@@ -216,8 +203,6 @@ impl GraphQLAccountSubscription {
                     Ok(Some(data)) => {
                         log::trace!("got account block. {:?}", data);
 
-                        let mut latest_lt = 0;
-
                         for item in data.transactions().iter() {
                             let transaction = match item.and_then(|(_, mut value)| {
                                 InRefValue::<Transaction>::construct_from(&mut value)
@@ -231,10 +216,6 @@ impl GraphQLAccountSubscription {
                                     continue 'subscription_loop;
                                 }
                             };
-
-                            if transaction.lt > latest_lt {
-                                latest_lt = transaction.lt;
-                            }
 
                             let out_messages = match parse_transaction_messages(&transaction) {
                                 Ok(messages) => messages,
@@ -258,7 +239,7 @@ impl GraphQLAccountSubscription {
                                         &out_messages,
                                         MessageProcessingParams {
                                             abi_function: Some(pending_message.abi()),
-                                            events_tx: Some(&state_notifier),
+                                            events_tx: Some(&events_tx),
                                         },
                                     );
                                     pending_message.set_result(result);
@@ -266,19 +247,13 @@ impl GraphQLAccountSubscription {
                                     &out_messages,
                                     MessageProcessingParams {
                                         abi_function: None,
-                                        events_tx: Some(&state_notifier),
+                                        events_tx: Some(&events_tx),
                                     },
                                 ) {
                                     log::error!("error during out messages processing. {:?}", e);
                                     // Just ignore
                                 }
                             }
-                        }
-
-                        if latest_lt > 0 {
-                            subscription
-                                .db
-                                .update_latest_lt(&subscription.account, latest_lt);
                         }
                     }
                     Ok(None) => {
@@ -333,8 +308,8 @@ impl RunLocal for GraphQLAccountSubscription {
 
 #[async_trait]
 impl AccountSubscription for GraphQLAccountSubscription {
-    fn db(&self) -> Arc<dyn TransportDb> {
-        self.db.clone()
+    fn since_lt(&self) -> u64 {
+        self.since_lt
     }
 
     async fn simulate_call(&self, message: InternalMessage) -> TransportResult<Vec<Message>> {

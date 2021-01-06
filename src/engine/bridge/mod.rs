@@ -29,10 +29,7 @@ pub async fn make_bridge(
     config: RelayConfig,
     key_data: KeyData,
 ) -> Result<Arc<Bridge>, Error> {
-    let transport = config
-        .ton_config
-        .make_transport(state_manager.clone())
-        .await?;
+    let transport = config.ton_config.make_transport().await?;
 
     let ton_contract_address = MsgAddressInt::from_str(&*config.ton_contract_address.0)
         .map_err(|e| Error::msg(e.to_string()))?;

@@ -4,19 +4,21 @@ use relay_models::models::{EventVote, TxStatView};
 use relay_ton::prelude::UInt256;
 
 use super::prelude::{Error, Tree};
-use crate::db_management::{constants::STATS_TREE_NAME, Table};
+use crate::db_management::{constants::STATS_TREE_NAME, constants::TON_LATEST_SCANNED_LT, Table};
 use crate::engine::bridge::models::ExtendedEventInfo;
 use crate::prelude::*;
 
 #[derive(Clone)]
 pub struct StatsDb {
-    tree: Tree,
+    stats: Tree,
+    latest_scanned_lt: Tree,
 }
 
 impl StatsDb {
     pub fn new(db: &Db) -> Result<Self, Error> {
         Ok(Self {
-            tree: db.open_tree(STATS_TREE_NAME)?,
+            stats: db.open_tree(STATS_TREE_NAME)?,
+            latest_scanned_lt: db.open_tree(TON_LATEST_SCANNED_LT)?,
         })
     }
 
@@ -30,7 +32,7 @@ impl StatsDb {
         key[32..64].copy_from_slice(event.relay_key.as_slice());
         key[64] = (event.vote == EventVote::Confirm) as u8;
 
-        self.tree.insert(
+        self.stats.insert(
             key,
             bincode::serialize(&StoredTxStat {
                 tx_hash: event.data.ethereum_event_transaction,
@@ -39,7 +41,7 @@ impl StatsDb {
             .unwrap(),
         )?;
         #[cfg(feature = "paranoid")]
-        self.tree.flush()?;
+        self.stats.flush()?;
         Ok(())
     }
 
@@ -51,7 +53,27 @@ impl StatsDb {
         let mut key = Vec::with_capacity(64);
         key.extend_from_slice(&event_addr.address.get_bytestring(0));
         key.extend_from_slice(relay_key.as_slice());
-        Ok(self.tree.scan_prefix(&key).keys().next().is_some())
+        Ok(self.stats.scan_prefix(&key).keys().next().is_some())
+    }
+
+    pub fn update_latest_scanned_lt(&self, addr: &MsgAddressInt, lt: u64) -> Result<(), Error> {
+        self.latest_scanned_lt
+            .insert(&addr.address().get_bytestring(0), &lt.to_be_bytes())?;
+
+        #[cfg(feature = "paranoid")]
+        self.tx_stats.flush()?;
+        Ok(())
+    }
+
+    pub fn get_latest_scanned_lt(&self, addr: &MsgAddressInt) -> Result<Option<u64>, Error> {
+        Ok(self
+            .latest_scanned_lt
+            .get(&addr.address().get_bytestring(0))?
+            .map(|value| {
+                let mut buf = [0u8; 8];
+                buf.copy_from_slice(&value[0..8]);
+                u64::from_be_bytes(buf)
+            }))
     }
 }
 
@@ -60,7 +82,7 @@ impl Table for StatsDb {
     type Value = Vec<TxStatView>;
 
     fn dump_elements(&self) -> HashMap<Self::Key, Self::Value> {
-        self.tree
+        self.stats
             .iter()
             .filter_map(|x| match x {
                 Ok(a) => Some(a),

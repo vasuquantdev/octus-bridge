@@ -61,16 +61,19 @@ impl EthereumEventConfigurationContract {
         &self.config.account
     }
 
-    pub fn latest_known_lt(&self) -> u64 {
-        self.subscription.db().get_latest_lt(&self.config.account)
+    /// Returns logical time right before subscription started.
+    pub fn since_lt(&self) -> u64 {
+        self.subscription.since_lt()
     }
 
+    /// Returns iterator over events in reversed order since lt (inclusive), until lt (also inclusive)
     pub fn get_known_events(
         &self,
         since_lt: Option<u64>,
+        until_lt: u64,
     ) -> BoxStream<'_, EthereumEventConfigurationContractEvent> {
         self.subscription
-            .rescan_events(since_lt, None)
+            .rescan_events(since_lt, Some(until_lt + 1))
             .filter_map(move |event_body| async move {
                 match event_body
                     .map_err(ContractError::TransportError)

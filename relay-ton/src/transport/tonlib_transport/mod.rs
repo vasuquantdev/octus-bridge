@@ -22,7 +22,6 @@ use crate::prelude::*;
 use crate::transport::TransportDb;
 
 pub struct TonlibTransport {
-    db: Db,
     client: Arc<TonlibClient>,
     subscription_polling_interval: Duration,
     max_initial_rescan_gap: Option<u32>,
@@ -30,7 +29,7 @@ pub struct TonlibTransport {
 }
 
 impl TonlibTransport {
-    pub async fn new(config: Config, db: Db) -> TransportResult<Self> {
+    pub async fn new(config: Config) -> TransportResult<Self> {
         let subscription_polling_interval =
             Duration::from_secs(config.subscription_polling_interval_sec);
 
@@ -42,7 +41,6 @@ impl TonlibTransport {
             .map_err(to_api_error)?;
 
         Ok(Self {
-            db,
             client: Arc::new(client),
             subscription_polling_interval,
             max_initial_rescan_gap,
@@ -90,7 +88,6 @@ impl Transport for TonlibTransport {
         account: MsgAddressInt,
     ) -> TransportResult<(Arc<dyn AccountSubscription>, RawEventsRx)> {
         let (subscription, rx): (Arc<dyn AccountSubscription>, _) = TonlibAccountSubscription::new(
-            &self.db,
             &self.client,
             &self.subscription_polling_interval,
             self.max_initial_rescan_gap,
@@ -113,7 +110,7 @@ impl Transport for TonlibTransport {
 }
 
 struct TonlibAccountSubscription {
-    db: Arc<SledTransportDb>,
+    since_lt: u64,
     client: Arc<tonlib::TonlibClient>,
     account: MsgAddressInt,
     known_state: RwLock<(AccountStats, AccountStuff)>,
@@ -122,14 +119,12 @@ struct TonlibAccountSubscription {
 
 impl TonlibAccountSubscription {
     async fn new(
-        db: &Db,
         client: &Arc<tonlib::TonlibClient>,
         polling_interval: &Duration,
         max_initial_rescan_gap: Option<u32>,
         max_rescan_gap: Option<u32>,
         account: MsgAddressInt,
     ) -> TransportResult<(Arc<Self>, RawEventsRx)> {
-        let db = Arc::new(SledTransportDb::new(&db);
         let client = client.clone();
         let (stats, known_state) = client
             .get_account_state(&account)
@@ -141,7 +136,7 @@ impl TonlibAccountSubscription {
         let (tx, rx) = mpsc::unbounded_channel();
 
         let subscription = Arc::new(Self {
-            db,
+            since_lt: last_trans_lt,
             client,
             account,
             known_state: RwLock::new((stats, known_state)),
@@ -284,7 +279,6 @@ impl TonlibAccountSubscription {
                 pending_messages.retain(|_, message| gen_utime <= message.expires_at());
 
                 last_trans_lt = new_trans_lt;
-                subscription.db.update_latest_lt(&subscription.account, last_trans_lt);
             }
         });
     }
@@ -320,8 +314,8 @@ impl RunLocal for TonlibAccountSubscription {
 
 #[async_trait]
 impl AccountSubscription for TonlibAccountSubscription {
-    fn db(&self) -> Arc<dyn TransportDb> {
-        self.db.clone()
+    fn since_lt(&self) -> u64 {
+        self.since_lt
     }
 
     async fn simulate_call(

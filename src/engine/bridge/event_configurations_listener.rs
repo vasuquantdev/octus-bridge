@@ -436,7 +436,7 @@ impl EventConfigurationsListener {
         self.notify_subscription(subscriptions_tx, ethereum_event_address)
             .await;
 
-        let handle_event = move |listener: Arc<Self>, event| {
+        let handle_event = move |listener: Arc<Self>, event, semaphore: Option<Semaphore>| {
             log::debug!("got event confirmation event: {:?}", event);
 
             let (address, relay_key, vote) = match event {
@@ -449,12 +449,14 @@ impl EventConfigurationsListener {
                 }
             };
 
-            tokio::spawn(listener.handle_event(
-                ethereum_event_blocks_to_confirm,
-                address,
-                relay_key,
-                vote,
-            ));
+            tokio::spawn(async move {
+                listener
+                    .handle_event(ethereum_event_blocks_to_confirm, address, relay_key, vote)
+                    .await;
+                if let Some(semaphore) = semaphore {
+                    semaphore.notify().await;
+                }
+            });
         };
 
         // Spawn listener of new events
@@ -463,17 +465,34 @@ impl EventConfigurationsListener {
 
             async move {
                 while let Some(event) = config_contract_events.next().await {
-                    handle_event(listener.clone(), event);
+                    handle_event(listener.clone(), event, None);
                 }
             }
         });
 
         // Process all past events
-        let latest_known_lt = config_contract.latest_known_lt();
-        let mut known_events = config_contract.get_known_events(Some(latest_known_lt));
+        let latest_known_lt = config_contract.since_lt();
+
+        let latest_scanned_lt = self
+            .stats_db
+            .get_latest_scanned_lt(config_contract.address())
+            .unwrap();
+
+        let events_semaphore = Semaphore::new_empty();
+
+        let mut known_events = config_contract.get_known_events(latest_scanned_lt, latest_known_lt);
+        let mut known_event_count = 0;
         while let Some(event) = known_events.next().await {
-            handle_event(self.clone(), event);
+            handle_event(self.clone(), event, Some(events_semaphore.clone()));
+            known_event_count += 1;
         }
+
+        // Only update latest scanned lt when all scanned events are in ton queue
+        events_semaphore.wait_count(known_event_count).await;
+
+        self.stats_db
+            .update_latest_scanned_lt(config_contract.address(), latest_known_lt)
+            .unwrap();
     }
 
     async fn notify_subscription(
@@ -712,6 +731,7 @@ async fn try_notify(semaphore: Option<Semaphore>) {
 
 #[derive(Clone)]
 struct Semaphore {
+    guard: Arc<RwLock<SemaphoreGuard>>,
     counter: Arc<Mutex<usize>>,
     done: Arc<Notify>,
 }
@@ -719,20 +739,103 @@ struct Semaphore {
 impl Semaphore {
     fn new(count: usize) -> Self {
         Self {
+            guard: Arc::new(RwLock::new(SemaphoreGuard {
+                target: count,
+                allow_notify: false,
+            })),
             counter: Arc::new(Mutex::new(count)),
             done: Arc::new(Notify::new()),
         }
     }
 
-    async fn wait(&self) {
+    fn new_empty() -> Self {
+        Self::new(0)
+    }
+
+    async fn wait(self) {
+        let target = {
+            let mut guard = self.guard.write().await;
+            guard.allow_notify = true;
+            guard.target
+        };
+        if *self.counter.lock().await >= target {
+            return;
+        }
+        self.done.notified().await
+    }
+
+    async fn wait_count(self, count: usize) {
+        *self.guard.write().await = SemaphoreGuard {
+            target: count,
+            allow_notify: true,
+        };
+        if *self.counter.lock().await >= count {
+            return;
+        }
         self.done.notified().await
     }
 
     async fn notify(&self) {
         let mut counter = self.counter.lock().await;
-        match counter.checked_sub(1) {
-            Some(new) if new != 0 => *counter = new,
-            _ => self.done.notify(),
+        *counter += 1;
+
+        let guard = self.guard.read().await;
+        if *counter >= guard.target && guard.allow_notify {
+            self.done.notify();
         }
+    }
+}
+
+struct SemaphoreGuard {
+    target: usize,
+    allow_notify: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use tokio::time;
+    use tokio::time::Duration;
+
+    fn spawn_tasks(semaphore: Semaphore) -> usize {
+        let mut target = 0;
+
+        for i in 0..10 {
+            target += 1;
+            tokio::spawn({
+                let semaphore = semaphore.clone();
+                async move {
+                    println!("Task {} started", i);
+                    time::delay_for(Duration::from_secs(i)).await;
+                    println!("Task {} complete", i);
+                    semaphore.notify().await;
+                }
+            });
+        }
+
+        target
+    }
+
+    #[tokio::test]
+    async fn semaphore_with_unknown_target_incomplete() {
+        let semaphore = Semaphore::new_empty();
+        let target_count = spawn_tasks(semaphore.clone());
+
+        time::delay_for(Duration::from_secs(7)).await;
+        println!("Waiting...");
+        semaphore.wait_count(target_count).await;
+        println!("Done");
+    }
+
+    #[tokio::test]
+    async fn semaphore_with_unknown_target_complete() {
+        let semaphore = Semaphore::new_empty();
+        let target_count = spawn_tasks(semaphore.clone());
+
+        time::delay_for(Duration::from_secs(11)).await;
+        println!("Waiting...");
+        semaphore.wait_count(target_count).await;
+        println!("Done");
     }
 }

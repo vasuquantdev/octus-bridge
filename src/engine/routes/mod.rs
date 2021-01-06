@@ -335,17 +335,17 @@ async fn wait_for_password(
 }
 
 impl TonConfig {
-    pub async fn make_transport(&self, db: Db) -> Result<Arc<dyn Transport>, Error> {
+    pub async fn make_transport(&self) -> Result<Arc<dyn Transport>, Error> {
         #[allow(unreachable_code)]
         Ok(match self {
             #[cfg(feature = "tonlib-transport")]
-            TonConfig::Tonlib(config) => Arc::new(
-                relay_ton::transport::TonlibTransport::new(config.clone(), db.clone()).await?,
-            ),
+            TonConfig::Tonlib(config) => {
+                Arc::new(relay_ton::transport::TonlibTransport::new(config.clone()).await?)
+            }
             #[cfg(feature = "graphql-transport")]
-            TonConfig::GraphQL(config) => Arc::new(
-                relay_ton::transport::GraphQLTransport::new(config.clone(), db.clone()).await?,
-            ),
+            TonConfig::GraphQL(config) => {
+                Arc::new(relay_ton::transport::GraphQLTransport::new(config.clone()).await?)
+            }
         })
     }
 }

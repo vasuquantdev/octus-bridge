@@ -8,6 +8,7 @@ query QueryLatestMasterchainBlock {
         }
     ], limit: 1) {
         id
+        end_lt(format: DEC)
         master
         {
             shard_hashes {
@@ -15,6 +16,7 @@ query QueryLatestMasterchainBlock {
                 shard
                 descr {
                     root_hash
+                    end_lt(format: DEC)
                 }
             }
         }

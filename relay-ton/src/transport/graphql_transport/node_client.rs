@@ -74,7 +74,7 @@ impl NodeClient {
         }
     }
 
-    pub async fn get_latest_block(&self, addr: &MsgAddressInt) -> TransportResult<String> {
+    pub async fn get_latest_block(&self, addr: &MsgAddressInt) -> TransportResult<LatestBlock> {
         #[derive(GraphQLQuery)]
         #[graphql(
             schema_path = "src/transport/graphql_transport/schema.graphql",
@@ -109,7 +109,13 @@ impl NodeClient {
             Some(block) => {
                 // Handle simple case when searched account is in masterchain
                 if workchain_id == -1 {
-                    return block.id.ok_or_else(no_blocks_found);
+                    return match (block.id, block.end_lt) {
+                        (Some(id), Some(end_lt)) => Ok(LatestBlock {
+                            id,
+                            end_lt: u64::from_str(&end_lt).unwrap_or_default(),
+                        }),
+                        _ => Err(no_blocks_found()),
+                    };
                 }
 
                 // Find account's shard block
@@ -125,15 +131,21 @@ impl NodeClient {
                             if check_shard_match(workchain_id, &shard, addr)? {
                                 return item
                                     .descr
-                                    .and_then(|descr| descr.root_hash)
+                                    .and_then(|descr| {
+                                        Some(LatestBlock {
+                                            id: descr.root_hash?,
+                                            end_lt: u64::from_str(&descr.end_lt?)
+                                                .unwrap_or_default(),
+                                        })
+                                    })
                                     .ok_or_else(no_blocks_found);
                             }
                         }
-                        _ => return Err(TransportError::NoBlocksFound),
+                        _ => return Err(no_blocks_found()),
                     }
                 }
 
-                Err(TransportError::NoBlocksFound)
+                Err(no_blocks_found())
             }
             // Check Node SE case (without masterchain and sharding)
             None => {
@@ -150,7 +162,7 @@ impl NodeClient {
                     (Some(after_merge), Some(shard))
                         if !after_merge && shard == "8000000000000000" => {}
                     // If workchain is sharded then it is not Node SE and missing masterchain blocks is error
-                    _ => return Err(TransportError::NoBlocksFound),
+                    _ => return Err(no_blocks_found()),
                 }
 
                 self.fetch::<QueryNodeSELatestBlock>(query_node_se_latest_block::Variables {
@@ -159,11 +171,12 @@ impl NodeClient {
                 .await?
                 .blocks
                 .and_then(|blocks| {
-                    blocks
-                        .into_iter()
-                        .flatten()
-                        .next()
-                        .and_then(|block| block.id)
+                    blocks.into_iter().flatten().next().and_then(|block| {
+                        Some(LatestBlock {
+                            id: block.id?,
+                            end_lt: u64::from_str(&block.end_lt?).unwrap_or_default(),
+                        })
+                    })
                 })
                 .ok_or_else(no_blocks_found)
             }
@@ -354,6 +367,12 @@ impl NodeClient {
 
         Ok(())
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct LatestBlock {
+    pub id: String,
+    pub end_lt: u64,
 }
 
 #[derive(GraphQLQuery)]
