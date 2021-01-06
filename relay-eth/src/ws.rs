@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::convert::TryInto;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -11,10 +12,10 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::sync::RwLock;
 use tokio::sync::Semaphore;
 use url::Url;
-use web3::{Transport, Web3};
 use web3::transports::http::Http;
 pub use web3::types::{Address, BlockNumber, H256};
 use web3::types::{FilterBuilder, Log};
+use web3::{Transport, Web3};
 
 const ETH_POLL_INTERVAL: Duration = Duration::from_secs(5);
 const ETH_TIMEOUT: Duration = Duration::from_secs(2);
@@ -26,10 +27,14 @@ pub struct EthListener {
     web3: Web3<Http>,
     db: Tree,
     topics: Arc<RwLock<(HashSet<Address>, HashSet<H256>)>>,
+    current_block: Arc<AtomicU64>,
     connections_pool: Arc<Semaphore>,
 }
 
-async fn get_actual_eth_height<T: Transport>(w3: &Web3<T>, connection_pool: &Arc<Semaphore>) -> Option<u64> {
+async fn get_actual_eth_height<T: Transport>(
+    w3: &Web3<T>,
+    connection_pool: &Arc<Semaphore>,
+) -> Option<u64> {
     use tokio::time::timeout;
     log::debug!("Getting height");
     let _permission = connection_pool.acquire().await;
@@ -58,14 +63,22 @@ impl EthListener {
     pub async fn new(url: Url, db: Db, connections_number: usize) -> Result<Self, Error> {
         let connection = Http::new(url.as_str()).expect("Failed connecting to ethereum node");
         log::info!("Connected to: {}", &url);
+        let tree = db.open_tree(ETH_TREE_NAME)?;
         let api = Web3::new(connection);
-
+        let current_block = Self::get_block_number_on_start(&tree, &api).await?;
         Ok(Self {
             web3: api,
-            db: db.open_tree(ETH_TREE_NAME)?,
+            db: tree,
             topics: Arc::new(Default::default()),
             connections_pool: Arc::new(Semaphore::new(connections_number)),
+            current_block: Arc::new(AtomicU64::new(current_block)),
         })
+    }
+
+    pub fn change_eth_height(&self, height: u64) -> Result<(), Error> {
+        self.current_block.store(height, Ordering::SeqCst);
+        update_height(&self.db, height)?;
+        Ok(())
     }
 
     pub async fn start<S>(
@@ -73,16 +86,16 @@ impl EthListener {
         subscriptions: S,
     ) -> Result<
         (
-            impl Stream<Item=u64>,
-            impl Stream<Item=Result<Event, Error>>,
+            impl Stream<Item = u64>,
+            impl Stream<Item = Result<Event, Error>>,
         ),
         Error,
     >
-        where
-            S: Stream<Item=(Address, H256)> + Send + Unpin + 'static,
+    where
+        S: Stream<Item = (Address, H256)> + Send + Unpin + 'static,
     {
         log::debug!("Started iterating over ethereum blocks.");
-        let from_height = self.get_block_number_on_start().await?;
+        let from_height = self.current_block.clone();
 
         tokio::spawn({
             let mut subscriptions = subscriptions;
@@ -110,16 +123,16 @@ impl EthListener {
             self.web3.clone(),
             self.topics.clone(),
             from_height,
-            self.connections_pool.clone()
+            self.connections_pool.clone(),
         );
 
         Ok((blocks_rx, events_rx))
     }
 
-    pub async fn get_block_number_on_start(&self) -> Result<u64, Error> {
-        Ok(match self.db.get(ETH_LAST_MET_HEIGHT)? {
+    pub async fn get_block_number_on_start(db: &Tree, web3: &Web3<Http>) -> Result<u64, Error> {
+        Ok(match db.get(ETH_LAST_MET_HEIGHT)? {
             Some(a) => u64::from_le_bytes(a.as_ref().try_into()?),
-            None => self.web3.eth().block_number().await?.as_u64(),
+            None => web3.eth().block_number().await?.as_u64(),
         })
     }
 
@@ -253,11 +266,11 @@ fn spawn_blocks_scanner(
     db: Tree,
     w3: Web3<Http>,
     topics: Arc<RwLock<(HashSet<Address>, HashSet<H256>)>>,
-    from_height: u64,
-    connections_pool: Arc<Semaphore>
+    from_height: Arc<AtomicU64>,
+    connections_pool: Arc<Semaphore>,
 ) -> (
-    impl Stream<Item=u64>,
-    impl Stream<Item=Result<Event, Error>>,
+    impl Stream<Item = u64>,
+    impl Stream<Item = Result<Event, Error>>,
 ) {
     let (blocks_tx, blocks_rx) = unbounded_channel();
     let (events_tx, events_rx) = unbounded_channel();
@@ -266,7 +279,7 @@ fn spawn_blocks_scanner(
         //
         //
         let w3 = w3.clone();
-        let connection_pool =connections_pool.clone();
+        let connection_pool = connections_pool.clone();
         let mut ethereum_actual_height = loop {
             match get_actual_eth_height(&w3, &connection_pool).await {
                 Some(a) => break a,
@@ -277,37 +290,48 @@ fn spawn_blocks_scanner(
                 }
             };
         };
-        let mut scanned_height = from_height;
+        let scanned_height = from_height;
         loop {
             //sleeping if we are on head
-            if ethereum_actual_height <= scanned_height {
+            if ethereum_actual_height <= scanned_height.load(Ordering::SeqCst) {
                 tokio::time::delay_for(ETH_POLL_INTERVAL).await;
                 ethereum_actual_height = match get_actual_eth_height(&w3, &connection_pool).await {
                     Some(a) => a,
                     None => continue,
                 };
-                if ethereum_actual_height <= scanned_height {
+                if ethereum_actual_height <= scanned_height.load(Ordering::SeqCst) {
                     continue;
                 }
-                // polling if we are near head
-            } else if (ethereum_actual_height - scanned_height) < 2 {
+            // polling if we are near head
+            } else if (ethereum_actual_height - scanned_height.load(Ordering::SeqCst)) < 2 {
                 ethereum_actual_height = match get_actual_eth_height(&w3, &connection_pool).await {
                     Some(a) => a,
                     None => continue,
                 };
             }
-            process_block(&w3, topics.as_ref(), scanned_height.into(), &events_tx, &connection_pool).await;
+            process_block(
+                &w3,
+                topics.as_ref(),
+                BlockNumber::from(scanned_height.load(Ordering::SeqCst)),
+                &events_tx,
+                &connection_pool,
+            )
+            .await;
 
-            if let Err(e) = update_eth_state(&db, scanned_height, ETH_LAST_MET_HEIGHT) {
+            if let Err(e) = update_eth_state(
+                &db,
+                scanned_height.load(Ordering::SeqCst),
+                ETH_LAST_MET_HEIGHT,
+            ) {
                 let err = format!("Critical error: failed saving eth state: {}", e);
                 log::error!("{}", &err);
             };
 
-            if let Err(e) = blocks_tx.send(scanned_height) {
+            if let Err(e) = blocks_tx.send(scanned_height.load(Ordering::SeqCst)) {
                 log::error!("Failed sending event via channel: {:?}", e);
                 // Panic?
             }
-            scanned_height += 1;
+            scanned_height.fetch_add(1, Ordering::SeqCst);
         }
     });
 
@@ -319,7 +343,7 @@ async fn process_block(
     topics: &RwLock<(HashSet<Address>, HashSet<H256>)>,
     block_number: BlockNumber,
     events_tx: &UnboundedSender<Result<Event, Error>>,
-    connection_pool: &Arc<Semaphore>
+    connection_pool: &Arc<Semaphore>,
 ) {
     // TODO: optimize
     let (addresses, topics): (Vec<_>, Vec<_>) = {
@@ -400,8 +424,7 @@ fn update_eth_state(db: &Tree, height: u64, key: &str) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn update_height(db: &Db, height: u64) -> Result<(), Error> {
-    let tree = db.open_tree(ETH_TREE_NAME)?;
-    update_eth_state(&tree, height, ETH_LAST_MET_HEIGHT)?;
+pub fn update_height(db: &Tree, height: u64) -> Result<(), Error> {
+    update_eth_state(&db, height, ETH_LAST_MET_HEIGHT)?;
     Ok(())
 }

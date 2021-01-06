@@ -4,7 +4,6 @@ use tokio::sync::RwLock;
 use warp::http::StatusCode;
 use warp::{reply, Filter, Reply};
 
-use relay_eth::ws::update_height;
 use relay_ton::transport::Transport;
 
 use crate::config::{RelayConfig, TonConfig};
@@ -186,17 +185,32 @@ async fn set_eth_block_height(
     height: RescanEthData,
 ) -> Result<impl Reply, Infallible> {
     let state = state.write().await;
-    let db = state.state_manager.clone();
-    Ok(match update_height(&db, height.block) {
-        Ok(_) => {
-            log::info!("Changed  eth scan height to {}", height.block);
-            reply::with_status("OK".to_string(), StatusCode::OK)
+    Ok(match &state.bridge_state {
+        BridgeState::Uninitialized => {
+            log::info!("Trying to change ethereum scan height on uninitialized relay");
+            reply::with_status(
+                "Trying to change ethereum scan height on uninitialized relay".to_string(),
+                StatusCode::FORBIDDEN,
+            )
         }
-        Err(e) => {
-            let err = format!("Failed changing eth scan height: {}", e);
-            log::error!("{}", err);
-            reply::with_status(err, StatusCode::INTERNAL_SERVER_ERROR)
+        BridgeState::Locked => {
+            log::info!("Trying to change ethereum scan height on locked relay");
+            reply::with_status(
+                "Trying to change ethereum scan height on locked relay".to_string(),
+                StatusCode::FORBIDDEN,
+            )
         }
+        BridgeState::Running(bridge) => match bridge.change_eth_height(height.block) {
+            Ok(_) => {
+                log::info!("Changed  eth scan height to {}", height.block);
+                reply::with_status("OK".to_string(), StatusCode::OK)
+            }
+            Err(e) => {
+                let err = format!("Failed changing eth scan height: {}", e);
+                log::error!("{}", err);
+                reply::with_status(err, StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        },
     })
 }
 

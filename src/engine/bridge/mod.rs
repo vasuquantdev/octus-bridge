@@ -137,6 +137,12 @@ impl Bridge {
         self.event_configurations_listener.retry_failed()
     }
 
+    ///Sets eth height
+    pub fn change_eth_height(&self, height: u64) -> Result<(), Error> {
+        self.eth_listener.change_eth_height(height)?;
+        Ok(())
+    }
+
     pub async fn get_event_configurations(
         &self,
     ) -> Result<Vec<(MsgAddressInt, EthereumEventConfiguration)>, anyhow::Error> {
