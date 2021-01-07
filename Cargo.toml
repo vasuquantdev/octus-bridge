@@ -84,5 +84,5 @@ assets = [
     ["target/release/relay", "usr/bin/relay", "755"],
     ["target/release/client", "usr/bin/relay-client", "755"],
 ]
-conf-files = "/etc/relay.conf"
+conf-files = ["/etc/relay.conf"]
 maintainer-scripts = "debian/scripts"
