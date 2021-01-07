@@ -240,7 +240,7 @@ impl Bridge {
                     hex::encode(&event.event_transaction)
                 );
                 self.clone().check_suspicious_event(event);
-                entry.remove().unwrap();
+                entry.remove().expect("Fatal db error");
             }
         }
     }

@@ -78,7 +78,6 @@ pub fn validate_ethereum_event_configuration(
     Ok(())
 }
 
-//TODO ADD TO README SUPPORTED TYPES
 pub fn eth_param_from_str(token: &str) -> Result<EthParamType, Error> {
     Ok(match token.to_lowercase().as_str() {
         str if str.starts_with("uint") => {
@@ -315,7 +314,6 @@ mod test {
         let expected = H256::from_slice(&*Keccak256::digest(b"StateChange(uint256,address)"));
         assert_eq!(expected, hash);
     }
-    //todo test abi parsing
 
     #[test]
     fn test_u256() {

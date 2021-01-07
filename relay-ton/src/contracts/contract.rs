@@ -79,7 +79,7 @@ where
     abi.events()
         .iter()
         .map(|(key, event)| {
-            let kind = T::EventKind::try_from(key.as_str()).unwrap();
+            let kind = T::EventKind::try_from(key.as_str()).expect("Shouldn't fail");
             (event.get_id(), (kind, event.clone()))
         })
         .collect::<HashMap<_, _>>()

@@ -1,9 +1,10 @@
-use super::errors::*;
-use super::models::*;
-use super::prelude::*;
 use crate::models::*;
 use crate::prelude::*;
 use crate::transport::*;
+
+use super::errors::*;
+use super::models::*;
+use super::prelude::*;
 
 #[derive(Clone)]
 pub struct EthereumEventContract {
@@ -12,16 +13,16 @@ pub struct EthereumEventContract {
 }
 
 impl EthereumEventContract {
-    pub async fn new(transport: Arc<dyn Transport>) -> ContractResult<Self> {
+    pub async fn new(transport: Arc<dyn Transport>) -> Self {
         let contract = Arc::new(
             ton_abi::Contract::load(Cursor::new(ABI))
                 .expect("failed to load bridge EthereumEventContract ABI"),
         );
 
-        Ok(Self {
+        Self {
             transport,
             contract,
-        })
+        }
     }
 
     #[inline]

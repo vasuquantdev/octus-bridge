@@ -63,7 +63,7 @@ impl EthQueue {
 
 #[inline]
 fn make_key(target_block_number: u64, value: &EthTonConfirmationData) -> Vec<u8> {
-    let value = bincode::serialize(value).unwrap();
+    let value = bincode::serialize(value).expect("Shouldn't fail");
 
     let mut key = target_block_number.to_be_bytes().to_vec();
     key.extend_from_slice(&value);

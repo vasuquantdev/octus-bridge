@@ -50,7 +50,7 @@ impl EventConfigurationsListener {
     ) -> Arc<Self> {
         let relay_key = bridge_contract.pubkey();
 
-        let event_contract = Arc::new(EthereumEventContract::new(transport.clone()).await.unwrap());
+        let event_contract = Arc::new(EthereumEventContract::new(transport.clone()).await);
 
         Arc::new(Self {
             transport,
@@ -221,7 +221,9 @@ impl EventConfigurationsListener {
         // Skip voting for events which are already in stats db and TON queue
         if self.has_already_voted(&event_address) {
             // Make sure that TON queue doesn't contain this event
-            self.ton_queue.mark_complete(&event_address).unwrap();
+            self.ton_queue
+                .mark_complete(&event_address)
+                .expect("Fatal db error");
             return;
         }
 
@@ -229,7 +231,7 @@ impl EventConfigurationsListener {
         self.ton_queue
             .insert_pending(&event_address, &data)
             .await
-            .unwrap();
+            .expect("Fatal db error");
 
         // Start listening for cancellation
         let (rx, vote) = {
@@ -398,7 +400,7 @@ impl EventConfigurationsListener {
             self.bridge_contract.address().clone(),
         )
         .await
-        .unwrap();
+        .unwrap(); //todo retry subscription
 
         // Get it's data
         let details = match self
@@ -476,7 +478,7 @@ impl EventConfigurationsListener {
         let latest_scanned_lt = self
             .stats_db
             .get_latest_scanned_lt(config_contract.address())
-            .unwrap();
+            .expect("Fatal db error");
 
         let events_semaphore = Semaphore::new_empty();
 
@@ -492,7 +494,7 @@ impl EventConfigurationsListener {
 
         self.stats_db
             .update_latest_scanned_lt(config_contract.address(), latest_known_lt)
-            .unwrap();
+            .expect("Fatal db error");
     }
 
     async fn notify_subscription(

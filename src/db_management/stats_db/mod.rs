@@ -38,7 +38,7 @@ impl StatsDb {
                 tx_hash: event.data.ethereum_event_transaction,
                 met: chrono::Utc::now(),
             })
-            .unwrap(),
+            .expect("Db error fail"),
         )?;
         #[cfg(feature = "paranoid")]
         self.stats.flush()?;

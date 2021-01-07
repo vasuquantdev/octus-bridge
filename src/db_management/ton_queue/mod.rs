@@ -31,7 +31,10 @@ impl TonQueue {
 
         (&self.pending, &self.failed).transaction(|(pending, failed)| {
             failed.remove(key.clone())?;
-            pending.insert(key.clone(), bincode::serialize(data).unwrap())?;
+            pending.insert(
+                key.clone(),
+                bincode::serialize(data).expect("Shouldn't fail"),
+            )?;
             ConflictableTransactionResult::<(), std::io::Error>::Ok(())
         })?;
         #[cfg(feature = "paranoid")]
@@ -89,7 +92,7 @@ impl TonQueue {
             .map(|(key, value)| {
                 (
                     parse_key(&key),
-                    bincode::deserialize::<EthTonTransaction>(&value).unwrap(),
+                    bincode::deserialize::<EthTonTransaction>(&value).expect("Shouldn't fail"),
                 )
             })
     }
@@ -107,7 +110,7 @@ impl TonQueue {
             .map(|(key, value)| {
                 (
                     parse_key(&key),
-                    bincode::deserialize::<EthTonTransaction>(&value).unwrap(),
+                    bincode::deserialize::<EthTonTransaction>(&value).expect("Shouldn't fail"),
                 )
             })
     }

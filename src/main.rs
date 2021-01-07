@@ -53,7 +53,7 @@ fn main() -> Result<(), Error> {
 }
 
 fn run(config: RelayConfig) -> Result<(), Error> {
-    let mut executor = tokio::runtime::Runtime::new().unwrap();
+    let mut executor = tokio::runtime::Runtime::new()?;
 
     log::info!("Relay started");
     let _err = executor.block_on(engine::run(config))?;

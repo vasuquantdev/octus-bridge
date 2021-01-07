@@ -136,7 +136,6 @@ impl EthListener {
         })
     }
 
-    // TODO
     pub async fn check_transaction(&self, hash: H256) -> Result<(Address, Vec<u8>), Error> {
         let mut attempts = 100;
         loop {
@@ -231,7 +230,6 @@ impl EthListener {
                     hash, block_number
                 );
                 log::warn!("{}", &err);
-                // TODO: return Err(Error::msg(err));
                 0
             }
         };
