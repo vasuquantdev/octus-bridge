@@ -85,4 +85,6 @@ assets = [
     ["target/release/client", "usr/bin/relay-client", "755"],
 ]
 conf-files = ["/etc/relay.conf"]
-maintainer-scripts = "debian/scripts"
+maintainer-scripts = "debian/"
+[package.metadata.deb.systemd-units]
+unit-scripts = "debian/"
