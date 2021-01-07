@@ -4,7 +4,7 @@ After=network.target
 Wants=network-online.target
 
 [Service]
-ExecStart=/usr/bin/relay
+ExecStart=/usr/bin/relay --config /etc/relay.conf
 Restart=always
 KillSignal=SIGINT
 SyslogIdentifier=bridge
