@@ -61,50 +61,62 @@ impl Method {
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct RelayConfig {
-    /// path to json, where ton and eth private keys will be stored in encrypted way.
-    pub encrypted_data: PathBuf,
+    /// Path to json, where ton and eth private keys will be stored in encrypted way.
+    pub keys_path: PathBuf,
+    /// Listen address of relay. Used by the client to perform all maintenance actions.
+    pub listen_address: SocketAddr,
+    /// Path to Sled database.
+    pub storage_path: PathBuf,
+    /// Logger settings
+    pub logger_settings: serde_yaml::Value,
+
     /// Address of ethereum node. Only http is supported right now
     pub eth_node_address: String,
-    /// Addresss of bridge contract
-    pub ton_contract_address: TonAddress,
+
+    /// Custom TON key derivation path, used for testing
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ton_derivation_path: Option<String>,
-    pub storage_path: PathBuf,
-    /// Listen address of relay. Used by the client to perform all maintains actions.
-    pub listen_address: SocketAddr,
+    /// Address of bridge contract
+    pub ton_contract_address: TonAddress,
     /// Config for the ton part.
-    pub ton_config: TonConfig,
+    pub ton_transport: TonConfig,
     /// Config for respawning strategy in ton
-    pub ton_operation_timeouts: TonOperationRetryParams,
+    pub ton_settings: TonTimeoutParams,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
-pub struct TonOperationRetryParams {
-    /// Times to try polling configuration contract
-    pub configuration_contract_try_poll_times: u64,
-    pub get_event_details_retry_times: u64,
-    /// 1 sec ~= time before next block in masterchain.
-    /// Should be greater than account polling interval
+pub struct TonTimeoutParams {
+    /// Interval between attempts to get event configuration details
     #[serde(with = "serde_seconds")]
-    pub get_event_details_poll_interval_secs: Duration,
-    /// Initial timeout between unsuccessful
-    /// broadcast in ton
+    pub event_configuration_details_retry_interval: Duration,
+    /// Amount of unsuccessful attempts
+    pub event_configuration_details_retry_count: u64,
+
+    /// Interval between attempts to get event details
     #[serde(with = "serde_seconds")]
-    pub broadcast_in_ton_interval_secs: Duration,
-    /// Times to try broadcasting transaction in ton.
-    pub broadcast_in_ton_times: i64,
-    /// Coefficient, on which every delay 'll be multiplied
-    pub broadcast_in_ton_interval_multiplier: f64,
+    pub event_details_retry_interval: Duration,
+    /// Amount of unsuccessful attempts
+    pub event_details_retry_count: u64,
+
+    /// Interval between attempts to get send message
+    #[serde(with = "serde_seconds")]
+    pub message_retry_interval: Duration,
+    /// Amount of unsuccessful attempts
+    pub message_retry_count: i64,
+    /// Coefficient, on which every interval will be multiplied
+    pub message_retry_interval_multiplier: f64,
 }
-impl Default for TonOperationRetryParams {
+
+impl Default for TonTimeoutParams {
     fn default() -> Self {
         Self {
-            configuration_contract_try_poll_times: 100,
-            get_event_details_retry_times: 100,
-            get_event_details_poll_interval_secs: Duration::from_secs(5),
-            broadcast_in_ton_interval_secs: Duration::from_secs(60),
-            broadcast_in_ton_times: 3,
-            broadcast_in_ton_interval_multiplier: 1.5,
+            event_configuration_details_retry_count: 100,
+            event_configuration_details_retry_interval: Duration::from_secs(5),
+            event_details_retry_interval: Default::default(),
+            event_details_retry_count: 100,
+            message_retry_interval: Duration::from_secs(60),
+            message_retry_count: 10,
+            message_retry_interval_multiplier: 1.5,
         }
     }
 }
@@ -112,20 +124,52 @@ impl Default for TonOperationRetryParams {
 impl Default for RelayConfig {
     fn default() -> Self {
         Self {
-            encrypted_data: PathBuf::from("./cryptodata.json"),
-            storage_path: PathBuf::from("./persistent_storage"),
-            eth_node_address: "http://localhost:12345".into(),
-            ton_contract_address: TonAddress("".into()),
-            ton_derivation_path: None,
+            keys_path: PathBuf::from("./keys.json"),
             listen_address: "127.0.0.1:12345".parse().unwrap(),
-            ton_config: TonConfig::default(),
-            ton_operation_timeouts: TonOperationRetryParams::default(),
+            storage_path: PathBuf::from("./persistent_storage"),
+            logger_settings: default_logger_settings(),
+            eth_node_address: "http://localhost:12345".into(),
+            ton_derivation_path: None,
+            ton_contract_address: TonAddress("".into()),
+            ton_transport: TonConfig::default(),
+            ton_settings: TonTimeoutParams::default(),
         }
     }
 }
 
+fn default_logger_settings() -> serde_yaml::Value {
+    const DEFAULT_LOG4RS_SETTINGS: &str = r##"
+    appenders:
+      stdout:
+        kind: console
+        encoder:
+          pattern: "{d(%Y-%m-%d %H:%M:%S %Z)(utc)} - {h({l})} {M} {f}:{L} = {m} {n}"
+    root:
+      level: error
+      appenders:
+        - stdout
+    loggers:
+      relay:
+        level: info
+        appenders:
+          - stdout
+        additive: false
+      relay_eth:
+        level: info
+        appenders:
+          - stdout
+        additive: false
+      relay_ton:
+        level: info
+        appenders:
+          - stdout
+        additive: false
+    "##;
+    serde_yaml::from_str(DEFAULT_LOG4RS_SETTINGS).unwrap()
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug)]
-#[serde(tag = "type")]
+#[serde(tag = "type", rename_all = "lowercase")]
 pub enum TonConfig {
     #[cfg(feature = "tonlib-transport")]
     Tonlib(TonTonlibConfig),
@@ -144,9 +188,9 @@ impl Default for TonConfig {
     }
 }
 
-pub fn read_config(path: &str) -> Result<RelayConfig, Error> {
+pub fn read_config(path: PathBuf) -> Result<RelayConfig, Error> {
     let mut config = Config::new();
-    config.merge(File::new(path, FileFormat::Json))?;
+    config.merge(File::from(path).format(FileFormat::Yaml))?;
     let config: RelayConfig = config.try_into()?;
     dbg!(&config);
     Ok(config)
@@ -154,35 +198,22 @@ pub fn read_config(path: &str) -> Result<RelayConfig, Error> {
 
 #[derive(Deserialize, Serialize, Clone, Debug, Clap)]
 pub struct Arguments {
-    #[clap(
-        short,
-        long,
-        default_value = "config.json",
-        conflicts_with = "gen-config"
-    )]
-    pub config: String,
-    ///It will generate default config
-    #[clap(long, requires = "crypto-store-path")]
-    pub gen_config: bool,
+    /// Path to config
+    #[clap(short, long, conflicts_with = "gen-config")]
+    pub config: Option<PathBuf>,
+
+    /// Generate default config
     #[clap(long)]
-    /// Path for encrypted data storage
-    pub crypto_store_path: Option<PathBuf>,
-    ///Path for generated config
-    #[clap(long, default_value = "default_config.json")]
-    pub generated_config_path: PathBuf,
+    pub gen_config: Option<PathBuf>,
 }
 
-pub fn generate_config<T>(path: T, pem_path: PathBuf) -> Result<(), Error>
+pub fn generate_config<T>(path: T) -> Result<(), Error>
 where
     T: AsRef<Path>,
 {
     let mut file = std::fs::File::create(path)?;
-    let mut config = RelayConfig::default();
-    config = RelayConfig {
-        encrypted_data: pem_path,
-        ..config
-    };
-    file.write_all(serde_json::to_vec_pretty(&config)?.as_slice())?;
+    let config = RelayConfig::default();
+    file.write_all(serde_yaml::to_string(&config)?.as_bytes())?;
     Ok(())
 }
 

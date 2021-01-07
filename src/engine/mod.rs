@@ -14,7 +14,7 @@ mod routes;
 pub async fn run(config: RelayConfig) -> Result<(), Error> {
     let state_manager = sled::open(&config.storage_path)?;
     setup_panic_handler(state_manager.clone());
-    let crypto_data_metadata = std::fs::File::open(&config.encrypted_data);
+    let crypto_data_metadata = std::fs::File::open(&config.keys_path);
 
     let file_size = match crypto_data_metadata {
         Err(e) => {

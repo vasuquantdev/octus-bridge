@@ -5,11 +5,10 @@
 persistent_storage/
 
 Dockerfile.local
-default_config.json
-config_data.json
+default_config.yaml
+keys.json
 logs.log
-ton_dump.json
-eth_dump.json
+config.yaml
 
 log/
 scripts/relay*

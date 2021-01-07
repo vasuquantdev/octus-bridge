@@ -261,7 +261,7 @@ async fn wait_for_init(
     };
 
     let key_data = match KeyData::init(
-        &config.encrypted_data,
+        &config.keys_path,
         data.password.into(),
         eth_private_key,
         ton_key_pair,
@@ -312,7 +312,7 @@ async fn wait_for_password(
         _ => {}
     }
 
-    let key_data = match KeyData::from_file(config.encrypted_data.clone(), data.password.into()) {
+    let key_data = match KeyData::from_file(config.keys_path.clone(), data.password.into()) {
         Ok(key_data) => key_data,
         Err(e) => {
             let error = format!("Failed unlocking relay: {}", &e);

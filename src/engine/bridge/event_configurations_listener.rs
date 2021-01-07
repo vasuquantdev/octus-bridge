@@ -10,7 +10,7 @@ use relay_ton::contracts::*;
 use relay_ton::prelude::UInt256;
 use relay_ton::transport::{Transport, TransportError};
 
-use crate::config::TonOperationRetryParams;
+use crate::config::TonTimeoutParams;
 use crate::db_management::*;
 use crate::engine::bridge::util::{parse_eth_abi, validate_ethereum_event_configuration};
 use crate::prelude::*;
@@ -34,7 +34,7 @@ pub struct EventConfigurationsListener {
     configs_state: Arc<RwLock<ConfigsState>>,
     config_contracts: Arc<RwLock<ContractsMap>>,
     known_config_addresses: Arc<Mutex<HashSet<MsgAddressInt>>>,
-    timeouts: TonOperationRetryParams,
+    timeouts: TonTimeoutParams,
 }
 
 type ContractsMap = HashMap<MsgAddressInt, Arc<EthereumEventConfigurationContract>>;
@@ -46,7 +46,7 @@ impl EventConfigurationsListener {
         eth_queue: EthQueue,
         ton_queue: TonQueue,
         stats_db: StatsDb,
-        timeouts: TonOperationRetryParams,
+        timeouts: TonTimeoutParams,
     ) -> Arc<Self> {
         let relay_key = bridge_contract.pubkey();
 
@@ -258,15 +258,15 @@ impl EventConfigurationsListener {
         };
 
         let mut rx = Some(rx);
-        let mut retries_count = self.timeouts.broadcast_in_ton_times;
-        let mut retries_interval = self.timeouts.broadcast_in_ton_interval_secs;
+        let mut retries_count = self.timeouts.message_retry_count;
+        let mut retries_interval = self.timeouts.message_retry_interval;
 
         // Send message with several retries on failure
         let result = loop {
             // Prepare delay future
             let delay = tokio::time::delay_for(retries_interval);
             retries_interval = std::time::Duration::from_secs_f64(
-                retries_interval.as_secs_f64() * self.timeouts.broadcast_in_ton_interval_multiplier,
+                retries_interval.as_secs_f64() * self.timeouts.message_retry_interval_multiplier,
             );
 
             // Try send message
@@ -571,10 +571,10 @@ impl EventConfigurationsListener {
         semaphore: Option<Semaphore>,
     ) -> Result<EthereumEventConfiguration, Error> {
         // retry connection to configuration contract
-        let mut retries_count = self.timeouts.configuration_contract_try_poll_times;
+        let mut retry_count = self.timeouts.event_configuration_details_retry_count;
         // 1 sec ~= time before next block in masterchain.
         // Should be greater then account polling interval
-        let retries_interval = self.timeouts.get_event_details_poll_interval_secs;
+        let retry_interval = self.timeouts.event_configuration_details_retry_interval;
 
         let notify_if_init = || async {
             if semaphore.is_some() {
@@ -596,15 +596,15 @@ impl EventConfigurationsListener {
                     }
                 },
                 Err(ContractError::TransportError(TransportError::AccountNotFound))
-                    if retries_count > 0 =>
+                    if retry_count > 0 =>
                 {
-                    retries_count -= 1;
+                    retry_count -= 1;
                     log::warn!(
                             "failed to get events configuration contract details for {}. Retrying ({} left)",
                             config_contract.address(),
-                            retries_count
-                        );
-                    tokio::time::delay_for(retries_interval).await;
+                            retry_count
+                    );
+                    tokio::time::delay_for(retry_interval).await;
                 }
                 Err(e) => {
                     notify_if_init().await;
@@ -621,22 +621,22 @@ impl EventConfigurationsListener {
         &self,
         event_addr: MsgAddrStd,
     ) -> Result<EthereumEventDetails, ContractError> {
-        let mut retries_count = self.timeouts.get_event_details_retry_times;
-        let retries_interval = self.timeouts.get_event_details_poll_interval_secs; // 1 sec ~= time before next block in masterchain.
+        let mut retry_count = self.timeouts.event_details_retry_count;
+        let retry_interval = self.timeouts.event_details_retry_interval;
 
         loop {
             match self.event_contract.get_details(event_addr.clone()).await {
                 Ok(details) => break Ok(details),
                 Err(ContractError::TransportError(TransportError::AccountNotFound))
-                    if retries_count > 0 =>
+                    if retry_count > 0 =>
                 {
-                    retries_count -= 1;
+                    retry_count -= 1;
                     log::error!(
                         "Failed to get event details for {}. Retrying ({} left)",
                         event_addr,
-                        retries_count
+                        retry_count
                     );
-                    tokio::time::delay_for(retries_interval).await;
+                    tokio::time::delay_for(retry_interval).await;
                 }
                 Err(e) => break Err(e),
             };

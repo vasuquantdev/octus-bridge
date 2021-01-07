@@ -29,7 +29,7 @@ pub async fn make_bridge(
     config: RelayConfig,
     key_data: KeyData,
 ) -> Result<Arc<Bridge>, Error> {
-    let transport = config.ton_config.make_transport().await?;
+    let transport = config.ton_transport.make_transport().await?;
 
     let ton_contract_address = MsgAddressInt::from_str(&*config.ton_contract_address.0)
         .map_err(|e| Error::msg(e.to_string()))?;
@@ -61,7 +61,7 @@ pub async fn make_bridge(
         eth_queue.clone(),
         ton_queue,
         stats_db,
-        config.ton_operation_timeouts.clone(),
+        config.ton_settings.clone(),
     )
     .await;
 
