@@ -61,7 +61,7 @@ impl StatsDb {
             .insert(&addr.address().get_bytestring(0), &lt.to_be_bytes())?;
 
         #[cfg(feature = "paranoid")]
-        self.tx_stats.flush()?;
+        self.stats.flush()?;
         Ok(())
     }
 

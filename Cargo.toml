@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2018"
 authors = ["Broxus team"]
 publish = false
-license = "Apache-2.0"
 license-file = "LICENSE"
 
 [workspace]
