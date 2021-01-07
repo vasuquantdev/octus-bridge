@@ -3,23 +3,23 @@ use std::str::FromStr;
 use anyhow::anyhow;
 use anyhow::Error;
 use chrono::{DateTime, Utc};
+use clap::Clap;
 use dialoguer::theme::{ColorfulTheme, Theme};
 use dialoguer::{Confirm, Editor, Input, Password, Select};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use structopt::StructOpt;
 
 use relay_models::models::{EventConfiguration, Voting};
 
-#[derive(StructOpt)]
+#[derive(Clap)]
 struct Arguments {
-    #[structopt(short, long, parse(try_from_str = parse_url))]
+    #[clap(short, long, parse(try_from_str = parse_url))]
     server_addr: Url,
 }
 
 fn main() -> Result<(), Error> {
-    let args: Arguments = Arguments::from_args();
+    let args = Arguments::parse();
 
     let theme = ColorfulTheme::default();
 

@@ -16,10 +16,9 @@ use tonlib::{AccountStats, TonlibClient};
 use super::errors::*;
 use super::tvm;
 use super::utils::*;
-use super::{AccountEvent, AccountSubscription, RunLocal, Transport};
+use super::{AccountSubscription, RunLocal, Transport};
 use crate::models::*;
 use crate::prelude::*;
-use crate::transport::TransportDb;
 
 pub struct TonlibTransport {
     client: Arc<TonlibClient>,
@@ -87,7 +86,7 @@ impl Transport for TonlibTransport {
         &self,
         account: MsgAddressInt,
     ) -> TransportResult<(Arc<dyn AccountSubscription>, RawEventsRx)> {
-        let (subscription, rx): (Arc<dyn AccountSubscription>, _) = TonlibAccountSubscription::new(
+        let (subscription, rx) = TonlibAccountSubscription::new(
             &self.client,
             &self.subscription_polling_interval,
             self.max_initial_rescan_gap,
