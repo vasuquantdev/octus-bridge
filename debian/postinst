@@ -1,7 +1,8 @@
 #!/bin/sh
 set -e
 
-if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-deconfigure" ] || [ "$1" = "abort-remove" ] ; then
-	useradd bridge -r --group
+if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-deconfigure" ] || [ "$1" = "abort-remove" ]; then
+  useradd bridge -r
+  /usr/bin/relay --gen-config /etc/relay.conf
 fi
 #DEBHELPER#
