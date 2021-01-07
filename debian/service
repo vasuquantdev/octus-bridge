@@ -1,0 +1,14 @@
+[Unit]
+Description=Ton<->Eth bridge
+After=network.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/relay
+Restart=always
+KillSignal=SIGINT
+SyslogIdentifier=bridge
+User=bridge
+Group=bridge
+[Install]
+WantedBy=multi-user.target
