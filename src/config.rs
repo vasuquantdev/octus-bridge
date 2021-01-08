@@ -124,11 +124,11 @@ impl Default for TonTimeoutParams {
 impl Default for RelayConfig {
     fn default() -> Self {
         Self {
-            keys_path: PathBuf::from("./keys.json"),
+            keys_path: PathBuf::from("/var/lib/relay/keys.json"),
             listen_address: "127.0.0.1:12345".parse().unwrap(),
-            storage_path: PathBuf::from("./persistent_storage"),
+            storage_path: PathBuf::from("/var/lib/relay/persistent_storage"),
             logger_settings: default_logger_settings(),
-            eth_node_address: "http://localhost:12345".into(),
+            eth_node_address: "http://localhost:1234".into(),
             ton_derivation_path: None,
             ton_contract_address: TonAddress("".into()),
             ton_transport: TonConfig::default(),
