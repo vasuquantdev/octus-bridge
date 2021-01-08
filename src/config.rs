@@ -82,6 +82,8 @@ pub struct RelayConfig {
     pub ton_transport: TonConfig,
     /// Config for respawning strategy in ton
     pub ton_settings: TonTimeoutParams,
+    /// Number of concurrent tcp connection to ethereum node
+    pub number_of_ethereum_tcp_connections: usize,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -133,6 +135,7 @@ impl Default for RelayConfig {
             ton_contract_address: TonAddress("".into()),
             ton_transport: TonConfig::default(),
             ton_settings: TonTimeoutParams::default(),
+            number_of_ethereum_tcp_connections: 100,
         }
     }
 }

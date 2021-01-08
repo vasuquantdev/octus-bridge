@@ -29,8 +29,8 @@ of config change.
 Each config has ethereum address + abi + `blocks_to_confirm` constant + some
 additional data.
 
-Then we subscribe on ethereum events from the last block in eth, using abi and
-addresses, got on the previous step. If the relay has ever started, then we
+Then we subscribe on ethereum events from the last block in ethereum, using abi
+and addresses, got on the previous step. If the relay has ever started, then we
 restore state in  [Persistent state](#persistent-state) section.
 
 We enqueue each received ethereum event in the persistent queue. On each
@@ -75,9 +75,10 @@ Ton -> Eth
 |Uint|Uint|
 |Int|Int|
 
-For different abi we can do different conversions.
-For example, 
+For different abi we can do different conversions. For example,
+
 # **TODO update after reverse chain implementation**
+
 ### Persistent state.
 
 - We use embedded key value db for persistent storage and queuing.
@@ -97,36 +98,63 @@ using `relay --gen-config --crypto-store-path 'path/to/file/with/encrypted/data'
 
 ### Example config with graphql transport
 
-```json
-{
-  "encrypted_data": "config_data.json",
-  "eth_node_address": "http://address_of_eth_node",
-  "ton_contract_address": "address of bridge contract",
-  "storage_path": "./persistent_storage",
-  "listen_address": "127.0.0.1:12345",
-  "ton_config": {
-    "type": "GraphQL",
-    "addr": "https://main.ton.dev/graphql",
-    "next_block_timeout_sec": 60
-  },
-  "ton_operation_timeouts": {
-    "configuration_contract_try_poll_times": 100,
-    "get_event_details_retry_times": 100,
-    "get_event_details_poll_interval_secs": 5,
-    "broadcast_in_ton_interval_secs": 10,
-    "broadcast_in_ton_times": 10,
-    "broadcast_in_ton_interval_multiplier": 1.5
-  }
-}
-```
+```yaml
+---
+keys_path: /var/lib/relay/keys.json
+listen_address: "127.0.0.1:12345"
+storage_path: /var/lib/relay/persistent_storage
+logger_settings:
+  appenders:
+    stdout:
+      kind: console
+      encoder:
+        pattern: "{d(%Y-%m-%d %H:%M:%S %Z)(utc)} - {h({l})} {M} {f}:{L} = {m} {n}"
+  root:
+    level: error
+    appenders:
+      - stdout
+  loggers:
+    relay:
+      level: info
+      appenders:
+        - stdout
+      additive: false
+    relay_eth:
+      level: info
+      appenders:
+        - stdout
+      additive: false
+    relay_ton:
+      level: info
+      appenders:
+        - stdout
+      additive: false
+eth_node_address: "http://localhost:1234"
+ton_contract_address: ""
+ton_transport:
+  type: graphql
+  addr: "https://main.ton.dev/graphql"
+  next_block_timeout_sec: 60
+ton_settings:
+  event_configuration_details_retry_interval: 5
+  event_configuration_details_retry_count: 100
+  event_details_retry_interval: 0
+  event_details_retry_count: 100
+  message_retry_interval: 60
+  message_retry_count: 10
+  message_retry_interval_multiplier: 1.5
+number_of_ethereum_tcp_connections: 100
+``` 
 
-- `encrypted_data` path to file, where encrypted data is stored.
+- `keys_path` path to file, where encrypted data is stored.
 - `eth_node_address` address of ethereum node
 - `ton_contract_address` address of bridge contract
 - `storage_path` path for [database](#persistent-state)
-- `listen_address` address to bin control server.  **EXPOSING IT TO OUTER WORLD
+- `listen_address` address to bind control server.  **EXPOSING IT TO OUTER WORLD
   IS PROHIBITED**, because anyone, having access to it can control relay.
-- `ton_operation_timeouts` - default values are optimal.
+- `ton_settings` - default values are optimal.
+- `number_of_ethereum_tcp_connections` maximum number of parallel tcp
+  connections to ethereum node
 
 #### ton_config
 
@@ -135,6 +163,27 @@ using `relay --gen-config --crypto-store-path 'path/to/file/with/encrypted/data'
 - `addr` - address of graphql endpoint
 - `next_block_timeout_sec`  - timeout for blocks emission
 
-#### Cpp
+#### Tonlib
 
-TODO
+- `server_address` address of ton lite server
+- `server_key` key of lite server
+- `last_block_threshold_sec`  last block id caching duration
+- `subscription_polling_interval_sec` how often accounts are polled. Has sense
+  when it's greater or equal `last_block_threshold_sec`
+
+## How to use
+
+### First run
+
+We provide prebuilt `.deb` packages, so you need to:
+
+- run `sudo dpkg -i relay_0.1.0_amd64.deb`
+- change [config](#configuration) in you favourite editor (default location is
+  `/etc/relay.conf`)
+- run it: `sudo systemctl start relay`
+- init it: ` relay-client --server-addr ADDRESS_YOU_SET_AS_LISTEN_ADDRESS` and
+  enjoy cli experience.
+
+### Service restart
+
+- run client and unlock the relay

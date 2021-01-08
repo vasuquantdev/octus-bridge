@@ -213,7 +213,6 @@ impl KeyData {
         eth_private_key: SecretKey,
         ton_key_pair: ed25519_dalek::Keypair,
     ) -> Result<Self, Error>
-    //todo use Writer instead of Path?
     where
         T: AsRef<Path>,
     {
