@@ -1,13 +1,19 @@
+use std::collections::HashMap;
+
 use anyhow::anyhow;
 use anyhow::Error;
 use clap::Clap;
+use colored_json::{to_colored_json_auto, ColorMode, ToColoredJson};
 use dialoguer::theme::{ColorfulTheme, Theme};
 use dialoguer::{Input, Password, Select};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use relay_models::models::{EventConfiguration, Voting};
+use relay_models::models::{
+    EthTonTransactionView, EventConfiguration, InitData, Password as PasswordData, RescanEthData,
+    Status, TxStatView, Voting,
+};
 
 #[derive(Clap)]
 struct Arguments {
@@ -30,6 +36,9 @@ fn main() -> Result<(), Error> {
             "Vote for ETH event configuration",
             Client::vote_for_ethereum_event_configuration,
         )
+        .item("Get pending transactions", Client::get_pending_transactions)
+        .item("Get failed transactions", Client::get_failed_transactions)
+        .item("Get all confirmed transactions", Client::get_stats)
         .execute()
 }
 
@@ -47,7 +56,10 @@ impl Client {
     pub fn get_status(&self) -> Result<(), Error> {
         let status: Status = self.get("status")?;
 
-        println!("Status: {}", serde_json::to_string_pretty(&status)?);
+        println!(
+            "Status: {}",
+            serde_json::to_string_pretty(&status)?.to_colored_json_auto()?
+        );
         Ok(())
     }
 
@@ -99,6 +111,48 @@ impl Client {
         Ok(())
     }
 
+    pub fn get_pending_transactions(&self) -> Result<(), Error> {
+        let response: Vec<EthTonTransactionView> = self.get("status/pending")?;
+        pager::Pager::new().setup();
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&response)?.to_colored_json(ColorMode::On)?
+        );
+        Ok(())
+    }
+
+    pub fn get_failed_transactions(&self) -> Result<(), Error> {
+        let response: Vec<EthTonTransactionView> = self.get("status/failed")?;
+        pager::Pager::new().setup();
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&response)?.to_colored_json(ColorMode::On)?
+        );
+        Ok(())
+    }
+
+    pub fn get_stats(&self) -> Result<(), Error> {
+        let our_key = self
+            .get::<Status>("status")?
+            .ton_pubkey
+            .ok_or_else(|| anyhow!("Relay is locked or not initialized"))?;
+        let theme = ColorfulTheme::default();
+        let mut selection = Select::with_theme(&theme);
+        selection
+            .with_prompt(format!("Select relay key. Our key is: {}", our_key))
+            .default(0);
+        let response: HashMap<String, Vec<TxStatView>> = self.get("status/relay")?;
+        let keys: Vec<_> = response.keys().cloned().collect();
+        selection.items(&keys);
+        let selection = &keys[selection.interact()?];
+        pager::Pager::new().setup();
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&response[selection])?.to_colored_json(ColorMode::On)?
+        );
+        Ok(())
+    }
+
     pub fn vote_for_ethereum_event_configuration(&self) -> Result<(), Error> {
         let theme = ColorfulTheme::default();
 
@@ -119,7 +173,7 @@ impl Client {
 
         println!(
             "Config:\n{}\n",
-            serde_json::to_string_pretty(&selected_config).unwrap()
+            serde_json::to_string_pretty(&selected_config)?.to_colored_json_auto()?
         );
 
         let config_address = selected_config.address.clone();
@@ -235,31 +289,6 @@ fn provide_password() -> Result<String, Error> {
         return Err(anyhow!("Password len is {}", password.len()));
     }
     Ok(password)
-}
-
-#[derive(Serialize, Debug)]
-struct InitData {
-    ton_seed: String,
-    eth_seed: String,
-    password: String,
-    language: String,
-}
-
-#[derive(Serialize)]
-struct PasswordData {
-    password: String,
-}
-
-#[derive(Deserialize, Serialize)]
-struct Status {
-    init_data_needed: bool,
-    is_working: bool,
-    password_needed: bool,
-}
-
-#[derive(Deserialize, Serialize)]
-pub struct RescanEthData {
-    pub block: u64,
 }
 
 #[derive(Serialize, Deserialize)]

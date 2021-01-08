@@ -1,7 +1,7 @@
 use opg::OpgModel;
 use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Debug, OpgModel)]
+#[derive(Deserialize, Serialize, Debug, OpgModel)]
 pub struct InitData {
     pub ton_seed: String,
     pub eth_seed: String,
@@ -9,12 +9,12 @@ pub struct InitData {
     pub language: String,
 }
 
-#[derive(Deserialize, Debug, OpgModel)]
+#[derive(Deserialize, Debug, OpgModel, Serialize)]
 pub struct Password {
     pub password: String,
 }
 
-#[derive(Deserialize, Debug, OpgModel)]
+#[derive(Deserialize, Debug, Serialize, OpgModel)]
 pub struct RescanEthData {
     pub block: u64,
 }
