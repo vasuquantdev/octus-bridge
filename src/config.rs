@@ -61,33 +61,53 @@ impl Method {
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct RelayConfig {
-    /// Path to json, where ton and eth private keys will be stored in encrypted way.
-    pub keys_path: PathBuf,
     /// Listen address of relay. Used by the client to perform all maintenance actions.
     pub listen_address: SocketAddr,
+
+    /// Path to json, where ton and eth private keys will be stored in encrypted way.
+    pub keys_path: PathBuf,
     /// Path to Sled database.
     pub storage_path: PathBuf,
     /// Logger settings
     pub logger_settings: serde_yaml::Value,
 
-    /// Address of ethereum node. Only http is supported right now
-    pub eth_node_address: String,
+    /// ETH specific settings
+    pub eth_settings: EthSettings,
 
-    /// Custom TON key derivation path, used for testing
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ton_derivation_path: Option<String>,
-    /// Address of bridge contract
-    pub ton_contract_address: TonAddress,
-    /// Config for the ton part.
-    pub ton_transport: TonConfig,
-    /// Config for respawning strategy in ton
-    pub ton_settings: TonTimeoutParams,
-    /// Number of concurrent tcp connection to ethereum node
-    pub number_of_ethereum_tcp_connections: usize,
+    /// TON specific settings
+    pub ton_settings: TonSettings,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
-pub struct TonTimeoutParams {
+pub struct EthSettings {
+    /// Address of ethereum node. Only http is supported right now
+    pub node_address: String,
+
+    /// Number of concurrent tcp connection to ethereum node
+    pub tcp_connection_count: usize,
+}
+
+impl Default for EthSettings {
+    fn default() -> Self {
+        Self {
+            node_address: "http://localhost:1234".into(),
+            tcp_connection_count: 100,
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct TonSettings {
+    /// Bridge contract address
+    pub bridge_contract_address: TonAddress,
+
+    /// Custom TON key derivation path, used for testing
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seed_derivation_path: Option<String>,
+
+    /// TON transport config
+    pub transport: TonTransportConfig,
+
     /// Interval between attempts to get event configuration details
     #[serde(with = "serde_seconds")]
     pub event_configuration_details_retry_interval: Duration,
@@ -109,9 +129,12 @@ pub struct TonTimeoutParams {
     pub message_retry_interval_multiplier: f64,
 }
 
-impl Default for TonTimeoutParams {
+impl Default for TonSettings {
     fn default() -> Self {
         Self {
+            bridge_contract_address: Default::default(),
+            seed_derivation_path: None,
+            transport: TonTransportConfig::default(),
             event_configuration_details_retry_count: 100,
             event_configuration_details_retry_interval: Duration::from_secs(5),
             event_details_retry_interval: Default::default(),
@@ -130,12 +153,8 @@ impl Default for RelayConfig {
             listen_address: "127.0.0.1:12345".parse().unwrap(),
             storage_path: PathBuf::from("/var/lib/relay/persistent_storage"),
             logger_settings: default_logger_settings(),
-            eth_node_address: "http://localhost:1234".into(),
-            ton_derivation_path: None,
-            ton_contract_address: TonAddress("".into()),
-            ton_transport: TonConfig::default(),
-            ton_settings: TonTimeoutParams::default(),
-            number_of_ethereum_tcp_connections: 100,
+            eth_settings: EthSettings::default(),
+            ton_settings: TonSettings::default(),
         }
     }
 }
@@ -173,7 +192,7 @@ fn default_logger_settings() -> serde_yaml::Value {
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(tag = "type", rename_all = "lowercase")]
-pub enum TonConfig {
+pub enum TonTransportConfig {
     #[cfg(feature = "tonlib-transport")]
     Tonlib(TonTonlibConfig),
     #[cfg(feature = "graphql-transport")]
@@ -181,7 +200,7 @@ pub enum TonConfig {
 }
 
 #[cfg(any(feature = "tonlib-transport", feature = "graphql-transport"))]
-impl Default for TonConfig {
+impl Default for TonTransportConfig {
     fn default() -> Self {
         #[cfg(feature = "tonlib-transport")]
         return Self::Tonlib(TonTonlibConfig::default());
@@ -195,7 +214,6 @@ pub fn read_config(path: PathBuf) -> Result<RelayConfig, Error> {
     let mut config = Config::new();
     config.merge(File::from(path).format(FileFormat::Yaml))?;
     let config: RelayConfig = config.try_into()?;
-    dbg!(&config);
     Ok(config)
 }
 
@@ -221,5 +239,5 @@ where
 }
 
 pub fn parse_args() -> Arguments {
-    dbg!(Arguments::parse())
+    Arguments::parse()
 }

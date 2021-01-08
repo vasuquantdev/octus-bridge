@@ -57,7 +57,7 @@ mod tests {
         Arc::new(
             GraphQLTransport::new(
                 Config {
-                    addr: LOCAL_SERVER_ADDR.to_string(),
+                    address: LOCAL_SERVER_ADDR.to_string(),
                     next_block_timeout_sec: 60,
                 },
                 db,

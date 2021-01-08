@@ -30,7 +30,7 @@ pub struct TonlibTransport {
 impl TonlibTransport {
     pub async fn new(config: Config) -> TransportResult<Self> {
         let subscription_polling_interval =
-            Duration::from_secs(config.subscription_polling_interval_sec);
+            Duration::from_secs(config.subscription_polling_interval);
 
         let max_initial_rescan_gap = config.max_initial_rescan_gap;
         let max_rescan_gap = config.max_rescan_gap;

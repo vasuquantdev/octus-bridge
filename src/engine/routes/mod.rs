@@ -6,7 +6,7 @@ use warp::{reply, Filter, Reply};
 
 use relay_ton::transport::Transport;
 
-use crate::config::{RelayConfig, TonConfig};
+use crate::config::{RelayConfig, TonTransportConfig};
 use crate::crypto::key_managment::KeyData;
 use crate::crypto::recovery::*;
 use crate::engine::models::*;
@@ -27,6 +27,8 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
     }
 
     let state = warp::any().map(move || (Arc::clone(&state), config.clone()));
+
+    let swagger = warp::path!("swagger.yaml").and(warp::get()).map(get_api);
 
     let password = warp::path!("unlock")
         .and(warp::post())
@@ -83,13 +85,12 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
         .and_then(|(state, _)| status::all_relay_stats(state));
 
     let retry_failed = warp::path!("status" / "failed" / "retry")
-        .and(warp::get())
+        .and(warp::post())
         .and(state.clone())
         .and_then(|(state, _)| status::retry_failed(state));
 
-    let swagger = warp::path!("swagger.yaml").and(warp::get()).map(get_api);
-
-    let routes = init
+    let routes = swagger
+        .or(init)
         .or(password)
         .or(status)
         .or(pending_transactions)
@@ -99,8 +100,7 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
         .or(rescan_from_block_eth)
         .or(get_event_configuration)
         .or(retry_failed)
-        .or(vote_for_ethereum_event_configuration)
-        .or(swagger);
+        .or(vote_for_ethereum_event_configuration);
 
     let server = warp::serve(routes);
     let (_, server) = server.bind_with_graceful_shutdown(serve_address, async {
@@ -250,7 +250,7 @@ async fn wait_for_init(
     let ton_key_pair = match derive_from_words_ton(
         language,
         &data.ton_seed,
-        config.ton_derivation_path.as_deref(),
+        config.ton_settings.seed_derivation_path.as_deref(),
     ) {
         Ok(a) => a,
         Err(e) => {
@@ -334,16 +334,16 @@ async fn wait_for_password(
     ))
 }
 
-impl TonConfig {
+impl TonTransportConfig {
     pub async fn make_transport(&self) -> Result<Arc<dyn Transport>, Error> {
         #[allow(unreachable_code)]
         Ok(match self {
             #[cfg(feature = "tonlib-transport")]
-            TonConfig::Tonlib(config) => {
+            TonTransportConfig::Tonlib(config) => {
                 Arc::new(relay_ton::transport::TonlibTransport::new(config.clone()).await?)
             }
             #[cfg(feature = "graphql-transport")]
-            TonConfig::GraphQL(config) => {
+            TonTransportConfig::GraphQL(config) => {
                 Arc::new(relay_ton::transport::GraphQLTransport::new(config.clone()).await?)
             }
         })

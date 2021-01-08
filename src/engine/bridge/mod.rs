@@ -29,10 +29,11 @@ pub async fn make_bridge(
     config: RelayConfig,
     key_data: KeyData,
 ) -> Result<Arc<Bridge>, Error> {
-    let transport = config.ton_transport.make_transport().await?;
+    let transport = config.ton_settings.transport.make_transport().await?;
 
-    let ton_contract_address = MsgAddressInt::from_str(&*config.ton_contract_address.0)
-        .map_err(|e| Error::msg(e.to_string()))?;
+    let ton_contract_address =
+        MsgAddressInt::from_str(&*config.ton_settings.bridge_contract_address.0)
+            .map_err(|e| Error::msg(e.to_string()))?;
 
     let (bridge_contract, bridge_contract_events) = make_bridge_contract(
         transport.clone(),
@@ -43,10 +44,10 @@ pub async fn make_bridge(
 
     let eth_listener = Arc::new(
         EthListener::new(
-            Url::parse(config.eth_node_address.as_str())
+            Url::parse(&config.eth_settings.node_address)
                 .map_err(|e| Error::new(e).context("Bad url for eth_config provided"))?,
             state_manager.clone(),
-            config.number_of_ethereum_tcp_connections,
+            config.eth_settings.tcp_connection_count,
         )
         .await?,
     );

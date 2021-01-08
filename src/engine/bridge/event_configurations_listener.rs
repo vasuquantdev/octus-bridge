@@ -10,7 +10,7 @@ use relay_ton::contracts::*;
 use relay_ton::prelude::UInt256;
 use relay_ton::transport::{Transport, TransportError};
 
-use crate::config::TonTimeoutParams;
+use crate::config::TonSettings;
 use crate::db_management::*;
 use crate::engine::bridge::util::{parse_eth_abi, validate_ethereum_event_configuration};
 use crate::prelude::*;
@@ -34,7 +34,7 @@ pub struct EventConfigurationsListener {
     configs_state: Arc<RwLock<ConfigsState>>,
     config_contracts: Arc<RwLock<ContractsMap>>,
     known_config_addresses: Arc<Mutex<HashSet<MsgAddressInt>>>,
-    timeouts: TonTimeoutParams,
+    timeouts: TonSettings,
 }
 
 type ContractsMap = HashMap<MsgAddressInt, Arc<EthereumEventConfigurationContract>>;
@@ -46,7 +46,7 @@ impl EventConfigurationsListener {
         eth_queue: EthQueue,
         ton_queue: TonQueue,
         stats_db: StatsDb,
-        timeouts: TonTimeoutParams,
+        timeouts: TonSettings,
     ) -> Arc<Self> {
         let relay_key = bridge_contract.pubkey();
 

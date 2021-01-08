@@ -1,11 +1,8 @@
-use std::str::FromStr;
-
 use anyhow::anyhow;
 use anyhow::Error;
-use chrono::{DateTime, Utc};
 use clap::Clap;
 use dialoguer::theme::{ColorfulTheme, Theme};
-use dialoguer::{Confirm, Editor, Input, Password, Select};
+use dialoguer::{Input, Password, Select};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -28,7 +25,7 @@ fn main() -> Result<(), Error> {
         .item("Init", Client::init_bridge)
         .item("Provide password", Client::unlock_bridge)
         .item("Set eth block", Client::set_eth_block)
-        .item("Remove old blocks", Client::gc_old_failed)
+        .item("Retry failed votes", Client::retry_failed_votes)
         .item(
             "Vote for ETH event configuration",
             Client::vote_for_ethereum_event_configuration,
@@ -96,38 +93,9 @@ impl Client {
         Ok(())
     }
 
-    pub fn gc_old_failed(&self) -> Result<(), Error> {
-        #[derive(Deserialize, Serialize, Debug)]
-        pub struct GcOlderThen {
-            pub time: i64,
-        }
-        let now = chrono::Utc::now();
-        let prompt = format!(
-            "#Enter DateTime, before which all failed blocks will be deleted\n{}",
-            now
-        );
-        if let Some(rv) = Editor::new().edit(&*prompt).unwrap() {
-            let text = rv
-                .split('\n')
-                .find(|x| !x.starts_with('#'))
-                .ok_or_else(|| anyhow::anyhow!("Bad input provided"))?;
-            println!("Using {} as input", text);
-            let datetime: DateTime<Utc> = DateTime::from_str(&text)?;
-            println!("Parsed date {}", datetime);
-            let res = Confirm::with_theme(&ColorfulTheme::default())
-                .with_prompt("Correct?")
-                .interact()?;
-            if !res {
-                std::process::exit(1)
-            }
-            let timestamp = GcOlderThen {
-                time: datetime.timestamp(),
-            };
-            self.post_raw("status/failed", &timestamp)?;
-        } else {
-            println!("Abort!");
-            std::process::exit(1)
-        }
+    pub fn retry_failed_votes(&self) -> Result<(), Error> {
+        self.post_raw("status/failed/retry", &())?;
+        println!("Success!");
         Ok(())
     }
 

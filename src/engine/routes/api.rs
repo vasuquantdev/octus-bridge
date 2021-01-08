@@ -29,11 +29,6 @@ pub fn get_api() -> String {
                     200: (),
                 }
             },
-            ("status"): {
-                GET: {
-                    200: Status
-                }
-            },
             ("init"): {
                 POST: {
                     summary: "Provide data to init relay",
@@ -41,6 +36,11 @@ pub fn get_api() -> String {
                     200: String,
                     400: String,
                     405: String
+                }
+            },
+            ("status"): {
+                GET: {
+                    200: Status
                 }
             },
             ("status" / "pending"): {
@@ -53,19 +53,19 @@ pub fn get_api() -> String {
                     200: Vec<EthTonTransactionView>
                 }
             },
-            ("status" / "eth") :{
+            ("status" / "eth"): {
                 GET: {
                     200: HashMap<u64, EthTonConfirmationDataView>
                 }
             },
-            ("status" / "relay") :{
+            ("status" / "relay"): {
                 GET: {
                     summary: "Returns object, where key is relay key and values is list of confirmed transactions",
                     200: HashMap<String, Vec<TxStatView>>
                 }
             },
-            ("status" / "failed" / "retry") :{
-                GET: {
+            ("status" / "failed" / "retry"): {
+                POST: {
                     200: Vec<EthTonTransactionView>
                 }
             },

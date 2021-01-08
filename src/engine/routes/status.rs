@@ -77,11 +77,11 @@ pub async fn retry_failed(state: Arc<RwLock<State>>) -> Result<impl Reply, Infal
     let res = match &state.bridge_state {
         BridgeState::Running(a) => {
             a.retry_failed();
-            warp::reply::with_status("ok", warp::http::StatusCode::OK)
+            warp::http::StatusCode::OK
         }
-        _ => warp::reply::with_status("", warp::http::StatusCode::FORBIDDEN),
+        _ => warp::http::StatusCode::FORBIDDEN,
     };
-    Ok(res)
+    Ok(warp::reply::with_status("", res))
 }
 
 fn fold_ton_stats<I>(iter: I) -> Vec<EthTonVoteView>

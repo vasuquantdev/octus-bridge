@@ -41,7 +41,7 @@ impl GraphQLTransport {
             .build()
             .expect("failed to create graphql client");
 
-        let client = NodeClient::new(client, config.addr.clone());
+        let client = NodeClient::new(client, config.address.clone());
 
         Ok(Self { client, config })
     }
@@ -521,7 +521,7 @@ mod tests {
 
         GraphQLTransport::new(
             Config {
-                addr: "https://main.ton.dev/graphql".to_string(),
+                address: "https://main.ton.dev/graphql".to_string(),
                 next_block_timeout_sec: 60,
             },
             db,
