@@ -1,10 +1,10 @@
-use crate::prelude::*;
 use tokio::signal::ctrl_c;
 
 use models::*;
 
 use crate::config::RelayConfig;
 use crate::engine::handle_panic::setup_panic_handler;
+use crate::prelude::*;
 
 pub mod bridge;
 mod handle_panic;
@@ -12,7 +12,13 @@ pub mod models;
 mod routes;
 
 pub async fn run(config: RelayConfig) -> Result<(), Error> {
-    let state_manager = sled::open(&config.storage_path)?;
+    let state_manager = sled::open(&config.storage_path).map_err(|e| {
+        let context = format!(
+            "Failed opening db. Db path: {}",
+            &config.storage_path.to_string_lossy()
+        );
+        Error::new(e).context(context)
+    })?;
     setup_panic_handler(state_manager.clone());
     let crypto_data_metadata = std::fs::File::open(&config.keys_path);
 
