@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -7,6 +7,7 @@ use std::time::Duration;
 use anyhow::{anyhow, Error};
 use futures::stream::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
+use sha3::{Digest, Keccak256};
 use sled::{Db, Tree};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::sync::RwLock;
@@ -14,7 +15,7 @@ use tokio::sync::Semaphore;
 use url::Url;
 use web3::transports::http::Http;
 pub use web3::types::{Address, BlockNumber, H256};
-use web3::types::{FilterBuilder, Log};
+use web3::types::{FilterBuilder, Log, H160};
 use web3::{Transport, Web3};
 
 const ETH_POLL_INTERVAL: Duration = Duration::from_secs(5);
@@ -29,6 +30,7 @@ pub struct EthListener {
     topics: Arc<RwLock<(HashSet<Address>, HashSet<H256>)>>,
     current_block: Arc<AtomicU64>,
     connections_pool: Arc<Semaphore>,
+    relay_keys_function_to_topic_map: HashMap<String, H256>,
 }
 
 async fn get_actual_eth_height<T: Transport>(
@@ -59,6 +61,44 @@ async fn get_actual_eth_height<T: Transport>(
     }
 }
 
+/// Returns topic hash and abi for ETH and TON
+pub fn parse_eth_abi(abi: &str) -> Result<HashMap<String, H256>, Error> {
+    #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Abi {
+        pub inputs: Vec<Input>,
+        pub name: String,
+    }
+
+    #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Input {
+        #[serde(rename = "type")]
+        pub type_field: String,
+    }
+
+    let abis: Vec<Abi> = serde_json::from_str(abi)?;
+    let mut topics = HashMap::with_capacity(abis.len());
+    for abi in abis {
+        let fn_name = abi.name;
+
+        let input_types: String = abi
+            .inputs
+            .iter()
+            .map(|x| x.type_field.clone())
+            .collect::<Vec<String>>()
+            .join(",");
+
+        let signature = format!("{}({})", fn_name, input_types);
+        topics.insert(
+            fn_name,
+            H256::from_slice(&*Keccak256::digest(signature.as_bytes())),
+        );
+    }
+
+    Ok(topics)
+}
+
 impl EthListener {
     pub async fn new(url: Url, db: Db, connections_number: usize) -> Result<Self, Error> {
         let connection = Http::new(url.as_str()).expect("Failed connecting to ethereum node");
@@ -66,13 +106,19 @@ impl EthListener {
         let tree = db.open_tree(ETH_TREE_NAME)?;
         let api = Web3::new(connection);
         let current_block = Self::get_block_number_on_start(&tree, &api).await?;
-        Ok(Self {
+        let relay_keys_abi = parse_eth_abi(include_str!(
+            "../abi/contracts_DistributedOwnable_sol_DistributedOwnable.json"
+        ))?;
+        let listener = Self {
             web3: api,
             db: tree,
             topics: Arc::new(Default::default()),
             connections_pool: Arc::new(Semaphore::new(connections_number)),
             current_block: Arc::new(AtomicU64::new(current_block)),
-        })
+            relay_keys_function_to_topic_map: relay_keys_abi,
+        };
+        listener.get_actual_keys().await?; //todo use it
+        Ok(listener)
     }
 
     pub fn change_eth_height(&self, height: u64) -> Result<(), Error> {
@@ -203,6 +249,51 @@ impl EthListener {
                 }
             }
         }
+    }
+
+    async fn get_actual_keys(&self) -> Result<HashMap<Address, Vec<H160>>, Error> {
+        let addresses = (*self.topics.read().await).0.clone();
+        async fn get_keys(
+            topic: H256,
+            address: Address,
+            web3: &Web3<Http>,
+        ) -> Result<HashSet<H160>, Error> {
+            let filter = FilterBuilder::default()
+                .address(vec![address])
+                .topics(Some(vec![topic]), None, None, None)
+                .from_block(BlockNumber::Earliest)
+                .to_block(BlockNumber::Latest)
+                .build();
+
+            Ok(web3
+                .eth()
+                .logs(filter)
+                .await?
+                .into_iter()
+                .map(EthListener::log_to_event)
+                .filter_map(|x| match x {
+                    Ok(a) if a.data.len() == 20 => Some(H160::from_slice(&*a.data)),
+                    Err(e) => {
+                        log::error!("Failed parsing log as event: {}", e);
+                        None
+                    }
+                    Ok(a) => {
+                        log::error!("Bad address len: {}", a.data.len());
+                        None
+                    }
+                })
+                .collect())
+        }
+        let ok_topic = self.relay_keys_function_to_topic_map["OwnershipGranted"];
+        let bad_topic = self.relay_keys_function_to_topic_map["OwnershipRemoved"];
+        let mut keys_map = HashMap::with_capacity(addresses.len());
+        for address in addresses {
+            let ok_fut = get_keys(ok_topic, address, &self.web3);
+            let bad_fut = get_keys(bad_topic, address, &self.web3);
+            let (ok, bad): (HashSet<_>, HashSet<_>) = futures::try_join!(ok_fut, bad_fut)?;
+            keys_map.insert(address, ok.difference(&bad).cloned().collect());
+        }
+        Ok(keys_map)
     }
 
     fn log_to_event(log: Log) -> Result<Event, Error> {
