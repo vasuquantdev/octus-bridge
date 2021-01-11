@@ -1,4 +1,3 @@
-use crate::prelude::*;
 use ethabi::{ParamType as EthParamType, Token as EthTokenValue};
 use num_bigint::{BigInt, BigUint};
 use sha3::digest::Digest;
@@ -7,6 +6,8 @@ use ton_abi::{ParamType as TonParamType, TokenValue as TonTokenValue, TokenValue
 
 use relay_ton::contracts::EthereumEventConfiguration;
 use relay_ton::prelude::Cell;
+
+use crate::prelude::*;
 
 /// Returns topic hash and abi for ETH and TON
 pub fn parse_eth_abi(abi: &str) -> Result<(H256, Vec<EthParamType>, Vec<TonParamType>), Error> {
@@ -204,7 +205,7 @@ pub fn map_eth_ton(eth: EthTokenValue) -> TonTokenValue {
     }
 }
 
-/// maps ton token to ethereum token
+/// maps ton token to ethereum token according to abi in eth and ton
 pub fn map_ton_eth(
     ton: TonTokenValue,
     eth_param_type: EthParamType,
@@ -267,6 +268,65 @@ pub fn map_ton_eth(
         }
         _ => return Err(anyhow!("unsupported type")),
     })
+}
+
+/// naively maps ton tokens ti ethereum tokens
+fn map_ton_token_value_to_eth_token_value(token: TonTokenValue) -> Result<EthTokenValue, Error> {
+    Ok(match token {
+        TonTokenValue::FixedBytes(bytes) => EthTokenValue::FixedBytes(bytes),
+        TonTokenValue::Uint(a) => {
+            let bytes = a.number.to_bytes_le();
+            EthTokenValue::Uint(ethabi::Uint::from_little_endian(&bytes))
+        }
+        TonTokenValue::Int(a) => {
+            let mut bytes = a.number.to_signed_bytes_le();
+            let sign = bytes
+                .last()
+                .map(|first| (first >> 7) * 255)
+                .unwrap_or_default();
+            bytes.resize(32, sign);
+            //fixme check it
+            EthTokenValue::Int(ethabi::Int::from_little_endian(&bytes))
+        }
+        TonTokenValue::Bool(a) => EthTokenValue::Bool(a),
+        TokenValue::FixedArray(tokens) => EthTokenValue::FixedArray(
+            tokens
+                .into_iter()
+                .map(|ton| map_ton_token_value_to_eth_token_value(ton.clone()))
+                .collect::<Result<_, _>>()?,
+        ),
+        TokenValue::Array(tokens) => EthTokenValue::Array(
+            tokens
+                .into_iter()
+                .map(|ton| map_ton_token_value_to_eth_token_value(ton))
+                .collect::<Result<_, _>>()?,
+        ),
+        TokenValue::Tuple(tokens) => EthTokenValue::Tuple(
+            tokens
+                .into_iter()
+                .map(|ton| map_ton_token_value_to_eth_token_value(ton.value))
+                .collect::<Result<_, _>>()?,
+        ),
+
+        any => return Err(anyhow!("unsupported type: {:?}", any)),
+    })
+}
+
+///maps `Vec<TonTokenValue>` to bytes, which could be signed
+pub fn ton_tokens_to_ethereum_bytes(tokens: Vec<TonTokenValue>) -> Vec<u8> {
+    let tokens: Vec<_> = tokens
+        .into_iter()
+        .map(|tok| map_ton_token_value_to_eth_token_value(tok))
+        .filter_map(|x| match x {
+            Ok(a) => Some(a),
+            Err(e) => {
+                log::error!("Failed mapping ton token to eth token: {}", e);
+                None
+            }
+        })
+        .collect();
+
+    ethabi::encode(&tokens).to_vec()
 }
 
 #[cfg(test)]
