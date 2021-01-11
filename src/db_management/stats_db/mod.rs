@@ -35,7 +35,7 @@ impl StatsDb {
         self.stats.insert(
             key,
             bincode::serialize(&StoredTxStat {
-                tx_hash: event.data.ethereum_event_transaction,
+                tx_hash: event.data.init_data.event_transaction,
                 met: chrono::Utc::now(),
             })
             .expect("Db error fail"),

@@ -10,8 +10,8 @@ pub async fn make_eth_event_configuration_contract(
     account: MsgAddressInt,
     bridge_address: MsgAddressInt,
 ) -> ContractResult<(
-    Arc<EthereumEventConfigurationContract>,
-    EventsRx<<EthereumEventConfigurationContract as ContractWithEvents>::Event>,
+    Arc<EthEventConfigurationContract>,
+    EventsRx<<EthEventConfigurationContract as ContractWithEvents>::Event>,
 )> {
     let (subscription, events_rx) = transport.subscribe(account.clone()).await?;
     let contract = abi();
@@ -22,7 +22,7 @@ pub async fn make_eth_event_configuration_contract(
         timeout_sec: 60,
     };
 
-    let contract = Arc::new(EthereumEventConfigurationContract {
+    let contract = Arc::new(EthEventConfigurationContract {
         transport,
         subscription,
         contract,
@@ -37,7 +37,7 @@ pub async fn make_eth_event_configuration_contract(
 }
 
 #[derive(Clone)]
-pub struct EthereumEventConfigurationContract {
+pub struct EthEventConfigurationContract {
     transport: Arc<dyn Transport>,
     subscription: Arc<dyn AccountSubscription>,
     contract: Arc<ton_abi::Contract>,
@@ -46,7 +46,7 @@ pub struct EthereumEventConfigurationContract {
     bridge_address: MsgAddressInt,
 }
 
-impl EthereumEventConfigurationContract {
+impl EthEventConfigurationContract {
     #[inline]
     fn message(&self, name: &str) -> ContractResult<MessageBuilder> {
         MessageBuilder::new(
@@ -91,22 +91,14 @@ impl EthereumEventConfigurationContract {
 
     pub async fn compute_event_address(
         &self,
-        event_transaction: ethereum_types::H256,
-        event_index: BigUint,
-        event_data: Cell,
-        event_block_number: BigUint,
-        event_block: ethereum_types::H256,
+        event_init_data: EthEventInitData,
     ) -> ContractResult<MsgAddrStd> {
         const TON: u64 = 1_000_000_000;
         const CONFIRM_VALUE: u64 = 1_000_000 * TON;
 
         let message = self
             .message("confirmEvent")?
-            .arg(event_transaction)
-            .arg(BigUint256(event_index))
-            .arg(event_data)
-            .arg(BigUint256(event_block_number))
-            .arg(event_block)
+            .arg(event_init_data)
             .arg(BigUint256(0u8.into()))
             .build_internal(self.bridge_address.clone(), CONFIRM_VALUE)?;
 
@@ -120,7 +112,7 @@ impl EthereumEventConfigurationContract {
                 reason: "output message has not body".to_string(),
             })?;
 
-            type Event = <EthereumEventConfigurationContract as ContractWithEvents>::Event;
+            type Event = <EthEventConfigurationContract as ContractWithEvents>::Event;
             if let Ok(Event::EventConfirmation { address, .. }) =
                 Self::parse_event(&self.events_map, &body)
             {
@@ -136,14 +128,14 @@ impl EthereumEventConfigurationContract {
     }
 }
 
-impl Contract for EthereumEventConfigurationContract {
+impl Contract for EthEventConfigurationContract {
     #[inline]
     fn abi(&self) -> &Arc<ton_abi::Contract> {
         &self.contract
     }
 }
 
-impl ContractWithEvents for EthereumEventConfigurationContract {
+impl ContractWithEvents for EthEventConfigurationContract {
     type Event = EthereumEventConfigurationContractEvent;
     type EventKind = EthereumEventConfigurationContractEventKind;
 }
@@ -152,7 +144,7 @@ fn abi() -> Arc<AbiContract> {
     ABI.get_or_init(|| {
         Arc::new(
             AbiContract::load(Cursor::new(JSON_ABI))
-                .expect("failed to load bridge EthereumEventConfigurationContract ABI"),
+                .expect("failed to load EthereumEventConfiguration ABI"),
         )
     })
     .clone()
@@ -161,7 +153,7 @@ fn abi() -> Arc<AbiContract> {
 fn shared_events_map() -> Arc<EventsMap> {
     EVENTS
         .get_or_init(|| {
-            Arc::new(make_events_map::<EthereumEventConfigurationContract>(
+            Arc::new(make_events_map::<EthEventConfigurationContract>(
                 abi().as_ref(),
             ))
         })
@@ -170,12 +162,12 @@ fn shared_events_map() -> Arc<EventsMap> {
 
 static ABI: OnceCell<Arc<AbiContract>> = OnceCell::new();
 static EVENTS: OnceCell<Arc<EventsMap>> = OnceCell::new();
-const JSON_ABI: &str = include_str!("../../../abi/EthereumEventConfiguration.abi.json");
+const JSON_ABI: &str = include_str!("../../../abi/EthEventConfiguration.abi.json");
 
 type EventsMap = HashMap<
     u32,
     (
-        <EthereumEventConfigurationContract as ContractWithEvents>::EventKind,
+        <EthEventConfigurationContract as ContractWithEvents>::EventKind,
         AbiEvent,
     ),
 >;
@@ -188,8 +180,8 @@ mod test {
     use crate::transport::GraphQLTransport;
     use tokio::stream::StreamExt;
 
-    async fn make_config_contract() -> EthereumEventConfigurationContract {
-        EthereumEventConfigurationContract::new(
+    async fn make_config_contract() -> EthEventConfigurationContract {
+        EthEventConfigurationContract::new(
             make_transport().await,
             ethereum_event_configuration_addr(),
         )

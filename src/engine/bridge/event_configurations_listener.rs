@@ -16,12 +16,13 @@ use crate::engine::bridge::util::{parse_eth_abi, validate_ethereum_event_configu
 use crate::prelude::*;
 
 use super::models::*;
+use num_bigint::BigUint;
 
 /// Listens to config streams and maps them.
 pub struct EventConfigurationsListener {
     transport: Arc<dyn Transport>,
     bridge_contract: Arc<BridgeContract>,
-    event_contract: Arc<EthereumEventContract>,
+    event_contract: Arc<EthEventContract>,
 
     eth_queue: EthQueue,
     ton_queue: TonQueue,
@@ -37,7 +38,7 @@ pub struct EventConfigurationsListener {
     timeouts: TonSettings,
 }
 
-type ContractsMap = HashMap<MsgAddressInt, Arc<EthereumEventConfigurationContract>>;
+type ContractsMap = HashMap<BigUint, Arc<EthEventConfigurationContract>>;
 
 impl EventConfigurationsListener {
     pub async fn new(
@@ -50,7 +51,7 @@ impl EventConfigurationsListener {
     ) -> Arc<Self> {
         let relay_key = bridge_contract.pubkey();
 
-        let event_contract = Arc::new(EthereumEventContract::new(transport.clone()).await);
+        let event_contract = Arc::new(EthEventContract::new(transport.clone()).await);
 
         Arc::new(Self {
             transport,
@@ -91,16 +92,17 @@ impl EventConfigurationsListener {
                 while let Some(event) = bridge_contract_events.next().await {
                     match event {
                         BridgeContractEvent::EventConfigurationCreationEnd {
+                            id,
                             address,
                             active: true,
+                            event_type: EventType::ETH,
                         } => {
-                            tokio::spawn(
-                                listener.clone().subscribe_to_events_configuration_contract(
-                                    subscriptions_tx.clone(),
-                                    address,
-                                    None,
-                                ),
-                            );
+                            tokio::spawn(listener.clone().subscribe_to_eth_events_configuration(
+                                subscriptions_tx.clone(),
+                                id,
+                                address,
+                                None,
+                            ));
                         }
                         _ => {
                             // TODO: handle other events
@@ -119,12 +121,16 @@ impl EventConfigurationsListener {
 
         // Wait for all existing configuration contracts subscriptions to start ETH part properly
         let semaphore = Semaphore::new(known_contracts.len());
-        for address in known_contracts.into_iter() {
-            tokio::spawn(self.clone().subscribe_to_events_configuration_contract(
-                subscriptions_tx.clone(),
-                address,
-                Some(semaphore.clone()),
-            ));
+        for active_configuration in known_contracts.into_iter() {
+            if active_configuration.event_type == EventType::ETH {
+                tokio::spawn(self.clone().subscribe_to_eth_events_configuration(
+                    subscriptions_tx.clone(),
+                    active_configuration.id,
+                    active_configuration.address,
+                    Some(semaphore.clone()),
+                ));
+            }
+            // TODO: subscribe to TON configuration contract
         }
 
         // Wait until all initial subscriptions done
@@ -177,9 +183,13 @@ impl EventConfigurationsListener {
     /// Find configuration contract by its address
     pub async fn get_configuration_contract(
         &self,
-        address: &MsgAddressInt,
-    ) -> Option<Arc<EthereumEventConfigurationContract>> {
-        self.config_contracts.read().await.get(address).cloned()
+        configuration_id: &BigUint,
+    ) -> Option<Arc<EthEventConfigurationContract>> {
+        self.config_contracts
+            .read()
+            .await
+            .get(configuration_id)
+            .cloned()
     }
 
     /// Compute event address based on its data
@@ -187,29 +197,20 @@ impl EventConfigurationsListener {
         &self,
         data: &EthTonTransaction,
     ) -> Result<MsgAddrStd, Error> {
-        let data = data.inner().clone();
+        let (configuration_id, event_init_data) = data.inner().clone().into();
 
-        let config_contract = match self
-            .get_configuration_contract(&data.ethereum_event_configuration_address)
-            .await
-        {
+        let config_contract = match self.get_configuration_contract(&configuration_id).await {
             Some(contract) => contract,
             None => {
                 return Err(anyhow!(
                     "Unknown event configuration contract: {}",
-                    data.ethereum_event_configuration_address
+                    configuration_id
                 ));
             }
         };
 
         let event_addr = config_contract
-            .compute_event_address(
-                data.event_transaction,
-                data.event_index.into(),
-                data.event_data,
-                data.event_block_number.into(),
-                data.event_block,
-            )
+            .compute_event_address(event_init_data)
             .await?;
 
         Ok(event_addr)
@@ -376,9 +377,10 @@ impl EventConfigurationsListener {
     }
 
     /// Creates listener for new event configuration contract
-    async fn subscribe_to_events_configuration_contract(
+    async fn subscribe_to_eth_events_configuration(
         self: Arc<Self>,
         subscriptions_tx: mpsc::UnboundedSender<(Address, H256)>,
+        configuration_id: BigUint,
         address: MsgAddressInt,
         semaphore: Option<Semaphore>,
     ) {
@@ -418,7 +420,7 @@ impl EventConfigurationsListener {
         self.config_contracts
             .write()
             .await
-            .insert(address.clone(), config_contract.clone());
+            .insert(configuration_id.clone(), config_contract.clone());
         try_notify(semaphore).await;
 
         // Prefetch required properties
@@ -432,42 +434,52 @@ impl EventConfigurationsListener {
         self.configs_state
             .write()
             .await
-            .insert_configuration(address.clone(), details);
+            .set_configuration(configuration_id.clone(), details);
 
         // Start listening ETH events
         self.notify_subscription(subscriptions_tx, ethereum_event_address)
             .await;
 
-        let handle_event = move |listener: Arc<Self>, event, semaphore: Option<Semaphore>| {
-            log::debug!("got event confirmation event: {:?}", event);
+        let handle_event =
+            move |listener: Arc<Self>, configuration_id, event, semaphore: Option<Semaphore>| {
+                log::debug!("got event confirmation event: {:?}", event);
 
-            let (address, relay_key, vote) = match event {
-                EthereumEventConfigurationContractEvent::EventConfirmation {
-                    address,
-                    relay_key,
-                } => (address, relay_key, EventVote::Confirm),
-                EthereumEventConfigurationContractEvent::EventReject { address, relay_key } => {
-                    (address, relay_key, EventVote::Reject)
-                }
+                let (address, relay_key, vote) = match event {
+                    EthereumEventConfigurationContractEvent::EventConfirmation {
+                        address,
+                        relay_key,
+                    } => (address, relay_key, EventVote::Confirm),
+                    EthereumEventConfigurationContractEvent::EventReject { address, relay_key } => {
+                        (address, relay_key, EventVote::Reject)
+                    }
+                };
+
+                tokio::spawn({
+                    async move {
+                        listener
+                            .handle_event(
+                                configuration_id,
+                                ethereum_event_blocks_to_confirm,
+                                address,
+                                relay_key,
+                                vote,
+                            )
+                            .await;
+                        if let Some(semaphore) = semaphore {
+                            semaphore.notify().await;
+                        }
+                    }
+                });
             };
-
-            tokio::spawn(async move {
-                listener
-                    .handle_event(ethereum_event_blocks_to_confirm, address, relay_key, vote)
-                    .await;
-                if let Some(semaphore) = semaphore {
-                    semaphore.notify().await;
-                }
-            });
-        };
 
         // Spawn listener of new events
         tokio::spawn({
             let listener = self.clone();
+            let configuration_id = configuration_id.clone();
 
             async move {
                 while let Some(event) = config_contract_events.next().await {
-                    handle_event(listener.clone(), event, None);
+                    handle_event(listener.clone(), configuration_id.clone(), event, None);
                 }
             }
         });
@@ -485,7 +497,12 @@ impl EventConfigurationsListener {
         let mut known_events = config_contract.get_known_events(latest_scanned_lt, latest_known_lt);
         let mut known_event_count = 0;
         while let Some(event) = known_events.next().await {
-            handle_event(self.clone(), event, Some(events_semaphore.clone()));
+            handle_event(
+                self.clone(),
+                configuration_id.clone(),
+                event,
+                Some(events_semaphore.clone()),
+            );
             known_event_count += 1;
         }
 
@@ -510,6 +527,7 @@ impl EventConfigurationsListener {
 
     async fn handle_event(
         self: Arc<Self>,
+        configuration_id: BigUint,
         ethereum_event_blocks_to_confirm: u64,
         event_addr: MsgAddrStd,
         relay_key: UInt256,
@@ -524,6 +542,7 @@ impl EventConfigurationsListener {
         };
 
         let event = ExtendedEventInfo {
+            configuration_id,
             vote,
             event_addr,
             relay_key,
@@ -532,8 +551,7 @@ impl EventConfigurationsListener {
         };
 
         let should_check = event.vote == EventVote::Confirm
-            && !event.data.proxy_callback_executed
-            && !event.data.event_rejected
+            && event.data.status == EventStatus::InProcess
             && event.relay_key != self.relay_key // event from other relay
             && !self.is_in_queue(&event.event_addr)
             && !self.has_already_voted(&event.event_addr);
@@ -567,7 +585,7 @@ impl EventConfigurationsListener {
 
     async fn get_event_configuration_details(
         &self,
-        config_contract: &EthereumEventConfigurationContract,
+        config_contract: &EthEventConfigurationContract,
         semaphore: Option<Semaphore>,
     ) -> Result<EthereumEventConfiguration, Error> {
         // retry connection to configuration contract
@@ -620,7 +638,7 @@ impl EventConfigurationsListener {
     async fn get_event_details(
         &self,
         event_addr: MsgAddrStd,
-    ) -> Result<EthereumEventDetails, ContractError> {
+    ) -> Result<EthEventDetails, ContractError> {
         let mut retry_count = self.timeouts.event_details_retry_count;
         let retry_interval = self.timeouts.event_details_retry_interval;
 
@@ -649,7 +667,7 @@ pub struct ConfigsState {
     pub eth_addr: HashSet<Address>,
     pub address_topic_map: HashMap<Address, (H256, Vec<EthParamType>, Vec<TonParamType>)>,
     pub topic_abi_map: HashMap<H256, Vec<EthParamType>>,
-    pub eth_configs_map: HashMap<Address, (MsgAddressInt, EthereumEventConfiguration)>,
+    pub eth_configs_map: HashMap<Address, (BigUint, EthereumEventConfiguration)>,
 }
 
 impl ConfigsState {
@@ -662,9 +680,9 @@ impl ConfigsState {
         }
     }
 
-    fn insert_configuration(
+    fn set_configuration(
         &mut self,
-        contract_addr: MsgAddressInt,
+        configuration_id: BigUint,
         configuration: EthereumEventConfiguration,
     ) {
         if let Err(e) = validate_ethereum_event_configuration(&configuration) {
@@ -689,36 +707,29 @@ impl ConfigsState {
         self.topic_abi_map.insert(topic_hash, eth_abi);
         self.eth_configs_map.insert(
             configuration.ethereum_event_address,
-            (contract_addr, configuration),
+            (configuration_id, configuration),
         );
     }
 }
 
 impl EthTonTransaction {
     async fn send(&self, bridge: &BridgeContract) -> ContractResult<()> {
-        match self.clone() {
-            Self::Confirm(a) => {
+        let (confirmation, vote) = match self.clone() {
+            Self::Confirm(confirmation) => (confirmation, Voting::Confirm),
+            Self::Reject(confirmation) => (confirmation, Voting::Reject),
+        };
+
+        let (configuration_id, event_init_data) = confirmation.into();
+
+        match vote {
+            Voting::Confirm => {
                 bridge
-                    .confirm_ethereum_event(
-                        a.event_transaction,
-                        a.event_index.into(),
-                        a.event_data,
-                        a.event_block_number.into(),
-                        a.event_block,
-                        a.ethereum_event_configuration_address,
-                    )
+                    .confirm_ethereum_event(configuration_id, event_init_data)
                     .await
             }
-            Self::Reject(a) => {
+            Voting::Reject => {
                 bridge
-                    .reject_ethereum_event(
-                        a.event_transaction,
-                        a.event_index.into(),
-                        a.event_data,
-                        a.event_block_number.into(),
-                        a.event_block,
-                        a.ethereum_event_configuration_address,
-                    )
+                    .reject_ethereum_event(configuration_id, event_init_data)
                     .await
             }
         }

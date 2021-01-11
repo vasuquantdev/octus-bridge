@@ -113,7 +113,7 @@ async fn vote_for_ethereum_event_configuration(
     state: Arc<RwLock<State>>,
     voting: Voting,
 ) -> Result<impl Reply, Infallible> {
-    let (address, voting) = match <(_, _)>::try_from(voting) {
+    let (configuration_id, voting) = match <(_, _)>::try_from(voting) {
         Ok(voting) => voting,
         Err(err) => {
             log::error!("{}", err);
@@ -133,7 +133,7 @@ async fn vote_for_ethereum_event_configuration(
 
     Ok(
         match bridge
-            .vote_for_ethereum_event_configuration(&address, voting)
+            .vote_for_ethereum_event_configuration(configuration_id, voting)
             .await
         {
             Ok(_) => reply::with_status(String::new(), StatusCode::OK),

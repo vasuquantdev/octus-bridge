@@ -1,3 +1,4 @@
+use num_traits::ToPrimitive;
 use std::hash::Hash;
 
 use crate::contracts::errors::*;
@@ -5,9 +6,22 @@ use crate::contracts::prelude::*;
 use crate::models::*;
 use crate::prelude::*;
 
+// Events
+
 crate::define_event!(BridgeContractEvent, BridgeContractEventKind, {
-    EventConfigurationCreationVote { address: MsgAddressInt, relay_key: UInt256, vote: bool },
-    EventConfigurationCreationEnd { address: MsgAddressInt, active: bool },
+    EventConfigurationCreationVote { id: BigUint, relay_key: UInt256, vote: Voting },
+    EventConfigurationCreationEnd {
+        id: BigUint,
+        active: bool,
+        address: MsgAddressInt,
+        event_type: EventType
+    },
+
+    EventConfigurationUpdateVote { id: BigUint, relay_key: UInt256, vote: Voting },
+    EventConfigurationUpdateEnd {
+        id: BigUint,
+        active: bool,
+    },
 
     BridgeConfigurationUpdateVote {
         bridge_configuration: BridgeConfiguration,
@@ -31,14 +45,29 @@ impl TryFrom<(BridgeContractEventKind, Vec<Token>)> for BridgeContractEvent {
         Ok(match kind {
             BridgeContractEventKind::EventConfigurationCreationVote => {
                 BridgeContractEvent::EventConfigurationCreationVote {
-                    address: tokens.next().try_parse()?,
+                    id: tokens.next().try_parse()?,
                     relay_key: tokens.next().try_parse()?,
                     vote: tokens.next().try_parse()?,
                 }
             }
             BridgeContractEventKind::EventConfigurationCreationEnd => {
                 BridgeContractEvent::EventConfigurationCreationEnd {
+                    id: tokens.next().try_parse()?,
+                    active: tokens.next().try_parse()?,
                     address: tokens.next().try_parse()?,
+                    event_type: tokens.next().try_parse()?,
+                }
+            }
+            BridgeContractEventKind::EventConfigurationUpdateVote => {
+                BridgeContractEvent::EventConfigurationUpdateVote {
+                    id: tokens.next().try_parse()?,
+                    relay_key: tokens.next().try_parse()?,
+                    vote: tokens.next().try_parse()?,
+                }
+            }
+            BridgeContractEventKind::EventConfigurationUpdateEnd => {
+                BridgeContractEvent::EventConfigurationUpdateEnd {
+                    id: tokens.next().try_parse()?,
                     active: tokens.next().try_parse()?,
                 }
             }
@@ -114,37 +143,19 @@ impl TryFrom<(EthereumEventConfigurationContractEventKind, Vec<Token>)>
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct SequentialIndex {
-    pub ethereum_event_configuration: BigUint,
-    pub bridge_configuration_update_voting: BigUint,
-}
-
-fn parse_sequential_index(tokens: Vec<Token>) -> ContractResult<SequentialIndex> {
-    let mut tokens = tokens.into_iter();
-    Ok(SequentialIndex {
-        ethereum_event_configuration: tokens.next().try_parse()?,
-        bridge_configuration_update_voting: tokens.next().try_parse()?,
-    })
-}
-
-impl ParseToken<SequentialIndex> for TokenValue {
-    fn try_parse(self) -> ContractResult<SequentialIndex> {
-        match self {
-            TokenValue::Tuple(tokens) => parse_sequential_index(tokens),
-            _ => Err(ContractError::InvalidAbi),
-        }
-    }
-}
+// Models
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct BridgeConfiguration {
     pub event_configuration_required_confirmations: u16,
     pub event_configuration_required_rejections: u16,
+
     pub bridge_configuration_update_required_confirmations: u16,
     pub bridge_configuration_update_required_rejections: u16,
+
     pub bridge_relay_update_required_confirmations: u16,
     pub bridge_relay_update_required_rejections: u16,
+
     pub active: bool,
 }
 
@@ -195,6 +206,38 @@ impl ParseToken<BridgeConfiguration> for TokenValue {
             TokenValue::Tuple(tokens) => parse_bridge_configuration(tokens),
             _ => Err(ContractError::InvalidAbi),
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ActiveEventConfiguration {
+    pub id: BigUint,
+    pub address: MsgAddressInt,
+    pub event_type: EventType,
+}
+
+impl TryFrom<ContractOutput> for Vec<ActiveEventConfiguration> {
+    type Error = ContractError;
+
+    fn try_from(value: ContractOutput) -> Result<Self, Self::Error> {
+        let mut tokens = value.into_parser();
+        let ids: Vec<BigUint> = tokens.parse_next()?;
+        let addrs: Vec<MsgAddressInt> = tokens.parse_next()?;
+        let types: Vec<EventType> = tokens.parse_next()?;
+        if ids.len() != addrs.len() || ids.len() != types.len() {
+            return Err(ContractError::InvalidAbi);
+        }
+
+        Ok(ids
+            .into_iter()
+            .zip(addrs.into_iter())
+            .zip(types.into_iter())
+            .map(|((id, address), event_type)| ActiveEventConfiguration {
+                id,
+                address,
+                event_type,
+            })
+            .collect())
     }
 }
 
@@ -273,7 +316,7 @@ impl FunctionArg for RelayUpdate {
     }
 }
 
-#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum RelayUpdateAction {
     Remove,
     Add,
@@ -385,55 +428,225 @@ impl TryFrom<ContractOutput> for EthereumEventConfiguration {
     }
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+pub enum EventStatus {
+    InProcess,
+    Confirmed,
+    Rejected,
+}
+
+impl ParseToken<EventStatus> for TokenValue {
+    fn try_parse(self) -> ContractResult<EventStatus> {
+        match self {
+            TokenValue::Int(value) => match value.number.to_u8() {
+                Some(0) => Ok(EventStatus::InProcess),
+                Some(1) => Ok(EventStatus::Confirmed),
+                Some(2) => Ok(EventStatus::Rejected),
+                _ => Err(ContractError::InvalidAbi),
+            },
+            _ => Err(ContractError::InvalidAbi),
+        }
+    }
+}
+
+impl StandaloneToken for EventStatus {}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EthereumEventDetails {
-    pub ethereum_event_transaction: ethereum_types::H256,
+pub struct TonEventInitData {
+    pub event_transaction: ethereum_types::H256,
     pub event_index: BigUint,
     #[serde(with = "serde_cells")]
     pub event_data: Cell,
-    #[serde(with = "serde_std_addr")]
-    pub proxy_address: MsgAddrStd,
     pub event_block_number: BigUint,
     pub event_block: ethereum_types::H256,
-    #[serde(with = "serde_std_addr")]
-    pub event_configuration_address: MsgAddrStd,
-    pub proxy_callback_executed: bool,
-    pub event_rejected: bool,
-    #[serde(with = "serde_vec_uint256")]
-    pub confirm_keys: Vec<UInt256>,
-    #[serde(with = "serde_vec_uint256")]
-    pub reject_keys: Vec<UInt256>,
+
+    #[serde(with = "serde_int_addr")]
+    pub ton_event_configuration: MsgAddressInt,
     pub required_confirmations: BigUint,
     pub required_rejections: BigUint,
 }
 
-impl StandaloneToken for EthereumEventDetails {}
+impl ParseToken<TonEventInitData> for TokenValue {
+    fn try_parse(self) -> ContractResult<TonEventInitData> {
+        let mut tuple = match self {
+            TokenValue::Tuple(tuple) => tuple.into_iter(),
+            _ => return Err(ContractError::InvalidAbi),
+        };
 
-impl TryFrom<ContractOutput> for EthereumEventDetails {
+        Ok(TonEventInitData {
+            event_transaction: tuple.next().try_parse()?,
+            event_index: tuple.next().try_parse()?,
+            event_data: tuple.next().try_parse()?,
+            event_block_number: tuple.next().try_parse()?,
+            event_block: tuple.next().try_parse()?,
+            ton_event_configuration: tuple.next().try_parse()?,
+            required_confirmations: tuple.next().try_parse()?,
+            required_rejections: tuple.next().try_parse()?,
+        })
+    }
+}
+
+impl StandaloneToken for TonEventInitData {}
+
+impl FunctionArg for TonEventInitData {
+    fn token_value(self) -> TokenValue {
+        TokenValue::Tuple(vec![
+            self.event_transaction.token_value().unnamed(),
+            BigUint256(self.event_index).token_value().unnamed(),
+            self.event_data.token_value().unnamed(),
+            BigUint256(self.event_block_number).token_value().unnamed(),
+            self.event_block.token_value().unnamed(),
+            self.ton_event_configuration.token_value().unnamed(),
+            BigUint256(self.required_confirmations)
+                .token_value()
+                .unnamed(),
+            BigUint256(self.required_rejections).token_value().unnamed(),
+        ])
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TonEventDetails {
+    pub init_data: TonEventInitData,
+    pub status: EventStatus,
+    #[serde(with = "serde_vec_uint256")]
+    pub confirm_keys: Vec<UInt256>,
+    #[serde(with = "serde_vec_uint256")]
+    pub reject_keys: Vec<UInt256>,
+    pub event_data_signatures: Vec<Vec<u8>>,
+}
+
+impl TryFrom<ContractOutput> for TonEventDetails {
     type Error = ContractError;
 
     fn try_from(output: ContractOutput) -> ContractResult<Self> {
         let mut tuple = output.into_parser();
 
-        Ok(EthereumEventDetails {
-            ethereum_event_transaction: tuple.parse_next()?,
-            event_index: tuple.parse_next()?,
-            event_data: tuple.parse_next()?,
-            proxy_address: tuple.parse_next()?,
-            event_block_number: tuple.parse_next()?,
-            event_block: tuple.parse_next()?,
-            event_configuration_address: tuple.parse_next()?,
-            proxy_callback_executed: tuple.parse_next()?,
-            event_rejected: tuple.parse_next()?,
+        Ok(TonEventDetails {
+            init_data: tuple.parse_next()?,
+            status: tuple.parse_next()?,
             confirm_keys: tuple.parse_next()?,
             reject_keys: tuple.parse_next()?,
-            required_confirmations: tuple.parse_next()?,
-            required_rejections: tuple.parse_next()?,
+            event_data_signatures: tuple.parse_next()?,
         })
     }
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EthEventInitData {
+    pub event_transaction: ethereum_types::H256,
+    pub event_index: BigUint,
+    #[serde(with = "serde_cells")]
+    pub event_data: Cell,
+    pub event_block_number: BigUint,
+    pub event_block: ethereum_types::H256,
+
+    #[serde(with = "serde_std_addr")]
+    pub eth_event_configuration: MsgAddrStd,
+    pub required_confirmations: BigUint,
+    pub required_rejections: BigUint,
+
+    #[serde(with = "serde_std_addr")]
+    pub proxy_address: MsgAddrStd,
+}
+
+impl ParseToken<EthEventInitData> for TokenValue {
+    fn try_parse(self) -> ContractResult<EthEventInitData> {
+        let mut token = match self {
+            TokenValue::Tuple(tuple) => tuple.into_iter(),
+            _ => return Err(ContractError::InvalidAbi),
+        };
+
+        Ok(EthEventInitData {
+            event_transaction: token.next().try_parse()?,
+            event_index: token.next().try_parse()?,
+            event_data: token.next().try_parse()?,
+            event_block_number: token.next().try_parse()?,
+            event_block: token.next().try_parse()?,
+            eth_event_configuration: token.next().try_parse()?,
+            required_confirmations: token.next().try_parse()?,
+            required_rejections: token.next().try_parse()?,
+            proxy_address: token.next().try_parse()?,
+        })
+    }
+}
+
+impl StandaloneToken for EthEventInitData {}
+
+impl FunctionArg for EthEventInitData {
+    fn token_value(self) -> TokenValue {
+        TokenValue::Tuple(vec![
+            self.event_transaction.token_value().unnamed(),
+            BigUint256(self.event_index).token_value().unnamed(),
+            self.event_data.token_value().unnamed(),
+            BigUint256(self.event_block_number).token_value().unnamed(),
+            self.event_block.token_value().unnamed(),
+            self.eth_event_configuration.token_value().unnamed(),
+            BigUint256(self.required_confirmations)
+                .token_value()
+                .unnamed(),
+            BigUint256(self.required_rejections).token_value().unnamed(),
+            self.proxy_address.token_value().unnamed(),
+        ])
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EthEventDetails {
+    pub init_data: EthEventInitData,
+    pub status: EventStatus,
+    #[serde(with = "serde_vec_uint256")]
+    pub confirm_keys: Vec<UInt256>,
+    #[serde(with = "serde_vec_uint256")]
+    pub reject_keys: Vec<UInt256>,
+}
+
+impl TryFrom<ContractOutput> for EthEventDetails {
+    type Error = ContractError;
+
+    fn try_from(output: ContractOutput) -> ContractResult<Self> {
+        let mut tuple = output.into_parser();
+
+        Ok(EthEventDetails {
+            init_data: tuple.parse_next()?,
+            status: tuple.parse_next()?,
+            confirm_keys: tuple.parse_next()?,
+            reject_keys: tuple.parse_next()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize, Serialize)]
+pub enum EventType {
+    ETH,
+    TON,
+}
+
+impl ParseToken<EventType> for TokenValue {
+    fn try_parse(self) -> ContractResult<EventType> {
+        match self {
+            TokenValue::Uint(int) => match int.number.to_u8() {
+                Some(0) => Ok(EventType::ETH),
+                Some(1) => Ok(EventType::TON),
+                _ => Err(ContractError::InvalidAbi),
+            },
+            _ => Err(ContractError::InvalidAbi),
+        }
+    }
+}
+
+impl StandaloneToken for EventType {}
+
+impl FunctionArg for EventType {
+    fn token_value(self) -> TokenValue {
+        match self {
+            EventType::ETH => 0u8.token_value(),
+            EventType::TON => 1u8.token_value(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize, Serialize)]
 pub enum Voting {
     Reject,
     Confirm,

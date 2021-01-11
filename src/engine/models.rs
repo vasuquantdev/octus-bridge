@@ -2,6 +2,7 @@ use crate::config::RelayConfig;
 use crate::crypto::key_managment::KeyData;
 use crate::engine::bridge::*;
 use crate::prelude::*;
+use num_bigint::BigUint;
 pub use relay_models::models::{InitData, Password, RescanEthData, Status, VotingAddress};
 use relay_ton::contracts;
 
@@ -29,7 +30,7 @@ pub enum BridgeState {
 
 #[derive(Deserialize, Serialize)]
 pub struct EventConfiguration {
-    pub address: String,
+    pub configuration_id: String,
     pub ethereum_event_abi: String,
     pub ethereum_event_address: String,
     pub event_proxy_address: String,
@@ -48,7 +49,7 @@ pub enum Voting {
     Reject(String),
 }
 
-impl TryFrom<Voting> for (MsgAddressInt, contracts::models::Voting) {
+impl TryFrom<Voting> for (BigUint, contracts::models::Voting) {
     type Error = anyhow::Error;
 
     fn try_from(value: Voting) -> Result<Self, Self::Error> {
@@ -56,16 +57,18 @@ impl TryFrom<Voting> for (MsgAddressInt, contracts::models::Voting) {
             Voting::Confirm(address) => (address, contracts::models::Voting::Confirm),
             Voting::Reject(address) => (address, contracts::models::Voting::Reject),
         };
-        let address =
-            MsgAddressInt::from_str(&address).map_err(|e| anyhow!("{}", e.to_string()))?;
-        Ok((address, voting))
+        let configuration_id =
+            BigUint::from_str(&address).map_err(|e| anyhow!("{}", e.to_string()))?;
+        Ok((configuration_id, voting))
     }
 }
 
-impl From<(MsgAddressInt, contracts::models::EthereumEventConfiguration)> for EventConfiguration {
-    fn from((address, c): (MsgAddressInt, contracts::models::EthereumEventConfiguration)) -> Self {
+impl From<(BigUint, contracts::models::EthereumEventConfiguration)> for EventConfiguration {
+    fn from(
+        (configuration_id, c): (BigUint, contracts::models::EthereumEventConfiguration),
+    ) -> Self {
         Self {
-            address: address.to_string(),
+            configuration_id: configuration_id.to_string(),
             ethereum_event_abi: c.ethereum_event_abi,
             ethereum_event_address: hex::encode(c.ethereum_event_address.as_bytes()),
             event_proxy_address: c.event_proxy_address.to_string(),

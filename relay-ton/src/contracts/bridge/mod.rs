@@ -66,65 +66,59 @@ impl BridgeContract {
         UInt256::from(self.keypair.public.to_bytes())
     }
 
-    pub async fn update_event_configuration(
+    pub async fn initialize_event_configuration_creation(
         &self,
+        id: BigUint,
         event_configuration: &MsgAddressInt,
+        event_type: EventType,
+    ) -> ContractResult<()> {
+        self.message("initializeEventConfigurationCreation")?
+            .arg(BigUint256(id))
+            .arg(event_configuration)
+            .arg(event_type)
+            .send()
+            .await?
+            .ignore_output()
+    }
+
+    pub async fn vote_for_event_configuration_creation(
+        &self,
+        id: BigUint,
         voting: Voting,
     ) -> ContractResult<()> {
-        self.message("updateEventConfiguration")?
-            .arg(event_configuration)
+        self.message("voteForEventConfigurationCreation")?
+            .arg(BigUint256(id))
             .arg(voting)
             .send()
             .await?
             .ignore_output()
     }
 
-    pub async fn get_details(&self) -> ContractResult<BridgeConfiguration> {
-        self.message("getDetails")?.run_local().await?.parse_first()
-    }
-
-    pub async fn get_event_configuration_status(
+    pub async fn get_active_event_configurations(
         &self,
-        event_configuration: &MsgAddressInt,
-    ) -> ContractResult<EventConfigurationStatus> {
-        self.message("getEventConfigurationStatus")?
-            .arg(event_configuration)
+    ) -> ContractResult<Vec<ActiveEventConfiguration>> {
+        self.message("getActiveEventConfigurations")?
             .run_local()
             .await?
             .parse_all()
     }
 
-    pub async fn get_active_event_configurations(&self) -> ContractResult<Vec<MsgAddressInt>> {
-        self.message("getActiveEventConfigurations")?
-            .run_local()
-            .await?
-            .parse_first()
-    }
-
     pub async fn confirm_ethereum_event(
         &self,
-        event_transaction: ethereum_types::H256,
-        event_index: BigUint,
-        event_data: Cell,
-        event_block_number: BigUint,
-        event_block: ethereum_types::H256,
-        event_configuration: MsgAddressInt,
+        configuration_id: BigUint,
+        event_init_data: EthEventInitData,
     ) -> ContractResult<()> {
         log::info!(
             "CONFIRMING ETH EVENT: {:?}, {}, {}, {}",
-            hex::encode(&event_transaction),
-            event_index,
-            event_block_number,
-            event_configuration
+            hex::encode(&event_init_data.event_transaction),
+            event_init_data.event_index,
+            event_init_data.event_block_number,
+            event_init_data.eth_event_configuration
         );
 
         self.message("confirmEthereumEvent")?
-            .arg(event_transaction)
-            .arg(BigUint256(event_index))
-            .arg(event_data)
-            .arg(BigUint256(event_block_number))
-            .arg(event_block)
-            .arg(event_configuration)
+            .arg(event_init_data)
+            .arg(BigUint256(configuration_id))
             .send()
             .await?
             .ignore_output()
@@ -132,28 +126,20 @@ impl BridgeContract {
 
     pub async fn reject_ethereum_event(
         &self,
-        event_transaction: ethereum_types::H256,
-        event_index: BigUint,
-        event_data: Cell,
-        event_block_number: BigUint,
-        event_block: ethereum_types::H256,
-        event_configuration: MsgAddressInt,
+        configuration_id: BigUint,
+        event_init_data: EthEventInitData,
     ) -> ContractResult<()> {
         log::info!(
             "REJECTING ETH EVENT: {:?}, {}, {}, {}",
-            hex::encode(&event_transaction),
-            event_index,
-            event_block_number,
-            event_configuration
+            hex::encode(&event_init_data.event_transaction),
+            event_init_data.event_index,
+            event_init_data.event_block_number,
+            event_init_data.eth_event_configuration
         );
 
         self.message("rejectEthereumEvent")?
-            .arg(event_transaction)
-            .arg(BigUint256(event_index))
-            .arg(event_data)
-            .arg(BigUint256(event_block_number))
-            .arg(event_block)
-            .arg(event_configuration)
+            .arg(event_init_data)
+            .arg(BigUint256(configuration_id))
             .send()
             .await?
             .ignore_output()
@@ -161,30 +147,22 @@ impl BridgeContract {
 
     pub async fn confirm_ton_event(
         &self,
-        event_transaction: ethereum_types::H256,
-        event_index: BigUint,
-        event_data: Cell,
-        event_block_number: BigUint,
-        event_block: ethereum_types::H256,
+        configuration_id: BigUint,
+        event_init_data: TonEventInitData,
         event_data_signature: Vec<u8>,
-        event_configuration: MsgAddressInt,
     ) -> ContractResult<()> {
         log::info!(
             "CONFIRMING TON EVENT: {:?}, {}, {}, {}",
-            hex::encode(&event_transaction),
-            event_index,
-            event_block_number,
-            event_configuration
+            hex::encode(&event_init_data.event_transaction),
+            event_init_data.event_index,
+            event_init_data.event_block_number,
+            event_init_data.ton_event_configuration
         );
 
         self.message("confirmTonEvent")?
-            .arg(event_transaction)
-            .arg(BigUint256(event_index))
-            .arg(event_data)
-            .arg(BigUint256(event_block_number))
-            .arg(event_block)
+            .arg(event_init_data)
             .arg(event_data_signature)
-            .arg(event_configuration)
+            .arg(BigUint256(configuration_id))
             .send()
             .await?
             .ignore_output()
@@ -192,28 +170,20 @@ impl BridgeContract {
 
     pub async fn reject_ton_event(
         &self,
-        event_transaction: ethereum_types::H256,
-        event_index: BigUint,
-        event_data: Cell,
-        event_block_number: BigUint,
-        event_block: ethereum_types::H256,
-        event_configuration: MsgAddressInt,
+        configuration_id: BigUint,
+        event_init_data: TonEventInitData,
     ) -> ContractResult<()> {
         log::info!(
             "CONFIRMING TON EVENT: {:?}, {}, {}, {}",
-            hex::encode(&event_transaction),
-            event_index,
-            event_block_number,
-            event_configuration
+            hex::encode(&event_init_data.event_transaction),
+            event_init_data.event_index,
+            event_init_data.event_block_number,
+            event_init_data.ton_event_configuration
         );
 
         self.message("rejectTonEvent")?
-            .arg(event_transaction)
-            .arg(BigUint256(event_index))
-            .arg(event_data)
-            .arg(BigUint256(event_block_number))
-            .arg(event_block)
-            .arg(event_configuration)
+            .arg(event_init_data)
+            .arg(BigUint256(configuration_id))
             .send()
             .await?
             .ignore_output()
@@ -249,6 +219,10 @@ impl BridgeContract {
             .run_local()
             .await?
             .parse_first()
+    }
+
+    pub async fn get_details(&self) -> ContractResult<BridgeConfiguration> {
+        self.message("getDetails")?.run_local().await?.parse_first()
     }
 }
 

@@ -7,16 +7,15 @@ use super::models::*;
 use super::prelude::*;
 
 #[derive(Clone)]
-pub struct EthereumEventContract {
+pub struct EthEventContract {
     transport: Arc<dyn Transport>,
     contract: Arc<ton_abi::Contract>,
 }
 
-impl EthereumEventContract {
+impl EthEventContract {
     pub async fn new(transport: Arc<dyn Transport>) -> Self {
         let contract = Arc::new(
-            ton_abi::Contract::load(Cursor::new(ABI))
-                .expect("failed to load bridge EthereumEventContract ABI"),
+            ton_abi::Contract::load(Cursor::new(ABI)).expect("failed to load EthereumEvent ABI"),
         );
 
         Self {
@@ -38,23 +37,19 @@ impl EthereumEventContract {
         )
     }
 
-    pub async fn get_details(&self, addr: MsgAddrStd) -> ContractResult<EthereumEventDetails> {
+    pub async fn get_details(&self, addr: MsgAddrStd) -> ContractResult<EthEventDetails> {
         self.message(addr, "getDetails")?
             .run_local()
             .await?
             .parse_all()
     }
-
-    pub async fn get_details_hash(&self, addr: MsgAddrStd) -> ContractResult<UInt256> {
-        self.message(addr, "getDetails")?.run_local().await?.hash()
-    }
 }
 
-impl Contract for EthereumEventContract {
+impl Contract for EthEventContract {
     #[inline]
     fn abi(&self) -> &Arc<ton_abi::Contract> {
         &self.contract
     }
 }
 
-const ABI: &str = include_str!("../../../abi/EthereumEvent.abi.json");
+const ABI: &str = include_str!("../../../abi/EthEvent.abi.json");

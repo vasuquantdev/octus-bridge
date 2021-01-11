@@ -93,7 +93,7 @@ pub struct EthTonConfirmationDataView {
     pub event_block_number: u64,
     #[opg(format = "hex")]
     pub event_block: String,
-    pub ethereum_event_configuration_address: String,
+    pub configuration_id: String,
 }
 
 #[derive(Deserialize, Serialize, opg::OpgModel)]

@@ -1,29 +1,31 @@
 use num_traits::ToPrimitive;
 
 use relay_eth::ws::H256;
-use relay_ton::contracts::EthereumEventDetails;
-use relay_ton::prelude::{serde_std_addr, serde_uint256, MsgAddrStd, MsgAddressInt, UInt256};
+use relay_models::models::EventVote;
+use relay_ton::contracts::EthEventDetails;
+use relay_ton::prelude::{serde_std_addr, serde_uint256, MsgAddrStd, UInt256};
 
 use crate::db_management::EthTonConfirmationData;
 
 use super::prelude::*;
-use relay_models::models::EventVote;
 
 /// Event received from TON
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtendedEventInfo {
+    pub configuration_id: BigUint,
     pub vote: EventVote,
     #[serde(with = "serde_std_addr")]
     pub event_addr: MsgAddrStd,
     #[serde(with = "serde_uint256")]
     pub relay_key: UInt256,
     pub ethereum_event_blocks_to_confirm: u64,
-    pub data: EthereumEventDetails,
+    pub data: EthEventDetails,
 }
 
 impl ExtendedEventInfo {
     pub fn target_block_number(&self) -> u64 {
         self.data
+            .init_data
             .event_block_number
             .to_u64()
             .unwrap_or_else(u64::max_value)
@@ -34,13 +36,12 @@ impl ExtendedEventInfo {
 impl std::fmt::Display for ExtendedEventInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
-            "{:?} tx {} (block {}) from {}. executed: {}, rejected: {}",
+            "{:?} tx {} (block {}) from {}. status: {:?}",
             self.vote,
-            hex::encode(&self.data.ethereum_event_transaction),
-            self.data.event_block_number,
+            hex::encode(&self.data.init_data.event_transaction),
+            self.data.init_data.event_block_number,
             hex::encode(&self.relay_key),
-            self.data.proxy_callback_executed,
-            self.data.event_rejected
+            self.data.status,
         ))
     }
 }
@@ -56,22 +57,22 @@ pub enum EventValidationError {
 impl From<ExtendedEventInfo> for EthTonConfirmationData {
     fn from(event: ExtendedEventInfo) -> Self {
         Self {
-            event_transaction: event.data.ethereum_event_transaction,
+            event_transaction: event.data.init_data.event_transaction,
             event_index: event
                 .data
+                .init_data
                 .event_index
                 .to_u64()
                 .unwrap_or_else(u64::max_value),
-            event_data: event.data.event_data,
+            event_data: event.data.init_data.event_data,
             event_block_number: event
                 .data
+                .init_data
                 .event_block_number
                 .to_u64()
                 .unwrap_or_else(u64::max_value),
-            event_block: event.data.event_block,
-            ethereum_event_configuration_address: MsgAddressInt::AddrStd(
-                event.data.event_configuration_address,
-            ),
+            event_block: event.data.init_data.event_block,
+            configuration_id: event.configuration_id,
         }
     }
 }

@@ -18,6 +18,7 @@ use crate::engine::bridge::event_configurations_listener::{
 };
 use crate::engine::bridge::util::map_eth_ton;
 use crate::prelude::*;
+use num_bigint::BigUint;
 
 pub(crate) mod event_configurations_listener;
 pub mod models;
@@ -143,18 +144,18 @@ impl Bridge {
 
     pub async fn get_event_configurations(
         &self,
-    ) -> Result<Vec<(MsgAddressInt, EthereumEventConfiguration)>, anyhow::Error> {
+    ) -> Result<Vec<(BigUint, EthereumEventConfiguration)>, anyhow::Error> {
         let state = self.event_configurations_listener.get_state().await;
         Ok(state.eth_configs_map.values().cloned().collect())
     }
 
     pub async fn vote_for_ethereum_event_configuration(
         &self,
-        event_configuration: &MsgAddressInt,
+        configuration_id: BigUint,
         voting: Voting,
     ) -> Result<(), anyhow::Error> {
         self.bridge_contract
-            .update_event_configuration(event_configuration, voting)
+            .vote_for_event_configuration_creation(configuration_id, voting)
             .await?;
         Ok(())
     }
@@ -254,7 +255,7 @@ impl Bridge {
         );
 
         // Extend event info
-        let (ethereum_event_configuration_address, ethereum_event_blocks_to_confirm, topic_tokens) = {
+        let (configuration_id, ethereum_event_blocks_to_confirm, topic_tokens) = {
             let state = self.event_configurations_listener.get_state().await;
 
             // Find suitable event configuration
@@ -317,7 +318,7 @@ impl Bridge {
             event_data,
             event_block_number: event.block_number,
             event_block: event.block_hash,
-            ethereum_event_configuration_address,
+            configuration_id,
         };
 
         let target_block_number = event.block_number + ethereum_event_blocks_to_confirm;

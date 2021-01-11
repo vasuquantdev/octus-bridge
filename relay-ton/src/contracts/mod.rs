@@ -1,13 +1,15 @@
 pub use bridge::*;
 pub use contract::*;
 pub use errors::*;
-pub use ethereum_event::*;
-pub use ethereum_event_configuration::*;
+pub use eth_event::*;
+pub use eth_event_configuration::*;
 pub use models::*;
 
 pub mod bridge;
-pub mod ethereum_event;
-pub mod ethereum_event_configuration;
+pub mod eth_event;
+pub mod eth_event_configuration;
+pub mod ton_event;
+pub mod ton_event_configuration;
 
 mod contract;
 pub mod errors;
@@ -92,21 +94,16 @@ mod tests {
     async fn make_config_contract(
         transport: &Arc<dyn Transport>,
         addr: MsgAddrStd,
-    ) -> Arc<EthereumEventConfigurationContract> {
+    ) -> Arc<EthEventConfigurationContract> {
         Arc::new(
-            EthereumEventConfigurationContract::new(
-                transport.clone(),
-                MsgAddressInt::AddrStd(addr),
-            )
-            .await
-            .unwrap(),
+            EthEventConfigurationContract::new(transport.clone(), MsgAddressInt::AddrStd(addr))
+                .await
+                .unwrap(),
         )
     }
 
-    async fn make_ethereum_event_contract(
-        transport: &Arc<dyn Transport>,
-    ) -> Arc<EthereumEventContract> {
-        Arc::new(EthereumEventContract::new(transport.clone()).await.unwrap())
+    async fn make_ethereum_event_contract(transport: &Arc<dyn Transport>) -> Arc<EthEventContract> {
+        Arc::new(EthEventContract::new(transport.clone()).await.unwrap())
     }
 
     #[tokio::test]

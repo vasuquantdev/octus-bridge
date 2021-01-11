@@ -1,8 +1,7 @@
-use ton_block::MsgAddressInt;
-
 use relay_eth::ws::H256;
 use relay_models::models::{EthTonConfirmationDataView, EthTonTransactionView};
-use relay_ton::prelude::{serde_cells, serde_int_addr, serialize_toc, Cell};
+use relay_ton::contracts::EthEventInitData;
+use relay_ton::prelude::{serde_cells, serialize_toc, Cell};
 
 use super::prelude::*;
 
@@ -63,8 +62,29 @@ pub struct EthTonConfirmationData {
     pub event_data: Cell,
     pub event_block_number: u64,
     pub event_block: H256,
-    #[serde(with = "serde_int_addr")]
-    pub ethereum_event_configuration_address: MsgAddressInt,
+
+    pub configuration_id: BigUint,
+}
+
+impl From<EthTonConfirmationData> for (BigUint, EthEventInitData) {
+    fn from(data: EthTonConfirmationData) -> Self {
+        (
+            data.configuration_id,
+            EthEventInitData {
+                event_transaction: data.event_transaction,
+                event_index: data.event_index.into(),
+                event_data: data.event_data,
+                event_block_number: data.event_block_number.into(),
+                event_block: data.event_block,
+
+                // TODO: replace confirmation model
+                eth_event_configuration: Default::default(),
+                required_confirmations: Default::default(),
+                required_rejections: Default::default(),
+                proxy_address: Default::default(),
+            },
+        )
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -97,9 +117,7 @@ impl From<EthTonConfirmationData> for EthTonConfirmationDataView {
             event_data: event_block,
             event_block_number: data.event_block_number,
             event_block: hex::encode(&data.event_block.0),
-            ethereum_event_configuration_address: data
-                .ethereum_event_configuration_address
-                .to_string(),
+            configuration_id: data.configuration_id.to_string(),
         }
     }
 }

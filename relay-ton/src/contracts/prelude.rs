@@ -1,6 +1,5 @@
 use num_traits::ToPrimitive;
 pub use ton_abi::{Token, TokenValue};
-pub use ton_types::Cell;
 
 pub use super::contract::*;
 use super::errors::*;
@@ -257,6 +256,13 @@ impl ParseToken<bool> for TokenValue {
     }
 }
 
+impl ParseToken<TokenValue> for TokenValue {
+    #[inline]
+    fn try_parse(self) -> ContractResult<TokenValue> {
+        Ok(self)
+    }
+}
+
 impl<T> ParseToken<T> for Option<Token>
 where
     TokenValue: ParseToken<T>,
@@ -318,6 +324,7 @@ impl StandaloneToken for BigUint {}
 impl StandaloneToken for u16 {}
 impl StandaloneToken for bool {}
 impl StandaloneToken for Vec<u8> {}
+impl StandaloneToken for TokenValue {}
 
 pub trait ReadMethodId {
     type Error;
