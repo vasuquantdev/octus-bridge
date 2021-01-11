@@ -307,11 +307,33 @@ mod test {
     "type": "event"
   }
   "#;
+    const ABI2: &str = r#"
+  {
+      "anonymous":false,
+      "inputs":[
+         {
+            "indexed":false,
+            "internalType":"uint256",
+            "name":"state",
+            "type":"uint256"
+         }
+      ],
+      "name":"EthereumStateChange",
+      "type":"event"
+   }
+  "#;
 
     #[test]
     fn test_event_contract_abi() {
         let hash = parse_eth_abi(ABI).unwrap().0;
         let expected = H256::from_slice(&*Keccak256::digest(b"StateChange(uint256,address)"));
+        assert_eq!(expected, hash);
+    }
+
+    #[test]
+    fn test_event_contract_abi2() {
+        let hash = parse_eth_abi(ABI2).unwrap().0;
+        let expected = H256::from_slice(&*Keccak256::digest(b"EthereumStateChange(uint256)"));
         assert_eq!(expected, hash);
     }
 
