@@ -353,19 +353,19 @@ impl EthListener {
 
     ///unsubscribe from address
     pub async fn unsubscribe_from_address(&self, address: &Address) {
-        let mut topics = *self.topics.write().await;
+        let mut topics = self.topics.write().await;
         topics.0.remove(address);
     }
 
     ///unsubscribe from 1 topic
     pub async fn unsubscribe_from_topic(&self, topic: &H256) {
-        let mut topics = *self.topics.write().await;
+        let mut topics = self.topics.write().await;
         topics.1.remove(topic);
     }
 
-    ///unsubscribe from ;ist of topics
+    ///unsubscribe from list of topics
     pub async fn unsubscribe_from_topics(&self, topics_list: &[H256]) {
-        let mut topics = *self.topics.write().await;
+        let mut topics = self.topics.write().await;
         topics_list.iter().for_each(|t| {
             topics.1.remove(t);
         });
