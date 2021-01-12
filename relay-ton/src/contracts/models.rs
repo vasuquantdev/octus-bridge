@@ -221,23 +221,23 @@ impl FunctionArg for BridgeConfiguration {
         TokenValue::Tuple(vec![
             self.event_configuration_required_confirmations
                 .token_value()
-                .unnamed(),
+                .named("eventConfigurationRequiredConfirmations"),
             self.event_configuration_required_rejections
                 .token_value()
-                .unnamed(),
+                .named("eventConfigurationRequiredRejects"),
             self.bridge_configuration_update_required_confirmations
                 .token_value()
-                .unnamed(),
+                .named("bridgeConfigurationUpdateRequiredConfirmations"),
             self.bridge_configuration_update_required_rejections
                 .token_value()
-                .unnamed(),
+                .named("bridgeConfigurationUpdateRequiredRejects"),
             self.bridge_relay_update_required_confirmations
                 .token_value()
-                .unnamed(),
+                .named("bridgeRelayUpdateRequiredConfirmations"),
             self.bridge_relay_update_required_rejections
                 .token_value()
-                .unnamed(),
-            self.active.token_value().unnamed(),
+                .named("bridgeRelayUpdateRequiredRejects"),
+            self.active.token_value().named("active"),
         ])
     }
 }
@@ -352,8 +352,8 @@ impl ParseToken<RelayUpdate> for TokenValue {
 impl FunctionArg for RelayUpdate {
     fn token_value(self) -> TokenValue {
         TokenValue::Tuple(vec![
-            self.relay_key.token_value().unnamed(),
-            self.action.token_value().unnamed(),
+            self.relay_key.token_value().named("key"),
+            self.action.token_value().named("action"),
         ])
     }
 }
@@ -415,8 +415,8 @@ fn parse_vote_data(tokens: Vec<Token>) -> ContractResult<VoteData> {
 impl FunctionArg for VoteData {
     fn token_value(self) -> TokenValue {
         TokenValue::Tuple(vec![
-            self.signature.token_value().unnamed(),
-            self.payload.token_value().unnamed(),
+            self.signature.token_value().named("signature"),
+            self.payload.token_value().named("payload"),
         ])
     }
 }
@@ -531,6 +531,7 @@ pub enum EventStatus {
 
 impl ParseToken<EventStatus> for TokenValue {
     fn try_parse(self) -> ContractResult<EventStatus> {
+        log::debug!("AAAA: event status: {:?}", self);
         match self {
             TokenValue::Int(value) => match value.number.to_u8() {
                 Some(0) => Ok(EventStatus::InProcess),
@@ -585,16 +586,26 @@ impl StandaloneToken for TonEventInitData {}
 impl FunctionArg for TonEventInitData {
     fn token_value(self) -> TokenValue {
         TokenValue::Tuple(vec![
-            self.event_transaction.token_value().unnamed(),
-            BigUint256(self.event_index).token_value().unnamed(),
-            self.event_data.token_value().unnamed(),
-            BigUint256(self.event_block_number).token_value().unnamed(),
-            self.event_block.token_value().unnamed(),
-            self.ton_event_configuration.token_value().unnamed(),
+            self.event_transaction
+                .token_value()
+                .named("eventTransaction"),
+            BigUint256(self.event_index)
+                .token_value()
+                .named("eventIndex"),
+            self.event_data.token_value().named("eventData"),
+            BigUint256(self.event_block_number)
+                .token_value()
+                .named("eventBlockNumber"),
+            self.event_block.token_value().named("eventBlock"),
+            self.ton_event_configuration
+                .token_value()
+                .named("tonEventConfiguration"),
             BigUint256(self.required_confirmations)
                 .token_value()
-                .unnamed(),
-            BigUint256(self.required_rejections).token_value().unnamed(),
+                .named("requiredConfirmations"),
+            BigUint256(self.required_rejections)
+                .token_value()
+                .named("requiredRejects"),
         ])
     }
 }
@@ -670,17 +681,27 @@ impl StandaloneToken for EthEventInitData {}
 impl FunctionArg for EthEventInitData {
     fn token_value(self) -> TokenValue {
         TokenValue::Tuple(vec![
-            self.event_transaction.token_value().unnamed(),
-            BigUint256(self.event_index).token_value().unnamed(),
-            self.event_data.token_value().unnamed(),
-            BigUint256(self.event_block_number).token_value().unnamed(),
-            self.event_block.token_value().unnamed(),
-            self.eth_event_configuration.token_value().unnamed(),
+            self.event_transaction
+                .token_value()
+                .named("eventTransaction"),
+            BigUint256(self.event_index)
+                .token_value()
+                .named("eventIndex"),
+            self.event_data.token_value().named("eventData"),
+            BigUint256(self.event_block_number)
+                .token_value()
+                .named("eventBlockNumber"),
+            self.event_block.token_value().named("eventBlock"),
+            self.eth_event_configuration
+                .token_value()
+                .named("ethereumEventConfiguration"),
             BigUint256(self.required_confirmations)
                 .token_value()
-                .unnamed(),
-            BigUint256(self.required_rejections).token_value().unnamed(),
-            self.proxy_address.token_value().unnamed(),
+                .named("requiredConfirmations"),
+            BigUint256(self.required_rejections)
+                .token_value()
+                .named("requiredRejects"),
+            self.proxy_address.token_value().named("proxyAddress"),
         ])
     }
 }
