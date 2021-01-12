@@ -109,11 +109,10 @@ impl BridgeContract {
         event_init_data: EthEventInitData,
     ) -> ContractResult<()> {
         log::info!(
-            "CONFIRMING ETH EVENT: {:?}, {}, {}, {}",
+            "CONFIRMING ETH EVENT: {:?}, {}, {}",
             hex::encode(&event_init_data.event_transaction),
             event_init_data.event_index,
-            event_init_data.event_block_number,
-            event_init_data.eth_event_configuration
+            event_init_data.event_block_number
         );
 
         self.message("confirmEthereumEvent")?
@@ -130,11 +129,10 @@ impl BridgeContract {
         event_init_data: EthEventInitData,
     ) -> ContractResult<()> {
         log::info!(
-            "REJECTING ETH EVENT: {:?}, {}, {}, {}",
+            "REJECTING ETH EVENT: {:?}, {}, {}",
             hex::encode(&event_init_data.event_transaction),
             event_init_data.event_index,
-            event_init_data.event_block_number,
-            event_init_data.eth_event_configuration
+            event_init_data.event_block_number
         );
 
         self.message("rejectEthereumEvent")?
@@ -152,11 +150,10 @@ impl BridgeContract {
         event_data_signature: Vec<u8>,
     ) -> ContractResult<()> {
         log::info!(
-            "CONFIRMING TON EVENT: {:?}, {}, {}, {}",
+            "CONFIRMING TON EVENT: {:?}, {}, {}",
             hex::encode(&event_init_data.event_transaction),
             event_init_data.event_index,
-            event_init_data.event_block_number,
-            event_init_data.ton_event_configuration
+            event_init_data.event_block_number
         );
 
         self.message("confirmTonEvent")?
@@ -174,11 +171,10 @@ impl BridgeContract {
         event_init_data: TonEventInitData,
     ) -> ContractResult<()> {
         log::info!(
-            "CONFIRMING TON EVENT: {:?}, {}, {}, {}",
+            "CONFIRMING TON EVENT: {:?}, {}, {}",
             hex::encode(&event_init_data.event_transaction),
             event_init_data.event_index,
-            event_init_data.event_block_number,
-            event_init_data.ton_event_configuration
+            event_init_data.event_block_number
         );
 
         self.message("rejectTonEvent")?

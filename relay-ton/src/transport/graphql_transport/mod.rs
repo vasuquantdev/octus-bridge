@@ -443,13 +443,13 @@ where
                 (Some(_), _) => self.messages = None,
                 (None, Some(fut)) => match Self::poll_request_fut(fut.as_mut(), cx) {
                     Poll::Ready(response) if !response.is_empty() => {
-                        log::debug!("got messages: {:?}", response);
+                        log::trace!("got messages: {:?}", response);
                         self.current_message = 0;
                         self.messages = Some(response);
                         self.request_fut = None;
                     }
                     Poll::Ready(_) => {
-                        log::debug!("got empty response");
+                        log::trace!("got empty response");
                         return Poll::Ready(None);
                     }
                     Poll::Pending => return Poll::Pending,
