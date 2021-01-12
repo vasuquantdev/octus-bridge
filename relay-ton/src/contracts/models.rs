@@ -531,7 +531,6 @@ pub enum EventStatus {
 
 impl ParseToken<EventStatus> for TokenValue {
     fn try_parse(self) -> ContractResult<EventStatus> {
-        log::debug!("AAAA: event status: {:?}", self);
         match self {
             TokenValue::Int(value) => match value.number.to_u8() {
                 Some(0) => Ok(EventStatus::InProcess),
