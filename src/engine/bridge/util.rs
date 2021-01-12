@@ -270,6 +270,7 @@ pub fn map_ton_eth(
 fn map_ton_token_value_to_eth_token_value(token: TonTokenValue) -> Result<EthTokenValue, Error> {
     Ok(match token {
         TonTokenValue::FixedBytes(bytes) => EthTokenValue::FixedBytes(bytes),
+        TonTokenValue::Bytes(bytes) => EthTokenValue::Bytes(bytes),
         TonTokenValue::Uint(a) => {
             let bytes = a.number.to_bytes_le();
             EthTokenValue::Uint(ethabi::Uint::from_little_endian(&bytes))
@@ -303,7 +304,6 @@ fn map_ton_token_value_to_eth_token_value(token: TonTokenValue) -> Result<EthTok
                 .map(|ton| map_ton_token_value_to_eth_token_value(ton.value))
                 .collect::<Result<_, _>>()?,
         ),
-
         any => return Err(anyhow!("unsupported type: {:?}", any)),
     })
 }

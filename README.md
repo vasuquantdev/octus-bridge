@@ -54,30 +54,30 @@ For each event received from other relays we check it validity.
 
 Eth -> Ton
 
-| Ethereum type      | Ton type |
-| ----------- | ----------- |
-| Address      | Bytes       |
-| Bytes | Bytes|
-|Int|Int|
-|Bool|Bool|
-|String|Bytes|
-|Array|Array|
-|FixedBytes|FixedBytes|
-|FixedArray|FixedArray|
-|Tuple|Tuple|
+| Ethereum type | Ton type   |
+| ------------- | ---------- |
+| Address       | Bytes      |
+| Bytes         | Bytes      |
+| Int           | Int        |
+| Bool          | Bool       |
+| String        | Bytes      |
+| Array         | Array      |
+| FixedBytes    | FixedBytes |
+| FixedArray    | FixedArray |
+| Tuple         | Tuple      |
 
 Ton -> Eth
 
-| Ton type      | Ethereum type |
-| ----------- | ----------- |
-|FixedBytes|FixedBytes|
-|Bytes|Bytes|
-|Uint|Uint|
-|Int|Int|
-
-For different abi we can do different conversions. For example,
-
-# **TODO update after reverse chain implementation**
+| Ton type   | Ethereum type |
+| ---------- | ------------- |
+| FixedBytes | FixedBytes    |
+| Bytes      | Bytes         |
+| Uint       | Uint          |
+| Int        | Int           |
+| Bool       | Bool          |
+| FixedArray | FixedArray    |
+| Array      | Array         |
+| Tuple      | Tuple         |
 
 ### Persistent state.
 
