@@ -1,3 +1,3 @@
 #!/bin/bash
 
-./relay --config /cfg/config.json
+./relay --config /cfg/config.yaml

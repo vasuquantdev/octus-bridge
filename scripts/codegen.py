@@ -15,27 +15,60 @@ relay_str = """
 """
 
 config_template = """
-{
-  "encrypted_data": "/cfg/config_data.json",
-  "eth_node_address": "http://3.239.148.226:8545",
-  "ton_contract_address": "0:0a2cfeb23aec1822e48cb7d0a402d24c4e8dddbc42c125df99b6aba2bec372b7",
-  "ton_derivation_path": "m/44'/396'/0'/0/{}",
-  "storage_path": "/cfg/persistent_storage",
-  "listen_address": "127.0.0.1:{}",
-  "ton_config": {
-    "type": "GraphQL",
-    "addr": "http://3.239.148.226/graphql",
-    "next_block_timeout_sec": 60
-  },
-  "ton_operation_timeouts": {
-    "configuration_contract_try_poll_times": 100,
-    "get_event_details_retry_times": 100,
-    "get_event_details_poll_interval_secs": 5,
-    "broadcast_in_ton_interval_secs": 10,
-    "broadcast_in_ton_times": 50,
-    "broadcast_in_ton_interval_multiplier": 1.5
-  }
-}
+listen_address: ""127.0.0.1:{}"
+keys_path: "/cfg/config_data.json"
+storage_path: "/cfg/persistent_storage"
+logger_settings:
+  appenders:
+    stdout:
+      kind: console
+      encoder:
+        pattern: "{d(%Y-%m-%d %H:%M:%S %Z)(utc)} - {h({l})} {M} {f}:{L} = {m} {n}"
+    all:
+      kind: file
+      path: "log/requests.log"
+      encoder:
+        pattern: "{d} - {M} {f}:{L} = {m}{n}"
+  root:
+    level: error
+    appenders:
+      - stdout
+  loggers:
+    relay:
+      level: debug
+      appenders:
+        - all
+        - stdout
+      additive: false
+    relay_eth:
+      level: debug
+      appenders:
+        - all
+        - stdout
+      additive: false
+    relay_ton:
+      level: debug
+      appenders:
+        - all
+        - stdout
+      additive: false
+eth_settings:
+  node_address: "ws://3.239.148.226:8545"
+  tcp_connection_count: 100
+ton_settings:
+  bridge_contract_address: '0:42b18b796069f4ae645bf58f073df820f76d2eccaff535ec2f2d53f097e5f9fe'
+  seed_derivation_path  : "m/44'/396'/0'/0/5"
+  transport:
+    type: graphql
+    address: "http://3.239.148.226/graphql"
+    next_block_timeout_sec: 60
+  event_configuration_details_retry_interval: 5
+  event_configuration_details_retry_count: 100
+  event_details_retry_interval: 0
+  event_details_retry_count: 100
+  message_retry_interval: 60
+  message_retry_count: 10
+  message_retry_interval_multiplier: 1.5
 """
 
 for i in range(0, 13):
@@ -44,7 +77,7 @@ for i in range(0, 13):
     compose_template += relay_str.format(i, config_path)
     os.mkdir(config_path)
     config_data = config_template.replace("{}", str(i + port))
-    config = open(config_path + "/config.json", "w")
+    config = open(config_path + "/config.yaml", "w")
     config.write(config_data)
 
 with open("docker-compose.yaml", "w") as f:
