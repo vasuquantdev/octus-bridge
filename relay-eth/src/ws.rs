@@ -42,7 +42,11 @@ async fn get_actual_eth_height<T: Transport>(
     let _permission = connection_pool.acquire().await;
     match timeout(ETH_TIMEOUT, w3.eth().block_number()).await {
         Ok(a) => match a {
-            Ok(a) => Some(a.as_u64()),
+            Ok(a) => {
+                let height = a.as_u64();
+                log::trace!("Got height: {}", height);
+                Some(height)
+            }
             Err(e) => {
                 if let web3::error::Error::Transport(e) = &e {
                     if e == "hyper::Error(IncompleteMessage)" {
@@ -333,6 +337,7 @@ impl EthListener {
             }
         };
 
+        log::debug!("Sent logs from block {} with hash {}", block_number, hash);
         Ok(Event {
             address: log.address,
             data,
@@ -390,54 +395,62 @@ fn spawn_blocks_scanner(
         //
         let w3 = w3.clone();
         let connection_pool = connections_pool.clone();
-        let mut ethereum_actual_height = loop {
-            match get_actual_eth_height(&w3, &connection_pool).await {
-                Some(a) => break a,
-                None => {
-                    tokio::time::delay_for(ETH_POLL_INTERVAL).await;
-                    log::error!("Failed getting start height. Polling");
-                    continue;
-                }
-            };
-        };
         let scanned_height = from_height;
         loop {
-            //sleeping if we are on head
-            if ethereum_actual_height <= scanned_height.load(Ordering::SeqCst) {
-                tokio::time::delay_for(ETH_POLL_INTERVAL).await;
-                ethereum_actual_height = match get_actual_eth_height(&w3, &connection_pool).await {
-                    Some(a) => a,
-                    None => continue,
+            // trying to get actual height
+            let ethereum_actual_height = loop {
+                match get_actual_eth_height(&w3, &connection_pool).await {
+                    Some(a) => break a,
+                    None => {
+                        tokio::time::delay_for(ETH_POLL_INTERVAL).await;
+                        log::error!("Failed getting start height. Polling");
+                        continue;
+                    }
                 };
-                if ethereum_actual_height <= scanned_height.load(Ordering::SeqCst) {
-                    continue;
-                }
-            // polling if we are near head
-            } else if (ethereum_actual_height - scanned_height.load(Ordering::SeqCst)) < 2 {
-                ethereum_actual_height = match get_actual_eth_height(&w3, &connection_pool).await {
-                    Some(a) => a,
-                    None => continue,
-                };
-            }
-            process_block(
-                &w3,
-                topics.as_ref(),
-                BlockNumber::from(scanned_height.load(Ordering::SeqCst)),
-                &events_tx,
-                &connection_pool,
-            )
-            .await;
+            };
 
-            if let Err(e) = update_eth_state(
-                &db,
-                scanned_height.load(Ordering::SeqCst),
-                ETH_LAST_MET_HEIGHT,
-            ) {
+            let mut loaded_height = scanned_height.load(Ordering::SeqCst);
+            // polling if we are near head and sleeping
+            if (ethereum_actual_height - loaded_height) <= 2 {
+                let block_number = BlockNumber::from(loaded_height);
+                process_block(
+                    &w3,
+                    topics.as_ref(),
+                    block_number,
+                    block_number,
+                    &events_tx,
+                    &connection_pool,
+                )
+                .await;
+                tokio::time::delay_for(ETH_POLL_INTERVAL).await;
+            }
+            // batch processing all blocks from `loaded_height` to `ethereum_actual_height`
+            else {
+                log::debug!(
+                    "Batch processing blocks from {} to {}",
+                    loaded_height,
+                    ethereum_actual_height
+                );
+                let block_number = BlockNumber::from(loaded_height);
+                process_block(
+                    &w3,
+                    topics.as_ref(),
+                    block_number,
+                    BlockNumber::from(ethereum_actual_height),
+                    &events_tx,
+                    &connection_pool,
+                )
+                .await;
+                loaded_height = ethereum_actual_height - 1;
+                scanned_height.store(loaded_height, Ordering::SeqCst);
+            }
+
+            if let Err(e) = update_eth_state(&db, loaded_height, ETH_LAST_MET_HEIGHT) {
                 let err = format!("Critical error: failed saving eth state: {}", e);
                 log::error!("{}", &err);
             };
 
-            if let Err(e) = blocks_tx.send(scanned_height.load(Ordering::SeqCst)) {
+            if let Err(e) = blocks_tx.send(loaded_height) {
                 log::error!("Failed sending event via channel: {:?}", e);
                 // Panic?
             }
@@ -451,7 +464,8 @@ fn spawn_blocks_scanner(
 async fn process_block(
     w3: &Web3<Http>,
     topics: &RwLock<(HashSet<Address>, HashSet<H256>)>,
-    block_number: BlockNumber,
+    from: BlockNumber,
+    to: BlockNumber,
     events_tx: &UnboundedSender<Result<Event, Error>>,
     connection_pool: &Arc<Semaphore>,
 ) {
@@ -467,8 +481,8 @@ async fn process_block(
     let filter = FilterBuilder::default()
         .address(addresses)
         .topics(Some(topics), None, None, None)
-        .from_block(block_number) //fixme
-        .to_block(block_number)
+        .from_block(from) //fixme
+        .to_block(to)
         .build();
 
     let mut attempts_number = 86400 / 5;
@@ -478,7 +492,7 @@ async fn process_block(
         match w3.eth().logs(filter.clone()).await {
             Ok(a) => {
                 if !a.is_empty() {
-                    log::info!("There are some logs in block: {:?}", block_number);
+                    log::info!("There are some logs in block: {:?}", from);
                 }
                 for log in a {
                     let event = EthListener::log_to_event(log);
@@ -508,7 +522,7 @@ async fn process_block(
                 log::error!("Critical error in eth subscriber: {}", e);
                 log::error!(
                     "Retrying to get block: {:?}. Attempts left: {}",
-                    block_number,
+                    from,
                     attempts_number
                 );
                 tokio::time::delay_for(sleep_time).await;
