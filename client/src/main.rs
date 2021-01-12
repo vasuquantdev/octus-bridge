@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::Write;
 
 use anyhow::anyhow;
 use anyhow::Error;
@@ -6,6 +7,7 @@ use clap::Clap;
 use colored_json::{to_colored_json_auto, ColorMode, ToColoredJson};
 use dialoguer::theme::{ColorfulTheme, Theme};
 use dialoguer::{Input, Password, Select};
+use minus::Pager;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -113,21 +115,25 @@ impl Client {
 
     pub fn get_pending_transactions(&self) -> Result<(), Error> {
         let response: Vec<EthTonTransactionView> = self.get("status/pending")?;
-        pager::Pager::new().setup();
-        println!(
+        let mut output = Pager::new().set_prompt("Pending transactions");
+        writeln!(
+            output.lines,
             "{}",
             serde_json::to_string_pretty(&response)?.to_colored_json(ColorMode::On)?
-        );
+        )?;
+        minus::page_all(output)?;
         Ok(())
     }
 
     pub fn get_failed_transactions(&self) -> Result<(), Error> {
         let response: Vec<EthTonTransactionView> = self.get("status/failed")?;
-        pager::Pager::new().setup();
-        println!(
+        let mut output = Pager::new().set_prompt("Failed transactions");
+        writeln!(
+            output.lines,
             "{}",
             serde_json::to_string_pretty(&response)?.to_colored_json(ColorMode::On)?
-        );
+        )?;
+        minus::page_all(output)?;
         Ok(())
     }
 
@@ -145,11 +151,14 @@ impl Client {
         let keys: Vec<_> = response.keys().cloned().collect();
         selection.items(&keys);
         let selection = &keys[selection.interact()?];
-        pager::Pager::new().setup();
-        println!(
+
+        let mut output = Pager::new().set_prompt("Stats");
+        writeln!(
+            output.lines,
             "{}",
             serde_json::to_string_pretty(&response[selection])?.to_colored_json(ColorMode::On)?
-        );
+        )?;
+        minus::page_all(output)?;
         Ok(())
     }
 

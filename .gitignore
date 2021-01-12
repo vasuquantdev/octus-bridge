@@ -2,13 +2,13 @@
 **/*.rs.bk
 /.idea
 /.cargo
-persistent_storage/
+persistent_storage*/
 
 Dockerfile.local
 default_config.yaml
-keys.json
-logs.log
-config.yaml
+keys*.json
+logs*.log
+config*.yaml
 
 log/
 scripts/relay*
