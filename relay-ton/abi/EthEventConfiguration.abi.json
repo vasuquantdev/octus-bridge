@@ -5,22 +5,23 @@
     {
       "name": "constructor",
       "inputs": [
+      ],
+      "outputs": [
+      ]
+    },
+    {
+      "name": "confirmEvent",
+      "inputs": [
+        {"components":[{"name":"eventTransaction","type":"uint256"},{"name":"eventIndex","type":"uint256"},{"name":"eventData","type":"cell"},{"name":"eventBlockNumber","type":"uint256"},{"name":"eventBlock","type":"uint256"},{"name":"ethereumEventConfiguration","type":"address"},{"name":"requiredConfirmations","type":"uint256"},{"name":"requiredRejects","type":"uint256"},{"name":"proxyAddress","type":"address"}],"name":"eventInitData","type":"tuple"},
         {"name":"relayKey","type":"uint256"}
       ],
       "outputs": [
       ]
     },
     {
-      "name": "confirm",
+      "name": "rejectEvent",
       "inputs": [
-        {"name":"relayKey","type":"uint256"}
-      ],
-      "outputs": [
-      ]
-    },
-    {
-      "name": "reject",
-      "inputs": [
+        {"components":[{"name":"eventTransaction","type":"uint256"},{"name":"eventIndex","type":"uint256"},{"name":"eventData","type":"cell"},{"name":"eventBlockNumber","type":"uint256"},{"name":"eventBlock","type":"uint256"},{"name":"ethereumEventConfiguration","type":"address"},{"name":"requiredConfirmations","type":"uint256"},{"name":"requiredRejects","type":"uint256"},{"name":"proxyAddress","type":"address"}],"name":"eventInitData","type":"tuple"},
         {"name":"relayKey","type":"uint256"}
       ],
       "outputs": [
@@ -31,16 +32,50 @@
       "inputs": [
       ],
       "outputs": [
-        {"components":[{"name":"eventTransaction","type":"uint256"},{"name":"eventIndex","type":"uint256"},{"name":"eventData","type":"cell"},{"name":"eventBlockNumber","type":"uint256"},{"name":"eventBlock","type":"uint256"},{"name":"ethereumEventConfiguration","type":"address"},{"name":"requiredConfirmations","type":"uint256"},{"name":"requiredRejects","type":"uint256"},{"name":"proxyAddress","type":"address"}],"name":"_initData","type":"tuple"},
-        {"name":"_status","type":"uint8"},
-        {"name":"_confirmKeys","type":"uint256[]"},
-        {"name":"_rejectKeys","type":"uint256[]"}
+        {"components":[{"name":"eventABI","type":"bytes"},{"name":"eventRequiredConfirmations","type":"uint16"},{"name":"eventRequiredRejects","type":"uint16"},{"name":"eventCode","type":"cell"},{"name":"bridgeAddress","type":"address"},{"name":"eventInitialBalance","type":"uint128"}],"name":"_basicInitData","type":"tuple"},
+        {"components":[{"name":"eventAddress","type":"uint160"},{"name":"eventBlocksToConfirm","type":"uint16"},{"name":"proxyAddress","type":"address"}],"name":"_initData","type":"tuple"}
+      ]
+    },
+    {
+      "name": "getType",
+      "inputs": [
+      ],
+      "outputs": [
+        {"name":"_type","type":"uint8"}
+      ]
+    },
+    {
+      "name": "updateInitData",
+      "inputs": [
+        {"components":[{"name":"eventABI","type":"bytes"},{"name":"eventRequiredConfirmations","type":"uint16"},{"name":"eventRequiredRejects","type":"uint16"},{"name":"eventCode","type":"cell"},{"name":"bridgeAddress","type":"address"},{"name":"eventInitialBalance","type":"uint128"}],"name":"_basicInitData","type":"tuple"},
+        {"components":[{"name":"eventAddress","type":"uint160"},{"name":"eventBlocksToConfirm","type":"uint16"},{"name":"proxyAddress","type":"address"}],"name":"_initData","type":"tuple"}
+      ],
+      "outputs": [
       ]
     }
   ],
   "data": [
-    {"components":[{"name":"eventTransaction","type":"uint256"},{"name":"eventIndex","type":"uint256"},{"name":"eventData","type":"cell"},{"name":"eventBlockNumber","type":"uint256"},{"name":"eventBlock","type":"uint256"},{"name":"ethereumEventConfiguration","type":"address"},{"name":"requiredConfirmations","type":"uint256"},{"name":"requiredRejects","type":"uint256"},{"name":"proxyAddress","type":"address"}],"key":1,"name":"initData","type":"tuple"}
+    {"components":[{"name":"eventABI","type":"bytes"},{"name":"eventRequiredConfirmations","type":"uint16"},{"name":"eventRequiredRejects","type":"uint16"},{"name":"eventCode","type":"cell"},{"name":"bridgeAddress","type":"address"},{"name":"eventInitialBalance","type":"uint128"}],"key":1,"name":"basicInitData","type":"tuple"},
+    {"components":[{"name":"eventAddress","type":"uint160"},{"name":"eventBlocksToConfirm","type":"uint16"},{"name":"proxyAddress","type":"address"}],"key":2,"name":"initData","type":"tuple"}
   ],
   "events": [
+    {
+      "name": "EventConfirmation",
+      "inputs": [
+        {"name":"addr","type":"address"},
+        {"name":"relayKey","type":"uint256"}
+      ],
+      "outputs": [
+      ]
+    },
+    {
+      "name": "EventReject",
+      "inputs": [
+        {"name":"addr","type":"address"},
+        {"name":"relayKey","type":"uint256"}
+      ],
+      "outputs": [
+      ]
+    }
   ]
 }
