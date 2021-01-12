@@ -22,6 +22,7 @@ relay-ton = { path = "./relay-ton" }
 relay-models = { path = "./relay-models" }
 
 # General dependencies
+async-trait = "0.1"
 anyhow = "1.0.33"
 backtrace = "0.3.55"
 base64 = "*"

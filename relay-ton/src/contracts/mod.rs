@@ -4,12 +4,16 @@ pub use errors::*;
 pub use eth_event::*;
 pub use eth_event_configuration::*;
 pub use models::*;
+pub use ton_event::*;
+pub use ton_event_configuration::*;
+pub use ton_swapback_events::*;
 
 pub mod bridge;
 pub mod eth_event;
 pub mod eth_event_configuration;
 pub mod ton_event;
 pub mod ton_event_configuration;
+pub mod ton_swapback_events;
 
 mod contract;
 pub mod errors;
@@ -115,7 +119,7 @@ mod tests {
 
         async fn listener(
             transport: Arc<dyn Transport>,
-            tx: mpsc::UnboundedSender<EthereumEventConfigurationContractEvent>,
+            tx: mpsc::UnboundedSender<EthEventConfigurationContractEvent>,
             config: MsgAddrStd,
         ) {
             log::debug!("start listening config: {:?}", config);
@@ -151,7 +155,7 @@ mod tests {
         let ethereum_event_contract = make_ethereum_event_contract(&transport).await;
         tokio::spawn(async move {
             while let Some(event) = ton_events.next().await {
-                if let EthereumEventConfigurationContractEvent::NewEthereumEventConfirmation {
+                if let EthEventConfigurationContractEvent::NewEthereumEventConfirmation {
                     address,
                     ..
                 } = event

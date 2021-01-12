@@ -63,30 +63,34 @@ impl TryFrom<Voting> for (BigUint, contracts::models::Voting) {
     }
 }
 
-impl From<(BigUint, contracts::models::EthereumEventConfiguration)> for EventConfiguration {
-    fn from(
-        (configuration_id, c): (BigUint, contracts::models::EthereumEventConfiguration),
-    ) -> Self {
+impl From<(BigUint, contracts::models::EthEventConfiguration)> for EventConfiguration {
+    fn from((configuration_id, c): (BigUint, contracts::models::EthEventConfiguration)) -> Self {
         Self {
             configuration_id: configuration_id.to_string(),
-            ethereum_event_abi: c.ethereum_event_abi,
-            ethereum_event_address: hex::encode(c.ethereum_event_address.as_bytes()),
-            event_proxy_address: c.event_proxy_address.to_string(),
+            ethereum_event_abi: c.common.event_abi,
+            ethereum_event_address: hex::encode(c.event_address.as_bytes()),
+            event_proxy_address: c.proxy_address.to_string(),
             ethereum_event_blocks_to_confirm: c
-                .ethereum_event_blocks_to_confirm
+                .event_blocks_to_confirm
                 .to_u64()
                 .unwrap_or(u64::max_value()),
             event_required_confirmations: c
+                .common
                 .event_required_confirmations
                 .to_u64()
                 .unwrap_or(u64::max_value()),
             event_required_rejects: c
+                .common
                 .event_required_rejects
                 .to_u64()
                 .unwrap_or(u64::max_value()),
-            event_initial_balance: c.event_initial_balance.to_u64().unwrap_or(u64::max_value()),
-            bridge_address: c.bridge_address.to_string(),
-            event_code: relay_ton::prelude::serialize_toc(&c.event_code)
+            event_initial_balance: c
+                .common
+                .event_initial_balance
+                .to_u64()
+                .unwrap_or(u64::max_value()),
+            bridge_address: c.common.bridge_address.to_string(),
+            event_code: relay_ton::prelude::serialize_toc(&c.common.event_code)
                 .map(hex::encode)
                 .unwrap_or_default(),
         }

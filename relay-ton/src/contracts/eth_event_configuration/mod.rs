@@ -71,7 +71,7 @@ impl EthEventConfigurationContract {
         &self,
         since_lt: Option<u64>,
         until_lt: u64,
-    ) -> BoxStream<'_, EthereumEventConfigurationContractEvent> {
+    ) -> BoxStream<'_, EthEventConfigurationContractEvent> {
         self.subscription
             .rescan_events(since_lt, Some(until_lt + 1))
             .filter_map(move |event_body| async move {
@@ -123,7 +123,7 @@ impl EthEventConfigurationContract {
         Err(ContractError::UnknownEvent)
     }
 
-    pub async fn get_details(&self) -> ContractResult<EthereumEventConfiguration> {
+    pub async fn get_details(&self) -> ContractResult<EthEventConfiguration> {
         self.message("getDetails")?.run_local().await?.parse_all()
     }
 }
@@ -136,8 +136,8 @@ impl Contract for EthEventConfigurationContract {
 }
 
 impl ContractWithEvents for EthEventConfigurationContract {
-    type Event = EthereumEventConfigurationContractEvent;
-    type EventKind = EthereumEventConfigurationContractEventKind;
+    type Event = EthEventConfigurationContractEvent;
+    type EventKind = EthEventConfigurationContractEventKind;
 }
 
 fn abi() -> Arc<AbiContract> {

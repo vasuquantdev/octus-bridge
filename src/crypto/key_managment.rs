@@ -8,7 +8,7 @@ use std::path::Path;
 use ed25519_dalek::{ed25519, Keypair, Signer};
 use rand::prelude::*;
 use ring::{digest, pbkdf2};
-use secp256k1::{Message, PublicKey, SecretKey, Signature};
+use secp256k1::{Message, PublicKey, SecretKey};
 use secstr::{SecStr, SecVec};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{from_reader, to_writer_pretty};
@@ -145,15 +145,16 @@ where
 }
 
 impl EthSigner {
-    pub fn sign(&self, data: &[u8]) -> Result<Signature, Error> {
+    pub fn sign(&self, data: &[u8]) -> [u8; 64] {
         use sha3::{Digest, Keccak256};
         let mut eth_data: Vec<u8> = b"\x19Ethereum Signed Message:\n".to_vec();
         eth_data.extend_from_slice(data.len().to_string().as_bytes());
         eth_data.extend_from_slice(&data);
         let hash = Keccak256::digest(&eth_data);
-        let message = Message::from_slice(&*hash)?;
+        let message = Message::from_slice(&*hash).expect("Shouldn't fail");
         let secp = secp256k1::Secp256k1::new();
-        Ok(secp.sign(&message, &self.private_key))
+        // TODO: check correctness
+        secp.sign(&message, &self.private_key).serialize_compact()
     }
 
     pub fn pubkey(&self) -> PublicKey {

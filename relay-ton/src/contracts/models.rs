@@ -102,8 +102,8 @@ impl TryFrom<(BridgeContractEventKind, Vec<Token>)> for BridgeContractEvent {
 }
 
 crate::define_event!(
-    EthereumEventConfigurationContractEvent,
-    EthereumEventConfigurationContractEventKind,
+    TonEventConfigurationContractEvent,
+    TonEventConfigurationContractEventKind,
     {
         EventConfirmation {
             address: MsgAddrStd,
@@ -116,25 +116,67 @@ crate::define_event!(
     }
 );
 
-impl TryFrom<(EthereumEventConfigurationContractEventKind, Vec<Token>)>
-    for EthereumEventConfigurationContractEvent
+impl TryFrom<(TonEventConfigurationContractEventKind, Vec<Token>)>
+    for TonEventConfigurationContractEvent
 {
     type Error = ContractError;
 
     fn try_from(
-        (kind, tokens): (EthereumEventConfigurationContractEventKind, Vec<Token>),
+        (kind, tokens): (TonEventConfigurationContractEventKind, Vec<Token>),
     ) -> Result<Self, Self::Error> {
         let mut tokens = tokens.into_iter();
 
         Ok(match kind {
-            EthereumEventConfigurationContractEventKind::EventConfirmation => {
-                EthereumEventConfigurationContractEvent::EventConfirmation {
+            TonEventConfigurationContractEventKind::EventConfirmation => {
+                TonEventConfigurationContractEvent::EventConfirmation {
                     address: tokens.next().try_parse()?,
                     relay_key: tokens.next().try_parse()?,
                 }
             }
-            EthereumEventConfigurationContractEventKind::EventReject => {
-                EthereumEventConfigurationContractEvent::EventReject {
+            TonEventConfigurationContractEventKind::EventReject => {
+                TonEventConfigurationContractEvent::EventReject {
+                    address: tokens.next().try_parse()?,
+                    relay_key: tokens.next().try_parse()?,
+                }
+            }
+        })
+    }
+}
+
+crate::define_event!(
+    EthEventConfigurationContractEvent,
+    EthEventConfigurationContractEventKind,
+    {
+        EventConfirmation {
+            address: MsgAddrStd,
+            relay_key: UInt256,
+        },
+        EventReject {
+            address: MsgAddrStd,
+            relay_key: UInt256,
+        }
+    }
+);
+
+impl TryFrom<(EthEventConfigurationContractEventKind, Vec<Token>)>
+    for EthEventConfigurationContractEvent
+{
+    type Error = ContractError;
+
+    fn try_from(
+        (kind, tokens): (EthEventConfigurationContractEventKind, Vec<Token>),
+    ) -> Result<Self, Self::Error> {
+        let mut tokens = tokens.into_iter();
+
+        Ok(match kind {
+            EthEventConfigurationContractEventKind::EventConfirmation => {
+                EthEventConfigurationContractEvent::EventConfirmation {
+                    address: tokens.next().try_parse()?,
+                    relay_key: tokens.next().try_parse()?,
+                }
+            }
+            EthEventConfigurationContractEventKind::EventReject => {
+                EthEventConfigurationContractEvent::EventReject {
                     address: tokens.next().try_parse()?,
                     relay_key: tokens.next().try_parse()?,
                 }
@@ -390,40 +432,92 @@ impl ParseToken<VoteData> for TokenValue {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct EthereumEventConfiguration {
-    pub ethereum_event_abi: String,
-    pub ethereum_event_address: ethereum_types::Address,
-    #[serde(with = "serde_std_addr")]
-    pub event_proxy_address: MsgAddrStd,
-    pub ethereum_event_blocks_to_confirm: BigUint,
-    pub event_required_confirmations: BigUint,
-    pub event_required_rejects: BigUint,
-    pub event_initial_balance: BigUint,
-    #[serde(with = "serde_int_addr")]
-    pub bridge_address: MsgAddressInt,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommonEventConfigurationParams {
+    pub event_abi: String,
+
+    pub event_required_confirmations: u16,
+    pub event_required_rejects: u16,
+
     #[serde(with = "serde_cells")]
     pub event_code: Cell,
+
+    #[serde(with = "serde_int_addr")]
+    pub bridge_address: MsgAddressInt,
+
+    pub event_initial_balance: BigUint,
 }
 
-impl StandaloneToken for EthereumEventConfiguration {}
+impl ParseToken<CommonEventConfigurationParams> for TokenValue {
+    fn try_parse(self) -> ContractResult<CommonEventConfigurationParams> {
+        let mut tuple = match self {
+            TokenValue::Tuple(tuple) => tuple.into_iter(),
+            _ => return Err(ContractError::InvalidAbi),
+        };
 
-impl TryFrom<ContractOutput> for EthereumEventConfiguration {
+        Ok(CommonEventConfigurationParams {
+            event_abi: tuple.next().try_parse()?,
+            event_required_confirmations: tuple.next().try_parse()?,
+            event_required_rejects: tuple.next().try_parse()?,
+            event_code: tuple.next().try_parse()?,
+            bridge_address: tuple.next().try_parse()?,
+            event_initial_balance: tuple.next().try_parse()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct EthEventConfiguration {
+    pub common: CommonEventConfigurationParams,
+    pub event_address: ethereum_types::Address,
+    pub event_blocks_to_confirm: u16,
+    pub proxy_address: MsgAddressInt,
+}
+
+impl TryFrom<ContractOutput> for EthEventConfiguration {
     type Error = ContractError;
 
-    fn try_from(output: ContractOutput) -> ContractResult<EthereumEventConfiguration> {
+    fn try_from(output: ContractOutput) -> ContractResult<EthEventConfiguration> {
         let mut tuple = output.into_parser();
 
-        Ok(EthereumEventConfiguration {
-            ethereum_event_abi: tuple.parse_next()?,
-            ethereum_event_address: tuple.parse_next()?,
-            event_proxy_address: tuple.parse_next()?,
-            ethereum_event_blocks_to_confirm: tuple.parse_next()?,
-            event_required_confirmations: tuple.parse_next()?,
-            event_required_rejects: tuple.parse_next()?,
-            event_initial_balance: tuple.parse_next()?,
-            bridge_address: tuple.parse_next()?,
-            event_code: tuple.parse_next()?,
+        let common = tuple.parse_next()?;
+        let mut tuple = match tuple.parse_next()? {
+            TokenValue::Tuple(tuple) => tuple.into_iter(),
+            _ => return Err(ContractError::InvalidAbi),
+        };
+
+        Ok(EthEventConfiguration {
+            common,
+            event_address: tuple.next().try_parse()?,
+            event_blocks_to_confirm: tuple.next().try_parse()?,
+            proxy_address: tuple.next().try_parse()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TonEventConfiguration {
+    pub common: CommonEventConfigurationParams,
+    pub event_address: MsgAddressInt,
+    pub proxy_address: ethereum_types::H160,
+}
+
+impl TryFrom<ContractOutput> for TonEventConfiguration {
+    type Error = ContractError;
+
+    fn try_from(output: ContractOutput) -> Result<Self, Self::Error> {
+        let mut tuple = output.into_parser();
+
+        let common = tuple.parse_next()?;
+        let mut tuple = match tuple.parse_next()? {
+            TokenValue::Tuple(tuple) => tuple.into_iter(),
+            _ => return Err(ContractError::InvalidAbi),
+        };
+
+        Ok(TonEventConfiguration {
+            common,
+            event_address: tuple.next().try_parse()?,
+            proxy_address: tuple.next().try_parse()?,
         })
     }
 }

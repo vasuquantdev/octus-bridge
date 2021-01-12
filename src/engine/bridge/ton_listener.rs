@@ -1,6 +1,9 @@
 use std::collections::hash_map::Entry;
 
+use async_trait::async_trait;
 use ethabi::ParamType as EthParamType;
+use num_bigint::BigUint;
+use tokio::stream::StreamExt;
 use tokio::sync::{mpsc, Mutex, RwLock, RwLockReadGuard};
 use tokio::sync::{oneshot, Notify};
 use ton_abi::ParamType as TonParamType;
@@ -11,18 +14,20 @@ use relay_ton::prelude::UInt256;
 use relay_ton::transport::{Transport, TransportError};
 
 use crate::config::TonSettings;
+use crate::crypto::key_managment::EthSigner;
 use crate::db_management::*;
-use crate::engine::bridge::util::{parse_eth_abi, validate_ethereum_event_configuration};
+use crate::engine::bridge::util;
 use crate::prelude::*;
 
 use super::models::*;
-use num_bigint::BigUint;
 
 /// Listens to config streams and maps them.
-pub struct EventConfigurationsListener {
+pub struct TonListener {
     transport: Arc<dyn Transport>,
     bridge_contract: Arc<BridgeContract>,
     event_contract: Arc<EthEventContract>,
+
+    eth_signer: EthSigner,
 
     eth_queue: EthQueue,
     ton_queue: TonQueue,
@@ -33,17 +38,21 @@ pub struct EventConfigurationsListener {
     rejections: Mutex<HashMap<MsgAddrStd, oneshot::Sender<()>>>,
 
     configs_state: Arc<RwLock<ConfigsState>>,
-    config_contracts: Arc<RwLock<ContractsMap>>,
+    eth_config_contracts: Arc<RwLock<EthConfigContractsMap>>,
+    ton_config_contracts: Arc<RwLock<TonConfigContractsMap>>,
     known_config_addresses: Arc<Mutex<HashSet<MsgAddressInt>>>,
     timeouts: TonSettings,
 }
 
-type ContractsMap = HashMap<BigUint, Arc<EthEventConfigurationContract>>;
+type ConfigContractsMap<T> = HashMap<BigUint, Arc<T>>;
+type EthConfigContractsMap = ConfigContractsMap<EthEventConfigurationContract>;
+type TonConfigContractsMap = ConfigContractsMap<TonEventConfigurationContract>;
 
-impl EventConfigurationsListener {
+impl TonListener {
     pub async fn new(
         transport: Arc<dyn Transport>,
         bridge_contract: Arc<BridgeContract>,
+        eth_signer: EthSigner,
         eth_queue: EthQueue,
         ton_queue: TonQueue,
         stats_db: StatsDb,
@@ -58,6 +67,8 @@ impl EventConfigurationsListener {
             bridge_contract,
             event_contract,
 
+            eth_signer,
+
             eth_queue,
             ton_queue,
             stats_db,
@@ -66,9 +77,10 @@ impl EventConfigurationsListener {
             confirmations: Default::default(),
             rejections: Default::default(),
 
-            configs_state: Arc::new(RwLock::new(ConfigsState::new())),
-            config_contracts: Arc::new(RwLock::new(HashMap::new())),
-            known_config_addresses: Arc::new(Mutex::new(HashSet::new())),
+            configs_state: Arc::new(Default::default()),
+            eth_config_contracts: Arc::new(Default::default()),
+            ton_config_contracts: Arc::new(Default::default()),
+            known_config_addresses: Arc::new(Default::default()),
             timeouts,
         })
     }
@@ -185,7 +197,7 @@ impl EventConfigurationsListener {
         &self,
         configuration_id: &BigUint,
     ) -> Option<Arc<EthEventConfigurationContract>> {
-        self.config_contracts
+        self.eth_config_contracts
             .read()
             .await
             .get(configuration_id)
@@ -376,7 +388,96 @@ impl EventConfigurationsListener {
         };
     }
 
-    /// Creates listener for new event configuration contract
+    /// Inserts address into known addresses and returns `true` if it wasn't known before
+    async fn ensure_configuration_identity(&self, address: &MsgAddressInt) -> bool {
+        self.known_config_addresses
+            .lock()
+            .await
+            .insert(address.clone())
+    }
+
+    /// Created listener for TON events
+    async fn subscribe_to_ton_events_configuration(
+        self: Arc<Self>,
+        configuration_id: BigUint,
+        address: MsgAddressInt,
+        semaphore: Option<Semaphore>,
+    ) {
+        if !self.ensure_configuration_identity(&address).await {
+            try_notify(semaphore).await;
+            return;
+        }
+
+        // Create TON config contract
+        let (config_contract, mut _config_contract_events) = make_ton_event_configuration_contract(
+            self.transport.clone(),
+            address.clone(),
+            self.bridge_contract.address().clone(),
+        )
+        .await
+        .unwrap(); // todo retry subscription
+
+        // Get it's data
+        let details = match self
+            .get_event_configuration_details(config_contract.as_ref(), semaphore.clone())
+            .await
+        {
+            Ok(details) => details,
+            Err(e) => {
+                log::error!("{:?}", e);
+                return;
+            }
+        };
+
+        // Register contract
+        self.ton_config_contracts
+            .write()
+            .await
+            .insert(configuration_id, config_contract.clone());
+
+        // Start listening swapback events
+        let mut swapback_events_contract = match make_ton_swapback_contract(
+            self.transport.clone(),
+            details.event_address.clone(),
+            details.common.event_abi.clone(),
+        )
+        .await
+        {
+            Ok(contract) => {
+                try_notify(semaphore).await;
+                contract
+            }
+            Err(e) => {
+                try_notify(semaphore).await;
+                log::error!("{:?}", e);
+                return;
+            }
+        };
+
+        // Start listening swapback events
+        tokio::spawn({
+            let listener = self.clone();
+            async move {
+                while let Some(tokens) = swapback_events_contract.next().await {
+                    log::debug!("Got swap back event: {:?}", tokens);
+
+                    let event_data = util::ton_tokens_to_ethereum_bytes(tokens);
+                    let signature = listener.eth_signer.sign(&event_data);
+
+                    log::debug!(
+                        "Calculated swap back event signature: {}",
+                        hex::encode(&signature)
+                    );
+
+                    // TODO: spawn confirmation
+                }
+            }
+        });
+
+        todo!()
+    }
+
+    /// Creates listener for ETH event votes in TON
     async fn subscribe_to_eth_events_configuration(
         self: Arc<Self>,
         subscriptions_tx: mpsc::UnboundedSender<(Address, H256)>,
@@ -384,18 +485,12 @@ impl EventConfigurationsListener {
         address: MsgAddressInt,
         semaphore: Option<Semaphore>,
     ) {
-        // Ensure identity
-        let new_configuration = self
-            .known_config_addresses
-            .lock()
-            .await
-            .insert(address.clone());
-        if !new_configuration {
+        if !self.ensure_configuration_identity(&address).await {
             try_notify(semaphore).await;
             return;
         }
 
-        // Create config contract
+        // Create ETH config contract
         let (config_contract, mut config_contract_events) = make_eth_event_configuration_contract(
             self.transport.clone(),
             address.clone(),
@@ -417,7 +512,7 @@ impl EventConfigurationsListener {
         };
 
         // Register contract object
-        self.config_contracts
+        self.eth_config_contracts
             .write()
             .await
             .insert(configuration_id.clone(), config_contract.clone());
@@ -425,10 +520,10 @@ impl EventConfigurationsListener {
 
         // Prefetch required properties
         let ethereum_event_blocks_to_confirm = details
-            .ethereum_event_blocks_to_confirm
+            .event_blocks_to_confirm
             .to_u64()
             .unwrap_or_else(u64::max_value);
-        let ethereum_event_address = details.ethereum_event_address;
+        let ethereum_event_address = details.event_address;
 
         // Store configuration contract details
         self.configs_state
@@ -445,11 +540,11 @@ impl EventConfigurationsListener {
                 log::debug!("got event confirmation event: {:?}", event);
 
                 let (address, relay_key, vote) = match event {
-                    EthereumEventConfigurationContractEvent::EventConfirmation {
+                    EthEventConfigurationContractEvent::EventConfirmation {
                         address,
                         relay_key,
                     } => (address, relay_key, EventVote::Confirm),
-                    EthereumEventConfigurationContractEvent::EventReject { address, relay_key } => {
+                    EthEventConfigurationContractEvent::EventReject { address, relay_key } => {
                         (address, relay_key, EventVote::Reject)
                     }
                 };
@@ -583,11 +678,14 @@ impl EventConfigurationsListener {
         }
     }
 
-    async fn get_event_configuration_details(
+    async fn get_event_configuration_details<T>(
         &self,
-        config_contract: &EthEventConfigurationContract,
+        config_contract: &T,
         semaphore: Option<Semaphore>,
-    ) -> Result<EthereumEventConfiguration, Error> {
+    ) -> Result<T::Details, Error>
+    where
+        T: ConfigurationContract,
+    {
         // retry connection to configuration contract
         let mut retry_count = self.timeouts.event_configuration_details_retry_count;
         // 1 sec ~= time before next block in masterchain.
@@ -606,11 +704,11 @@ impl EventConfigurationsListener {
 
         loop {
             match config_contract.get_details().await {
-                Ok(details) => match validate_ethereum_event_configuration(&details) {
+                Ok(details) => match config_contract.validate(&details) {
                     Ok(_) => break Ok(details),
                     Err(e) => {
                         notify_if_init().await;
-                        break Err(anyhow!("got bad ethereum config: {:?}", e));
+                        break Err(e);
                     }
                 },
                 Err(ContractError::TransportError(TransportError::AccountNotFound))
@@ -618,16 +716,16 @@ impl EventConfigurationsListener {
                 {
                     retry_count -= 1;
                     log::warn!(
-                            "failed to get events configuration contract details for {}. Retrying ({} left)",
-                            config_contract.address(),
-                            retry_count
+                        "failed to get configuration contract details for {}. Retrying ({} left)",
+                        config_contract.address(),
+                        retry_count
                     );
                     tokio::time::delay_for(retry_interval).await;
                 }
                 Err(e) => {
                     notify_if_init().await;
                     break Err(anyhow!(
-                        "failed to get events configuration contract details: {:?}",
+                        "failed to get configuration contract details: {:?}",
                         e
                     ));
                 }
@@ -662,51 +760,42 @@ impl EventConfigurationsListener {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ConfigsState {
     pub eth_addr: HashSet<Address>,
     pub address_topic_map: HashMap<Address, (H256, Vec<EthParamType>, Vec<TonParamType>)>,
     pub topic_abi_map: HashMap<H256, Vec<EthParamType>>,
-    pub eth_configs_map: HashMap<Address, (BigUint, EthereumEventConfiguration)>,
+    pub eth_configs_map: HashMap<Address, (BigUint, EthEventConfiguration)>,
 }
 
 impl ConfigsState {
-    fn new() -> Self {
-        Self {
-            eth_addr: HashSet::new(),
-            address_topic_map: HashMap::new(),
-            topic_abi_map: HashMap::new(),
-            eth_configs_map: HashMap::new(),
-        }
-    }
-
     fn set_configuration(
         &mut self,
         configuration_id: BigUint,
-        configuration: EthereumEventConfiguration,
+        configuration: EthEventConfiguration,
     ) {
-        if let Err(e) = validate_ethereum_event_configuration(&configuration) {
+        if let Err(e) = util::validate_ethereum_event_configuration(&configuration) {
             log::error!("Got bad EthereumEventConfiguration: {:?}", e);
             return;
         }
 
-        let (topic_hash, eth_abi, ton_abi) = match parse_eth_abi(&configuration.ethereum_event_abi)
-        {
-            Ok(a) => a,
-            Err(e) => {
-                log::error!("Failed parsing abi: {:?}", e);
-                return;
-            }
-        };
+        let (topic_hash, eth_abi, ton_abi) =
+            match util::parse_eth_abi(&configuration.common.event_abi) {
+                Ok(a) => a,
+                Err(e) => {
+                    log::error!("Failed parsing abi: {:?}", e);
+                    return;
+                }
+            };
 
-        self.eth_addr.insert(configuration.ethereum_event_address);
+        self.eth_addr.insert(configuration.event_address);
         self.address_topic_map.insert(
-            configuration.ethereum_event_address,
+            configuration.event_address,
             (topic_hash, eth_abi.clone(), ton_abi),
         );
         self.topic_abi_map.insert(topic_hash, eth_abi);
         self.eth_configs_map.insert(
-            configuration.ethereum_event_address,
+            configuration.event_address,
             (configuration_id, configuration),
         );
     }
@@ -733,6 +822,50 @@ impl EthTonTransaction {
                     .await
             }
         }
+    }
+}
+
+#[async_trait]
+trait ConfigurationContract {
+    type Details;
+
+    fn address(&self) -> &MsgAddressInt;
+    fn validate(&self, details: &Self::Details) -> Result<(), Error>;
+    async fn get_details(&self) -> ContractResult<Self::Details>;
+}
+
+#[async_trait]
+impl ConfigurationContract for EthEventConfigurationContract {
+    type Details = EthEventConfiguration;
+
+    fn address(&self) -> &MsgAddressInt {
+        self.address()
+    }
+
+    fn validate(&self, details: &Self::Details) -> Result<(), Error> {
+        util::validate_ethereum_event_configuration(details)
+    }
+
+    async fn get_details(&self) -> ContractResult<Self::Details> {
+        self.get_details().await
+    }
+}
+
+#[async_trait]
+impl ConfigurationContract for TonEventConfigurationContract {
+    type Details = TonEventConfiguration;
+
+    fn address(&self) -> &MsgAddressInt {
+        self.address()
+    }
+
+    fn validate(&self, _: &Self::Details) -> Result<(), Error> {
+        // TODO: validate TON configuration contract
+        Ok(())
+    }
+
+    async fn get_details(&self) -> ContractResult<Self::Details> {
+        self.get_details().await
     }
 }
 

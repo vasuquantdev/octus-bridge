@@ -4,7 +4,7 @@ use sha3::digest::Digest;
 use sha3::Keccak256;
 use ton_abi::{ParamType as TonParamType, TokenValue as TonTokenValue, TokenValue};
 
-use relay_ton::contracts::EthereumEventConfiguration;
+use relay_ton::contracts::EthEventConfiguration;
 use relay_ton::prelude::Cell;
 
 use crate::prelude::*;
@@ -68,13 +68,9 @@ pub fn parse_eth_abi(abi: &str) -> Result<(H256, Vec<EthParamType>, Vec<TonParam
     ))
 }
 
-pub fn validate_ethereum_event_configuration(
-    config: &EthereumEventConfiguration,
-) -> Result<(), Error> {
-    let EthereumEventConfiguration {
-        ethereum_event_abi, ..
-    } = config;
-    serde_json::from_str::<serde_json::Value>(&ethereum_event_abi)
+pub fn validate_ethereum_event_configuration(config: &EthEventConfiguration) -> Result<(), Error> {
+    let EthEventConfiguration { common, .. } = config;
+    serde_json::from_str::<serde_json::Value>(&common.event_abi)
         .map_err(|e| Error::new(e).context("Bad abi"))?;
     Ok(())
 }
@@ -292,13 +288,13 @@ fn map_ton_token_value_to_eth_token_value(token: TonTokenValue) -> Result<EthTok
         TokenValue::FixedArray(tokens) => EthTokenValue::FixedArray(
             tokens
                 .into_iter()
-                .map(|ton| map_ton_token_value_to_eth_token_value(ton.clone()))
+                .map(map_ton_token_value_to_eth_token_value)
                 .collect::<Result<_, _>>()?,
         ),
         TokenValue::Array(tokens) => EthTokenValue::Array(
             tokens
                 .into_iter()
-                .map(|ton| map_ton_token_value_to_eth_token_value(ton))
+                .map(map_ton_token_value_to_eth_token_value)
                 .collect::<Result<_, _>>()?,
         ),
         TokenValue::Tuple(tokens) => EthTokenValue::Tuple(
@@ -313,10 +309,11 @@ fn map_ton_token_value_to_eth_token_value(token: TonTokenValue) -> Result<EthTok
 }
 
 ///maps `Vec<TonTokenValue>` to bytes, which could be signed
-pub fn ton_tokens_to_ethereum_bytes(tokens: Vec<TonTokenValue>) -> Vec<u8> {
+pub fn ton_tokens_to_ethereum_bytes(tokens: Vec<ton_abi::Token>) -> Vec<u8> {
     let tokens: Vec<_> = tokens
         .into_iter()
-        .map(|tok| map_ton_token_value_to_eth_token_value(tok))
+        .map(|token| token.value)
+        .map(map_ton_token_value_to_eth_token_value)
         .filter_map(|x| match x {
             Ok(a) => Some(a),
             Err(e) => {
