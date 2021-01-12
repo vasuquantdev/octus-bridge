@@ -532,7 +532,7 @@ pub enum EventStatus {
 impl ParseToken<EventStatus> for TokenValue {
     fn try_parse(self) -> ContractResult<EventStatus> {
         match self {
-            TokenValue::Int(value) => match value.number.to_u8() {
+            TokenValue::Uint(value) => match value.number.to_u8() {
                 Some(0) => Ok(EventStatus::InProcess),
                 Some(1) => Ok(EventStatus::Confirmed),
                 Some(2) => Ok(EventStatus::Rejected),
@@ -656,21 +656,21 @@ pub struct EthEventInitData {
 
 impl ParseToken<EthEventInitData> for TokenValue {
     fn try_parse(self) -> ContractResult<EthEventInitData> {
-        let mut token = match self {
+        let mut tuples = match self {
             TokenValue::Tuple(tuple) => tuple.into_iter(),
             _ => return Err(ContractError::InvalidAbi),
         };
 
         Ok(EthEventInitData {
-            event_transaction: token.next().try_parse()?,
-            event_index: token.next().try_parse()?,
-            event_data: token.next().try_parse()?,
-            event_block_number: token.next().try_parse()?,
-            event_block: token.next().try_parse()?,
-            eth_event_configuration: token.next().try_parse()?,
-            required_confirmations: token.next().try_parse()?,
-            required_rejections: token.next().try_parse()?,
-            proxy_address: token.next().try_parse()?,
+            event_transaction: tuples.next().try_parse()?,
+            event_index: tuples.next().try_parse()?,
+            event_data: tuples.next().try_parse()?,
+            event_block_number: tuples.next().try_parse()?,
+            event_block: tuples.next().try_parse()?,
+            eth_event_configuration: tuples.next().try_parse()?,
+            required_confirmations: tuples.next().try_parse()?,
+            required_rejections: tuples.next().try_parse()?,
+            proxy_address: tuples.next().try_parse()?,
         })
     }
 }
