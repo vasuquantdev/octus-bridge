@@ -1,6 +1,6 @@
 use relay_eth::ws::H256;
-use relay_models::models::{EthTonConfirmationDataView, EthTonTransactionView};
-use relay_ton::contracts::EthEventInitData;
+use relay_models::models::{EthEventVotingDataView, EthTonTransactionView};
+use relay_ton::contracts::{EthEventInitData, TonEventInitData, Voting};
 use relay_ton::prelude::{serde_cells, serialize_toc, Cell};
 
 use super::prelude::*;
@@ -55,7 +55,38 @@ pub mod h256_to_hex {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct EthTonConfirmationData {
+pub struct TonEventVotingData {
+    pub event_transaction: H256,
+    #[serde(with = "serde_cells")]
+    pub event_data: Cell,
+    pub event_block_number: u64,
+    pub event_block: H256,
+
+    pub configuration_id: BigUint,
+}
+
+impl From<TonEventVotingData> for (BigUint, TonEventInitData) {
+    fn from(data: EthEventVotingData) -> Self {
+        (
+            data.configuration_id,
+            TonEventInitData {
+                event_transaction: data.event_transaction,
+                event_index: Default::default(),
+                event_data: data.event_data,
+                event_block_number: data.event_block_number.into(),
+                event_block: data.event_block,
+
+                // TODO: replace voting data model
+                ton_event_configuration: Default::default(),
+                required_confirmations: Default::default(),
+                required_rejections: Default::default(),
+            },
+        )
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct EthEventVotingData {
     pub event_transaction: H256,
     pub event_index: u64,
     #[serde(with = "serde_cells")]
@@ -66,8 +97,8 @@ pub struct EthTonConfirmationData {
     pub configuration_id: BigUint,
 }
 
-impl From<EthTonConfirmationData> for (BigUint, EthEventInitData) {
-    fn from(data: EthTonConfirmationData) -> Self {
+impl From<EthEventVotingData> for (BigUint, EthEventInitData) {
+    fn from(data: EthEventVotingData) -> Self {
         (
             data.configuration_id,
             EthEventInitData {
@@ -77,7 +108,7 @@ impl From<EthTonConfirmationData> for (BigUint, EthEventInitData) {
                 event_block_number: data.event_block_number.into(),
                 event_block: data.event_block,
 
-                // TODO: replace confirmation model
+                // TODO: replace voting data model
                 eth_event_configuration: Default::default(),
                 required_confirmations: Default::default(),
                 required_rejections: Default::default(),
@@ -87,23 +118,8 @@ impl From<EthTonConfirmationData> for (BigUint, EthEventInitData) {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
-pub enum EthTonTransaction {
-    Confirm(EthTonConfirmationData),
-    Reject(EthTonConfirmationData),
-}
-
-impl EthTonTransaction {
-    pub fn inner(&self) -> &EthTonConfirmationData {
-        match self {
-            EthTonTransaction::Confirm(data) => data,
-            EthTonTransaction::Reject(data) => data,
-        }
-    }
-}
-
-impl From<EthTonConfirmationData> for EthTonConfirmationDataView {
-    fn from(data: EthTonConfirmationData) -> Self {
+impl From<EthEventVotingData> for EthEventVotingDataView {
+    fn from(data: EthEventVotingData) -> Self {
         let event_block = match serialize_toc(&data.event_data) {
             Ok(a) => hex::encode(a),
             Err(e) => {
@@ -111,7 +127,7 @@ impl From<EthTonConfirmationData> for EthTonConfirmationDataView {
                 "BAD DATA IN BLOCK".to_string()
             }
         };
-        EthTonConfirmationDataView {
+        EthEventVotingDataView {
             event_transaction: hex::encode(&data.event_transaction.0),
             event_index: data.event_index,
             event_data: event_block,
@@ -122,11 +138,26 @@ impl From<EthTonConfirmationData> for EthTonConfirmationDataView {
     }
 }
 
-impl From<EthTonTransaction> for EthTonTransactionView {
-    fn from(data: EthTonTransaction) -> Self {
+#[derive(Serialize, Deserialize, Clone)]
+pub enum EventTransaction<C, R> {
+    Confirm(C),
+    Reject(R),
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SignedEventVotingData {
+    pub data: TonEventVotingData,
+    pub signature: Vec<u8>,
+}
+
+pub type EthEventTransaction = EventTransaction<EthEventVotingData, EthEventVotingData>;
+pub type TonEventTransaction = EventTransaction<SignedEventVotingData, TonEventVotingData>;
+
+impl From<EthEventTransaction> for EthTonTransactionView {
+    fn from(data: EthEventTransaction) -> Self {
         match data {
-            EthTonTransaction::Confirm(a) => EthTonTransactionView::Confirm(a.into()),
-            EthTonTransaction::Reject(a) => EthTonTransactionView::Reject(a.into()),
+            EventTransaction::Confirm(a) => EthTonTransactionView::Confirm(a.into()),
+            EventTransaction::Reject(a) => EthTonTransactionView::Reject(a.into()),
         }
     }
 }

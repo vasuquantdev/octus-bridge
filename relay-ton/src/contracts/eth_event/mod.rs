@@ -6,6 +6,10 @@ use super::errors::*;
 use super::models::*;
 use super::prelude::*;
 
+pub async fn make_eth_event_contract(transport: Arc<dyn Transport>) -> Arc<EthEventContract> {
+    Arc::new(EthEventContract::new(transport).await)
+}
+
 #[derive(Clone)]
 pub struct EthEventContract {
     transport: Arc<dyn Transport>,

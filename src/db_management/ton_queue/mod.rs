@@ -5,7 +5,7 @@ use sled::{Db, Transactional, Tree};
 use relay_ton::prelude::{MsgAddrStd, UInt256};
 
 use crate::db_management::constants::{TX_TABLE_TREE_FAILED_NAME, TX_TABLE_TREE_PENDING_NAME};
-use crate::db_management::EthTonTransaction;
+use crate::db_management::EventTransaction;
 
 /// Stores sent transactions for our relay
 #[derive(Clone)]
@@ -25,7 +25,7 @@ impl TonQueue {
     pub async fn insert_pending(
         &self,
         event_address: &MsgAddrStd,
-        data: &EthTonTransaction,
+        data: &EventTransaction,
     ) -> Result<(), Error> {
         let key = make_key(event_address);
 
@@ -79,7 +79,7 @@ impl TonQueue {
         Ok(self.pending.contains_key(&key)? || self.failed.contains_key(&key)?)
     }
 
-    pub fn get_all_pending(&self) -> impl Iterator<Item = (MsgAddrStd, EthTonTransaction)> {
+    pub fn get_all_pending(&self) -> impl Iterator<Item = (MsgAddrStd, EventTransaction)> {
         self.pending
             .iter()
             .filter_map(|x| match x {
@@ -92,12 +92,12 @@ impl TonQueue {
             .map(|(key, value)| {
                 (
                     parse_key(&key),
-                    bincode::deserialize::<EthTonTransaction>(&value).expect("Shouldn't fail"),
+                    bincode::deserialize::<EventTransaction>(&value).expect("Shouldn't fail"),
                 )
             })
     }
 
-    pub fn get_all_failed(&self) -> impl Iterator<Item = (MsgAddrStd, EthTonTransaction)> {
+    pub fn get_all_failed(&self) -> impl Iterator<Item = (MsgAddrStd, EventTransaction)> {
         self.failed
             .iter()
             .filter_map(|x| match x {
@@ -110,7 +110,7 @@ impl TonQueue {
             .map(|(key, value)| {
                 (
                     parse_key(&key),
-                    bincode::deserialize::<EthTonTransaction>(&value).expect("Shouldn't fail"),
+                    bincode::deserialize::<EventTransaction>(&value).expect("Shouldn't fail"),
                 )
             })
     }

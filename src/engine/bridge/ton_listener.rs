@@ -2,6 +2,7 @@ use std::collections::hash_map::Entry;
 
 use async_trait::async_trait;
 use ethabi::ParamType as EthParamType;
+use futures::future::Either;
 use num_bigint::BigUint;
 use tokio::stream::StreamExt;
 use tokio::sync::{mpsc, Mutex, RwLock, RwLockReadGuard};
@@ -24,8 +25,10 @@ use super::models::*;
 /// Listens to config streams and maps them.
 pub struct TonListener {
     transport: Arc<dyn Transport>,
+
     bridge_contract: Arc<BridgeContract>,
-    event_contract: Arc<EthEventContract>,
+    eth_event_contract: Arc<EthEventContract>,
+    ton_event_contract: Arc<TonEventContract>,
 
     eth_signer: EthSigner,
 
@@ -60,12 +63,15 @@ impl TonListener {
     ) -> Arc<Self> {
         let relay_key = bridge_contract.pubkey();
 
-        let event_contract = Arc::new(EthEventContract::new(transport.clone()).await);
+        let eth_event_contract = make_eth_event_contract(transport.clone()).await;
+        let ton_event_contract = make_ton_event_contract(transport.clone()).await;
 
         Arc::new(Self {
             transport,
+
             bridge_contract,
-            event_contract,
+            eth_event_contract,
+            ton_event_contract,
 
             eth_signer,
 
@@ -165,7 +171,7 @@ impl TonListener {
     }
 
     /// Adds transaction to queue, starts reliable sending
-    pub async fn enqueue_vote(self: &Arc<Self>, data: EthTonTransaction) -> Result<(), Error> {
+    pub async fn enqueue_vote(self: &Arc<Self>, data: EventTransaction) -> Result<(), Error> {
         let event_address = self.get_event_contract_address(&data).await?;
 
         tokio::spawn(self.clone().ensure_sent(event_address, data));
@@ -207,7 +213,7 @@ impl TonListener {
     /// Compute event address based on its data
     async fn get_event_contract_address(
         &self,
-        data: &EthTonTransaction,
+        data: &EventTransaction,
     ) -> Result<MsgAddrStd, Error> {
         let (configuration_id, event_init_data) = data.inner().clone().into();
 
@@ -228,9 +234,9 @@ impl TonListener {
         Ok(event_addr)
     }
 
-    /// Sends message to TON with small amount of retries on failures.
+    /// Sends a message to TON with a small amount of retries on failures.
     /// Can be stopped using `cancel` or `notify_found`
-    async fn ensure_sent(self: Arc<Self>, event_address: MsgAddrStd, data: EthTonTransaction) {
+    async fn ensure_sent(self: Arc<Self>, event_address: MsgAddrStd, data: EventTransaction) {
         // Skip voting for events which are already in stats db and TON queue
         if self.has_already_voted(&event_address) {
             // Make sure that TON queue doesn't contain this event
@@ -250,10 +256,10 @@ impl TonListener {
         let (rx, vote) = {
             // Get suitable channels map
             let (mut runtime_queue, vote) = match &data {
-                EthTonTransaction::Confirm(_) => {
+                EventTransaction::Confirm(_) => {
                     (self.confirmations.lock().await, EventVote::Confirm)
                 }
-                EthTonTransaction::Reject(_) => (self.rejections.lock().await, EventVote::Reject),
+                EventTransaction::Reject(_) => (self.rejections.lock().await, EventVote::Reject),
             };
 
             // Just in case of duplication, check if we are already waiting cancellation for this
@@ -274,7 +280,7 @@ impl TonListener {
         let mut retries_count = self.timeouts.message_retry_count;
         let mut retries_interval = self.timeouts.message_retry_interval;
 
-        // Send message with several retries on failure
+        // Send a message with several retries on failure
         let result = loop {
             // Prepare delay future
             let delay = tokio::time::delay_for(retries_interval);
@@ -282,7 +288,7 @@ impl TonListener {
                 retries_interval.as_secs_f64() * self.timeouts.message_retry_interval_multiplier,
             );
 
-            // Try send message
+            // Try to send message
             if let Err(e) = data.send(&self.bridge_contract).await {
                 log::error!(
                     "Failed to vote for event: {:?}. Retrying ({} left)",
@@ -367,13 +373,13 @@ impl TonListener {
     }
 
     /// Remove transaction from TON queue and notify spawned `ensure_sent`
-    async fn notify_found(&self, event: &ExtendedEventInfo) {
-        let mut table = match event.vote {
+    async fn notify_found(&self, event_address: &MsgAddrStd, vote: EventVote) {
+        let mut table = match bote {
             EventVote::Confirm => self.confirmations.lock().await,
             EventVote::Reject => self.rejections.lock().await,
         };
 
-        if let Some(tx) = table.remove(&event.event_addr) {
+        if let Some(tx) = table.remove(event_address) {
             if tx.send(()).is_err() {
                 log::error!("Failed sending event notification");
             }
@@ -477,7 +483,7 @@ impl TonListener {
         todo!()
     }
 
-    /// Creates listener for ETH event votes in TON
+    /// Creates a listener for ETH event votes in TON
     async fn subscribe_to_eth_events_configuration(
         self: Arc<Self>,
         subscriptions_tx: mpsc::UnboundedSender<(Address, H256)>,
@@ -499,7 +505,7 @@ impl TonListener {
         .await
         .unwrap(); //todo retry subscription
 
-        // Get it's data
+        // Get its data
         let details = match self
             .get_event_configuration_details(config_contract.as_ref(), semaphore.clone())
             .await
@@ -552,7 +558,7 @@ impl TonListener {
                 tokio::spawn({
                     async move {
                         listener
-                            .handle_event(
+                            .handle_eth_event(
                                 configuration_id,
                                 ethereum_event_blocks_to_confirm,
                                 address,
@@ -628,33 +634,37 @@ impl TonListener {
         relay_key: UInt256,
         vote: EventVote,
     ) {
-        let data = match self.get_event_details(event_addr.clone()).await {
+        let data = match self
+            .get_event_details(self.eth_event_contract.as_ref(), &event_addr)
+            .await
+        {
             Ok(data) => data,
             Err(e) => {
-                log::error!("get_details failed: {:?}", e);
+                log::error!("Failed to get event details: {:?}", e);
                 return;
             }
         };
 
-        let event = ExtendedEventInfo {
-            configuration_id,
-            vote,
-            event_addr,
-            relay_key,
-            ethereum_event_blocks_to_confirm,
-            data,
-        };
+        let should_check = vote == EventVote::Confirm
+            && data.status == EventStatus::InProcess
+            && relay_key != self.relay_key // event from other relay
+            && !self.is_in_queue(&event_addr)
+            && !self.has_already_voted(&event_addr);
 
-        let should_check = event.vote == EventVote::Confirm
-            && event.data.status == EventStatus::InProcess
-            && event.relay_key != self.relay_key // event from other relay
-            && !self.is_in_queue(&event.event_addr)
-            && !self.has_already_voted(&event.event_addr);
+        let event = EthEventReceivedVote {
+            configuration_id: &configuration_id,
+            vote,
+            event_addr: &event_addr,
+            relay_key: &relay_key,
+            ethereum_event_blocks_to_confirm,
+            data: &data,
+        };
 
         log::info!("Received {}, should check: {}", event, should_check);
 
         self.stats_db
-            .update_relay_stats(&event)
+            .eth_event_votes()
+            .insert_vote(event)
             .await
             .expect("Fatal db error");
 
@@ -733,15 +743,19 @@ impl TonListener {
         }
     }
 
-    async fn get_event_details(
+    async fn get_event_details<T>(
         &self,
-        event_addr: MsgAddrStd,
-    ) -> Result<EthEventDetails, ContractError> {
+        event_contract: &T,
+        address: &MsgAddrStd,
+    ) -> Result<T::Details, ContractError>
+    where
+        T: EventContract,
+    {
         let mut retry_count = self.timeouts.event_details_retry_count;
         let retry_interval = self.timeouts.event_details_retry_interval;
 
         loop {
-            match self.event_contract.get_details(event_addr.clone()).await {
+            match event_contract.get_details(address).await {
                 Ok(details) => break Ok(details),
                 Err(ContractError::TransportError(TransportError::AccountNotFound))
                     if retry_count > 0 =>
@@ -749,7 +763,7 @@ impl TonListener {
                     retry_count -= 1;
                     log::error!(
                         "Failed to get event details for {}. Retrying ({} left)",
-                        event_addr,
+                        address,
                         retry_count
                     );
                     tokio::time::delay_for(retry_interval).await;
@@ -801,27 +815,64 @@ impl ConfigsState {
     }
 }
 
-impl EthTonTransaction {
-    async fn send(&self, bridge: &BridgeContract) -> ContractResult<()> {
-        let (confirmation, vote) = match self.clone() {
-            Self::Confirm(confirmation) => (confirmation, Voting::Confirm),
-            Self::Reject(confirmation) => (confirmation, Voting::Reject),
+#[async_trait]
+trait Sendable {
+    async fn send(self, bridge: &BridgeContract) -> ContractResult<()>;
+}
+
+#[async_trait]
+impl Sendable for EthEventTransaction {
+    async fn send(self, bridge: &BridgeContract) -> ContractResult<()> {
+        let (confirmation, vote) = match self {
+            EventTransaction::Confirm(data) => (data, Voting::Confirm),
+            EventTransaction::Reject(data) => (data, Voting::Reject),
         };
-
-        let (configuration_id, event_init_data) = confirmation.into();
-
+        let (id, data): (BigUint, EthEventInitData) = confirmation.into();
         match vote {
-            Voting::Confirm => {
-                bridge
-                    .confirm_ethereum_event(configuration_id, event_init_data)
-                    .await
+            Voting::Confirm => bridge.confirm_ethereum_event(id, data).await,
+            Voting::Reject => bridge.reject_ethereum_event(id, data).await,
+        }
+    }
+}
+
+#[async_trait]
+impl Sendable for TonEventTransaction {
+    async fn send(self, bridge: &BridgeContract) -> ContractResult<()> {
+        match self {
+            EventTransaction::Confirm(SignedEventVotingData { data, signature }) => {
+                let (id, data) = data.into();
+                bridge.confirm_ton_event(id, data, signature).await
             }
-            Voting::Reject => {
-                bridge
-                    .reject_ethereum_event(configuration_id, event_init_data)
-                    .await
+            EventTransaction::Reject(confirmation) => {
+                let (id, data) = confirmation.into();
+                bridge.reject_ton_event(id, data).await
             }
         }
+    }
+}
+
+#[async_trait]
+trait EventContract {
+    type Details;
+
+    async fn get_details(&self, address: &MsgAddrStd) -> ContractResult<Self::Details>;
+}
+
+#[async_trait]
+impl EventContract for EthEventContract {
+    type Details = EthEventDetails;
+
+    async fn get_details(&self, address: &MsgAddrStd) -> ContractResult<Self::Details> {
+        self.get_details(address.clone()).await
+    }
+}
+
+#[async_trait]
+impl EventContract for TonEventContract {
+    type Details = TonEventDetails;
+
+    async fn get_details(&self, address: &MsgAddrStd) -> ContractResult<Self::Details> {
+        self.get_details(address.clone()).await
     }
 }
 
@@ -859,8 +910,9 @@ impl ConfigurationContract for TonEventConfigurationContract {
         self.address()
     }
 
-    fn validate(&self, _: &Self::Details) -> Result<(), Error> {
-        // TODO: validate TON configuration contract
+    fn validate(&self, config: &Self::Details) -> Result<(), Error> {
+        let _ = serde_json::from_str::<SwapBackEventAbi>(&config.common.event_abi)
+            .map_err(|e| Error::new(e).context("Bad SwapBack event ABI"))?;
         Ok(())
     }
 

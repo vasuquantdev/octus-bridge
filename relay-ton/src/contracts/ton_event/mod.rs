@@ -6,6 +6,10 @@ use super::errors::*;
 use super::models::*;
 use super::prelude::*;
 
+pub async fn make_ton_event_contract(transport: Arc<dyn Transport>) -> Arc<TonEventContract> {
+    Arc::new(TonEventContract::new(transport).await)
+}
+
 #[derive(Clone)]
 pub struct TonEventContract {
     transport: Arc<dyn Transport>,

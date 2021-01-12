@@ -4,56 +4,34 @@ use relay_models::models::{EventVote, TxStatView};
 use relay_ton::prelude::UInt256;
 
 use super::prelude::{Error, Tree};
-use crate::db_management::{constants::STATS_TREE_NAME, constants::TON_LATEST_SCANNED_LT, Table};
-use crate::engine::bridge::models::ExtendedEventInfo;
+use crate::db_management::{constants::*, Table};
+use crate::engine::bridge::models::{EthEventReceivedVote, TonEventReceivedVote};
 use crate::prelude::*;
 
 #[derive(Clone)]
 pub struct StatsDb {
-    stats: Tree,
+    eth_event_votes: Stats,
+    ton_event_votes: Stats,
     latest_scanned_lt: Tree,
 }
 
 impl StatsDb {
     pub fn new(db: &Db) -> Result<Self, Error> {
         Ok(Self {
-            stats: db.open_tree(STATS_TREE_NAME)?,
+            eth_event_votes: Stats::new(db, ETH_EVENT_VOTES)?,
+            ton_event_votes: Stats::new(db, TON_EVENT_VOTES)?,
             latest_scanned_lt: db.open_tree(TON_LATEST_SCANNED_LT)?,
         })
     }
 
-    pub async fn update_relay_stats(&self, event: &ExtendedEventInfo) -> Result<(), Error> {
-        log::debug!("Inserting stats");
-
-        let event_addr = event.event_addr.address.get_bytestring(0);
-
-        let mut key = [0; 65];
-        key[0..32].copy_from_slice(&event_addr);
-        key[32..64].copy_from_slice(event.relay_key.as_slice());
-        key[64] = (event.vote == EventVote::Confirm) as u8;
-
-        self.stats.insert(
-            key,
-            bincode::serialize(&StoredTxStat {
-                tx_hash: event.data.init_data.event_transaction,
-                met: chrono::Utc::now(),
-            })
-            .expect("Db error fail"),
-        )?;
-        #[cfg(feature = "paranoid")]
-        self.stats.flush()?;
-        Ok(())
+    #[inline]
+    pub fn eth_event_votes(&self) -> &Stats {
+        &self.eth_event_votes
     }
 
-    pub fn has_already_voted(
-        &self,
-        event_addr: &MsgAddrStd,
-        relay_key: &UInt256,
-    ) -> Result<bool, Error> {
-        let mut key = Vec::with_capacity(64);
-        key.extend_from_slice(&event_addr.address.get_bytestring(0));
-        key.extend_from_slice(relay_key.as_slice());
-        Ok(self.stats.scan_prefix(&key).keys().next().is_some())
+    #[inline]
+    pub fn ton_event_votes(&self) -> &Stats {
+        &self.ton_event_votes
     }
 
     pub fn update_latest_scanned_lt(&self, addr: &MsgAddressInt, lt: u64) -> Result<(), Error> {
@@ -61,7 +39,7 @@ impl StatsDb {
             .insert(&addr.address().get_bytestring(0), &lt.to_be_bytes())?;
 
         #[cfg(feature = "paranoid")]
-        self.stats.flush()?;
+        self.eth_event_votes.flush()?;
         Ok(())
     }
 
@@ -82,7 +60,7 @@ impl Table for StatsDb {
     type Value = Vec<TxStatView>;
 
     fn dump_elements(&self) -> HashMap<Self::Key, Self::Value> {
-        self.stats
+        self.eth_event_votes
             .iter()
             .filter_map(|x| match x {
                 Ok(a) => Some(a),
@@ -118,6 +96,120 @@ impl Table for StatsDb {
 
                 result
             })
+    }
+}
+
+#[derive(Clone)]
+struct Stats {
+    tree: Tree,
+}
+
+impl Stats {
+    fn new(db: &Db, name: &str) -> Result<Self, Error> {
+        Ok(Self {
+            tree: db.open_tree(name)?,
+        })
+    }
+
+    pub async fn insert_vote<T>(&self, event: T) -> Result<(), Error>
+    where
+        T: ReceivedVote,
+    {
+        log::debug!("Inserting stats");
+
+        let event_addr = event.event_addr().address.get_bytestring(0);
+
+        let mut key = [0; 65];
+        key[0..32].copy_from_slice(&event_addr);
+        key[32..64].copy_from_slice(event.relay_key());
+        key[64] = (event.vote() == EventVote::Confirm) as u8;
+
+        let stored = event.into_stored();
+        self.eth_event_votes
+            .insert(key, bincode::serialize(&stored).expect("Fatal db error"))?;
+
+        #[cfg(feature = "paranoid")]
+        self.eth_event_votes.flush()?;
+        Ok(())
+    }
+
+    pub fn has_already_voted(
+        &self,
+        event_addr: &MsgAddrStd,
+        relay_key: &UInt256,
+    ) -> Result<bool, Error> {
+        let mut key = Vec::with_capacity(64);
+        key.extend_from_slice(&event_addr.address.get_bytestring(0));
+        key.extend_from_slice(relay_key.as_slice());
+        Ok(self
+            .eth_event_votes
+            .scan_prefix(&key)
+            .keys()
+            .next()
+            .is_some())
+    }
+}
+
+pub trait ReceivedVote {
+    type Stored;
+
+    fn event_addr(&self) -> &MsgAddrStd;
+    fn relay_key(&self) -> &[u8; 32];
+    fn vote(&self) -> EventVote;
+    fn into_stored(self) -> Self::Stored;
+}
+
+impl ReceivedVote for EthEventReceivedVote<'_> {
+    type Stored = StoredTxStat;
+
+    #[inline]
+    fn event_addr(&self) -> &MsgAddrStd {
+        self.event_addr
+    }
+
+    #[inline]
+    fn relay_key(&self) -> &[u8; 32] {
+        self.relay_key.as_slice()
+    }
+
+    #[inline]
+    fn vote(&self) -> EventVote {
+        self.vote
+    }
+
+    #[inline]
+    fn into_stored(self) -> Self::Stored {
+        StoredTxStat {
+            tx_hash: self.data.init_data.event_transaction,
+            met: chrono::Utc::now(),
+        }
+    }
+}
+
+impl ReceivedVote for TonEventReceivedVote<'_> {
+    type Stored = StoredTxStat;
+
+    #[inline]
+    fn event_addr(&self) -> &MsgAddrStd {
+        self.event_addr
+    }
+
+    #[inline]
+    fn relay_key(&self) -> &[u8; 32] {
+        self.relay_key.as_slice()
+    }
+
+    #[inline]
+    fn vote(&self) -> EventVote {
+        self.vote
+    }
+
+    #[inline]
+    fn into_stored(self) -> Self::Stored {
+        StoredTxStat {
+            tx_hash: self.data.init_data.event_transaction,
+            met: chrono::Utc::now(),
+        }
     }
 }
 

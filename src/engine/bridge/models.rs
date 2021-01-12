@@ -2,27 +2,48 @@ use num_traits::ToPrimitive;
 
 use relay_eth::ws::H256;
 use relay_models::models::EventVote;
-use relay_ton::contracts::EthEventDetails;
+use relay_ton::contracts::{EthEventDetails, TonEventDetails};
 use relay_ton::prelude::{serde_std_addr, serde_uint256, MsgAddrStd, UInt256};
 
-use crate::db_management::EthTonConfirmationData;
+use crate::db_management::EthEventVotingData;
 
 use super::prelude::*;
 
-/// Event received from TON
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExtendedEventInfo {
-    pub configuration_id: BigUint,
+/// Vote for TON->ETH event, received from TON
+#[derive(Debug, Clone, Copy)]
+pub struct TonEventReceivedVote<'a> {
+    pub configuration_id: &'a BigUint,
     pub vote: EventVote,
-    #[serde(with = "serde_std_addr")]
-    pub event_addr: MsgAddrStd,
-    #[serde(with = "serde_uint256")]
-    pub relay_key: UInt256,
-    pub ethereum_event_blocks_to_confirm: u64,
-    pub data: EthEventDetails,
+    pub event_addr: &'a MsgAddrStd,
+    pub relay_key: &'a UInt256,
+    pub data: &'a TonEventDetails,
 }
 
-impl ExtendedEventInfo {
+impl std::fmt::Display for TonEventReceivedVote<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!(
+            "TON->ETH event {:?} tx {} (block {}) from {}. status: {:?}",
+            self.vote,
+            hex::encode(&self.data.init_data.event_transaction),
+            self.data.init_data.event_block_number,
+            hex::encode(&self.relay_key),
+            self.data.status
+        ))
+    }
+}
+
+/// Vote for ETH->TON event, received from TON
+#[derive(Debug, Clone, Copy)]
+pub struct EthEventReceivedVote<'a> {
+    pub configuration_id: &'a BigUint,
+    pub vote: EventVote,
+    pub event_addr: &'a MsgAddrStd,
+    pub relay_key: &'a UInt256,
+    pub ethereum_event_blocks_to_confirm: u64,
+    pub data: &'a EthEventDetails,
+}
+
+impl EthEventReceivedVote<'_> {
     pub fn target_block_number(&self) -> u64 {
         self.data
             .init_data
@@ -33,10 +54,10 @@ impl ExtendedEventInfo {
     }
 }
 
-impl std::fmt::Display for ExtendedEventInfo {
+impl std::fmt::Display for EthEventReceivedVote<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
-            "{:?} tx {} (block {}) from {}. status: {:?}",
+            "ETH->TON event {:?} tx {} (block {}) from {}. status: {:?}",
             self.vote,
             hex::encode(&self.data.init_data.event_transaction),
             self.data.init_data.event_block_number,
@@ -54,8 +75,8 @@ pub enum EventValidationError {
     InvalidBlockHash,
 }
 
-impl From<ExtendedEventInfo> for EthTonConfirmationData {
-    fn from(event: ExtendedEventInfo) -> Self {
+impl From<EthEventReceivedVote> for EthEventVotingData {
+    fn from(event: EthEventReceivedVote) -> Self {
         Self {
             event_transaction: event.data.init_data.event_transaction,
             event_index: event

@@ -7,7 +7,7 @@ use warp::Reply;
 
 use relay_models::models::EthTonVoteView;
 
-use crate::db_management::{EthQueue, EthTonTransaction, StatsDb, Table, TonQueue};
+use crate::db_management::{EthQueue, EventTransaction, StatsDb, Table, TonQueue};
 use crate::engine::models::{BridgeState, State, Status};
 
 pub async fn get_status(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {
@@ -86,7 +86,7 @@ pub async fn retry_failed(state: Arc<RwLock<State>>) -> Result<impl Reply, Infal
 
 fn fold_ton_stats<I>(iter: I) -> Vec<EthTonVoteView>
 where
-    I: Iterator<Item = (MsgAddrStd, EthTonTransaction)>,
+    I: Iterator<Item = (MsgAddrStd, EventTransaction)>,
 {
     iter.map(|(event_address, transaction)| EthTonVoteView {
         event_address: event_address.to_string(),

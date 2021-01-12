@@ -98,7 +98,7 @@ impl Stream for TonSwapBackEvents {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-struct SwapBackEventAbi {
+pub struct SwapBackEventAbi {
     name: String,
 
     #[serde(default)]

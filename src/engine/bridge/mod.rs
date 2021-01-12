@@ -153,11 +153,11 @@ impl Bridge {
         Ok(())
     }
 
-    fn check_suspicious_event(self: Arc<Self>, event: EthTonConfirmationData) {
+    fn check_suspicious_event(self: Arc<Self>, event: EthEventVotingData) {
         async fn check_event(
             configs: &ConfigsState,
             check_result: Result<(Address, Vec<u8>), Error>,
-            event: &EthTonConfirmationData,
+            event: &EthEventVotingData,
         ) -> Result<(), Error> {
             let (address, data) = check_result?;
             match configs.address_topic_map.get(&address) {
@@ -201,13 +201,13 @@ impl Bridge {
                     Ok(_) => {
                         log::info!("Confirming transaction. Hash: {}", event.event_transaction);
                         self.ton_listener
-                            .enqueue_vote(EthTonTransaction::Confirm(event))
+                            .enqueue_vote(EventTransaction::Confirm(event))
                             .await
                     }
                     Err(e) => {
                         log::warn!("Rejection: {:?}", e);
                         self.ton_listener
-                            .enqueue_vote(EthTonTransaction::Reject(event))
+                            .enqueue_vote(EventTransaction::Reject(event))
                             .await
                     }
                 } {
@@ -305,7 +305,7 @@ impl Bridge {
             }
         };
 
-        let prepared_data = EthTonConfirmationData {
+        let prepared_data = EthEventVotingData {
             event_transaction: event.tx_hash,
             event_index: event.event_index,
             event_data,

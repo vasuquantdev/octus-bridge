@@ -79,12 +79,12 @@ pub struct EthTonVoteView {
 #[derive(Serialize, Deserialize, Clone, opg::OpgModel)]
 #[serde(tag = "type")]
 pub enum EthTonTransactionView {
-    Confirm(EthTonConfirmationDataView),
-    Reject(EthTonConfirmationDataView),
+    Confirm(EthEventVotingDataView),
+    Reject(EthEventVotingDataView),
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, opg::OpgModel)]
-pub struct EthTonConfirmationDataView {
+pub struct EthEventVotingDataView {
     #[opg(format = "hex")]
     pub event_transaction: String,
     pub event_index: u64,
