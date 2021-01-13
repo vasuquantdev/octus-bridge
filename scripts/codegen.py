@@ -15,7 +15,7 @@ relay_str = """
 """
 
 config_template = """
-listen_address: ""127.0.0.1:{}"
+listen_address: "127.0.0.1:{port}"
 keys_path: "/cfg/config_data.json"
 storage_path: "/cfg/persistent_storage"
 logger_settings:
@@ -54,29 +54,31 @@ logger_settings:
       additive: false
 eth_settings:
   node_address: "ws://3.239.148.226:8545"
-  tcp_connection_count: 100
+  tcp_connection_count: 1
 ton_settings:
-  bridge_contract_address: '0:42b18b796069f4ae645bf58f073df820f76d2eccaff535ec2f2d53f097e5f9fe'
-  seed_derivation_path  : "m/44'/396'/0'/0/5"
+  bridge_contract_address: '0:07d898301a542a686ea86b7137d063b5886f6614187ab37754f63a0d4b2d808a'
+  seed_derivation_path  : "m/44'/396'/0'/0/{der_path}"
   transport:
     type: graphql
     address: "http://3.239.148.226/graphql"
     next_block_timeout_sec: 60
+    parallel_connections: 1
   event_configuration_details_retry_interval: 5
   event_configuration_details_retry_count: 100
   event_details_retry_interval: 0
   event_details_retry_count: 100
-  message_retry_interval: 60
-  message_retry_count: 10
-  message_retry_interval_multiplier: 1.5
+  message_retry_interval: 20
+  message_retry_count: 50
+  message_retry_interval_multiplier: 1.1
 """
 
-for i in range(0, 13):
-    port = 10000
+for i in range(0, 3):
+    port = 10000 + i
     config_path = "./relay{}".format(i)
     compose_template += relay_str.format(i, config_path)
     os.mkdir(config_path)
-    config_data = config_template.replace("{}", str(i + port))
+    config_data = config_template.replace("{port}", str(port)).replace(
+        "{der_path}", str(i))
     config = open(config_path + "/config.yaml", "w")
     config.write(config_data)
 

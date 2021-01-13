@@ -51,6 +51,30 @@ impl NodeClient {
         response.data.ok_or_else(invalid_response)
     }
 
+    async fn fetch_blocking<T>(&self, params: T::Variables) -> TransportResult<T::ResponseData>
+    where
+        T: GraphQLQuery,
+    {
+        let request_body = T::build_query(params);
+        let response = self
+            .client
+            .post(&self.endpoint)
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(api_failure)?;
+        let response = response
+            .json::<Response<T::ResponseData>>()
+            .await
+            .map_err(api_failure)?;
+
+        if let Some(errors) = response.errors {
+            log::error!("api errors: {:?}", errors);
+        }
+
+        response.data.ok_or_else(invalid_response)
+    }
+
     pub async fn get_account_state(&self, addr: &MsgAddressInt) -> TransportResult<AccountStuff> {
         #[derive(GraphQLQuery)]
         #[graphql(
@@ -236,7 +260,7 @@ impl NodeClient {
         let timeout = (timeout * 1000) as f64; // timeout in ms
 
         let block = self
-            .fetch::<QueryNextBlock>(query_next_block::Variables {
+            .fetch_blocking::<QueryNextBlock>(query_next_block::Variables {
                 id: current.to_owned(),
                 timeout,
             })

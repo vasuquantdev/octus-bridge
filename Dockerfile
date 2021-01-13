@@ -37,7 +37,6 @@ RUN apt-get update &&  apt-get install -y --no-install-recommends   libsnappy1v5
 COPY --from=builder relay/target/release/relay /relay
 # Entrypoint
 COPY scripts/entrypoint.sh /entrypoint.sh
-COPY log4rs.yaml log4rs.yaml
 RUN mkdir cfg
 
 
