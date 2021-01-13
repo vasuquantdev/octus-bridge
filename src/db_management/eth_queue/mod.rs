@@ -2,12 +2,10 @@ use std::collections::HashMap;
 
 use tokio::sync::{Mutex, MutexGuard};
 
-use relay_models::models::EthTonConfirmationDataView;
-
-use crate::db_management::models::EthTonConfirmationData;
-use crate::db_management::Table;
+use relay_models::models::EthEventVotingDataView;
 
 use super::prelude::*;
+use crate::models::*;
 
 const RANGE_LOWER_BOUND: [u8; 8] = [0; 8];
 
@@ -20,7 +18,7 @@ pub struct EthQueue {
 impl EthQueue {
     pub fn new(db: &Db) -> Result<Self, Error> {
         Ok(Self {
-            db: db.open_tree(super::constants::ETH_QUEUE_TREE_NAME)?,
+            db: db.open_tree(super::constants::ETH_QUEUE)?,
             guard: Arc::new(Default::default()),
         })
     }
@@ -28,7 +26,7 @@ impl EthQueue {
     pub async fn get_prepared_blocks(
         &self,
         block_number: u64,
-    ) -> EthQueueLock<'_, impl Iterator<Item = (sled::IVec, EthTonConfirmationData)>> {
+    ) -> EthQueueLock<'_, impl Iterator<Item = (sled::IVec, EthEventVotingData)>> {
         let guard = self.guard.lock().await;
 
         let results = self
@@ -51,7 +49,7 @@ impl EthQueue {
     pub async fn insert(
         &self,
         target_block_number: u64,
-        value: &EthTonConfirmationData,
+        value: &EthEventVotingData,
     ) -> Result<(), Error> {
         let _guard = self.guard.lock().await;
         self.db.insert(make_key(target_block_number, value), &[])?;
@@ -62,7 +60,7 @@ impl EthQueue {
 }
 
 #[inline]
-fn make_key(target_block_number: u64, value: &EthTonConfirmationData) -> Vec<u8> {
+fn make_key(target_block_number: u64, value: &EthEventVotingData) -> Vec<u8> {
     let value = bincode::serialize(value).expect("Shouldn't fail");
 
     let mut key = target_block_number.to_be_bytes().to_vec();
@@ -73,7 +71,7 @@ fn make_key(target_block_number: u64, value: &EthTonConfirmationData) -> Vec<u8>
 
 impl Table for EthQueue {
     type Key = u64;
-    type Value = Vec<EthTonConfirmationDataView>;
+    type Value = Vec<EthEventVotingDataView>;
 
     fn dump_elements(&self) -> HashMap<Self::Key, Self::Value> {
         self.db
@@ -90,7 +88,7 @@ impl Table for EthQueue {
                 block_number.copy_from_slice(&k[0..8]);
                 let block_number = u64::from_be_bytes(block_number);
 
-                let value = bincode::deserialize::<EthTonConfirmationData>(&k[8..])
+                let value = bincode::deserialize::<EthEventVotingData>(&k[8..])
                     .expect("Shouldn't fail")
                     .into();
 
@@ -111,9 +109,9 @@ pub struct EthQueueLock<'a, I> {
 
 impl<'a, I> Iterator for EthQueueLock<'a, I>
 where
-    I: Iterator<Item = (sled::IVec, EthTonConfirmationData)>,
+    I: Iterator<Item = (sled::IVec, EthEventVotingData)>,
 {
-    type Item = (EthQueueLockEntry<'a>, EthTonConfirmationData);
+    type Item = (EthQueueLockEntry<'a>, EthEventVotingData);
 
     fn next(&mut self) -> Option<Self::Item> {
         self.results.next().map(|(key, value)| {

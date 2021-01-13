@@ -1,6 +1,6 @@
 use opg::*;
 
-use relay_models::models::{EthTonConfirmationDataView, EthTonTransactionView, TxStatView};
+use relay_models::models::*;
 
 use super::*;
 
@@ -55,7 +55,7 @@ pub fn get_api() -> String {
             },
             ("status" / "eth"): {
                 GET: {
-                    200: HashMap<u64, EthTonConfirmationDataView>
+                    200: HashMap<u64, EthEventVotingDataView>
                 }
             },
             ("status" / "relay"): {
