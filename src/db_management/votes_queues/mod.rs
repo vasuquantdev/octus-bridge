@@ -39,16 +39,6 @@ pub struct VotesQueue<T> {
     _marker: std::marker::PhantomData<T>,
 }
 
-impl<T> VotesQueue<T> {
-    fn new(db: &Db, pending: &str, failed: &str) -> Result<Self, Error> {
-        Ok(Self {
-            pending: db.open_tree(pending)?,
-            failed: db.open_tree(failed)?,
-            _marker: Default::default(),
-        })
-    }
-}
-
 impl<T> VotesQueue<T>
 where
     T: Serialize + DeserializeOwned,

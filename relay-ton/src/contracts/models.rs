@@ -33,8 +33,20 @@ crate::define_event!(BridgeContractEvent, BridgeContractEventKind, {
         status: bool,
     },
 
-    BridgeRelaysUpdateVote { target: RelayUpdate, relay_key: UInt256, vote: VoteData },
-    BridgeRelaysUpdateEnd { target: RelayUpdate, active: bool },
+    BridgeRelaysUpdateVote {
+        target: RelayUpdate,
+        ethereum_account: ethereum_types::Address,
+        relay_key: UInt256,
+        vote: VoteData
+    },
+    BridgeRelaysUpdateEnd {
+        target: RelayUpdate,
+        ethereum_account: ethereum_types::Address,
+        active: bool
+    },
+
+    OwnershipGranted { key: UInt128 },
+    OwnershipRemoved { key: UInt128 },
 });
 
 impl TryFrom<(BridgeContractEventKind, Vec<Token>)> for BridgeContractEvent {
@@ -87,6 +99,7 @@ impl TryFrom<(BridgeContractEventKind, Vec<Token>)> for BridgeContractEvent {
             BridgeContractEventKind::BridgeRelaysUpdateVote => {
                 BridgeContractEvent::BridgeRelaysUpdateVote {
                     target: tokens.next().try_parse()?,
+                    ethereum_account: tokens.next().try_parse()?,
                     relay_key: tokens.next().try_parse()?,
                     vote: tokens.next().try_parse()?,
                 }
@@ -94,9 +107,16 @@ impl TryFrom<(BridgeContractEventKind, Vec<Token>)> for BridgeContractEvent {
             BridgeContractEventKind::BridgeRelaysUpdateEnd => {
                 BridgeContractEvent::BridgeRelaysUpdateEnd {
                     target: tokens.next().try_parse()?,
+                    ethereum_account: tokens.next().try_parse()?,
                     active: tokens.next().try_parse()?,
                 }
             }
+            BridgeContractEventKind::OwnershipGranted => BridgeContractEvent::OwnershipGranted {
+                key: tokens.next().try_parse()?,
+            },
+            BridgeContractEventKind::OwnershipRemoved => BridgeContractEvent::OwnershipRemoved {
+                key: tokens.next().try_parse()?,
+            },
         })
     }
 }
@@ -388,14 +408,12 @@ impl ParseToken<RelayUpdateAction> for TokenValue {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VoteData {
     pub signature: Vec<u8>,
-    pub payload: Vec<u8>,
 }
 
 impl VoteData {
     pub fn reject() -> Self {
         Self {
             signature: Vec::new(),
-            payload: Vec::new(),
         }
     }
 
@@ -408,16 +426,12 @@ fn parse_vote_data(tokens: Vec<Token>) -> ContractResult<VoteData> {
     let mut tokens = tokens.into_iter();
     Ok(VoteData {
         signature: tokens.next().try_parse()?,
-        payload: tokens.next().try_parse()?,
     })
 }
 
 impl FunctionArg for VoteData {
     fn token_value(self) -> TokenValue {
-        TokenValue::Tuple(vec![
-            self.signature.token_value().named("signature"),
-            self.payload.token_value().named("payload"),
-        ])
+        TokenValue::Tuple(vec![self.signature.token_value().named("signature")])
     }
 }
 
@@ -785,4 +799,38 @@ impl ParseToken<Voting> for TokenValue {
             _ => Err(ContractError::InvalidAbi),
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct BridgeKeys {
+    pub keys: Vec<BridgeKey>,
+}
+
+impl TryFrom<ContractOutput> for BridgeKeys {
+    type Error = ContractError;
+
+    fn try_from(value: ContractOutput) -> Result<Self, Self::Error> {
+        let mut tuple = value.into_parser();
+
+        let keys: Vec<_> = tuple.parse_next()?;
+        let ethereum_accounts: Vec<_> = tuple.parse_next()?;
+
+        if keys.len() != ethereum_accounts.len() {
+            return Err(ContractError::InvalidAbi);
+        }
+
+        Ok(Self {
+            keys: keys
+                .into_iter()
+                .zip(ethereum_accounts.into_iter())
+                .map(|(ton, eth)| BridgeKey { ton, eth })
+                .collect(),
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct BridgeKey {
+    pub ton: UInt256,
+    pub eth: ethereum_types::Address,
 }

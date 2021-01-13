@@ -220,6 +220,22 @@ impl BridgeContract {
     pub async fn get_details(&self) -> ContractResult<BridgeConfiguration> {
         self.message("getDetails")?.run_local().await?.parse_first()
     }
+
+    pub async fn get_ethereum_account(
+        &self,
+        key: UInt256,
+    ) -> ContractResult<ethereum_types::Address> {
+        self.message("getEthereumAccount")?
+            .arg(key)
+            .run_local()
+            .await?
+            .parse_first()
+    }
+
+    pub async fn get_keys(&self) -> ContractResult<Vec<BridgeKey>> {
+        let output: BridgeKeys = self.message("getKeys")?.run_local().await?.parse_all()?;
+        Ok(output.keys)
+    }
 }
 
 impl Contract for BridgeContract {
