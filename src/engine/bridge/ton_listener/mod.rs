@@ -1,3 +1,5 @@
+mod semaphore;
+
 use std::collections::hash_map::Entry;
 
 use async_trait::async_trait;
@@ -21,6 +23,8 @@ use crate::engine::bridge::util;
 use crate::prelude::*;
 
 use super::models::*;
+
+use self::semaphore::Semaphore;
 
 /// Listens to config streams and maps them.
 pub struct TonListener {
@@ -402,6 +406,11 @@ impl TonListener {
             .insert(address.clone())
     }
 
+    /// Removes address from known addresses
+    async fn forget_configuration(&self, address: &MsgAddressInt) {
+        self.known_config_addresses.lock().await.remove(address);
+    }
+
     /// Created listener for TON events
     async fn subscribe_to_ton_events_configuration(
         self: Arc<Self>,
@@ -410,8 +419,7 @@ impl TonListener {
         semaphore: Option<Semaphore>,
     ) {
         if !self.ensure_configuration_identity(&address).await {
-            try_notify(semaphore).await;
-            return;
+            return semaphore.try_notify().await;
         }
 
         // Create TON config contract
@@ -425,13 +433,14 @@ impl TonListener {
 
         // Get it's data
         let details = match self
-            .get_event_configuration_details(config_contract.as_ref(), semaphore.clone())
+            .get_event_configuration_details(config_contract.as_ref())
             .await
         {
             Ok(details) => details,
             Err(e) => {
                 log::error!("{:?}", e);
-                return;
+                self.forget_configuration(config_contract.address());
+                return semaphore.try_notify().await;
             }
         };
 
@@ -450,13 +459,12 @@ impl TonListener {
         .await
         {
             Ok(contract) => {
-                try_notify(semaphore).await;
+                semaphore.try_notify().await;
                 contract
             }
             Err(e) => {
-                try_notify(semaphore).await;
                 log::error!("{:?}", e);
-                return;
+                return semaphore.try_notify().await;
             }
         };
 
@@ -492,8 +500,7 @@ impl TonListener {
         semaphore: Option<Semaphore>,
     ) {
         if !self.ensure_configuration_identity(&address).await {
-            try_notify(semaphore).await;
-            return;
+            return semaphore.try_notify().await;
         }
 
         // Create ETH config contract
@@ -507,13 +514,14 @@ impl TonListener {
 
         // Get its data
         let details = match self
-            .get_event_configuration_details(config_contract.as_ref(), semaphore.clone())
+            .get_event_configuration_details(config_contract.as_ref())
             .await
         {
             Ok(details) => details,
             Err(e) => {
                 log::error!("{:?}", e);
-                return;
+                self.forget_configuration(config_contract.address()).await;
+                return semaphore.try_notify().await;
             }
         };
 
@@ -522,7 +530,7 @@ impl TonListener {
             .write()
             .await
             .insert(configuration_id.clone(), config_contract.clone());
-        try_notify(semaphore).await;
+        semaphore.try_notify().await;
 
         // Prefetch required properties
         let ethereum_event_blocks_to_confirm = details
@@ -629,11 +637,11 @@ impl TonListener {
     async fn handle_event(
         self: Arc<Self>,
         configuration_id: BigUint,
-        ethereum_event_blocks_to_confirm: u64,
         event_addr: MsgAddrStd,
-        relay_key: UInt256,
-        vote: EventVote,
-    ) {
+        received_vote: T,
+    ) where
+        T: ReceivedVote,
+    {
         let data = match self
             .get_event_details(self.eth_event_contract.as_ref(), &event_addr)
             .await
@@ -691,33 +699,18 @@ impl TonListener {
     async fn get_event_configuration_details<T>(
         &self,
         config_contract: &T,
-        semaphore: Option<Semaphore>,
     ) -> Result<T::Details, Error>
     where
         T: ConfigurationContract,
     {
-        // retry connection to configuration contract
         let mut retry_count = self.timeouts.event_configuration_details_retry_count;
-        // 1 sec ~= time before next block in masterchain.
-        // Should be greater then account polling interval
         let retry_interval = self.timeouts.event_configuration_details_retry_interval;
-
-        let notify_if_init = || async {
-            if semaphore.is_some() {
-                try_notify(semaphore).await;
-                self.known_config_addresses
-                    .lock()
-                    .await
-                    .remove(config_contract.address());
-            }
-        };
 
         loop {
             match config_contract.get_details().await {
                 Ok(details) => match config_contract.validate(&details) {
                     Ok(_) => break Ok(details),
                     Err(e) => {
-                        notify_if_init().await;
                         break Err(e);
                     }
                 },
@@ -733,7 +726,6 @@ impl TonListener {
                     tokio::time::delay_for(retry_interval).await;
                 }
                 Err(e) => {
-                    notify_if_init().await;
                     break Err(anyhow!(
                         "failed to get configuration contract details: {:?}",
                         e
@@ -788,11 +780,6 @@ impl ConfigsState {
         configuration_id: BigUint,
         configuration: EthEventConfiguration,
     ) {
-        if let Err(e) = util::validate_ethereum_event_configuration(&configuration) {
-            log::error!("Got bad EthereumEventConfiguration: {:?}", e);
-            return;
-        }
-
         let (topic_hash, eth_abi, ton_abi) =
             match util::parse_eth_abi(&configuration.common.event_abi) {
                 Ok(a) => a,
@@ -812,6 +799,39 @@ impl ConfigsState {
             configuration.event_address,
             (configuration_id, configuration),
         );
+    }
+}
+
+#[async_trait]
+trait ReceivedVote {
+    async fn enqueue_verify(self, listener: &TonListener);
+}
+
+#[async_trait]
+impl ReceivedVote for EthEventReceivedVote {
+    async fn enqueue_verify(self, listener: &TonListener) {
+        let target_block_number = self
+            .data
+            .init_data
+            .event_block_number
+            .to_u64()
+            .unwrap_or_else(u64::max_value)
+            + self.ethereum_event_blocks_to_confirm;
+
+        if let Err(e) = listener
+            .eth_queue
+            .insert(target_block_number, &self.into())
+            .await
+        {
+            log::error!("Failed to insert event confirmation. {:?}", e);
+        }
+    }
+}
+
+#[async_trait]
+impl ReceivedVote for TonEventReceivedVote {
+    async fn enqueue_verify(self, _listener: &TonListener) {
+        todo!()
     }
 }
 
@@ -921,119 +941,15 @@ impl ConfigurationContract for TonEventConfigurationContract {
     }
 }
 
-async fn try_notify(semaphore: Option<Semaphore>) {
-    if let Some(semaphore) = semaphore {
-        semaphore.notify().await;
-    }
+#[async_trait]
+trait TryNotify {
+    async fn try_notify(self);
 }
 
-#[derive(Clone)]
-struct Semaphore {
-    guard: Arc<RwLock<SemaphoreGuard>>,
-    counter: Arc<Mutex<usize>>,
-    done: Arc<Notify>,
-}
-
-impl Semaphore {
-    fn new(count: usize) -> Self {
-        Self {
-            guard: Arc::new(RwLock::new(SemaphoreGuard {
-                target: count,
-                allow_notify: false,
-            })),
-            counter: Arc::new(Mutex::new(count)),
-            done: Arc::new(Notify::new()),
+impl TryNotify for Option<Semaphore> {
+    async fn try_notify(self) {
+        if let Some(semaphore) = self {
+            semaphore.notify().await;
         }
-    }
-
-    fn new_empty() -> Self {
-        Self::new(0)
-    }
-
-    async fn wait(self) {
-        let target = {
-            let mut guard = self.guard.write().await;
-            guard.allow_notify = true;
-            guard.target
-        };
-        if *self.counter.lock().await >= target {
-            return;
-        }
-        self.done.notified().await
-    }
-
-    async fn wait_count(self, count: usize) {
-        *self.guard.write().await = SemaphoreGuard {
-            target: count,
-            allow_notify: true,
-        };
-        if *self.counter.lock().await >= count {
-            return;
-        }
-        self.done.notified().await
-    }
-
-    async fn notify(&self) {
-        let mut counter = self.counter.lock().await;
-        *counter += 1;
-
-        let guard = self.guard.read().await;
-        if *counter >= guard.target && guard.allow_notify {
-            self.done.notify();
-        }
-    }
-}
-
-struct SemaphoreGuard {
-    target: usize,
-    allow_notify: bool,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    use tokio::time;
-    use tokio::time::Duration;
-
-    fn spawn_tasks(semaphore: Semaphore) -> usize {
-        let mut target = 0;
-
-        for i in 0..10 {
-            target += 1;
-            tokio::spawn({
-                let semaphore = semaphore.clone();
-                async move {
-                    println!("Task {} started", i);
-                    time::delay_for(Duration::from_secs(i)).await;
-                    println!("Task {} complete", i);
-                    semaphore.notify().await;
-                }
-            });
-        }
-
-        target
-    }
-
-    #[tokio::test]
-    async fn semaphore_with_unknown_target_incomplete() {
-        let semaphore = Semaphore::new_empty();
-        let target_count = spawn_tasks(semaphore.clone());
-
-        time::delay_for(Duration::from_secs(7)).await;
-        println!("Waiting...");
-        semaphore.wait_count(target_count).await;
-        println!("Done");
-    }
-
-    #[tokio::test]
-    async fn semaphore_with_unknown_target_complete() {
-        let semaphore = Semaphore::new_empty();
-        let target_count = spawn_tasks(semaphore.clone());
-
-        time::delay_for(Duration::from_secs(11)).await;
-        println!("Waiting...");
-        semaphore.wait_count(target_count).await;
-        println!("Done");
     }
 }

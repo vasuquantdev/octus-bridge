@@ -43,17 +43,6 @@ pub struct EthEventReceivedVote<'a> {
     pub data: &'a EthEventDetails,
 }
 
-impl EthEventReceivedVote<'_> {
-    pub fn target_block_number(&self) -> u64 {
-        self.data
-            .init_data
-            .event_block_number
-            .to_u64()
-            .unwrap_or_else(u64::max_value)
-            + self.ethereum_event_blocks_to_confirm
-    }
-}
-
 impl std::fmt::Display for EthEventReceivedVote<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(

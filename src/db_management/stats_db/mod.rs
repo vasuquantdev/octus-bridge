@@ -3,6 +3,7 @@ use chrono::{DateTime, Utc};
 use relay_models::models::{EventVote, TxStatView};
 use relay_ton::prelude::UInt256;
 
+use super::models::StoredTxStat;
 use super::prelude::{Error, Tree};
 use crate::db_management::{constants::*, Table};
 use crate::engine::bridge::models::{EthEventReceivedVote, TonEventReceivedVote};
@@ -211,10 +212,4 @@ impl ReceivedVote for TonEventReceivedVote<'_> {
             met: chrono::Utc::now(),
         }
     }
-}
-
-#[derive(Deserialize, Serialize)]
-pub struct StoredTxStat {
-    pub tx_hash: H256,
-    pub met: DateTime<Utc>,
 }

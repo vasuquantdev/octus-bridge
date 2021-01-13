@@ -1,3 +1,5 @@
+use chrono::{DateTime, Utc};
+
 use relay_eth::ws::H256;
 use relay_models::models::{EthEventVotingDataView, EthTonTransactionView};
 use relay_ton::contracts::{EthEventInitData, TonEventInitData, Voting};
@@ -52,6 +54,12 @@ pub mod h256_to_hex {
                 .map(|x| H256::from_slice(&*x))
         })
     }
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct StoredTxStat {
+    pub tx_hash: H256,
+    pub met: DateTime<Utc>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
