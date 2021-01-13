@@ -4,7 +4,7 @@ use std::fmt::Write;
 use anyhow::anyhow;
 use anyhow::Error;
 use clap::Clap;
-use colored_json::{to_colored_json_auto, ColorMode, ToColoredJson};
+use colored_json::{ColorMode, ToColoredJson};
 use dialoguer::theme::{ColorfulTheme, Theme};
 use dialoguer::{Input, Password, Select};
 use minus::Pager;
@@ -170,12 +170,8 @@ impl Client {
         let mut selection = Select::with_theme(&theme);
         selection.with_prompt("Select config to vote").default(0);
 
-        for (i, config) in known_configs.iter().enumerate() {
-            selection.item(format!(
-                "Config #{}: {}",
-                i,
-                EventConfigurationWrapper(&config)
-            ));
+        for config in known_configs.iter() {
+            selection.item(format!("Config {}", EventConfigurationWrapper(&config)));
         }
 
         let selected_config = &known_configs[selection.interact()?];
@@ -185,7 +181,7 @@ impl Client {
             serde_json::to_string_pretty(&selected_config)?.to_colored_json_auto()?
         );
 
-        let config_address = selected_config.address.clone();
+        let config_id = selected_config.configuration_id.clone();
 
         let selected_vote = Select::with_theme(&theme)
             .with_prompt("Voting for event configuration contract")
@@ -195,8 +191,8 @@ impl Client {
             .ok_or_else(|| anyhow!("You must confirm or reject selection"))?;
 
         let voting = match selected_vote {
-            0 => Voting::Confirm(config_address),
-            1 => Voting::Reject(config_address),
+            0 => Voting::Confirm(config_id),
+            1 => Voting::Reject(config_id),
             _ => unreachable!(),
         };
 
@@ -312,14 +308,12 @@ impl<'a> std::fmt::Display for EventConfigurationWrapper<'a> {
         let config = self.0;
 
         let eth_addr_len = config.ethereum_event_address.len();
-        let ton_addr_len = config.address.len();
 
         f.write_fmt(format_args!(
-            "ETH 0x{}...{} -> TON {}...{}",
+            "{}: ETH 0x{}...{} -> TON",
+            &config.configuration_id,
             &config.ethereum_event_address[0..4],
-            &config.ethereum_event_address[eth_addr_len - 4..eth_addr_len],
-            &config.address[0..6],
-            &config.address[ton_addr_len - 4..ton_addr_len],
+            &config.ethereum_event_address[eth_addr_len - 4..eth_addr_len]
         ))
     }
 }
