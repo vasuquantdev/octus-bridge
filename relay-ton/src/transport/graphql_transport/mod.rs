@@ -41,7 +41,7 @@ impl GraphQLTransport {
             .build()
             .expect("failed to create graphql client");
 
-        let client = NodeClient::new(client, config.address.clone());
+        let client = NodeClient::new(client, config.address.clone(), config.parallel_connections);
 
         Ok(Self { client, config })
     }

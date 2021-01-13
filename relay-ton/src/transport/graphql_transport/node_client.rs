@@ -1,5 +1,6 @@
 use graphql_client::*;
 use reqwest::Client;
+use tokio::sync::Semaphore;
 use ton_block::{
     Account, AccountIdPrefixFull, AccountStuff, Block, Deserializable, Message, Serializable,
     ShardIdent, Transaction,
@@ -12,11 +13,16 @@ use crate::transport::errors::*;
 pub struct NodeClient {
     client: Client,
     endpoint: String,
+    concurrency_limiter: Arc<Semaphore>,
 }
 
 impl NodeClient {
-    pub fn new(client: Client, endpoint: String) -> Self {
-        Self { client, endpoint }
+    pub fn new(client: Client, endpoint: String, parallel_connections: usize) -> Self {
+        Self {
+            client,
+            endpoint,
+            concurrency_limiter: Arc::new(Semaphore::new(parallel_connections)),
+        }
     }
 
     async fn fetch<T>(&self, params: T::Variables) -> TransportResult<T::ResponseData>
@@ -24,7 +30,7 @@ impl NodeClient {
         T: GraphQLQuery,
     {
         let request_body = T::build_query(params);
-
+        let permit = self.concurrency_limiter.acquire().await;
         let response = self
             .client
             .post(&self.endpoint)
@@ -32,11 +38,11 @@ impl NodeClient {
             .send()
             .await
             .map_err(api_failure)?;
-
         let response = response
             .json::<Response<T::ResponseData>>()
             .await
             .map_err(api_failure)?;
+        drop(permit);
 
         if let Some(errors) = response.errors {
             log::error!("api errors: {:?}", errors);
