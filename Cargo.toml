@@ -59,7 +59,7 @@ ton_block = { git = "https://github.com/tonlabs/ton-labs-block.git" }
 ton_abi = { git = "https://github.com/tonlabs/ton-labs-abi.git" }
 
 # Crypto stuff
-secp256k1 = { version = "0.19.0", features = ["default", "rand"] }
+secp256k1 = { version = "0.19.0", features = ["default", "rand", "recovery"] }
 ed25519-dalek = "1.0.1"
 ring = "0.16.15"
 sodiumoxide = "0.2.6"

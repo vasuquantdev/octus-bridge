@@ -1,4 +1,3 @@
-use crate::prelude::*;
 use std::fmt;
 use std::fmt::{Debug, Formatter};
 use std::fs::File;
@@ -14,6 +13,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{from_reader, to_writer_pretty};
 use sodiumoxide::crypto::secretbox;
 use sodiumoxide::crypto::secretbox::{Key, Nonce};
+
+use crate::prelude::*;
 
 const CREDENTIAL_LEN: usize = digest::SHA256_OUTPUT_LEN;
 
@@ -145,16 +146,22 @@ where
 }
 
 impl EthSigner {
-    pub fn sign(&self, data: &[u8]) -> [u8; 64] {
+    /// signs data according to https://eips.ethereum.org/EIPS/eip-191
+    pub fn sign(&self, data: &[u8]) -> Vec<u8> {
         use sha3::{Digest, Keccak256};
-        let mut eth_data: Vec<u8> = b"\x19Ethereum Signed Message:\n".to_vec();
-        eth_data.extend_from_slice(data.len().to_string().as_bytes());
+        let mut eth_data: Vec<u8> = format!("\x19Ethereum Signed Message:\n{}", data.len()).into();
+        // eth_data.extend_from_slice(data.len().to_string().as_bytes());
         eth_data.extend_from_slice(&data);
         let hash = Keccak256::digest(&eth_data);
         let message = Message::from_slice(&*hash).expect("Shouldn't fail");
         let secp = secp256k1::Secp256k1::new();
-        // TODO: check correctness
-        secp.sign(&message, &self.private_key).serialize_compact()
+        let (id, sign) = secp
+            .sign_recoverable(&message, &self.private_key)
+            .serialize_compact();
+        let mut ex_sign = Vec::with_capacity(65);
+        ex_sign.extend_from_slice(&sign);
+        ex_sign.push(id.to_i32() as u8 + 27); //recovery id with eth specific offset
+        ex_sign
     }
 
     pub fn pubkey(&self) -> PublicKey {
@@ -307,10 +314,13 @@ impl KeyData {
 
 #[cfg(test)]
 mod test {
+    use std::str::FromStr;
+
+    use pretty_assertions::assert_eq;
     use secp256k1::SecretKey;
     use secstr::SecStr;
 
-    use crate::crypto::key_managment::KeyData;
+    use crate::crypto::key_managment::{EthSigner, KeyData};
 
     fn default_keys() -> (SecretKey, ed25519_dalek::Keypair) {
         let eth_private_key = SecretKey::from_slice(
@@ -333,15 +343,24 @@ mod test {
         (eth_private_key, ton_key_pair)
     }
 
-    // #[test]
-    // fn test_sign() {
-    //     use hex::decode;
-    //     let message_text = b"Some data";
-    //
-    //     let signer = Signer::from_file("./test/test.keys")
-    //     let res = signer.sign(b"test").unwrap();
-    //     assert_eq!(res, Signature::from_bytes(decode("2d34bd34780a6fb76181c103653161c456eb7163eb9e098b29fc1619b46fa123ae3d962ca738e480a83ed1943e965b652175c78536781abe426f46cdfe64a209").unwrap().as_slice()).unwrap());
-    // }
+    #[test]
+    fn test_sign() {
+        use hex::decode;
+        use secp256k1::PublicKey;
+        use secp256k1::SecretKey;
+        let message_text = b"hello_world1";
+
+        let (private_key, _) = default_keys();
+        let curve = secp256k1::Secp256k1::new();
+        let signer = EthSigner {
+            pubkey: PublicKey::from_secret_key(&curve, &private_key),
+            private_key,
+        };
+        let res = signer.sign(message_text);
+        let expected = hex::decode("b1a996ea9f23729ea5f6602a13a906f9627af7ccd891c6d6e1d3a3a5b914c73e17f523b5379019d75df9342f7ffc5ce56333f57cd587f1aa056153d536252c951c").unwrap();
+        assert_eq!(expected.len(), res.len());
+        assert_eq!(res, expected.as_slice());
+    }
 
     #[test]
     fn test_init() {
