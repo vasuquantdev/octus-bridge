@@ -11,17 +11,16 @@ use relay_ton::prelude::{MsgAddressInt, UInt256};
 use crate::config::RelayConfig;
 use crate::crypto::key_managment::{EthSigner, KeyData};
 use crate::db_management::*;
-use crate::engine::bridge::ton_listener::{ConfigsState, TonListener};
+use crate::engine::bridge::ton_listener::{make_ton_listener, ConfigsState, TonListener};
+use crate::models::*;
 use crate::prelude::*;
-use num_bigint::BigUint;
 
-pub mod models;
 mod prelude;
 pub(crate) mod ton_listener;
 mod util;
 
 pub async fn make_bridge(
-    state_manager: Db,
+    db: Db,
     config: RelayConfig,
     key_data: KeyData,
 ) -> Result<Arc<Bridge>, Error> {
@@ -42,31 +41,28 @@ pub async fn make_bridge(
         EthListener::new(
             Url::parse(&config.eth_settings.node_address)
                 .map_err(|e| Error::new(e).context("Bad url for eth_config provided"))?,
-            state_manager.clone(),
+            db.clone(),
             config.eth_settings.tcp_connection_count,
         )
         .await?,
     );
 
-    let eth_queue = EthQueue::new(&state_manager)?;
-    let ton_queue = TonQueue::new(&state_manager)?;
-    let stats_db = StatsDb::new(&state_manager)?;
+    let eth_queue = EthQueue::new(&db)?;
 
-    let event_configurations_listener = TonListener::new(
+    let ton_listener = make_ton_listener(
+        &db,
         transport,
         bridge_contract.clone(),
-        key_data.eth.clone(),
         eth_queue.clone(),
-        ton_queue,
-        stats_db,
+        key_data.eth.clone(),
         config.ton_settings.clone(),
     )
-    .await;
+    .await?;
 
     let bridge = Arc::new(Bridge {
         eth_signer: key_data.eth,
         eth_listener,
-        ton_listener: event_configurations_listener,
+        ton_listener,
         bridge_contract,
         eth_queue,
     });

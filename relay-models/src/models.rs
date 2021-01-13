@@ -30,22 +30,18 @@ pub struct NewEventConfiguration {
     pub event_proxy_address: String,
 }
 
-#[derive(Deserialize, Serialize, OpgModel)]
+#[derive(Deserialize, Serialize)]
 pub struct EventConfiguration {
-    pub address: String,
-
+    pub configuration_id: String,
     pub ethereum_event_abi: String,
     pub ethereum_event_address: String,
     pub event_proxy_address: String,
-    pub ethereum_event_blocks_to_confirm: u64,
-    pub required_confirmations: u64,
-    pub required_rejections: u64,
+    pub ethereum_event_blocks_to_confirm: u16,
     pub event_required_confirmations: u64,
     pub event_required_rejects: u64,
-
-    pub confirm_keys: Vec<String>,
-    pub reject_keys: Vec<String>,
-    pub active: bool,
+    pub event_initial_balance: u64,
+    pub bridge_address: String,
+    pub event_code: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, OpgModel)]

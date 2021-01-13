@@ -4,10 +4,8 @@ use tokio::sync::{Mutex, MutexGuard};
 
 use relay_models::models::EthEventVotingDataView;
 
-use crate::db_management::models::EthEventVotingData;
-use crate::db_management::Table;
-
 use super::prelude::*;
+use crate::models::*;
 
 const RANGE_LOWER_BOUND: [u8; 8] = [0; 8];
 
@@ -20,7 +18,7 @@ pub struct EthQueue {
 impl EthQueue {
     pub fn new(db: &Db) -> Result<Self, Error> {
         Ok(Self {
-            db: db.open_tree(super::constants::ETH_QUEUE_TREE_NAME)?,
+            db: db.open_tree(super::constants::ETH_QUEUE)?,
             guard: Arc::new(Default::default()),
         })
     }

@@ -4,6 +4,7 @@ use tokio::sync::RwLock;
 use warp::http::StatusCode;
 use warp::{reply, Filter, Reply};
 
+use relay_models::models::*;
 use relay_ton::transport::Transport;
 
 use crate::config::{RelayConfig, TonTransportConfig};
@@ -113,7 +114,7 @@ async fn vote_for_ethereum_event_configuration(
     state: Arc<RwLock<State>>,
     voting: Voting,
 ) -> Result<impl Reply, Infallible> {
-    let (configuration_id, voting) = match <(_, _)>::try_from(voting) {
+    let (configuration_id, voting) = match FromRequest::<_>::try_from(voting) {
         Ok(voting) => voting,
         Err(err) => {
             log::error!("{}", err);
@@ -164,7 +165,7 @@ async fn get_event_configurations(state: Arc<RwLock<State>>) -> Result<impl Repl
             .map(|configurations| {
                 configurations
                     .into_iter()
-                    .map(EventConfiguration::from)
+                    .map(<EventConfiguration as FromContractModels<_>>::from)
                     .collect::<Vec<_>>()
             }) {
             Ok(event_configurations) => reply::with_status(

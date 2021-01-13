@@ -5,10 +5,11 @@ use tokio::sync::RwLock;
 use ton_block::MsgAddrStd;
 use warp::Reply;
 
-use relay_models::models::EthTonVoteView;
+use relay_models::models::*;
 
-use crate::db_management::{EthQueue, EventTransaction, StatsDb, Table, TonQueue};
-use crate::engine::models::{BridgeState, State, Status};
+use crate::db_management::*;
+use crate::engine::models::*;
+use crate::models::*;
 
 pub async fn get_status(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {
     let state = state.read().await;
@@ -46,14 +47,16 @@ pub async fn get_status(state: Arc<RwLock<State>>) -> Result<impl Reply, Infalli
 
 pub async fn pending(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {
     let state = state.read().await;
-    let provider = TonQueue::new(&state.state_manager).expect("Fatal db error");
+    let provider =
+        EthEventVotesQueue::new_eth_votes_queue(&state.state_manager).expect("Fatal db error");
     let pending = fold_ton_stats(provider.get_all_pending());
     Ok(serde_json::to_string(&pending).expect("Shouldn't fail"))
 }
 
 pub async fn failed(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {
     let state = state.read().await;
-    let provider = TonQueue::new(&state.state_manager).expect("Fatal db error");
+    let provider =
+        EthEventVotesQueue::new_eth_votes_queue(&state.state_manager).expect("Fatal db error");
     let failed = fold_ton_stats(provider.get_all_failed());
     Ok(serde_json::to_string(&failed).expect("Shouldn't fail"))
 }
@@ -67,7 +70,8 @@ pub async fn eth_queue(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallib
 
 pub async fn all_relay_stats(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {
     let state = state.read().await;
-    let provider = StatsDb::new(&state.state_manager).expect("Fatal db error");
+    let provider =
+        EthVotingStats::new_eth_voting_stats(&state.state_manager).expect("Fatal db error");
     let data = provider.dump_elements();
     Ok(serde_json::to_string(&data).expect("Shouldn't fail"))
 }
@@ -86,7 +90,7 @@ pub async fn retry_failed(state: Arc<RwLock<State>>) -> Result<impl Reply, Infal
 
 fn fold_ton_stats<I>(iter: I) -> Vec<EthTonVoteView>
 where
-    I: Iterator<Item = (MsgAddrStd, EventTransaction)>,
+    I: Iterator<Item = (MsgAddrStd, EthEventTransaction)>,
 {
     iter.map(|(event_address, transaction)| EthTonVoteView {
         event_address: event_address.to_string(),

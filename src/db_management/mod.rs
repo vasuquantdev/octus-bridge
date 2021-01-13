@@ -6,19 +6,16 @@ pub mod eth_queue;
 /// Here all lifetime stats are stored. key is relay pubkey, hash is Stats
 pub mod stats_db;
 ///
-pub mod ton_queue;
+pub mod votes_queues;
 
 pub mod constants;
-pub mod models;
 mod prelude;
 
 use std::collections::HashMap;
 
 pub use self::eth_queue::*;
 pub use self::stats_db::*;
-pub use self::ton_queue::*;
-
-pub use self::models::*;
+pub use self::votes_queues::*;
 
 /// This module contains all db related operations.
 /// We are using `sled` as kv storage and `bincode` for encoding in the binary format.

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use tokio::sync::{Mutex, Notify, RwLock};
 
 #[derive(Clone)]
@@ -62,6 +63,20 @@ impl Semaphore {
 struct SemaphoreGuard {
     target: usize,
     allow_notify: bool,
+}
+
+#[async_trait]
+pub trait TryNotify {
+    async fn try_notify(self);
+}
+
+#[async_trait]
+impl TryNotify for Option<Semaphore> {
+    async fn try_notify(self) {
+        if let Some(semaphore) = self {
+            semaphore.notify().await;
+        }
+    }
 }
 
 #[cfg(test)]

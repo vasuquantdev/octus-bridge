@@ -1,6 +1,6 @@
 use opg::*;
 
-use relay_models::models::{EthEventVotingDataView, EthTonTransactionView, TxStatView};
+use relay_models::models::*;
 
 use super::*;
 
