@@ -239,7 +239,11 @@ async fn wait_for_init(
         }
     };
 
-    let eth_private_key = match derive_from_words_eth(language, &data.eth_seed) {
+    let eth_private_key = match derive_from_words_eth(
+        language,
+        &data.eth_seed,
+        config.eth_settings.seed_derivation_path.as_deref(),
+    ) {
         Ok(a) => a,
         Err(e) => {
             let error = format!("Failed deriving from eth seed: {}", e);

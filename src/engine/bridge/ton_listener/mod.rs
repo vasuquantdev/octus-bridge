@@ -243,14 +243,13 @@ impl TonListener {
                 while let Some(event) = swapback_events_contract.next().await {
                     log::info!("Got swap back event: {:?}", event);
 
-                    let event_data = util::ton_tokens_to_ethereum_bytes(event.tokens.clone());
-                    let signature = listener.eth_signer.sign(&event_data);
-
-                    log::info!(
-                        "Calculated swap back event signature: {} for payload: {}",
-                        hex::encode(&signature),
-                        hex::encode(&event_data)
-                    );
+                    let signature = match listener.calculate_signature(&event) {
+                        Ok(signature) => signature,
+                        Err(e) => {
+                            log::error!("Failed to calculate event signature: {:?}", e);
+                            continue;
+                        }
+                    };
 
                     match make_confirmed_ton_event_transaction(
                         event_id,
@@ -507,6 +506,18 @@ impl TonListener {
         if let Some((topic, _, _)) = topics.address_topic_map.get(&ethereum_event_address) {
             let _ = subscriptions_tx.send((ethereum_event_address, *topic));
         }
+    }
+
+    fn calculate_signature(&self, event: &SwapBackEvent) -> Result<Vec<u8>, Error> {
+        let payload = ethabi::encode(&util::prepare_ton_event_payload(event)?).to_vec();
+        let signature = self.eth_signer.sign(&payload);
+
+        log::info!(
+            "Calculated swap back event signature: {} for payload: {}",
+            hex::encode(&signature),
+            hex::encode(&payload)
+        );
+        Ok(signature)
     }
 }
 
@@ -1196,14 +1207,13 @@ impl ReceivedVoteWithDataExt for TonEventReceivedVoteWithData {
                 .decode_input(transaction.data().init_data.event_data.clone().into())
                 .map_err(|e| anyhow!("failed decoding TON event data: {:?}", e))?;
 
-            let event_data = util::ton_tokens_to_ethereum_bytes(tokens);
-            let signature = listener.eth_signer.sign(&event_data);
-
-            log::info!(
-                "Calculated swap back event signature: {} for payload: {}",
-                hex::encode(&signature),
-                hex::encode(&event_data)
-            );
+            let data = &transaction.data().init_data;
+            let signature = listener.calculate_signature(&SwapBackEvent {
+                event_transaction: data.event_transaction.clone(),
+                event_transaction_lt: data.event_transaction_lt,
+                event_index: data.event_index,
+                tokens,
+            })?;
 
             listener
                 .ton

@@ -17,7 +17,7 @@ pub mod ton_swapback_events;
 
 mod contract;
 pub mod errors;
-mod message_builder;
+pub mod message_builder;
 pub mod models;
 mod prelude;
 pub mod utils;

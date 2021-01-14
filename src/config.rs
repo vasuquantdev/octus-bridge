@@ -85,6 +85,10 @@ pub struct EthSettings {
 
     /// Number of concurrent tcp connection to ethereum node
     pub tcp_connection_count: usize,
+
+    /// Custom ETH key derivation path, used for testing
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seed_derivation_path: Option<String>,
 }
 
 impl Default for EthSettings {
@@ -92,6 +96,7 @@ impl Default for EthSettings {
         Self {
             node_address: "http://localhost:1234".into(),
             tcp_connection_count: 100,
+            seed_derivation_path: None,
         }
     }
 }

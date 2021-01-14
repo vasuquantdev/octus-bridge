@@ -4,7 +4,8 @@ use sha3::digest::Digest;
 use sha3::Keccak256;
 use ton_abi::{ParamType as TonParamType, TokenValue as TonTokenValue, TokenValue};
 
-use relay_ton::contracts::EthEventConfiguration;
+use relay_ton::contracts::message_builder::{BigUint256, FunctionArg};
+use relay_ton::contracts::{EthEventConfiguration, SwapBackEvent};
 use relay_ton::prelude::Cell;
 
 use crate::prelude::*;
@@ -306,6 +307,36 @@ fn map_ton_token_value_to_eth_token_value(token: TonTokenValue) -> Result<EthTok
         ),
         any => return Err(anyhow!("unsupported type: {:?}", any)),
     })
+}
+
+pub fn prepare_ton_event_payload(event: &SwapBackEvent) -> Result<Vec<ethabi::Token>, Error> {
+    // struct TONEvent {
+    //     uint eventTransaction;
+    //     uint eventIndex;
+    //     bytes eventData;
+    //     uint eventBlockNumber;
+    //     uint eventBlock;
+    //     bytes tonEventConfiguration;
+    //     uint requiredConfirmations;
+    //     uint requiredRejects;
+    // }
+
+    let event_index = BigUint256(event.event_index.into());
+    let event_data = ton_tokens_to_ethereum_bytes(event.tokens.clone());
+    let event_block_number = BigUint256(event.event_transaction_lt.into());
+
+    let tuple = EthTokenValue::Tuple(vec![
+        map_ton_token_value_to_eth_token_value(event.event_transaction.clone().token_value())?,
+        map_ton_token_value_to_eth_token_value(event_index.token_value())?,
+        map_ton_token_value_to_eth_token_value(event_data.token_value())?,
+        map_ton_token_value_to_eth_token_value(event_block_number.token_value())?,
+        map_ton_token_value_to_eth_token_value(UInt256::default().token_value())?, // eventBlock
+        map_ton_token_value_to_eth_token_value(Vec::<u8>::default().token_value())?, // tonEventConfiguration
+        map_ton_token_value_to_eth_token_value(UInt256::default().token_value())?, // requiredConfirmations
+        map_ton_token_value_to_eth_token_value(UInt256::default().token_value())?, //requiredRejects
+    ]);
+
+    Ok(vec![tuple])
 }
 
 ///maps `Vec<TonTokenValue>` to bytes, which could be signed
