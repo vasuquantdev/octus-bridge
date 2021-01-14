@@ -241,6 +241,8 @@ impl TonListener {
 
             async move {
                 while let Some(event) = swapback_events_contract.next().await {
+                    log::debug!("Got swap back event: {:?}", event);
+
                     let event_data = util::ton_tokens_to_ethereum_bytes(event.tokens.clone());
                     let signature = listener.eth_signer.sign(&event_data);
 
@@ -1344,6 +1346,9 @@ impl std::fmt::Display for TonEventTransaction {
             Self::Confirm(signed) => &signed.data.event_transaction,
             Self::Reject(data) => &data.event_transaction,
         };
-        f.write_fmt(format_args!("Vote for TON transaction {}", transaction))
+        f.write_fmt(format_args!(
+            "Vote for TON transaction {}",
+            hex::encode(transaction.as_slice())
+        ))
     }
 }
