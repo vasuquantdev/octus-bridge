@@ -247,6 +247,14 @@ impl ParseToken<u16> for TokenValue {
     }
 }
 
+impl ParseToken<u64> for TokenValue {
+    fn try_parse(self) -> ContractResult<u64> {
+        ParseToken::<BigUint>::try_parse(self)?
+            .to_u64()
+            .ok_or(ContractError::InvalidAbi)
+    }
+}
+
 impl ParseToken<bool> for TokenValue {
     fn try_parse(self) -> ContractResult<bool> {
         match self {
@@ -322,6 +330,7 @@ impl StandaloneToken for UInt256 {}
 impl StandaloneToken for UInt128 {}
 impl StandaloneToken for BigUint {}
 impl StandaloneToken for u16 {}
+impl StandaloneToken for u64 {}
 impl StandaloneToken for bool {}
 impl StandaloneToken for Vec<u8> {}
 impl StandaloneToken for TokenValue {}

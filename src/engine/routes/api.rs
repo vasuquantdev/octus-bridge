@@ -61,7 +61,7 @@ pub fn get_api() -> String {
             ("status" / "relay"): {
                 GET: {
                     summary: "Returns object, where key is relay key and values is list of confirmed transactions",
-                    200: HashMap<String, Vec<TxStatView>>
+                    200: HashMap<String, Vec<EthTxStatView>>
                 }
             },
             ("status" / "failed" / "retry"): {

@@ -150,10 +150,10 @@ impl BridgeContract {
         event_data_signature: Vec<u8>,
     ) -> ContractResult<()> {
         log::info!(
-            "CONFIRMING TON EVENT: {:?}, {}, {}",
+            "CONFIRMING TON EVENT: {}, {}, {}",
             hex::encode(&event_init_data.event_transaction),
+            event_init_data.event_transaction_lt,
             event_init_data.event_index,
-            event_init_data.event_block_number
         );
 
         self.message("confirmTonEvent")?
@@ -171,10 +171,10 @@ impl BridgeContract {
         event_init_data: TonEventInitData,
     ) -> ContractResult<()> {
         log::info!(
-            "CONFIRMING TON EVENT: {:?}, {}, {}",
+            "CONFIRMING TON EVENT: {}, {}, {}",
             hex::encode(&event_init_data.event_transaction),
+            event_init_data.event_transaction_lt,
             event_init_data.event_index,
-            event_init_data.event_block_number
         );
 
         self.message("rejectTonEvent")?

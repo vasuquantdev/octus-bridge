@@ -126,18 +126,23 @@ pub fn parse_transaction_messages(transaction: &Transaction) -> TransportResult<
     Ok(messages)
 }
 
-pub struct MessageProcessingParams<'a> {
+pub struct MessageProcessingParams<'a, T> {
+    pub event_transaction: &'a UInt256,
+    pub event_transaction_lt: u64,
     pub abi_function: Option<&'a Function>,
-    pub events_tx: Option<&'a RawEventsTx>,
+    pub events_tx: Option<&'a EventsTx<T>>,
 }
 
-pub fn process_out_messages<'a>(
+pub fn process_out_messages<'a, T>(
     messages: &'a [Message],
-    params: MessageProcessingParams<'a>,
-) -> TransportResult<ContractOutput> {
+    params: MessageProcessingParams<'a, T>,
+) -> TransportResult<ContractOutput>
+where
+    T: PrepareEvent,
+{
     let mut output = None;
 
-    for msg in messages {
+    for (i, msg) in messages.into_iter().enumerate() {
         if !matches!(msg.header(), CommonMsgInfo::ExtOutMsgInfo(_)) {
             continue;
         }
@@ -167,7 +172,12 @@ pub fn process_out_messages<'a>(
                 });
             }
             (_, Some(events_tx)) => {
-                let _ = events_tx.send(body);
+                let _ = events_tx.send(<T as PrepareEvent>::prepare_event(
+                    body,
+                    params.event_transaction,
+                    params.event_transaction_lt,
+                    i as u64,
+                ));
             }
             _ => {
                 log::debug!("Unknown");
@@ -182,5 +192,41 @@ pub fn process_out_messages<'a>(
         _ => Err(TransportError::ExecutionError {
             reason: "no external output messages".to_owned(),
         }),
+    }
+}
+
+pub trait PrepareEvent: Sized + Send + Sync + 'static {
+    fn prepare_event(
+        event_data: SliceData,
+        event_transaction: &UInt256,
+        event_transaction_lt: u64,
+        event_index: u64,
+    ) -> Self;
+}
+
+impl PrepareEvent for SliceData {
+    fn prepare_event(
+        event_data: SliceData,
+        _event_transaction: &UInt256,
+        _event_transaction_lt: u64,
+        _event_index: u64,
+    ) -> Self {
+        event_data
+    }
+}
+
+impl PrepareEvent for FullEventInfo {
+    fn prepare_event(
+        event_data: SliceData,
+        event_transaction: &UInt256,
+        event_transaction_lt: u64,
+        event_index: u64,
+    ) -> Self {
+        Self {
+            event_transaction: event_transaction.clone(),
+            event_transaction_lt,
+            event_index,
+            event_data,
+        }
     }
 }

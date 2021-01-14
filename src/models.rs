@@ -58,11 +58,12 @@ pub mod h256_to_hex {
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct TonEventVotingData {
-    pub event_transaction: H256,
+    #[serde(with = "serde_uint256")]
+    pub event_transaction: UInt256,
+    pub event_transaction_lt: u64,
+    pub event_index: u64,
     #[serde(with = "serde_cells")]
     pub event_data: Cell,
-    pub event_block_number: u64,
-    pub event_block: H256,
 
     pub configuration_id: BigUint,
 }
@@ -71,12 +72,9 @@ impl From<TonEventVotingData> for TonEventInitData {
     fn from(data: TonEventVotingData) -> Self {
         TonEventInitData {
             event_transaction: data.event_transaction,
-            event_index: Default::default(),
+            event_transaction_lt: data.event_transaction_lt,
+            event_index: data.event_index,
             event_data: data.event_data,
-            event_block_number: data.event_block_number.into(),
-            event_block: data.event_block,
-
-            // TODO: replace voting data model
             ton_event_configuration: Default::default(),
             required_confirmations: Default::default(),
             required_rejections: Default::default(),
@@ -175,10 +173,10 @@ pub struct CommonReceivedVoteWithData<T, D> {
 }
 
 pub type EthEventReceivedVote = CommonReceivedVote<u16, EthEventDetails>;
-pub type TonEventReceivedVote = CommonReceivedVote<(), TonEventDetails>;
+pub type TonEventReceivedVote = CommonReceivedVote<Arc<AbiEvent>, TonEventDetails>;
 
 impl EthEventReceivedVote {
-    pub fn new_eth_event_vote(
+    pub fn new(
         configuration_id: BigUint,
         event_addr: MsgAddrStd,
         relay_key: UInt256,
@@ -197,18 +195,19 @@ impl EthEventReceivedVote {
 }
 
 impl TonEventReceivedVote {
-    pub fn new_eth_event_vote(
+    pub fn new(
         configuration_id: BigUint,
         event_addr: MsgAddrStd,
         relay_key: UInt256,
         kind: Voting,
+        abi: Arc<AbiEvent>,
     ) -> Self {
         Self {
             configuration_id,
             event_addr,
             relay_key,
             kind,
-            additional_data: (),
+            additional_data: abi,
             _data: Default::default(),
         }
     }
@@ -307,6 +306,19 @@ impl From<EthEventReceivedVoteWithData> for EthEventVotingData {
                 .to_u64()
                 .unwrap_or_else(u64::max_value),
             event_block: event.data.init_data.event_block,
+            configuration_id: event.info.configuration_id,
+        }
+    }
+}
+
+impl From<TonEventReceivedVoteWithData> for TonEventVotingData {
+    fn from(event: TonEventReceivedVoteWithData) -> Self {
+        Self {
+            event_transaction: event.data.init_data.event_transaction,
+            event_transaction_lt: event.data.init_data.event_transaction_lt,
+            event_index: event.data.init_data.event_index,
+            event_data: event.data.init_data.event_data,
+
             configuration_id: event.info.configuration_id,
         }
     }

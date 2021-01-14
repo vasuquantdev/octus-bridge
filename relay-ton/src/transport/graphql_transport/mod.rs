@@ -10,7 +10,7 @@ use reqwest::header::{self, HeaderMap, HeaderValue};
 use reqwest::ClientBuilder;
 use ton_abi::Function;
 use ton_block::{
-    CommonMsgInfo, Deserializable, HashmapAugType, InRefValue, Message, Serializable, Transaction,
+    CommonMsgInfo, Deserializable, HashmapAugType, Message, Serializable, Transaction,
 };
 use ton_types::HashmapType;
 
@@ -55,9 +55,11 @@ impl RunLocal for GraphQLTransport {
         message: ExternalMessage,
     ) -> TransportResult<ContractOutput> {
         let messages = run_local(&self.client, message).await?;
-        process_out_messages(
+        process_out_messages::<SliceData>(
             &messages,
             MessageProcessingParams {
+                event_transaction: &Default::default(),
+                event_transaction_lt: 0,
                 abi_function: Some(abi),
                 events_tx: None,
             },
@@ -71,6 +73,20 @@ impl Transport for GraphQLTransport {
         &self,
         addr: MsgAddressInt,
     ) -> TransportResult<(Arc<dyn AccountSubscription>, RawEventsRx)> {
+        let (subscription, rx) = GraphQLAccountSubscription::new(
+            self.client.clone(),
+            self.config.next_block_timeout_sec,
+            addr,
+        )
+        .await?;
+
+        Ok((subscription, rx))
+    }
+
+    async fn subscribe_full(
+        &self,
+        addr: MsgAddressInt,
+    ) -> TransportResult<(Arc<dyn AccountSubscription>, FullEventsRx)> {
         let (subscription, rx) = GraphQLAccountSubscription::new(
             self.client.clone(),
             self.config.next_block_timeout_sec,
@@ -100,20 +116,24 @@ impl Transport for GraphQLTransport {
     }
 }
 
-struct GraphQLAccountSubscription {
+struct GraphQLAccountSubscription<T> {
     since_lt: u64,
     client: NodeClient,
     account: MsgAddressInt,
     account_id: UInt256,
     pending_messages: RwLock<HashMap<UInt256, PendingMessage<u32>>>,
+    _marker: std::marker::PhantomData<T>,
 }
 
-impl GraphQLAccountSubscription {
+impl<T> GraphQLAccountSubscription<T>
+where
+    T: PrepareEvent,
+{
     async fn new(
         client: NodeClient,
         next_block_timeout: u32,
         addr: MsgAddressInt,
-    ) -> TransportResult<(Arc<Self>, RawEventsRx)> {
+    ) -> TransportResult<(Arc<Self>, EventsRx<T>)> {
         let client = client.clone();
         let last_block = client.get_latest_block(&addr).await?;
 
@@ -132,6 +152,7 @@ impl GraphQLAccountSubscription {
                 })?
                 .into(),
             pending_messages: RwLock::new(HashMap::new()),
+            _marker: Default::default(),
         });
         subscription.start_loop(events_tx, last_block.id, next_block_timeout);
 
@@ -140,7 +161,7 @@ impl GraphQLAccountSubscription {
 
     fn start_loop(
         self: &Arc<Self>,
-        events_tx: RawEventsTx,
+        events_tx: EventsTx<T>,
         mut last_block_id: String,
         next_block_timeout: u32,
     ) {
@@ -204,10 +225,14 @@ impl GraphQLAccountSubscription {
                         log::trace!("got account block. {:?}", data);
 
                         for item in data.transactions().iter() {
-                            let transaction = match item.and_then(|(_, mut value)| {
-                                InRefValue::<Transaction>::construct_from(&mut value)
+                            let (transaction, hash) = match item.and_then(|(_, value)| {
+                                let cell = value.into_cell().reference(0)?;
+                                let hash = cell.repr_hash();
+
+                                Transaction::construct_from_cell(cell)
+                                    .map(|transaction| (transaction, hash))
                             }) {
-                                Ok(transaction) => transaction.0,
+                                Ok(transaction) => transaction,
                                 Err(e) => {
                                     log::error!(
                                         "failed to parse account transaction. {:?}",
@@ -238,6 +263,8 @@ impl GraphQLAccountSubscription {
                                     let result = process_out_messages(
                                         &out_messages,
                                         MessageProcessingParams {
+                                            event_transaction: &hash,
+                                            event_transaction_lt: transaction.lt,
                                             abi_function: Some(pending_message.abi()),
                                             events_tx: Some(&events_tx),
                                         },
@@ -246,6 +273,8 @@ impl GraphQLAccountSubscription {
                                 } else if let Err(e) = process_out_messages(
                                     &out_messages,
                                     MessageProcessingParams {
+                                        event_transaction: &hash,
+                                        event_transaction_lt: transaction.lt,
                                         abi_function: None,
                                         events_tx: Some(&events_tx),
                                     },
@@ -289,16 +318,21 @@ impl GraphQLAccountSubscription {
 }
 
 #[async_trait]
-impl RunLocal for GraphQLAccountSubscription {
+impl<T> RunLocal for GraphQLAccountSubscription<T>
+where
+    T: PrepareEvent,
+{
     async fn run_local(
         &self,
         abi: &Function,
         message: ExternalMessage,
     ) -> TransportResult<ContractOutput> {
         let messages = run_local(&self.client, message).await?;
-        process_out_messages(
+        process_out_messages::<SliceData>(
             &messages,
             MessageProcessingParams {
+                event_transaction: &Default::default(),
+                event_transaction_lt: 0,
                 abi_function: Some(abi),
                 events_tx: None,
             },
@@ -307,7 +341,10 @@ impl RunLocal for GraphQLAccountSubscription {
 }
 
 #[async_trait]
-impl AccountSubscription for GraphQLAccountSubscription {
+impl<T> AccountSubscription for GraphQLAccountSubscription<T>
+where
+    T: PrepareEvent,
+{
     fn since_lt(&self) -> u64 {
         self.since_lt
     }

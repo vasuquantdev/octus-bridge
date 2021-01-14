@@ -44,6 +44,14 @@ impl PackIntoCell for Vec<TokenValue> {
     }
 }
 
+impl PackIntoCell for Vec<Token> {
+    fn pack_into_cell(self) -> ContractResult<Cell> {
+        TokenValue::pack_values_into_chain(&self, Vec::new(), ABI_VERSION)
+            .and_then(|data| data.into_cell())
+            .map_err(|_| ContractError::InvalidAbi)
+    }
+}
+
 pub fn make_address(addr: &str) -> ContractResult<MsgAddrStd> {
     match MsgAddressInt::from_str(addr) {
         Ok(MsgAddressInt::AddrStd(addr_std)) => Ok(addr_std),

@@ -94,8 +94,18 @@ pub struct EthEventVotingDataView {
 
 #[derive(Deserialize, Serialize, opg::OpgModel)]
 #[serde(rename_all = "lowercase")]
-pub struct TxStatView {
+pub struct EthTxStatView {
     pub tx_hash: String,
+    pub met: i64,
+    pub event_addr: String,
+    pub vote: EventVote,
+}
+
+#[derive(Deserialize, Serialize, opg::OpgModel)]
+#[serde(rename_all = "lowercase")]
+pub struct TonTxStatView {
+    pub tx_hash: String,
+    pub tx_lt: String,
     pub met: i64,
     pub event_addr: String,
     pub vote: EventVote,

@@ -24,10 +24,18 @@ pub use ton_abi::{Contract as AbiContract, Event as AbiEvent, Function as AbiFun
 pub use ton_block::{MsgAddrStd, MsgAddressInt};
 pub use ton_types::{serialize_toc, BuilderData, Cell, SliceData, UInt256};
 
-pub(crate) type RawEventsTx = mpsc::UnboundedSender<SliceData>;
-pub(crate) type RawEventsRx = mpsc::UnboundedReceiver<SliceData>;
+pub(crate) type RawEventsRx = EventsRx<SliceData>;
+pub(crate) type FullEventsRx = EventsRx<FullEventInfo>;
+
 pub type EventsTx<T> = mpsc::UnboundedSender<T>;
 pub type EventsRx<T> = mpsc::UnboundedReceiver<T>;
+
+pub struct FullEventInfo {
+    pub event_transaction: UInt256,
+    pub event_transaction_lt: u64,
+    pub event_index: u64,
+    pub event_data: SliceData,
+}
 
 #[allow(clippy::derive_hash_xor_eq)]
 #[derive(Clone, Default, PartialEq, Eq, Hash, Ord, PartialOrd)]

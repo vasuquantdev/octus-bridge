@@ -47,16 +47,14 @@ pub async fn get_status(state: Arc<RwLock<State>>) -> Result<impl Reply, Infalli
 
 pub async fn pending(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {
     let state = state.read().await;
-    let provider =
-        EthEventVotesQueue::new_eth_votes_queue(&state.state_manager).expect("Fatal db error");
+    let provider = EthEventVotesQueue::new(&state.state_manager).expect("Fatal db error");
     let pending = fold_ton_stats(provider.get_all_pending());
     Ok(serde_json::to_string(&pending).expect("Shouldn't fail"))
 }
 
 pub async fn failed(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {
     let state = state.read().await;
-    let provider =
-        EthEventVotesQueue::new_eth_votes_queue(&state.state_manager).expect("Fatal db error");
+    let provider = EthEventVotesQueue::new(&state.state_manager).expect("Fatal db error");
     let failed = fold_ton_stats(provider.get_all_failed());
     Ok(serde_json::to_string(&failed).expect("Shouldn't fail"))
 }
@@ -70,8 +68,7 @@ pub async fn eth_queue(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallib
 
 pub async fn all_relay_stats(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {
     let state = state.read().await;
-    let provider =
-        EthVotingStats::new_eth_voting_stats(&state.state_manager).expect("Fatal db error");
+    let provider = EthVotingStats::new(&state.state_manager).expect("Fatal db error");
     let data = provider.dump_elements();
     Ok(serde_json::to_string(&data).expect("Shouldn't fail"))
 }

@@ -561,12 +561,12 @@ impl StandaloneToken for EventStatus {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TonEventInitData {
-    pub event_transaction: ethereum_types::H256,
-    pub event_index: BigUint,
+    #[serde(with = "serde_uint256")]
+    pub event_transaction: UInt256,
+    pub event_transaction_lt: u64,
+    pub event_index: u64,
     #[serde(with = "serde_cells")]
     pub event_data: Cell,
-    pub event_block_number: BigUint,
-    pub event_block: ethereum_types::H256,
 
     #[serde(with = "serde_int_addr")]
     pub ton_event_configuration: MsgAddressInt,
@@ -581,15 +581,25 @@ impl ParseToken<TonEventInitData> for TokenValue {
             _ => return Err(ContractError::InvalidAbi),
         };
 
+        // TODO: update models
+
+        let event_transaction = tuple.next().try_parse()?;
+        let event_index = tuple.next().try_parse()?;
+        let event_data = tuple.next().try_parse()?;
+        let event_transaction_lt = tuple.next().try_parse()?; // event_block_number
+        let _event_block: UInt256 = tuple.next().try_parse()?;
+        let ton_event_configuration = tuple.next().try_parse()?;
+        let required_confirmations = tuple.next().try_parse()?;
+        let required_rejections = tuple.next().try_parse()?;
+
         Ok(TonEventInitData {
-            event_transaction: tuple.next().try_parse()?,
-            event_index: tuple.next().try_parse()?,
-            event_data: tuple.next().try_parse()?,
-            event_block_number: tuple.next().try_parse()?,
-            event_block: tuple.next().try_parse()?,
-            ton_event_configuration: tuple.next().try_parse()?,
-            required_confirmations: tuple.next().try_parse()?,
-            required_rejections: tuple.next().try_parse()?,
+            event_transaction,
+            event_transaction_lt,
+            event_index,
+            event_data,
+            ton_event_configuration,
+            required_confirmations,
+            required_rejections,
         })
     }
 }
@@ -602,14 +612,14 @@ impl FunctionArg for TonEventInitData {
             self.event_transaction
                 .token_value()
                 .named("eventTransaction"),
-            BigUint256(self.event_index)
+            BigUint256(self.event_index.into())
                 .token_value()
                 .named("eventIndex"),
             self.event_data.token_value().named("eventData"),
-            BigUint256(self.event_block_number)
+            BigUint256(self.event_transaction_lt.into())
                 .token_value()
                 .named("eventBlockNumber"),
-            self.event_block.token_value().named("eventBlock"),
+            UInt256::default().token_value().named("eventBlock"),
             self.ton_event_configuration
                 .token_value()
                 .named("tonEventConfiguration"),

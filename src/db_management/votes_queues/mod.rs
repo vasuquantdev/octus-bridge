@@ -11,7 +11,7 @@ use crate::models::*;
 pub type TonEventVotesQueue = VotesQueue<TonEventTransaction>;
 
 impl TonEventVotesQueue {
-    pub fn new_ton_votes_queue(db: &Db) -> Result<Self, Error> {
+    pub fn new(db: &Db) -> Result<Self, Error> {
         Ok(Self {
             pending: db.open_tree(TON_EVENTS_QUEUE_PENDING)?,
             failed: db.open_tree(TON_EVENTS_QUEUE_FAILED)?,
@@ -23,7 +23,7 @@ impl TonEventVotesQueue {
 pub type EthEventVotesQueue = VotesQueue<EthEventTransaction>;
 
 impl EthEventVotesQueue {
-    pub fn new_eth_votes_queue(db: &Db) -> Result<Self, Error> {
+    pub fn new(db: &Db) -> Result<Self, Error> {
         Ok(Self {
             pending: db.open_tree(ETH_EVENTS_QUEUE_PENDING)?,
             failed: db.open_tree(ETH_EVENTS_QUEUE_FAILED)?,

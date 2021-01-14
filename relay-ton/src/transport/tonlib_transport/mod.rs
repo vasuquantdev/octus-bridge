@@ -70,9 +70,11 @@ impl RunLocal for TonlibTransport {
             .map_err(to_api_error)?;
 
         let (messages, _) = tvm::call_msg(stats.gen_utime, stats.gen_lt, info, &msg)?;
-        process_out_messages(
+        process_out_messages::<SliceData>(
             &messages,
             MessageProcessingParams {
+                event_transaction: &Default::default(),
+                event_transaction_lt: 0,
                 abi_function: Some(abi),
                 events_tx: None,
             },
@@ -98,6 +100,22 @@ impl Transport for TonlibTransport {
         Ok((subscription, rx))
     }
 
+    async fn subscribe_full(
+        &self,
+        account: MsgAddressInt,
+    ) -> TransportResult<(Arc<dyn AccountSubscription>, FullEventsRx)> {
+        let (subscription, rx) = TonlibAccountSubscription::new(
+            &self.client,
+            &self.subscription_polling_interval,
+            self.max_initial_rescan_gap,
+            self.max_rescan_gap,
+            account,
+        )
+        .await?;
+
+        Ok((subscription, rx))
+    }
+
     fn rescan_events(
         &self,
         account: MsgAddressInt,
@@ -108,22 +126,26 @@ impl Transport for TonlibTransport {
     }
 }
 
-struct TonlibAccountSubscription {
+struct TonlibAccountSubscription<T> {
     since_lt: u64,
     client: Arc<tonlib::TonlibClient>,
     account: MsgAddressInt,
     known_state: RwLock<(AccountStats, AccountStuff)>,
     pending_messages: RwLock<HashMap<UInt256, PendingMessage<(u32, u64)>>>,
+    _marker: std::marker::PhantomData<T>,
 }
 
-impl TonlibAccountSubscription {
+impl<T> TonlibAccountSubscription<T>
+where
+    T: PrepareEvent,
+{
     async fn new(
         client: &Arc<tonlib::TonlibClient>,
         polling_interval: &Duration,
         max_initial_rescan_gap: Option<u32>,
         max_rescan_gap: Option<u32>,
         account: MsgAddressInt,
-    ) -> TransportResult<(Arc<Self>, RawEventsRx)> {
+    ) -> TransportResult<(Arc<Self>, EventsRx<T>)> {
         let client = client.clone();
         let (stats, known_state) = client
             .get_account_state(&account)
@@ -140,6 +162,7 @@ impl TonlibAccountSubscription {
             account,
             known_state: RwLock::new((stats, known_state)),
             pending_messages: RwLock::new(HashMap::new()),
+            _marker: Default::default(),
         });
         subscription.start_loop(
             tx,
@@ -154,7 +177,7 @@ impl TonlibAccountSubscription {
 
     fn start_loop(
         self: &Arc<Self>,
-        state_notifier: RawEventsTx,
+        state_notifier: EventsTx<T>,
         mut last_trans_lt: u64,
         interval: Duration,
         mut max_initial_rescan_gap: Option<u32>,
@@ -245,6 +268,8 @@ impl TonlibAccountSubscription {
                                 let result = process_out_messages(
                                     &out_messages,
                                     MessageProcessingParams {
+                                        event_transaction: &current_trans_hash,
+                                        event_transaction_lt: current_trans_lt,
                                         abi_function: Some(pending_message.abi()),
                                         events_tx: Some(&state_notifier),
                                     },
@@ -253,6 +278,8 @@ impl TonlibAccountSubscription {
                             } else if let Err(e) = process_out_messages(
                                 &out_messages,
                                 MessageProcessingParams {
+                                    event_transaction: &current_trans_hash,
+                                    event_transaction_lt: current_trans_lt,
                                     abi_function: None,
                                     events_tx: Some(&state_notifier),
                                 },
@@ -284,7 +311,10 @@ impl TonlibAccountSubscription {
 }
 
 #[async_trait]
-impl RunLocal for TonlibAccountSubscription {
+impl<T> RunLocal for TonlibAccountSubscription<T>
+where
+    T: PrepareEvent,
+{
     async fn run_local(
         &self,
         abi: &AbiFunction,
@@ -301,9 +331,11 @@ impl RunLocal for TonlibAccountSubscription {
             &message,
         )?;
 
-        process_out_messages(
+        process_out_messages::<SliceData>(
             &messages,
             MessageProcessingParams {
+                event_transaction: &Default::default(),
+                event_transaction_lt: 0,
                 abi_function: Some(abi),
                 events_tx: None,
             },
@@ -312,7 +344,10 @@ impl RunLocal for TonlibAccountSubscription {
 }
 
 #[async_trait]
-impl AccountSubscription for TonlibAccountSubscription {
+impl<T> AccountSubscription for TonlibAccountSubscription<T>
+where
+    T: PrepareEvent,
+{
     fn since_lt(&self) -> u64 {
         self.since_lt
     }

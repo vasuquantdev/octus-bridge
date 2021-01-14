@@ -33,9 +33,6 @@ ton_block = { git = "https://github.com/tonlabs/ton-labs-block.git" }
 ethereum-types = "0.9.2"
 tonlib = { git = "https://github.com/broxus/tonlib-rs.git", optional = true }
 
-[dev-dependencies]
-util = { path = "../util" }
-
 [features]
 default = ["graphql-transport"]
 tonlib-transport = ["tonlib"]

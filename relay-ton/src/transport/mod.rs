@@ -32,6 +32,11 @@ pub trait Transport: RunLocal {
         account: MsgAddressInt,
     ) -> TransportResult<(Arc<dyn AccountSubscription>, RawEventsRx)>;
 
+    async fn subscribe_full(
+        &self,
+        account: MsgAddressInt,
+    ) -> TransportResult<(Arc<dyn AccountSubscription>, FullEventsRx)>;
+
     fn rescan_events(
         &self,
         account: MsgAddressInt,

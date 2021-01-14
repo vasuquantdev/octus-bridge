@@ -5,11 +5,13 @@ use std::collections::hash_map::Entry;
 use async_trait::async_trait;
 use ethabi::ParamType as EthParamType;
 use num_bigint::BigUint;
+use serde::de::DeserializeOwned;
 use tokio::stream::StreamExt;
 use tokio::sync::oneshot;
 use tokio::sync::{mpsc, Mutex, RwLock, RwLockReadGuard};
 use ton_abi::ParamType as TonParamType;
 
+use relay_ton::contracts::utils::PackIntoCell;
 use relay_ton::contracts::*;
 use relay_ton::prelude::UInt256;
 use relay_ton::transport::{Transport, TransportError};
@@ -21,7 +23,6 @@ use crate::crypto::key_managment::EthSigner;
 use crate::db_management::*;
 use crate::models::*;
 use crate::prelude::*;
-use serde::de::DeserializeOwned;
 
 /// Listens to config streams and maps them.
 pub struct TonListener {
@@ -130,15 +131,23 @@ impl TonListener {
         // Wait for all existing configuration contracts subscriptions to start ETH part properly
         let semaphore = Semaphore::new(known_contracts.len());
         for active_configuration in known_contracts.into_iter() {
-            if active_configuration.event_type == EventType::ETH {
-                tokio::spawn(self.clone().subscribe_to_eth_events_configuration(
-                    subscriptions_tx.clone(),
-                    active_configuration.id,
-                    active_configuration.address,
-                    Some(semaphore.clone()),
-                ));
+            match active_configuration.event_type {
+                EventType::ETH => {
+                    tokio::spawn(self.clone().subscribe_to_eth_events_configuration(
+                        subscriptions_tx.clone(),
+                        active_configuration.id,
+                        active_configuration.address,
+                        Some(semaphore.clone()),
+                    ));
+                }
+                EventType::TON => {
+                    tokio::spawn(self.clone().subscribe_to_ton_events_configuration(
+                        active_configuration.id,
+                        active_configuration.address,
+                    ));
+                    semaphore.notify().await;
+                }
             }
-            // TODO: subscribe to TON configuration contract
         }
 
         // Wait until all initial subscriptions done
@@ -171,14 +180,13 @@ impl TonListener {
         self: Arc<Self>,
         configuration_id: BigUint,
         address: MsgAddressInt,
-        semaphore: Option<Semaphore>,
     ) {
         if !self.ton.ensure_configuration_identity(&address).await {
-            return semaphore.try_notify().await;
+            return;
         }
 
         // Create TON config contract
-        let (config_contract, mut _config_contract_events) = make_ton_event_configuration_contract(
+        let (config_contract, mut config_contract_events) = make_ton_event_configuration_contract(
             self.transport.clone(),
             address.clone(),
             self.bridge_contract.address().clone(),
@@ -186,7 +194,7 @@ impl TonListener {
         .await
         .unwrap(); // todo retry subscription
 
-        // Get it's data
+        // Get its data
         let details = match self
             .ton
             .get_event_configuration_details(config_contract.as_ref())
@@ -198,7 +206,7 @@ impl TonListener {
                 self.ton
                     .forget_configuration(config_contract.address())
                     .await;
-                return semaphore.try_notify().await;
+                return;
             }
         };
 
@@ -207,7 +215,7 @@ impl TonListener {
             .config_contracts
             .write()
             .await
-            .insert(configuration_id, config_contract.clone());
+            .insert(configuration_id.clone(), config_contract.clone());
 
         // Start listening swapback events
         let mut swapback_events_contract = match make_ton_swapback_contract(
@@ -217,24 +225,23 @@ impl TonListener {
         )
         .await
         {
-            Ok(contract) => {
-                semaphore.try_notify().await;
-                contract
-            }
+            Ok(contract) => contract,
             Err(e) => {
                 log::error!("{:?}", e);
-                return semaphore.try_notify().await;
+                return;
             }
         };
+
+        let abi = swapback_events_contract.abi().clone();
 
         // Start listening swapback events
         tokio::spawn({
             let listener = self.clone();
-            async move {
-                while let Some(tokens) = swapback_events_contract.next().await {
-                    log::debug!("Got swap back event: {:?}", tokens);
+            let configuration_id = configuration_id.clone();
 
-                    let event_data = util::ton_tokens_to_ethereum_bytes(tokens);
+            async move {
+                while let Some(event) = swapback_events_contract.next().await {
+                    let event_data = util::ton_tokens_to_ethereum_bytes(event.tokens.clone());
                     let signature = listener.eth_signer.sign(&event_data);
 
                     log::debug!(
@@ -242,12 +249,112 @@ impl TonListener {
                         hex::encode(&signature)
                     );
 
-                    // TODO: spawn confirmation
+                    match make_confirmed_ton_event_transaction(
+                        configuration_id.clone(),
+                        event,
+                        signature,
+                    ) {
+                        Ok(data) => {
+                            if let Err(e) = listener.ton.enqueue_vote(data).await {
+                                log::error!("Failed to enqueue swap back event: {:?}", e);
+                            }
+                        }
+                        Err(e) => {
+                            log::error!("Failed to prepare swap back event: {:?}", e);
+                        }
+                    }
                 }
             }
         });
 
-        todo!()
+        let handle_voting_event =
+            move |listener: Arc<Self>,
+                  configuration_id,
+                  abi,
+                  event,
+                  semaphore: Option<Semaphore>| {
+                log::debug!("got TON->ETH event vote: {:?}", event);
+
+                let (event_address, relay_key, vote) = match event {
+                    TonEventConfigurationContractEvent::EventConfirmation {
+                        address,
+                        relay_key,
+                    } => (address, relay_key, Voting::Confirm),
+                    TonEventConfigurationContractEvent::EventReject { address, relay_key } => {
+                        (address, relay_key, Voting::Reject)
+                    }
+                };
+
+                tokio::spawn({
+                    async move {
+                        listener
+                            .ton
+                            .handle_event(
+                                &listener,
+                                TonEventReceivedVote::new(
+                                    configuration_id,
+                                    event_address,
+                                    relay_key,
+                                    vote,
+                                    abi,
+                                ),
+                            )
+                            .await;
+                        if let Some(semaphore) = semaphore {
+                            semaphore.notify().await;
+                        }
+                    }
+                });
+            };
+
+        // Spawn listener of new voting events
+        tokio::spawn({
+            let listener = self.clone();
+            let configuration_id = configuration_id.clone();
+            let abi = abi.clone();
+
+            async move {
+                while let Some(event) = config_contract_events.next().await {
+                    handle_voting_event(
+                        listener.clone(),
+                        configuration_id.clone(),
+                        abi.clone(),
+                        event,
+                        None,
+                    );
+                }
+            }
+        });
+
+        // Process all past events
+        let latest_known_lt = config_contract.since_lt();
+
+        let latest_scanned_lt = self
+            .scanning_state
+            .get_latest_scanned_lt(config_contract.address())
+            .expect("Fatal db error");
+
+        let events_semaphore = Semaphore::new_empty();
+
+        let mut known_events = config_contract.get_known_events(latest_scanned_lt, latest_known_lt);
+        let mut known_event_count = 0;
+        while let Some(event) = known_events.next().await {
+            handle_voting_event(
+                self.clone(),
+                configuration_id.clone(),
+                abi.clone(),
+                event,
+                Some(events_semaphore.clone()),
+            );
+            known_event_count += 1;
+        }
+
+        // Only update latest scanned lt when all scanned events are in ton queue
+        events_semaphore.wait_count(known_event_count).await;
+
+        self.scanning_state
+            .update_latest_scanned_lt(config_contract.address(), latest_known_lt)
+            .expect("Fatal db error");
     }
 
     /// Creates a listener for ETH event votes in TON
@@ -329,7 +436,7 @@ impl TonListener {
                             .eth
                             .handle_event(
                                 &listener,
-                                EthEventReceivedVote::new_eth_event_vote(
+                                EthEventReceivedVote::new(
                                     configuration_id,
                                     event_address,
                                     relay_key,
@@ -900,11 +1007,11 @@ impl ConfigurationContract for EthEventConfigurationContract {
     fn make_voting_stats(
         db: &Db,
     ) -> Result<VotingStats<<Self::ReceivedVote as ReceivedVote>::VoteWithData>, Error> {
-        VotingStats::new_eth_voting_stats(db)
+        EthVotingStats::new(db)
     }
 
     fn make_votes_queue(db: &Db) -> Result<VotesQueue<Self::EventTransaction>, Error> {
-        VotesQueue::new_eth_votes_queue(db)
+        EthEventVotesQueue::new(db)
     }
 
     fn address(&self) -> &MsgAddressInt {
@@ -949,11 +1056,11 @@ impl ConfigurationContract for TonEventConfigurationContract {
     fn make_voting_stats(
         db: &Db,
     ) -> Result<VotingStats<<Self::ReceivedVote as ReceivedVote>::VoteWithData>, Error> {
-        VotingStats::new_ton_voting_stats(db)
+        TonVotingStats::new(db)
     }
 
     fn make_votes_queue(db: &Db) -> Result<VotesQueue<Self::EventTransaction>, Error> {
-        VotesQueue::new_ton_votes_queue(db)
+        TonEventVotesQueue::new(db)
     }
 
     fn address(&self) -> &MsgAddressInt {
@@ -1040,6 +1147,25 @@ impl ReceivedVoteWithDataExt for EthEventReceivedVoteWithData {
     }
 }
 
+fn make_confirmed_ton_event_transaction(
+    configuration_id: BigUint,
+    event: SwapBackEvent,
+    signature: Vec<u8>,
+) -> Result<TonEventTransaction, Error> {
+    let event_data = event.tokens.pack_into_cell()?;
+
+    Ok(TonEventTransaction::Confirm(SignedEventVotingData {
+        data: TonEventVotingData {
+            event_transaction: event.event_transaction,
+            event_transaction_lt: event.event_transaction_lt,
+            event_index: event.event_index,
+            event_data,
+            configuration_id,
+        },
+        signature,
+    }))
+}
+
 #[async_trait]
 impl ReceivedVoteWithDataExt for TonEventReceivedVoteWithData {
     fn status(&self) -> EventStatus {
@@ -1047,7 +1173,36 @@ impl ReceivedVoteWithDataExt for TonEventReceivedVoteWithData {
     }
 
     async fn enqueue_verify(self, listener: &TonListener) {
-        todo!()
+        async fn verify(
+            transaction: TonEventReceivedVoteWithData,
+            listener: &TonListener,
+        ) -> Result<(), Error> {
+            let abi = transaction.info().additional();
+
+            let tokens = abi
+                .decode_input(transaction.data().init_data.event_data.clone().into())
+                .map_err(|e| anyhow!("failed decoding TON event data: {:?}", e))?;
+
+            let event_data = util::ton_tokens_to_ethereum_bytes(tokens);
+            let signature = listener.eth_signer.sign(&event_data);
+
+            log::debug!(
+                "Calculated swap back event signature: {}",
+                hex::encode(&signature)
+            );
+
+            listener
+                .ton
+                .enqueue_vote(TonEventTransaction::Confirm(SignedEventVotingData {
+                    data: transaction.into(),
+                    signature,
+                }))
+                .await
+        }
+
+        if let Err(e) = verify(self, listener).await {
+            log::error!("Failed to enqueue TON event: {:?}", e);
+        }
     }
 }
 
@@ -1073,10 +1228,10 @@ impl std::fmt::Display for DisplayReceivedVote<'_, TonEventReceivedVoteWithData>
         let info = self.0.info();
         let data = self.0.data();
         f.write_fmt(format_args!(
-            "TON->ETH event {:?} tx {} (block {}) from {}. status: {:?}",
+            "TON->ETH event {:?} tx {} (lt {}) from {}. status: {:?}",
             info.kind(),
             hex::encode(&data.init_data.event_transaction),
-            data.init_data.event_block_number,
+            data.init_data.event_transaction_lt,
             hex::encode(&info.relay_key()),
             data.status
         ))

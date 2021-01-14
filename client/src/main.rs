@@ -13,8 +13,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use relay_models::models::{
-    EthTonTransactionView, EventConfiguration, InitData, Password as PasswordData, RescanEthData,
-    Status, TxStatView, Voting,
+    EthTonTransactionView, EthTxStatView, EventConfiguration, InitData, Password as PasswordData,
+    RescanEthData, Status, Voting,
 };
 
 #[derive(Clap)]
@@ -147,7 +147,7 @@ impl Client {
         selection
             .with_prompt(format!("Select relay key. Our key is: {}", our_key))
             .default(0);
-        let response: HashMap<String, Vec<TxStatView>> = self.get("status/relay")?;
+        let response: HashMap<String, Vec<EthTxStatView>> = self.get("status/relay")?;
         let keys: Vec<_> = response.keys().cloned().collect();
         selection.items(&keys);
         let selection = &keys[selection.interact()?];

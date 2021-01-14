@@ -99,6 +99,7 @@ impl TonEventConfigurationContract {
         let message = self
             .message("confirmEvent")?
             .arg(event_init_data)
+            .arg(Vec::<u8>::new())
             .arg(BigUint256(0u8.into()))
             .build_internal(self.bridge_address.clone(), CONFIRM_VALUE)?;
 

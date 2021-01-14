@@ -11,7 +11,6 @@ members = [
     "relay-eth",
     "client",
     "relay-ton",
-    "util",
     "relay-models"
 ]
 

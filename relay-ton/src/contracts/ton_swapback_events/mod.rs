@@ -26,7 +26,7 @@ pub async fn make_ton_swapback_contract(
         abi.get_function_id() & 0x7FFFFFFF
     };
 
-    let (subscription, events_rx) = transport.subscribe(account.clone()).await?;
+    let (subscription, events_rx) = transport.subscribe_full(account.clone()).await?;
 
     Ok(TonSwapBackEvents {
         account,
@@ -40,7 +40,7 @@ pub struct TonSwapBackEvents {
     account: MsgAddressInt,
     abi: Arc<AbiEvent>,
     subscription: Arc<dyn AccountSubscription>,
-    events_rx: RawEventsRx,
+    events_rx: FullEventsRx,
 }
 
 impl TonSwapBackEvents {
@@ -50,6 +50,10 @@ impl TonSwapBackEvents {
 
     pub fn since_lt(&self) -> u64 {
         self.subscription.since_lt()
+    }
+
+    pub fn abi(&self) -> &Arc<AbiEvent> {
+        &self.abi
     }
 
     pub fn get_known_events(
@@ -79,13 +83,20 @@ impl TonSwapBackEvents {
 }
 
 impl Stream for TonSwapBackEvents {
-    type Item = Vec<Token>;
+    type Item = SwapBackEvent;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         loop {
             match self.events_rx.poll_recv(cx) {
-                Poll::Ready(Some(raw_event)) => match self.abi.decode_input(raw_event) {
-                    Ok(tokens) => return Poll::Ready(Some(tokens)),
+                Poll::Ready(Some(raw_event)) => match self.abi.decode_input(raw_event.event_data) {
+                    Ok(tokens) => {
+                        return Poll::Ready(Some(SwapBackEvent {
+                            event_transaction: raw_event.event_transaction,
+                            event_transaction_lt: raw_event.event_transaction_lt,
+                            event_index: raw_event.event_index,
+                            tokens,
+                        }))
+                    }
                     Err(e) => {
                         log::debug!("Skipping unknown swapback event: {}", e.to_string());
                     }
@@ -95,6 +106,14 @@ impl Stream for TonSwapBackEvents {
             }
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct SwapBackEvent {
+    pub event_transaction: UInt256,
+    pub event_transaction_lt: u64,
+    pub event_index: u64,
+    pub tokens: Vec<Token>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
