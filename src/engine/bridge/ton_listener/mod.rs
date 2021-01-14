@@ -9,9 +9,8 @@ use serde::de::DeserializeOwned;
 use tokio::stream::StreamExt;
 use tokio::sync::oneshot;
 use tokio::sync::{mpsc, Mutex, RwLock, RwLockReadGuard};
-use ton_abi::ParamType as TonParamType;
+use ton_abi::{ParamType as TonParamType, TokenValue};
 
-use relay_ton::contracts::utils::PackIntoCell;
 use relay_ton::contracts::*;
 use relay_ton::prelude::UInt256;
 use relay_ton::transport::{Transport, TransportError};
@@ -233,6 +232,7 @@ impl TonListener {
         };
 
         let abi = swapback_events_contract.abi().clone();
+        let event_id = abi.id;
 
         // Start listening swapback events
         tokio::spawn({
@@ -252,6 +252,7 @@ impl TonListener {
                     );
 
                     match make_confirmed_ton_event_transaction(
+                        event_id,
                         configuration_id.clone(),
                         event,
                         signature,
@@ -1150,11 +1151,20 @@ impl ReceivedVoteWithDataExt for EthEventReceivedVoteWithData {
 }
 
 fn make_confirmed_ton_event_transaction(
+    event_id: u32,
     configuration_id: BigUint,
     event: SwapBackEvent,
     signature: Vec<u8>,
 ) -> Result<TonEventTransaction, Error> {
-    let event_data = event.tokens.pack_into_cell()?;
+    let event_id_prefix = SliceData::from(&event_id.to_be_bytes()[..]);
+
+    let event_data = TokenValue::pack_values_into_chain(
+        &event.tokens,
+        vec![BuilderData::from_slice(&event_id_prefix)],
+        2,
+    )
+    .and_then(|data| data.into_cell())
+    .map_err(|_| ContractError::InvalidAbi)?;
 
     Ok(TonEventTransaction::Confirm(SignedEventVotingData {
         data: TonEventVotingData {
@@ -1179,7 +1189,7 @@ impl ReceivedVoteWithDataExt for TonEventReceivedVoteWithData {
             transaction: TonEventReceivedVoteWithData,
             listener: &TonListener,
         ) -> Result<(), Error> {
-            let abi = transaction.info().additional();
+            let abi: &Arc<AbiEvent> = transaction.info().additional();
 
             let tokens = abi
                 .decode_input(transaction.data().init_data.event_data.clone().into())
