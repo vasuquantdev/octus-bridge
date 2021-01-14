@@ -241,14 +241,15 @@ impl TonListener {
 
             async move {
                 while let Some(event) = swapback_events_contract.next().await {
-                    log::debug!("Got swap back event: {:?}", event);
+                    log::info!("Got swap back event: {:?}", event);
 
                     let event_data = util::ton_tokens_to_ethereum_bytes(event.tokens.clone());
                     let signature = listener.eth_signer.sign(&event_data);
 
-                    log::debug!(
-                        "Calculated swap back event signature: {}",
-                        hex::encode(&signature)
+                    log::info!(
+                        "Calculated swap back event signature: {} for payload: {}",
+                        hex::encode(&signature),
+                        hex::encode(&event_data)
                     );
 
                     match make_confirmed_ton_event_transaction(
@@ -1198,9 +1199,10 @@ impl ReceivedVoteWithDataExt for TonEventReceivedVoteWithData {
             let event_data = util::ton_tokens_to_ethereum_bytes(tokens);
             let signature = listener.eth_signer.sign(&event_data);
 
-            log::debug!(
-                "Calculated swap back event signature: {}",
-                hex::encode(&signature)
+            log::info!(
+                "Calculated swap back event signature: {} for payload: {}",
+                hex::encode(&signature),
+                hex::encode(&event_data)
             );
 
             listener
@@ -1225,12 +1227,13 @@ impl std::fmt::Display for DisplayReceivedVote<'_, EthEventReceivedVoteWithData>
         let info = self.0.info();
         let data = self.0.data();
         f.write_fmt(format_args!(
-            "ETH->TON event {:?} tx {} (block {}) from {}. status: {:?}",
+            "ETH->TON event {:?} tx {} (block {}) from {}. status: {:?}. address: {}",
             info.kind(),
             hex::encode(&data.init_data.event_transaction),
             data.init_data.event_block_number,
             hex::encode(&info.relay_key()),
             data.status,
+            info.event_address()
         ))
     }
 }
@@ -1240,12 +1243,13 @@ impl std::fmt::Display for DisplayReceivedVote<'_, TonEventReceivedVoteWithData>
         let info = self.0.info();
         let data = self.0.data();
         f.write_fmt(format_args!(
-            "TON->ETH event {:?} tx {} (lt {}) from {}. status: {:?}",
+            "TON->ETH event {:?} tx {} (lt {}) from {}. status: {:?}. address: {}",
             info.kind(),
             hex::encode(&data.init_data.event_transaction),
             data.init_data.event_transaction_lt,
             hex::encode(&info.relay_key()),
-            data.status
+            data.status,
+            info.event_address()
         ))
     }
 }

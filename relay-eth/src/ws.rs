@@ -403,7 +403,7 @@ fn spawn_blocks_scanner(
                     Some(a) => break a,
                     None => {
                         tokio::time::delay_for(ETH_POLL_INTERVAL).await;
-                        log::error!("Failed getting start height. Polling");
+                        log::warn!("Failed getting start height. Polling");
                         continue;
                     }
                 };
