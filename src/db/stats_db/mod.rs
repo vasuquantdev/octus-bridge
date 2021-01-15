@@ -7,7 +7,7 @@ use relay_ton::contracts::Voting;
 use relay_ton::prelude::UInt256;
 
 use super::prelude::{Error, Tree};
-use crate::db_management::{constants::*, prelude::Table};
+use crate::db::{constants::*, prelude::Table};
 use crate::models::*;
 use crate::prelude::*;
 
@@ -168,7 +168,7 @@ impl GetStoredData for EthEventReceivedVoteWithData {
     #[inline]
     fn get_stored_data(&self) -> Self::Stored {
         EthStoredTxStat {
-            tx_hash: self.data().init_data.event_transaction.clone(),
+            tx_hash: self.data().init_data.event_transaction,
             met: chrono::Utc::now(),
         }
     }

@@ -6,7 +6,6 @@ use super::errors::*;
 pub use super::message_builder::{
     BigUint128, BigUint256, FunctionArg, FunctionArgsGroup, MessageBuilder, SignedMessageBuilder,
 };
-use super::utils::*;
 use crate::models::*;
 use crate::prelude::*;
 
@@ -62,10 +61,6 @@ impl ContractOutput {
         T: TryFrom<Self, Error = ContractError>,
     {
         self.try_into()
-    }
-
-    pub fn hash(&self) -> ContractResult<UInt256> {
-        pack_tokens(&self.tokens).map(|data| data.hash(0))
     }
 }
 

@@ -55,8 +55,10 @@ impl RunLocal for TonlibTransport {
         abi: &Function,
         message: ExternalMessage,
     ) -> TransportResult<ContractOutput> {
-        let mut message_header = ExternalInboundMessageHeader::default();
-        message_header.dst = message.dest.clone();
+        let message_header = ExternalInboundMessageHeader {
+            dst: message.dest.clone(),
+            ..Default::default()
+        };
 
         let mut msg = Message::with_ext_in_header(message_header);
         if let Some(body) = message.body {
@@ -649,7 +651,6 @@ mod tests {
 
     async fn make_transport() -> TonlibTransport {
         std::env::set_var("RUST_LOG", "debug");
-        util::setup();
         let db = sled::Config::new().temporary(true).open().unwrap();
 
         TonlibTransport::new(default_mainnet_config(), db)

@@ -20,7 +20,6 @@ pub mod errors;
 pub mod message_builder;
 pub mod models;
 mod prelude;
-pub mod utils;
 
 #[cfg(test)]
 mod tests {

@@ -2,13 +2,13 @@
 /// For example, we have 10 blocks to confirm. On block 123 we 've met tx
 /// Then we will enqueue it in the table with block number 133 and on block 133 we will confirm all met transactions
 /// On the current block - 10
-pub mod eth_queue;
+mod eth_queue;
 /// Here all lifetime stats are stored. key is relay pubkey, hash is Stats
-pub mod stats_db;
+mod stats_db;
 ///
-pub mod votes_queues;
+mod votes_queues;
 
-pub mod constants;
+mod constants;
 mod prelude;
 
 use std::collections::HashMap;

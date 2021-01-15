@@ -1,27 +1,18 @@
+mod event_transport;
 mod semaphore;
 
-use std::collections::hash_map::Entry;
-
-use async_trait::async_trait;
-use ethabi::ParamType as EthParamType;
-use num_bigint::BigUint;
-use serde::de::DeserializeOwned;
-use tokio::stream::StreamExt;
-use tokio::sync::oneshot;
-use tokio::sync::{mpsc, Mutex, RwLock, RwLockReadGuard};
-use ton_abi::{ParamType as TonParamType, TokenValue};
-
 use relay_ton::contracts::*;
-use relay_ton::prelude::UInt256;
-use relay_ton::transport::{Transport, TransportError};
+use relay_ton::transport::*;
 
-use self::semaphore::*;
-use super::util;
+use super::utils;
 use crate::config::TonSettings;
-use crate::crypto::key_managment::EthSigner;
-use crate::db_management::*;
+use crate::crypto::key_managment::*;
+use crate::db::*;
 use crate::models::*;
 use crate::prelude::*;
+
+use self::event_transport::*;
+use self::semaphore::*;
 
 /// Listens to config streams and maps them.
 pub struct TonListener {
@@ -31,8 +22,8 @@ pub struct TonListener {
     eth_signer: EthSigner,
     eth_queue: EthQueue,
 
-    ton: Arc<TonAccessor<TonEventConfigurationContract>>,
-    eth: Arc<TonAccessor<EthEventConfigurationContract>>,
+    ton: Arc<EventTransport<TonEventConfigurationContract>>,
+    eth: Arc<EventTransport<EthEventConfigurationContract>>,
 
     scanning_state: ScanningState,
 
@@ -50,7 +41,7 @@ pub async fn make_ton_listener(
     let scanning_state = ScanningState::new(db)?;
 
     let ton = Arc::new(
-        TonAccessor::new(
+        EventTransport::new(
             db,
             transport.clone(),
             bridge_contract.clone(),
@@ -59,7 +50,7 @@ pub async fn make_ton_listener(
         .await?,
     );
     let eth = Arc::new(
-        TonAccessor::new(
+        EventTransport::new(
             db,
             transport.clone(),
             bridge_contract.clone(),
@@ -174,7 +165,7 @@ impl TonListener {
         self.configs_state.read().await
     }
 
-    /// Created listener for TON events
+    /// Creates a listener for TON event votes in TON and its target contract
     async fn subscribe_to_ton_events_configuration(
         self: Arc<Self>,
         configuration_id: BigUint,
@@ -211,10 +202,8 @@ impl TonListener {
 
         // Register contract
         self.ton
-            .config_contracts
-            .write()
-            .await
-            .insert(configuration_id.clone(), config_contract.clone());
+            .add_configuration_contract(configuration_id.clone(), config_contract.clone())
+            .await;
 
         // Start listening swapback events
         let mut swapback_events_contract = match make_ton_swapback_contract(
@@ -293,7 +282,7 @@ impl TonListener {
                         listener
                             .ton
                             .handle_event(
-                                &listener,
+                                listener.as_ref(),
                                 TonEventReceivedVote::new(
                                     configuration_id,
                                     event_address,
@@ -399,10 +388,8 @@ impl TonListener {
 
         // Register contract object
         self.eth
-            .config_contracts
-            .write()
-            .await
-            .insert(configuration_id.clone(), config_contract.clone());
+            .add_configuration_contract(configuration_id.clone(), config_contract.clone())
+            .await;
         semaphore.try_notify().await;
 
         // Prefetch required properties
@@ -438,7 +425,7 @@ impl TonListener {
                         listener
                             .eth
                             .handle_event(
-                                &listener,
+                                listener.as_ref(),
                                 EthEventReceivedVote::new(
                                     configuration_id,
                                     event_address,
@@ -509,7 +496,7 @@ impl TonListener {
     }
 
     fn calculate_signature(&self, event: &SwapBackEvent) -> Result<Vec<u8>, Error> {
-        let payload = ethabi::encode(&util::prepare_ton_event_payload(event)?).to_vec();
+        let payload = utils::prepare_ton_event_payload(event)?;
         let signature = self.eth_signer.sign(&payload);
 
         log::info!(
@@ -524,10 +511,12 @@ impl TonListener {
 #[derive(Debug, Clone, Default)]
 pub struct ConfigsState {
     pub eth_addr: HashSet<Address>,
-    pub address_topic_map: HashMap<Address, (H256, Vec<EthParamType>, Vec<TonParamType>)>,
-    pub topic_abi_map: HashMap<H256, Vec<EthParamType>>,
+    pub address_topic_map: HashMap<Address, EthTopicItem>,
+    pub topic_abi_map: HashMap<H256, Vec<ethabi::ParamType>>,
     pub eth_configs_map: HashMap<Address, (BigUint, EthEventConfiguration)>,
 }
+
+type EthTopicItem = (H256, Vec<ethabi::ParamType>, Vec<ton_abi::ParamType>);
 
 impl ConfigsState {
     fn set_configuration(
@@ -536,7 +525,7 @@ impl ConfigsState {
         configuration: EthEventConfiguration,
     ) {
         let (topic_hash, eth_abi, ton_abi) =
-            match util::parse_eth_abi(&configuration.common.event_abi) {
+            match utils::parse_eth_abi(&configuration.common.event_abi) {
                 Ok(a) => a,
                 Err(e) => {
                     log::error!("Failed parsing abi: {:?}", e);
@@ -555,449 +544,6 @@ impl ConfigsState {
             (configuration_id, configuration),
         );
     }
-}
-
-struct TonAccessor<C>
-where
-    C: ConfigurationContract,
-{
-    settings: TonSettings,
-    relay_key: UInt256,
-
-    voting_stats:
-        VotingStats<<<C as ConfigurationContract>::ReceivedVote as ReceivedVote>::VoteWithData>,
-    votes_queue: VotesQueue<<C as ConfigurationContract>::EventTransaction>,
-
-    bridge_contract: Arc<BridgeContract>,
-    event_contract: Arc<C::EventContract>,
-    config_contracts: RwLock<ConfigContractsMap<C>>,
-
-    confirmations: Mutex<HashMap<MsgAddrStd, oneshot::Sender<()>>>,
-    rejections: Mutex<HashMap<MsgAddrStd, oneshot::Sender<()>>>,
-
-    known_config_addresses: Mutex<HashSet<MsgAddressInt>>,
-}
-
-impl<C> TonAccessor<C>
-where
-    C: ConfigurationContract,
-    <C::ReceivedVote as ReceivedVote>::VoteWithData: ReceivedVoteWithDataExt + Send + Sync,
-    <C as ConfigurationContract>::ReceivedVote: ReceivedVote<
-        Data = <<C as ConfigurationContract>::EventContract as EventContract>::Details,
-    >,
-    <C as ConfigurationContract>::EventTransaction: EventTransactionExt<
-            InitData = <<C as ConfigurationContract>::EventContract as EventContract>::InitData,
-        > + std::fmt::Display,
-    <C::ReceivedVote as ReceivedVote>::VoteWithData: GetStoredData,
-    <<C::ReceivedVote as ReceivedVote>::VoteWithData as GetStoredData>::Stored:
-        Serialize + DeserializeOwned,
-    for<'a> DisplayReceivedVote<'a, <C::ReceivedVote as ReceivedVote>::VoteWithData>:
-        std::fmt::Display,
-{
-    async fn new(
-        db: &Db,
-        transport: Arc<dyn Transport>,
-        bridge_contract: Arc<BridgeContract>,
-        settings: TonSettings,
-    ) -> Result<Self, Error> {
-        let relay_key = bridge_contract.pubkey();
-        let event_contract = C::make_event_contract(transport.clone()).await;
-        let voting_stats = C::make_voting_stats(db)?;
-        let votes_queue = C::make_votes_queue(db)?;
-
-        Ok(Self {
-            settings,
-            relay_key,
-            voting_stats,
-            votes_queue,
-            bridge_contract,
-            event_contract,
-            config_contracts: Default::default(),
-            confirmations: Default::default(),
-            rejections: Default::default(),
-            known_config_addresses: Default::default(),
-        })
-    }
-
-    pub async fn handle_event(&self, ton_listener: &TonListener, received_vote: C::ReceivedVote) {
-        let data = match self.get_event_details(received_vote.event_address()).await {
-            Ok(data) => data,
-            Err(e) => {
-                log::error!("Failed to get event details: {:?}", e);
-                return;
-            }
-        };
-
-        let received_vote = received_vote.with_data(data);
-        let vote_info = received_vote.info();
-
-        let should_check = vote_info.kind() == Voting::Confirm
-            && received_vote.status() == EventStatus::InProcess
-            && vote_info.relay_key() != self.relay_key // event from other relay
-            && !self.is_in_queue(vote_info.event_address())
-            && !self.has_already_voted(vote_info.event_address());
-
-        log::info!(
-            "Received {}, should check: {}",
-            DisplayReceivedVote(&received_vote),
-            should_check
-        );
-
-        self.voting_stats
-            .insert_vote(&received_vote)
-            .await
-            .expect("Fatal db error");
-
-        if vote_info.relay_key() == self.relay_key {
-            // Stop retrying after our event response was found
-            if let Err(e) = self.votes_queue.mark_complete(vote_info.event_address()) {
-                log::error!("Failed to mark transaction completed. {:?}", e);
-            }
-
-            self.notify_found(vote_info.event_address(), vote_info.kind())
-                .await;
-        } else if should_check {
-            received_vote.enqueue_verify(ton_listener).await
-        }
-    }
-
-    /// Sends a message to TON with a small amount of retries on failures.
-    /// Can be stopped using `cancel` or `notify_found`
-    async fn ensure_sent(self: Arc<Self>, event_address: MsgAddrStd, data: C::EventTransaction) {
-        // Skip voting for events which are already in stats db and TON queue
-        if self.has_already_voted(&event_address) {
-            // Make sure that TON queue doesn't contain this event
-            self.votes_queue
-                .mark_complete(&event_address)
-                .expect("Fatal db error");
-            return;
-        }
-
-        // Insert specified data in TON queue, replacing failed transaction if it exists
-        self.votes_queue
-            .insert_pending(&event_address, &data)
-            .expect("Fatal db error");
-
-        // Start listening for cancellation
-        let (rx, vote) = {
-            let vote = data.kind();
-
-            // Get suitable channels map
-            let mut runtime_queue = match vote {
-                Voting::Confirm => self.confirmations.lock().await,
-                Voting::Reject => self.rejections.lock().await,
-            };
-
-            // Just in case of duplication, check if we are already waiting cancellation for this
-            // event data set
-            match runtime_queue.entry(event_address.clone()) {
-                Entry::Occupied(_) => {
-                    return;
-                }
-                Entry::Vacant(entry) => {
-                    let (tx, rx) = oneshot::channel();
-                    entry.insert(tx);
-                    (rx, vote)
-                }
-            }
-        };
-
-        let mut rx = Some(rx);
-        let mut retries_count = self.settings.message_retry_count;
-        let mut retries_interval = self.settings.message_retry_interval;
-
-        // Send a message with several retries on failure
-        let result = loop {
-            // Prepare delay future
-            let delay = tokio::time::delay_for(retries_interval);
-            retries_interval = std::time::Duration::from_secs_f64(
-                retries_interval.as_secs_f64() * self.settings.message_retry_interval_multiplier,
-            );
-
-            // Try to send message
-            if let Err(e) = data.send(self.bridge_contract.clone()).await {
-                log::error!(
-                    "Failed to vote for event: {:?}. Retrying ({} left)",
-                    e,
-                    retries_count
-                );
-
-                retries_count -= 1;
-                if retries_count < 0 {
-                    break Err(e.into());
-                }
-
-                // Wait for prepared delay on failure
-                delay.await;
-            } else if let Some(rx_fut) = rx.take() {
-                // Handle future results
-                match future::select(rx_fut, delay).await {
-                    // Got cancellation notification
-                    future::Either::Left((Ok(()), _)) => {
-                        log::info!("Got response for voting for {:?} {}", vote, data);
-                        break Ok(());
-                    }
-                    // Stopped waiting for notification
-                    future::Either::Left((Err(e), _)) => {
-                        break Err(e.into());
-                    }
-                    // Timeout reached
-                    future::Either::Right((_, new_rx)) => {
-                        log::error!(
-                            "Failed to get voting event response: timeout reached. Retrying ({} left for {})",
-                            retries_count,
-                            data
-                        );
-
-                        retries_count -= 1;
-                        if retries_count < 0 {
-                            break Err(anyhow!(
-                                "Failed to vote for an event, no retries left ({})",
-                                data
-                            ));
-                        }
-
-                        rx = Some(new_rx);
-                    }
-                }
-            } else {
-                unreachable!()
-            }
-
-            // Check if event arrived nevertheless unsuccessful sending
-            if self
-                .voting_stats
-                .has_already_voted(&event_address, &self.relay_key)
-                .expect("Fatal db error")
-            {
-                break Ok(());
-            }
-        };
-
-        match result {
-            // Do nothing on success
-            Ok(_) => log::info!("Stopped waiting for transaction: {}", data),
-            // When ran out of retries, stop waiting for transaction and mark it as failed
-            Err(e) => {
-                log::error!("Stopped waiting for transaction: {}. Reason: {:?}", data, e);
-                if let Err(e) = self.votes_queue.mark_failed(&event_address) {
-                    log::error!(
-                        "Failed to mark transaction with hash {} as failed: {:?}",
-                        data,
-                        e
-                    );
-                }
-            }
-        }
-
-        // Remove cancellation channel
-        self.cancel(&event_address, vote).await;
-    }
-
-    /// Remove transaction from TON queue and notify spawned `ensure_sent`
-    async fn notify_found(&self, event_address: &MsgAddrStd, vote: Voting) {
-        let mut table = match vote {
-            Voting::Confirm => self.confirmations.lock().await,
-            Voting::Reject => self.rejections.lock().await,
-        };
-
-        if let Some(tx) = table.remove(event_address) {
-            if tx.send(()).is_err() {
-                log::error!("Failed sending event notification");
-            }
-        }
-    }
-
-    /// Just remove the transaction from TON queue
-    async fn cancel(&self, event_address: &MsgAddrStd, vote: Voting) {
-        match vote {
-            Voting::Confirm => self.confirmations.lock().await.remove(event_address),
-            Voting::Reject => self.rejections.lock().await.remove(event_address),
-        };
-    }
-
-    /// Restart voting for pending transactions
-    pub fn retry_pending(self: &Arc<Self>) {
-        for (event_address, data) in self.votes_queue.get_all_pending() {
-            tokio::spawn(self.clone().ensure_sent(event_address, data));
-        }
-    }
-
-    /// Restart voting for failed transactions
-    pub fn retry_failed(self: &Arc<Self>) {
-        for (event_address, data) in self.votes_queue.get_all_failed() {
-            tokio::spawn(self.clone().ensure_sent(event_address, data));
-        }
-    }
-
-    /// Adds transaction to queue, starts reliable sending
-    pub async fn enqueue_vote(self: &Arc<Self>, data: C::EventTransaction) -> Result<(), Error> {
-        let event_address = self.get_event_contract_address(&data).await?;
-
-        tokio::spawn(self.clone().ensure_sent(event_address, data));
-
-        Ok(())
-    }
-
-    /// Compute event address based on its data
-    async fn get_event_contract_address(
-        &self,
-        transaction: &C::EventTransaction,
-    ) -> Result<MsgAddrStd, Error> {
-        let configuration_id = transaction.configuration_id();
-
-        let config_contract = match self.get_configuration_contract(configuration_id).await {
-            Some(contract) => contract,
-            None => {
-                return Err(anyhow!(
-                    "Unknown event configuration contract: {}",
-                    configuration_id
-                ));
-            }
-        };
-
-        let event_addr = config_contract
-            .compute_event_address(transaction.init_data())
-            .await?;
-
-        Ok(event_addr)
-    }
-
-    /// Check statistics whether transaction exists
-    fn has_already_voted(&self, event_address: &MsgAddrStd) -> bool {
-        self.voting_stats
-            .has_already_voted(event_address, &self.relay_key)
-            .expect("Fatal db error")
-    }
-
-    /// Check current queue whether transaction exists
-    pub fn is_in_queue(&self, event_address: &MsgAddrStd) -> bool {
-        self.votes_queue
-            .has_event(event_address)
-            .expect("Fatal db error")
-    }
-
-    /// Find configuration contract by its address
-    pub async fn get_configuration_contract(&self, configuration_id: &BigUint) -> Option<Arc<C>> {
-        self.config_contracts
-            .read()
-            .await
-            .get(configuration_id)
-            .cloned()
-    }
-
-    /// Inserts address into known addresses and returns `true` if it wasn't known before
-    async fn ensure_configuration_identity(&self, address: &MsgAddressInt) -> bool {
-        self.known_config_addresses
-            .lock()
-            .await
-            .insert(address.clone())
-    }
-
-    /// Removes address from known addresses
-    async fn forget_configuration(&self, address: &MsgAddressInt) {
-        self.known_config_addresses.lock().await.remove(address);
-    }
-
-    pub async fn get_event_configuration_details(
-        &self,
-        config_contract: &C,
-    ) -> Result<<C as ConfigurationContract>::Details, Error> {
-        let mut retry_count = self.settings.event_configuration_details_retry_count;
-        let retry_interval = self.settings.event_configuration_details_retry_interval;
-
-        loop {
-            match config_contract.get_details().await {
-                Ok(details) => match config_contract.validate(&details) {
-                    Ok(_) => break Ok(details),
-                    Err(e) => {
-                        break Err(e);
-                    }
-                },
-                Err(ContractError::TransportError(TransportError::AccountNotFound))
-                    if retry_count > 0 =>
-                {
-                    retry_count -= 1;
-                    log::warn!(
-                        "failed to get configuration contract details for {}. Retrying ({} left)",
-                        config_contract.address(),
-                        retry_count
-                    );
-                    tokio::time::delay_for(retry_interval).await;
-                }
-                Err(e) => {
-                    break Err(anyhow!(
-                        "failed to get configuration contract details: {:?}",
-                        e
-                    ));
-                }
-            }
-        }
-    }
-
-    async fn get_event_details(
-        &self,
-        address: &MsgAddrStd,
-    ) -> Result<
-        <<C as ConfigurationContract>::EventContract as EventContract>::Details,
-        ContractError,
-    > {
-        let mut retry_count = self.settings.event_details_retry_count;
-        let retry_interval = self.settings.event_details_retry_interval;
-
-        loop {
-            match self.event_contract.get_details(address).await {
-                Ok(details) => break Ok(details),
-                Err(ContractError::TransportError(TransportError::AccountNotFound))
-                    if retry_count > 0 =>
-                {
-                    retry_count -= 1;
-                    log::error!(
-                        "Failed to get event details for {}. Retrying ({} left)",
-                        address,
-                        retry_count
-                    );
-                    tokio::time::delay_for(retry_interval).await;
-                }
-                Err(e) => break Err(e),
-            };
-        }
-    }
-}
-
-type ConfigContractsMap<T> = HashMap<BigUint, Arc<T>>;
-
-#[async_trait]
-trait ConfigurationContract: ContractWithEvents {
-    type Details;
-    type EventContract: EventContract + Send + Sync;
-    type ReceivedVote: ReceivedVote + Send + Sync;
-    type EventTransaction: Serialize + DeserializeOwned + Send + Sync;
-
-    async fn make_config_contract(
-        transport: Arc<dyn Transport>,
-        account: MsgAddressInt,
-        bridge_address: MsgAddressInt,
-    ) -> ContractResult<(Arc<Self>, EventsRx<<Self as ContractWithEvents>::Event>)>;
-
-    async fn make_event_contract(transport: Arc<dyn Transport>) -> Arc<Self::EventContract>;
-
-    fn make_voting_stats(
-        db: &Db,
-    ) -> Result<VotingStats<<Self::ReceivedVote as ReceivedVote>::VoteWithData>, Error>;
-
-    fn make_votes_queue(db: &Db) -> Result<VotesQueue<Self::EventTransaction>, Error>;
-
-    fn address(&self) -> &MsgAddressInt;
-
-    fn validate(&self, details: &Self::Details) -> Result<(), Error>;
-
-    async fn compute_event_address(
-        &self,
-        init_data: <Self::EventContract as EventContract>::InitData,
-    ) -> ContractResult<MsgAddrStd>;
-
-    async fn get_details(&self) -> ContractResult<Self::Details>;
 }
 
 #[async_trait]
@@ -1034,7 +580,7 @@ impl ConfigurationContract for EthEventConfigurationContract {
     }
 
     fn validate(&self, details: &Self::Details) -> Result<(), Error> {
-        util::validate_ethereum_event_configuration(details)
+        utils::validate_ethereum_event_configuration(details)
     }
 
     async fn compute_event_address(
@@ -1101,14 +647,6 @@ impl ConfigurationContract for TonEventConfigurationContract {
 }
 
 #[async_trait]
-trait EventContract {
-    type Details;
-    type InitData;
-
-    async fn get_details(&self, address: &MsgAddrStd) -> ContractResult<Self::Details>;
-}
-
-#[async_trait]
 impl EventContract for EthEventContract {
     type Details = EthEventDetails;
     type InitData = EthEventInitData;
@@ -1129,22 +667,11 @@ impl EventContract for TonEventContract {
 }
 
 #[async_trait]
-trait ReceivedVoteWithDataExt {
-    fn status(&self) -> EventStatus;
+impl VerificationQueue<EthEventReceivedVote> for TonListener {
+    async fn enqueue(&self, event: <EthEventReceivedVote as ReceivedVote>::VoteWithData) {
+        let info = event.info();
 
-    async fn enqueue_verify(self, listener: &TonListener);
-}
-
-#[async_trait]
-impl ReceivedVoteWithDataExt for EthEventReceivedVoteWithData {
-    fn status(&self) -> EventStatus {
-        self.data().status
-    }
-
-    async fn enqueue_verify(self, listener: &TonListener) {
-        let info = self.info();
-
-        let target_block_number = self
+        let target_block_number = event
             .data()
             .init_data
             .event_block_number
@@ -1152,9 +679,9 @@ impl ReceivedVoteWithDataExt for EthEventReceivedVoteWithData {
             .unwrap_or_else(u64::max_value)
             + *info.additional() as u64;
 
-        if let Err(e) = listener
+        if let Err(e) = self
             .eth_queue
-            .insert(target_block_number, &self.into())
+            .insert(target_block_number, &event.into())
             .await
         {
             log::error!("Failed to insert event confirmation. {:?}", e);
@@ -1162,44 +689,12 @@ impl ReceivedVoteWithDataExt for EthEventReceivedVoteWithData {
     }
 }
 
-fn make_confirmed_ton_event_transaction(
-    event_id: u32,
-    configuration_id: BigUint,
-    event: SwapBackEvent,
-    signature: Vec<u8>,
-) -> Result<TonEventTransaction, Error> {
-    let event_id_prefix = SliceData::from(&event_id.to_be_bytes()[..]);
-
-    let event_data = TokenValue::pack_values_into_chain(
-        &event.tokens,
-        vec![BuilderData::from_slice(&event_id_prefix)],
-        2,
-    )
-    .and_then(|data| data.into_cell())
-    .map_err(|_| ContractError::InvalidAbi)?;
-
-    Ok(TonEventTransaction::Confirm(SignedEventVotingData {
-        data: TonEventVotingData {
-            event_transaction: event.event_transaction,
-            event_transaction_lt: event.event_transaction_lt,
-            event_index: event.event_index,
-            event_data,
-            configuration_id,
-        },
-        signature,
-    }))
-}
-
 #[async_trait]
-impl ReceivedVoteWithDataExt for TonEventReceivedVoteWithData {
-    fn status(&self) -> EventStatus {
-        self.data().status
-    }
-
-    async fn enqueue_verify(self, listener: &TonListener) {
+impl VerificationQueue<TonEventReceivedVote> for TonListener {
+    async fn enqueue(&self, event: <TonEventReceivedVote as ReceivedVote>::VoteWithData) {
         async fn verify(
-            transaction: TonEventReceivedVoteWithData,
             listener: &TonListener,
+            transaction: TonEventReceivedVoteWithData,
         ) -> Result<(), Error> {
             let abi: &Arc<AbiEvent> = transaction.info().additional();
 
@@ -1224,18 +719,36 @@ impl ReceivedVoteWithDataExt for TonEventReceivedVoteWithData {
                 .await
         }
 
-        if let Err(e) = verify(self, listener).await {
+        if let Err(e) = verify(self, event).await {
             log::error!("Failed to enqueue TON event: {:?}", e);
         }
     }
 }
 
-struct DisplayReceivedVote<'a, T>(&'a T);
+fn make_confirmed_ton_event_transaction(
+    event_id: u32,
+    configuration_id: BigUint,
+    event: SwapBackEvent,
+    signature: Vec<u8>,
+) -> Result<TonEventTransaction, Error> {
+    let event_data = utils::pack_event_data_into_cell(event_id, &event.tokens)?;
+
+    Ok(TonEventTransaction::Confirm(SignedEventVotingData {
+        data: TonEventVotingData {
+            event_transaction: event.event_transaction,
+            event_transaction_lt: event.event_transaction_lt,
+            event_index: event.event_index,
+            event_data,
+            configuration_id,
+        },
+        signature,
+    }))
+}
 
 impl std::fmt::Display for DisplayReceivedVote<'_, EthEventReceivedVoteWithData> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let info = self.0.info();
-        let data = self.0.data();
+        let info = self.inner().info();
+        let data = self.inner().data();
         f.write_fmt(format_args!(
             "ETH->TON event {:?} tx {} (block {}) from {}. status: {:?}. address: {}",
             info.kind(),
@@ -1250,8 +763,8 @@ impl std::fmt::Display for DisplayReceivedVote<'_, EthEventReceivedVoteWithData>
 
 impl std::fmt::Display for DisplayReceivedVote<'_, TonEventReceivedVoteWithData> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let info = self.0.info();
-        let data = self.0.data();
+        let info = self.inner().info();
+        let data = self.inner().data();
         f.write_fmt(format_args!(
             "TON->ETH event {:?} tx {} (lt {}) from {}. status: {:?}. address: {}",
             info.kind(),
@@ -1262,16 +775,6 @@ impl std::fmt::Display for DisplayReceivedVote<'_, TonEventReceivedVoteWithData>
             info.event_address()
         ))
     }
-}
-
-#[async_trait]
-trait EventTransactionExt: std::fmt::Display + Clone + Send + Sync {
-    type InitData: Clone;
-
-    fn configuration_id(&self) -> &BigUint;
-    fn kind(&self) -> Voting;
-    fn init_data(&self) -> Self::InitData;
-    async fn send(&self, bridge: Arc<BridgeContract>) -> ContractResult<()>;
 }
 
 #[async_trait]

@@ -167,7 +167,10 @@ pub struct CommonReceivedVote<T, A> {
 }
 
 #[derive(Debug, Clone)]
-pub struct CommonReceivedVoteWithData<T, D> {
+pub struct CommonReceivedVoteWithData<T, D>
+where
+    D: ReceivedVoteEventData,
+{
     info: CommonReceivedVote<T, D>,
     data: D,
 }
@@ -216,9 +219,9 @@ impl TonEventReceivedVote {
 pub type EthEventReceivedVoteWithData = <EthEventReceivedVote as ReceivedVote>::VoteWithData;
 pub type TonEventReceivedVoteWithData = <TonEventReceivedVote as ReceivedVote>::VoteWithData;
 
-pub trait ReceivedVote {
+pub trait ReceivedVote: Send + Sync {
     type AdditionalData;
-    type Data;
+    type Data: ReceivedVoteEventData;
     type VoteWithData: ReceivedVoteWithData;
 
     fn configuration_id(&self) -> &BigUint;
@@ -229,7 +232,11 @@ pub trait ReceivedVote {
     fn with_data(self, data: Self::Data) -> Self::VoteWithData;
 }
 
-impl<T, D> ReceivedVote for CommonReceivedVote<T, D> {
+impl<T, D> ReceivedVote for CommonReceivedVote<T, D>
+where
+    T: Send + Sync,
+    D: ReceivedVoteEventData + Send + Sync,
+{
     type AdditionalData = T;
     type Data = D;
     type VoteWithData = CommonReceivedVoteWithData<T, D>;
@@ -265,17 +272,27 @@ impl<T, D> ReceivedVote for CommonReceivedVote<T, D> {
     }
 }
 
-pub trait ReceivedVoteWithData {
-    type Info: ReceivedVote;
-    type Data;
+pub trait ReceivedVoteWithData: Send + Sync {
+    type Info: ReceivedVote + Send + Sync;
+    type Data: ReceivedVoteEventData + Send + Sync;
 
+    fn status(&self) -> EventStatus;
     fn info(&self) -> &Self::Info;
     fn data(&self) -> &Self::Data;
 }
 
-impl<T, D> ReceivedVoteWithData for CommonReceivedVoteWithData<T, D> {
+impl<T, D> ReceivedVoteWithData for CommonReceivedVoteWithData<T, D>
+where
+    T: Send + Sync,
+    D: ReceivedVoteEventData + Send + Sync,
+{
     type Info = CommonReceivedVote<T, D>;
     type Data = D;
+
+    #[inline]
+    fn status(&self) -> EventStatus {
+        self.data.status()
+    }
 
     #[inline]
     fn info(&self) -> &Self::Info {
@@ -285,6 +302,22 @@ impl<T, D> ReceivedVoteWithData for CommonReceivedVoteWithData<T, D> {
     #[inline]
     fn data(&self) -> &Self::Data {
         &self.data
+    }
+}
+
+pub trait ReceivedVoteEventData {
+    fn status(&self) -> EventStatus;
+}
+
+impl ReceivedVoteEventData for EthEventDetails {
+    fn status(&self) -> EventStatus {
+        self.status
+    }
+}
+
+impl ReceivedVoteEventData for TonEventDetails {
+    fn status(&self) -> EventStatus {
+        self.status
     }
 }
 

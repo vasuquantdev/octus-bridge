@@ -4,20 +4,19 @@ use sled::Db;
 use url::Url;
 
 use relay_eth::ws::EthListener;
-use relay_ton::contracts::utils::pack_tokens;
 use relay_ton::contracts::*;
 use relay_ton::prelude::{MsgAddressInt, UInt256};
 
 use crate::config::RelayConfig;
 use crate::crypto::key_managment::{EthSigner, KeyData};
-use crate::db_management::*;
+use crate::db::*;
 use crate::engine::bridge::ton_listener::{make_ton_listener, ConfigsState, TonListener};
 use crate::models::*;
 use crate::prelude::*;
 
 mod prelude;
 pub(crate) mod ton_listener;
-mod util;
+mod utils;
 
 pub async fn make_bridge(
     db: Db,
@@ -163,11 +162,12 @@ impl Bridge {
                 )),
                 Some((_, eth_abi, ton_abi)) => {
                     // Decode event data
-                    let got_tokens: Vec<ethabi::Token> =
-                        util::parse_ton_event_data(&eth_abi, &ton_abi, event.event_data.clone())
-                            .map_err(|e| {
-                                e.context("Failed decoding other relay data as eth types")
-                            })?;
+                    let got_tokens: Vec<ethabi::Token> = utils::parse_eth_event_data(
+                        &eth_abi,
+                        &ton_abi,
+                        event.event_data.clone(),
+                    )
+                    .map_err(|e| e.context("Failed decoding other relay data as eth types"))?;
 
                     let expected_tokens = ethabi::decode(eth_abi, &data).map_err(|e| {
                         Error::from(e).context(
@@ -292,8 +292,11 @@ impl Bridge {
 
         // Prepare confirmation
 
-        let ton_data: Vec<_> = topic_tokens.into_iter().map(util::map_eth_ton).collect();
-        let event_data = match pack_tokens(ton_data) {
+        let ton_data: Vec<_> = topic_tokens
+            .into_iter()
+            .map(utils::map_eth_to_ton)
+            .collect();
+        let event_data = match utils::pack_token_values(ton_data) {
             Ok(a) => a,
             Err(e) => {
                 log::error!("Failed mapping ton_data to cell: {:?}", e);

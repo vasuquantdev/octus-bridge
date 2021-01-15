@@ -142,7 +142,7 @@ where
 {
     let mut output = None;
 
-    for (i, msg) in messages.into_iter().enumerate() {
+    for (i, msg) in messages.iter().enumerate() {
         if !matches!(msg.header(), CommonMsgInfo::ExtOutMsgInfo(_)) {
             continue;
         }
