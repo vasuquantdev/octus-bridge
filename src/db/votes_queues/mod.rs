@@ -5,10 +5,27 @@ use sled::{Db, Transactional, Tree};
 
 use relay_ton::prelude::{MsgAddrStd, UInt256};
 
-use super::constants::*;
 use crate::models::*;
 
+use super::constants::*;
+
 pub type TonEventVotesQueue = VotesQueue<TonEventTransaction>;
+
+pub trait VotesQueueExt: Sized {
+    fn new(db: &Db) -> Result<VotesQueue<Self>, Error>;
+}
+
+impl VotesQueueExt for TonEventTransaction {
+    fn new(db: &Db) -> Result<VotesQueue<Self>, Error> {
+        VotesQueue::<Self>::new(db)
+    }
+}
+
+impl VotesQueueExt for EthEventTransaction {
+    fn new(db: &Db) -> Result<VotesQueue<Self>, Error> {
+        VotesQueue::<Self>::new(db)
+    }
+}
 
 impl TonEventVotesQueue {
     pub fn new(db: &Db) -> Result<Self, Error> {

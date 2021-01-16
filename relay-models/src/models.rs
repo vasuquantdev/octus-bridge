@@ -79,6 +79,34 @@ pub enum EthTonTransactionView {
     Reject(EthEventVotingDataView),
 }
 
+#[derive(Serialize, Deserialize, Clone, opg::OpgModel)]
+pub struct TonEthVoteView {
+    pub event_address: String,
+    #[serde(flatten)]
+    pub transaction: TonEthTransactionView,
+}
+
+#[derive(Serialize, Deserialize, Clone, opg::OpgModel)]
+#[serde(tag = "type")]
+pub enum TonEthTransactionView {
+    Confirm(SignedEventDataView),
+    Reject(TonEventVotingDataView),
+}
+
+#[derive(Serialize, Deserialize, Clone, opg::OpgModel)]
+pub struct SignedEventDataView {
+    pub signature: String,
+    pub data: TonEventVotingDataView,
+}
+
+#[derive(Serialize, Deserialize, Clone, opg::OpgModel)]
+pub struct TonEventVotingDataView {
+    pub event_transaction: String,
+    pub event_transaction_lt: u64,
+    pub event_index: u64,
+    pub configuration_id: String,
+}
+
 #[derive(Deserialize, Serialize, Debug, Clone, opg::OpgModel)]
 pub struct EthEventVotingDataView {
     #[opg(format = "hex")]

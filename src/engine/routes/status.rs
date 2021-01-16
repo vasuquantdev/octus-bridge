@@ -1,6 +1,8 @@
 use std::convert::Infallible;
 use std::sync::Arc;
 
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use tokio::sync::RwLock;
 use ton_block::MsgAddrStd;
 use warp::Reply;
@@ -45,16 +47,32 @@ pub async fn get_status(state: Arc<RwLock<State>>) -> Result<impl Reply, Infalli
     Ok(serde_json::to_string(&result).expect("Shouldn't fail"))
 }
 
-pub async fn pending(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {
+pub async fn pending<Confirm, Reject, View>(
+    state: Arc<RwLock<State>>,
+) -> Result<impl Reply, Infallible>
+where
+    EventTransaction<Confirm, Reject>: VotesQueueExt + Serialize + DeserializeOwned,
+    EventTransaction<Confirm, Reject>: Into<View>,
+    View: Serialize + From<EventTransaction<Confirm, Reject>>,
+{
     let state = state.read().await;
-    let provider = EthEventVotesQueue::new(&state.state_manager).expect("Fatal db error");
+    let provider =
+        EventTransaction::<Confirm, Reject>::new(&state.state_manager).expect("Fatal db error");
     let pending = fold_ton_stats(provider.get_all_pending());
     Ok(serde_json::to_string(&pending).expect("Shouldn't fail"))
 }
 
-pub async fn failed(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {
+pub async fn failed<Confirm, Reject, View>(
+    state: Arc<RwLock<State>>,
+) -> Result<impl Reply, Infallible>
+where
+    EventTransaction<Confirm, Reject>: VotesQueueExt + Serialize + DeserializeOwned,
+    EventTransaction<Confirm, Reject>: Into<View>,
+    View: Serialize + From<EventTransaction<Confirm, Reject>>,
+{
     let state = state.read().await;
-    let provider = EthEventVotesQueue::new(&state.state_manager).expect("Fatal db error");
+    let provider =
+        EventTransaction::<Confirm, Reject>::new(&state.state_manager).expect("Fatal db error");
     let failed = fold_ton_stats(provider.get_all_failed());
     Ok(serde_json::to_string(&failed).expect("Shouldn't fail"))
 }
@@ -85,13 +103,12 @@ pub async fn retry_failed(state: Arc<RwLock<State>>) -> Result<impl Reply, Infal
     Ok(warp::reply::with_status("", res))
 }
 
-fn fold_ton_stats<I>(iter: I) -> Vec<EthTonVoteView>
+fn fold_ton_stats<I, Confirm, Reject, View>(iter: I) -> Vec<View>
 where
-    I: Iterator<Item = (MsgAddrStd, EthEventTransaction)>,
+    I: Iterator<Item = (MsgAddrStd, EventTransaction<Confirm, Reject>)>,
+    EventTransaction<Confirm, Reject>: VotesQueueExt + Serialize + DeserializeOwned,
+    EventTransaction<Confirm, Reject>: Into<View>,
+    View: Serialize + From<EventTransaction<Confirm, Reject>>,
 {
-    iter.map(|(event_address, transaction)| EthTonVoteView {
-        event_address: event_address.to_string(),
-        transaction: transaction.into(),
-    })
-    .collect()
+    iter.map(|(_, transaction)| transaction.into()).collect()
 }

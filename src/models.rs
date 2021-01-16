@@ -1,7 +1,10 @@
 use num_bigint::BigUint;
 
 use relay_eth::ws::H256;
-use relay_models::models::{EthEventVotingDataView, EthTonTransactionView};
+use relay_models::models::{
+    EthEventVotingDataView, EthTonTransactionView, SignedEventDataView, TonEthTransactionView,
+    TonEventVotingDataView,
+};
 use relay_ton::contracts::*;
 use relay_ton::prelude::*;
 
@@ -144,6 +147,17 @@ pub struct SignedEventVotingData {
     pub signature: Vec<u8>,
 }
 
+impl From<TonEventVotingData> for TonEventVotingDataView {
+    fn from(data: TonEventVotingData) -> Self {
+        TonEventVotingDataView {
+            event_transaction: hex::encode(data.event_transaction.as_slice()),
+            event_transaction_lt: data.event_transaction_lt,
+            event_index: data.event_index,
+            configuration_id: data.configuration_id.to_string(),
+        }
+    }
+}
+
 pub type EthEventTransaction = EventTransaction<EthEventVotingData, EthEventVotingData>;
 pub type TonEventTransaction = EventTransaction<SignedEventVotingData, TonEventVotingData>;
 
@@ -152,6 +166,18 @@ impl From<EthEventTransaction> for EthTonTransactionView {
         match data {
             EventTransaction::Confirm(a) => EthTonTransactionView::Confirm(a.into()),
             EventTransaction::Reject(a) => EthTonTransactionView::Reject(a.into()),
+        }
+    }
+}
+
+impl From<TonEventTransaction> for TonEthTransactionView {
+    fn from(data: TonEventTransaction) -> Self {
+        match data {
+            EventTransaction::Confirm(a) => TonEthTransactionView::Confirm(SignedEventDataView {
+                signature: hex::encode(&a.signature),
+                data: a.data.into(),
+            }),
+            EventTransaction::Reject(a) => TonEthTransactionView::Reject(a.into()),
         }
     }
 }

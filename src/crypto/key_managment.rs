@@ -315,11 +315,10 @@ impl KeyData {
 
 #[cfg(test)]
 mod test {
-    use std::str::FromStr;
-
     use pretty_assertions::assert_eq;
     use secp256k1::SecretKey;
     use secstr::SecStr;
+    use std::str::FromStr;
 
     use crate::crypto::key_managment::{EthSigner, KeyData};
 
