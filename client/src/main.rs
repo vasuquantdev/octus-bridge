@@ -14,7 +14,7 @@ use serde_json::json;
 
 use relay_models::models::{
     EthTonTransactionView, EthTxStatView, EventConfiguration, InitData, Password as PasswordData,
-    RescanEthData, Status, Voting,
+    RescanEthData, Status, TonEthTransactionView, Voting,
 };
 
 #[derive(Clap)]
@@ -38,8 +38,22 @@ fn main() -> Result<(), Error> {
             "Vote for ETH event configuration",
             Client::vote_for_ethereum_event_configuration,
         )
-        .item("Get pending transactions", Client::get_pending_transactions)
-        .item("Get failed transactions", Client::get_failed_transactions)
+        .item(
+            "Get pending transactions eth->ton",
+            Client::get_pending_transactions_eth_to_ton,
+        )
+        .item(
+            "Get pending transactions ton->eth",
+            Client::get_pending_transactions_ton_to_eth,
+        )
+        .item(
+            "Get failed transactions eth->ton",
+            Client::get_failed_transactions_eth_to_ton,
+        )
+        .item(
+            "Get failed transactions ton->eth",
+            Client::get_failed_transactions_ton_to_eth,
+        )
         .item("Get all confirmed transactions", Client::get_stats)
         .execute()
 }
@@ -113,8 +127,8 @@ impl Client {
         Ok(())
     }
 
-    pub fn get_pending_transactions(&self) -> Result<(), Error> {
-        let response: Vec<EthTonTransactionView> = self.get("status/pending")?;
+    pub fn get_pending_transactions_eth_to_ton(&self) -> Result<(), Error> {
+        let response: Vec<EthTonTransactionView> = self.get("status/eth_to_ton/pending")?;
         let mut output = Pager::new().set_prompt("Pending transactions");
         writeln!(
             output.lines,
@@ -125,8 +139,32 @@ impl Client {
         Ok(())
     }
 
-    pub fn get_failed_transactions(&self) -> Result<(), Error> {
-        let response: Vec<EthTonTransactionView> = self.get("status/failed")?;
+    pub fn get_pending_transactions_ton_to_eth(&self) -> Result<(), Error> {
+        let response: Vec<TonEthTransactionView> = self.get("status/ton_to_eth/pending")?;
+        let mut output = Pager::new().set_prompt("Pending transactions");
+        writeln!(
+            output.lines,
+            "{}",
+            serde_json::to_string_pretty(&response)?.to_colored_json(ColorMode::On)?
+        )?;
+        minus::page_all(output)?;
+        Ok(())
+    }
+
+    pub fn get_failed_transactions_ton_to_eth(&self) -> Result<(), Error> {
+        let response: Vec<TonEthTransactionView> = self.get("status/ton_to_eth/failed")?;
+        let mut output = Pager::new().set_prompt("Failed transactions");
+        writeln!(
+            output.lines,
+            "{}",
+            serde_json::to_string_pretty(&response)?.to_colored_json(ColorMode::On)?
+        )?;
+        minus::page_all(output)?;
+        Ok(())
+    }
+
+    pub fn get_failed_transactions_eth_to_ton(&self) -> Result<(), Error> {
+        let response: Vec<TonEthTransactionView> = self.get("status/eth_to_ton/failed")?;
         let mut output = Pager::new().set_prompt("Failed transactions");
         writeln!(
             output.lines,
