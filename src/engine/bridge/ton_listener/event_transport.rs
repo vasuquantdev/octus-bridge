@@ -13,6 +13,7 @@ where
     settings: TonSettings,
     relay_key: UInt256,
 
+    parallel_spawned_contracts_limiter: tokio::sync::Semaphore,
     voting_stats:
         VotingStats<<<C as ConfigurationContract>::ReceivedVote as ReceivedVote>::VoteWithData>,
     votes_queue: VotesQueue<<C as ConfigurationContract>::EventTransaction>,
@@ -54,6 +55,9 @@ where
         let votes_queue = C::make_votes_queue(db)?;
 
         Ok(Self {
+            parallel_spawned_contracts_limiter: tokio::sync::Semaphore::new(
+                settings.parallel_spawned_contracts_limit,
+            ),
             settings,
             relay_key,
             voting_stats,
@@ -129,7 +133,6 @@ where
         self.votes_queue
             .insert_pending(&event_address, &data)
             .expect("Fatal db error");
-
         // Start listening for cancellation
         let (rx, vote) = {
             let vote = data.kind();
@@ -158,7 +161,7 @@ where
         let mut rx = Some(rx);
         let mut retries_count = self.settings.message_retry_count;
         let mut retries_interval = self.settings.message_retry_interval;
-
+        let _permit = self.parallel_spawned_contracts_limiter.acquire().await;
         // Send a message with several retries on failure
         let result = loop {
             // Prepare delay future

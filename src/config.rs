@@ -132,6 +132,8 @@ pub struct TonSettings {
     pub message_retry_count: i64,
     /// Coefficient, on which every interval will be multiplied
     pub message_retry_interval_multiplier: f64,
+    /// Amount of parallel sent messages in ton
+    pub parallel_spawned_contracts_limit: usize,
 }
 
 impl Default for TonSettings {
@@ -147,6 +149,7 @@ impl Default for TonSettings {
             message_retry_interval: Duration::from_secs(60),
             message_retry_count: 10,
             message_retry_interval_multiplier: 1.5,
+            parallel_spawned_contracts_limit: 10,
         }
     }
 }
