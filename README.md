@@ -43,6 +43,14 @@ For each event received from other relays we check it validity.
 
 ### TON -> ETH
 
+Subscribe on events in bridge contract. Get ton event contract. Get event proxy
+address from it.  
+Subscribe on event proxy. For each event got from proxy check event correctness,
+pack it according to [conversion scheme](#supported-conversions). Sign it and
+send to event contract.
+
+You can read more about
+contracts [here](https://github.com/broxus/ton-eth-bridge-contracts/tree/master/docs).
 
 ### Supported types in ethereum abi
 
@@ -55,7 +63,7 @@ For each event received from other relays we check it validity.
 
 #### Supported conversions
 
-Eth -> Ton
+#### Eth -> Ton
 
 | Ethereum type | Ton type   |
 | ------------- | ---------- |
@@ -69,7 +77,7 @@ Eth -> Ton
 | FixedArray    | FixedArray |
 | Tuple         | Tuple      |
 
-Ton -> Eth
+#### Ton -> Eth
 
 | Ton type   | Ethereum type |
 | ---------- | ------------- |
