@@ -1,6 +1,3 @@
-pub mod config;
-mod node_client;
-
 use std::collections::hash_map;
 use std::pin::Pin;
 
@@ -14,14 +11,19 @@ use ton_block::{
 };
 use ton_types::HashmapType;
 
-pub use self::config::*;
-use self::node_client::*;
-use super::tvm;
-use super::utils::*;
 use crate::models::*;
 use crate::prelude::*;
 use crate::transport::errors::*;
 use crate::transport::{AccountSubscription, RunLocal, Transport};
+
+use super::tvm;
+use super::utils::*;
+
+pub use self::config::*;
+use self::node_client::*;
+
+pub mod config;
+mod node_client;
 
 pub struct GraphQLTransport {
     client: NodeClient,
@@ -41,7 +43,12 @@ impl GraphQLTransport {
             .build()
             .expect("failed to create graphql client");
 
-        let client = NodeClient::new(client, config.address.clone(), config.parallel_connections);
+        let client = NodeClient::new(
+            client,
+            config.address.clone(),
+            config.parallel_connections,
+            std::time::Duration::from_secs(config.fetch_timeout_secs as u64),
+        );
 
         Ok(Self { client, config })
     }
@@ -548,8 +555,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use futures::StreamExt;
+
+    use super::*;
 
     async fn make_transport() -> GraphQLTransport {
         std::env::set_var("RUST_LOG", "relay_ton::transport::graphql_transport=debug");

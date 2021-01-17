@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use graphql_client::*;
 use reqwest::Client;
 use tokio::sync::Semaphore;
@@ -14,14 +16,21 @@ pub struct NodeClient {
     client: Client,
     endpoint: String,
     concurrency_limiter: Arc<Semaphore>,
+    fetch_timeout: Duration,
 }
 
 impl NodeClient {
-    pub fn new(client: Client, endpoint: String, parallel_connections: usize) -> Self {
+    pub fn new(
+        client: Client,
+        endpoint: String,
+        parallel_connections: usize,
+        timeout: Duration,
+    ) -> Self {
         Self {
             client,
             endpoint,
             concurrency_limiter: Arc::new(Semaphore::new(parallel_connections)),
+            fetch_timeout: timeout,
         }
     }
 
@@ -35,6 +44,7 @@ impl NodeClient {
             .client
             .post(&self.endpoint)
             .json(&request_body)
+            .timeout(self.fetch_timeout)
             .send()
             .await
             .map_err(api_failure)?;
