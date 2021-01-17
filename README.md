@@ -19,9 +19,9 @@ to detect the disconnect and save state for every processed block.
 
 There are two parts. TON → ETH and ETH → TON.
 
-### ETH -> TON.
+### ETH -> TON
 
-Relay subscribes on address, specified in `ton_contract_address`. Here it
+Relay subscribes on address, specified in `bridge_contract_address`. Here it
 obtains list of known config addresses. We subscribe on each config in this
 list. Each config contract gives as configuration and stream of events in case
 of config change.
@@ -41,7 +41,10 @@ has not been collected).
 
 For each event received from other relays we check it validity.
 
-#### Supported types in ethereum abi
+### TON -> ETH
+
+
+### Supported types in ethereum abi
 
 - uint
 - int
@@ -100,8 +103,8 @@ using `relay --gen-config --crypto-store-path 'path/to/file/with/encrypted/data'
 
 ```yaml
 ---
-keys_path: /var/lib/relay/keys.json
 listen_address: "127.0.0.1:12345"
+keys_path: /var/lib/relay/keys.json
 storage_path: /var/lib/relay/persistent_storage
 logger_settings:
   appenders:
@@ -129,13 +132,17 @@ logger_settings:
       appenders:
         - stdout
       additive: false
-eth_node_address: "http://localhost:1234"
-ton_contract_address: ""
-ton_transport:
-  type: graphql
-  addr: "https://main.ton.dev/graphql"
-  next_block_timeout_sec: 60
+eth_settings:
+  node_address: "http://localhost:1234"
+  tcp_connection_count: 100
 ton_settings:
+  bridge_contract_address: ""
+  transport:
+    type: graphql
+    address: "https://main.ton.dev/graphql"
+    next_block_timeout_sec: 60
+    parallel_connections: 100
+    fetch_timeout_secs: 10
   event_configuration_details_retry_interval: 5
   event_configuration_details_retry_count: 100
   event_details_retry_interval: 0
@@ -143,25 +150,43 @@ ton_settings:
   message_retry_interval: 60
   message_retry_count: 10
   message_retry_interval_multiplier: 1.5
-number_of_ethereum_tcp_connections: 100
+  parallel_spawned_contracts_limit: 10
 ``` 
 
 - `keys_path` path to file, where encrypted data is stored.
-- `eth_node_address` address of ethereum node
-- `ton_contract_address` address of bridge contract
 - `storage_path` path for [database](#persistent-state)
 - `listen_address` address to bind control server.  **EXPOSING IT TO OUTER WORLD
   IS PROHIBITED**, because anyone, having access to it can control relay.
-- `ton_settings` - default values are optimal.
 - `number_of_ethereum_tcp_connections` maximum number of parallel tcp
   connections to ethereum node
 
-#### ton_config
+#### eth_settings
+
+- `node_address`  - address of ethereum node
+- `tcp_connection_count` - maximum number of parallel tcp connections to
+  ethereum node
+
+#### ton_settings
+
+- `bridge_contract_address` - address of bridge contract  
+  *Next section is optional to configure, default settings are just ok*
+- `event_configuration_details_retry_interval` - time to wait between retries
+- `event_configuration_details_retry_count` - times to get configuration details
+  in case of errors
+- `event_details_retry_interval` - time to wait between retries
+- `event_details_retry_count` - times to get event details in case of errors
+- `message_retry_interval` - interval between resending messages
+- `message_retry_count`- number of retries to send message
+- `message_retry_interval_multiplier`- coefficient, on which every interval will
+  be multiplied
+- `parallel_spawned_contracts_limit`- amount of parallel sent messages
 
 ##### GraphQL
 
 - `addr` - address of graphql endpoint
 - `next_block_timeout_sec`  - timeout for blocks emission
+- `parallel_connections` - amount of parallel connections to GraphQL
+- `fetch_timeout_secs` - timeout for GraphQL queries
 
 #### Tonlib
 
