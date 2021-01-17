@@ -15,7 +15,7 @@ use tokio::sync::Semaphore;
 use url::Url;
 use web3::transports::http::Http;
 pub use web3::types::{Address, BlockNumber, H256};
-use web3::types::{FilterBuilder, Log, H160};
+use web3::types::{FilterBuilder, Log, SyncState, H160};
 use web3::{Transport, Web3};
 
 const ETH_POLL_INTERVAL: Duration = Duration::from_secs(5);
@@ -374,6 +374,14 @@ impl EthListener {
         topics_list.iter().for_each(|t| {
             topics.1.remove(t);
         });
+    }
+
+    async fn is_out_of_sync(&self) -> Result<bool, Error> {
+        let sync = self.web3.eth().syncing().await?;
+        Ok(match sync {
+            SyncState::Syncing(_) => true,
+            SyncState::NotSyncing => false,
+        })
     }
 }
 

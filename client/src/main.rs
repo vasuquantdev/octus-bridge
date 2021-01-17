@@ -13,8 +13,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use relay_models::models::{
-    EthTonTransactionView, EthTxStatView, EventConfiguration, InitData, Password as PasswordData,
-    RescanEthData, Status, TonEthTransactionView, Voting,
+    EthEventVotingDataView, EthTonTransactionView, EthTxStatView, EventConfiguration, InitData,
+    Password as PasswordData, RescanEthData, Status, TonEthTransactionView, Voting,
 };
 
 #[derive(Clap)]
@@ -53,6 +53,10 @@ fn main() -> Result<(), Error> {
         .item(
             "Get failed transactions ton->eth",
             Client::get_failed_transactions_ton_to_eth,
+        )
+        .item(
+            "Get verified transactions eth->ton",
+            Client::get_verified_transactions_eth_to_ton,
         )
         .item("Get all confirmed transactions", Client::get_stats)
         .execute()
@@ -129,6 +133,18 @@ impl Client {
 
     pub fn get_pending_transactions_eth_to_ton(&self) -> Result<(), Error> {
         let response: Vec<EthTonTransactionView> = self.get("status/eth_to_ton/pending")?;
+        let mut output = Pager::new().set_prompt("Pending transactions");
+        writeln!(
+            output.lines,
+            "{}",
+            serde_json::to_string_pretty(&response)?.to_colored_json(ColorMode::On)?
+        )?;
+        minus::page_all(output)?;
+        Ok(())
+    }
+    pub fn get_verified_transactions_eth_to_ton(&self) -> Result<(), Error> {
+        let response: HashMap<u64, Vec<EthEventVotingDataView>> =
+            self.get("status/eth_to_ton/verification-queue")?;
         let mut output = Pager::new().set_prompt("Pending transactions");
         writeln!(
             output.lines,

@@ -98,7 +98,7 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
             )
         });
 
-    let eth_queue = warp::path!("status" / "ton_to_eth" / "verification-queue")
+    let eth_queue = warp::path!("status" / "eth_to_ton" / "verification-queue")
         .and(warp::get())
         .and(state.clone())
         .and_then(|(state, _)| status::eth_queue(state));
