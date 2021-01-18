@@ -226,7 +226,7 @@ async fn set_eth_block_height(
                 StatusCode::FORBIDDEN,
             )
         }
-        BridgeState::Running(bridge) => match bridge.change_eth_height(height.block) {
+        BridgeState::Running(bridge) => match bridge.change_eth_height(height.block).await {
             Ok(_) => {
                 log::info!("Changed  eth scan height to {}", height.block);
                 reply::with_status("OK".to_string(), StatusCode::OK)

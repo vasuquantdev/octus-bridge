@@ -455,7 +455,9 @@ fn spawn_blocks_scanner(
 
             let mut loaded_height = scanned_height.load(Ordering::SeqCst);
             // polling if we are near head and sleeping
-            if (ethereum_actual_height - loaded_height) <= 2 {
+            if loaded_height > ethereum_actual_height
+                || (ethereum_actual_height - loaded_height) <= 2
+            {
                 let block_number = BlockNumber::from(loaded_height);
                 process_block(
                     &w3,

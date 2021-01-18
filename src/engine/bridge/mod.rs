@@ -126,7 +126,13 @@ impl Bridge {
     }
 
     ///Sets eth height
-    pub fn change_eth_height(&self, height: u64) -> Result<(), Error> {
+    pub async fn change_eth_height(&self, height: u64) -> Result<(), Error> {
+        let actual_height = self.eth_listener.get_synced_height().await?.as_u64();
+        if actual_height < height {
+            return Err(anyhow::anyhow!(
+                "Height provided by user is higher, then actual eth height. Cowardly refusing"
+            ));
+        }
         self.eth_listener.change_eth_height(height)?;
         Ok(())
     }
@@ -216,8 +222,6 @@ impl Bridge {
     }
 
     async fn watch_pending_confirmations(self: Arc<Self>) {
-        
-        
         log::debug!("Started watch_unsent_eth_ton_transactions");
         loop {
             let synced_block = match self.eth_listener.get_synced_height().await {

@@ -61,7 +61,11 @@ impl NodeClient {
         response.data.ok_or_else(invalid_response)
     }
 
-    async fn fetch_blocking<T>(&self, params: T::Variables) -> TransportResult<T::ResponseData>
+    async fn fetch_blocking<T>(
+        &self,
+        params: T::Variables,
+        timeout: Duration,
+    ) -> TransportResult<T::ResponseData>
     where
         T: GraphQLQuery,
     {
@@ -69,6 +73,7 @@ impl NodeClient {
         let response = self
             .client
             .post(&self.endpoint)
+            .timeout(timeout)
             .json(&request_body)
             .send()
             .await
@@ -270,10 +275,13 @@ impl NodeClient {
         let timeout = (timeout * 1000) as f64; // timeout in ms
 
         let block = self
-            .fetch_blocking::<QueryNextBlock>(query_next_block::Variables {
-                id: current.to_owned(),
-                timeout,
-            })
+            .fetch_blocking::<QueryNextBlock>(
+                query_next_block::Variables {
+                    id: current.to_owned(),
+                    timeout,
+                },
+                Duration::from_millis(timeout as u64),
+            )
             .await?
             .blocks
             .and_then(|blocks| blocks.into_iter().flatten().next())
