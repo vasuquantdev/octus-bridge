@@ -267,7 +267,7 @@ async fn wait_for_init(
     let eth_private_key = match derive_from_words_eth(
         language,
         &data.eth_seed,
-        config.eth_settings.seed_derivation_path.as_deref(),
+        data.eth_derivation_path.as_deref(),
     ) {
         Ok(a) => a,
         Err(e) => {
@@ -280,7 +280,7 @@ async fn wait_for_init(
     let ton_key_pair = match derive_from_words_ton(
         language,
         &data.ton_seed,
-        config.ton_settings.seed_derivation_path.as_deref(),
+        data.ton_derivation_path.as_deref(),
     ) {
         Ok(a) => a,
         Err(e) => {

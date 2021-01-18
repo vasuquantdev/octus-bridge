@@ -376,12 +376,21 @@ impl EthListener {
         });
     }
 
-    async fn is_out_of_sync(&self) -> Result<bool, Error> {
-        let sync = self.web3.eth().syncing().await?;
-        Ok(match sync {
-            SyncState::Syncing(_) => true,
-            SyncState::NotSyncing => false,
-        })
+    pub async fn sync_status(&self) -> Result<SyncState, Error> {
+        let mut counter = 100;
+        loop {
+            match self.web3.eth().syncing().await {
+                Ok(a) => return Ok(a),
+                Err(e) => {
+                    log::error!("Failed fetching eth sync status: {}", e);
+                    if counter == 0 {
+                        return Err(Error::new(e).context("Failed getting eth syncing status"));
+                    }
+                    counter -= 1;
+                    tokio::time::delay_for(Duration::from_secs(5)).await;
+                }
+            }
+        }
     }
 }
 

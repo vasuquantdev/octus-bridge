@@ -179,7 +179,7 @@ impl Bridge {
                         Ok(())
                     } else {
                         Err(anyhow!(
-                            "Decoded tokens are not equal with that other relay "
+                            "Decoded tokens are not equal with that other relay sent"
                         ))
                     }
                 }
@@ -222,6 +222,16 @@ impl Bridge {
 
         while let Some(block_number) = blocks_rx.next().await {
             log::debug!("New block: {}", block_number);
+            let sync_state =  match self.eth_listener.sync_status().await{
+                Ok(a) => {
+                    match a{
+                        SyncState::Syncing(_) => {}
+                        SyncState::NotSyncing => {}
+                    }
+                }
+                Err(e) => log::error!("FATAL ERROR: {}", e), //todo handle me
+            }
+
             let prepared_blocks = self.eth_queue.get_prepared_blocks(block_number).await;
 
             for (entry, event) in prepared_blocks {
