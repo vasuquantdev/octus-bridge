@@ -14,8 +14,9 @@ use tokio::sync::RwLock;
 use tokio::sync::Semaphore;
 use url::Url;
 use web3::transports::http::Http;
+pub use web3::types::SyncState;
 pub use web3::types::{Address, BlockNumber, H256};
-use web3::types::{FilterBuilder, Log, SyncState, H160};
+use web3::types::{FilterBuilder, Log, H160};
 use web3::{Transport, Web3};
 
 const ETH_POLL_INTERVAL: Duration = Duration::from_secs(5);
@@ -103,6 +104,21 @@ pub fn parse_eth_abi(abi: &str) -> Result<HashMap<String, H256>, Error> {
     Ok(topics)
 }
 
+#[derive(Debug)]
+pub enum SyncedHeight {
+    Synced(u64),
+    NotSynced(u64),
+}
+
+impl SyncedHeight {
+    pub fn as_u64(&self) -> u64 {
+        match *self {
+            SyncedHeight::Synced(a) => a,
+            SyncedHeight::NotSynced(a) => a,
+        }
+    }
+}
+
 impl EthListener {
     pub async fn new(url: Url, db: Db, connections_number: usize) -> Result<Self, Error> {
         let connection = Http::new(url.as_str()).expect("Failed connecting to ethereum node");
@@ -134,13 +150,7 @@ impl EthListener {
     pub async fn start<S>(
         self: &Arc<Self>,
         subscriptions: S,
-    ) -> Result<
-        (
-            impl Stream<Item = u64>,
-            impl Stream<Item = Result<Event, Error>>,
-        ),
-        Error,
-    >
+    ) -> Result<impl Stream<Item = Result<Event, Error>>, Error>
     where
         S: Stream<Item = (Address, H256)> + Send + Unpin + 'static,
     {
@@ -168,7 +178,7 @@ impl EthListener {
             }
         });
 
-        let (blocks_rx, events_rx) = spawn_blocks_scanner(
+        let events_rx = spawn_blocks_scanner(
             self.db.clone(),
             self.web3.clone(),
             self.topics.clone(),
@@ -176,7 +186,7 @@ impl EthListener {
             self.connections_pool.clone(),
         );
 
-        Ok((blocks_rx, events_rx))
+        Ok(events_rx)
     }
 
     pub async fn get_block_number_on_start(db: &Tree, web3: &Web3<Http>) -> Result<u64, Error> {
@@ -192,53 +202,53 @@ impl EthListener {
             // Trying to get data. Retrying in case of error
             let _permission = self.connections_pool.acquire().await;
             match self.web3.eth().transaction_receipt(hash).await {
-                Ok(a) => match a {
-                    //if no tx with this hash
-                    None => {
-                        return Err(anyhow!("No transactions found by hash. Assuming it's fake"));
-                    }
-                    Some(a) => {
-                        // if tx status is failed, then no such tx exists
-                        match a.status {
-                            Some(a) => {
-                                if a.as_u64() == 0 {
-                                    return Err(anyhow!("Tx has failed status"));
+                Ok(a) => {
+                    return match a {
+                        //if no tx with this hash
+                        None => Err(anyhow!("No transactions found by hash. Assuming it's fake")),
+                        Some(a) => {
+                            // if tx status is failed, then no such tx exists
+                            match a.status {
+                                Some(a) => {
+                                    if a.as_u64() == 0 {
+                                        return Err(anyhow!("Tx has failed status"));
+                                    }
                                 }
+                                None => return Err(anyhow!("No status field in eth node answer")),
+                            };
+
+                            let logs = a.logs;
+                            //parsing logs into events
+                            let events: Result<Vec<_>, _> =
+                                logs.into_iter().map(EthListener::log_to_event).collect();
+
+                            let events = match events {
+                                Ok(a) => a,
+                                Err(e) => {
+                                    log::error!(
+                                        "No events for tx. Assuming confirmation is fake.: {}",
+                                        e
+                                    );
+                                    return Err(anyhow!(
+                                        "No events for tx. Assuming confirmation is fake.: {}",
+                                        e
+                                    ));
+                                }
+                            };
+
+                            // if any event matches
+                            let event: Option<_> = events
+                                .into_iter()
+                                .find(|x| x.tx_hash == hash /* && x.data == data */);
+                            match event {
+                                Some(a) => Ok((a.address, a.data)),
+                                None => Err(anyhow!(
+                                    "No events for tx. Assuming confirmation is fake.: {}"
+                                )),
                             }
-                            None => return Err(anyhow!("No status field in eth node answer")),
-                        };
-
-                        let logs = a.logs;
-                        //parsing logs into events
-                        let events: Result<Vec<_>, _> =
-                            logs.into_iter().map(EthListener::log_to_event).collect();
-
-                        let events = match events {
-                            Ok(a) => a,
-                            Err(e) => {
-                                log::error!(
-                                    "No events for tx. Assuming confirmation is fake.: {}",
-                                    e
-                                );
-                                return Err(anyhow!(
-                                    "No events for tx. Assuming confirmation is fake.: {}",
-                                    e
-                                ));
-                            }
-                        };
-
-                        // if any event matches
-                        let event: Option<_> = events
-                            .into_iter()
-                            .find(|x| x.tx_hash == hash /* && x.data == data */);
-                        return match event {
-                            Some(a) => Ok((a.address, a.data)),
-                            None => Err(anyhow!(
-                                "No events for tx. Assuming confirmation is fake.: {}"
-                            )),
-                        };
-                    }
-                },
+                        }
+                    };
+                }
                 Err(e) => {
                     if attempts == 0 {
                         return Err(Error::from(e));
@@ -376,11 +386,32 @@ impl EthListener {
         });
     }
 
-    pub async fn sync_status(&self) -> Result<SyncState, Error> {
+    pub async fn get_synced_height(&self) -> Result<SyncedHeight, Error> {
         let mut counter = 100;
         loop {
             match self.web3.eth().syncing().await {
-                Ok(a) => return Ok(a),
+                Ok(sync_state) => match sync_state {
+                    SyncState::Syncing(a) => {
+                        let current_synced_block = a.current_block.as_u64();
+                        let network_height = a.highest_block.as_u64();
+                        if network_height - current_synced_block > 200 {
+                            log::warn!(
+                                "Ethereum node is far behind network head: {} blocks to sync",
+                                network_height - current_synced_block
+                            );
+                        }
+                        return Ok(SyncedHeight::NotSynced(current_synced_block));
+                    }
+                    SyncState::NotSyncing => loop {
+                        match get_actual_eth_height(&self.web3, &self.connections_pool).await {
+                            Some(a) => return Ok(SyncedHeight::Synced(a)),
+                            None => {
+                                tokio::time::delay_for(Duration::from_secs(5)).await;
+                                continue;
+                            }
+                        }
+                    },
+                },
                 Err(e) => {
                     log::error!("Failed fetching eth sync status: {}", e);
                     if counter == 0 {
@@ -400,11 +431,7 @@ fn spawn_blocks_scanner(
     topics: Arc<RwLock<(HashSet<Address>, HashSet<H256>)>>,
     from_height: Arc<AtomicU64>,
     connections_pool: Arc<Semaphore>,
-) -> (
-    impl Stream<Item = u64>,
-    impl Stream<Item = Result<Event, Error>>,
-) {
-    let (blocks_tx, blocks_rx) = unbounded_channel();
+) -> impl Stream<Item = Result<Event, Error>> {
     let (events_tx, events_rx) = unbounded_channel();
 
     tokio::spawn(async move {
@@ -467,15 +494,11 @@ fn spawn_blocks_scanner(
                 log::error!("{}", &err);
             };
 
-            if let Err(e) = blocks_tx.send(loaded_height) {
-                log::error!("Failed sending event via channel: {:?}", e);
-                // Panic?
-            }
             scanned_height.fetch_add(1, Ordering::SeqCst);
         }
     });
 
-    (blocks_rx, events_rx)
+    events_rx
 }
 
 async fn process_block(
