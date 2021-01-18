@@ -670,7 +670,6 @@ impl EventContract for TonEventContract {
 impl VerificationQueue<EthEventReceivedVote> for TonListener {
     async fn enqueue(&self, event: <EthEventReceivedVote as ReceivedVote>::VoteWithData) {
         let info = event.info();
-
         let target_block_number = event
             .data()
             .init_data

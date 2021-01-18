@@ -4,8 +4,9 @@ use tokio::sync::{Mutex, MutexGuard};
 
 use relay_models::models::EthEventVotingDataView;
 
-use super::prelude::*;
 use crate::models::*;
+
+use super::prelude::*;
 
 const RANGE_LOWER_BOUND: [u8; 8] = [0; 8];
 
@@ -32,6 +33,28 @@ impl EthQueue {
         let results = self
             .db
             .range(RANGE_LOWER_BOUND..=((block_number + 1).to_be_bytes()))
+            .keys()
+            .filter_map(|key| {
+                let key = key.ok()?;
+                let value = bincode::deserialize(&key[8..]).ok()?;
+                Some((key, value))
+            });
+
+        EthQueueLock {
+            results,
+            queue: self,
+            _guard: guard,
+        }
+    }
+
+    pub async fn get_bad_blocks(
+        &self,
+        block_number: u64,
+    ) -> EthQueueLock<'_, impl Iterator<Item = (sled::IVec, EthEventVotingData)>> {
+        let guard = self.guard.lock().await;
+        let results = self
+            .db
+            .range(block_number.to_be_bytes()..)
             .keys()
             .filter_map(|key| {
                 let key = key.ok()?;

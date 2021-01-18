@@ -96,6 +96,8 @@ impl Client {
                 eth_seed,
                 ton_seed,
                 language,
+                ton_derivation_path: None,
+                eth_derivation_path: None,
             },
         )?;
 

@@ -1,9 +1,10 @@
 use ethabi::Address;
 use secp256k1::PublicKey;
 use sled::Db;
+use tokio::time::Duration;
 use url::Url;
 
-use relay_eth::ws::EthListener;
+use relay_eth::ws::{EthListener, SyncedHeight};
 use relay_ton::contracts::*;
 use relay_ton::prelude::{MsgAddressInt, UInt256};
 
@@ -97,10 +98,10 @@ impl Bridge {
         let subscriptions = self.ton_listener.start(bridge_contract_events).await;
 
         // Subscribe for ETH blocks and events
-        let (blocks_rx, mut eth_events_rx) = self.eth_listener.start(subscriptions).await?;
+        let mut eth_events_rx = self.eth_listener.start(subscriptions).await?;
 
         // Spawn pending confirmations queue processing
-        tokio::spawn(self.clone().watch_pending_confirmations(blocks_rx));
+        tokio::spawn(self.clone().watch_pending_confirmations());
 
         // Enqueue new events from ETH
         while let Some(event) = eth_events_rx.next().await {
@@ -179,7 +180,7 @@ impl Bridge {
                         Ok(())
                     } else {
                         Err(anyhow!(
-                            "Decoded tokens are not equal with that other relay "
+                            "Decoded tokens are not equal with that other relay sent"
                         ))
                     }
                 }
@@ -214,17 +215,26 @@ impl Bridge {
         });
     }
 
-    async fn watch_pending_confirmations<S>(self: Arc<Self>, mut blocks_rx: S)
-    where
-        S: Stream<Item = u64> + Unpin,
-    {
+    async fn watch_pending_confirmations(self: Arc<Self>) {
+        
+        
         log::debug!("Started watch_unsent_eth_ton_transactions");
+        loop {
+            let synced_block = match self.eth_listener.get_synced_height().await {
+                Ok(a) => a,
+                Err(e) => {
+                    log::error!("CRITICAL error: {}", e);
+                    continue;
+                }
+            };
+            log::debug!("New block: {:?}", synced_block);
 
-        while let Some(block_number) = blocks_rx.next().await {
-            log::debug!("New block: {}", block_number);
-            let prepared_blocks = self.eth_queue.get_prepared_blocks(block_number).await;
-
+            let prepared_blocks = self
+                .eth_queue
+                .get_prepared_blocks(synced_block.as_u64())
+                .await;
             for (entry, event) in prepared_blocks {
+                let block_number = event.event_block_number;
                 log::debug!(
                     "Found unconfirmed data in block {}: {}",
                     block_number,
@@ -233,6 +243,20 @@ impl Bridge {
                 self.clone().check_suspicious_event(event);
                 entry.remove().expect("Fatal db error");
             }
+            if let SyncedHeight::Synced(a) = synced_block {
+                let bad_blocks = self.eth_queue.get_bad_blocks(a).await;
+                for (entry, event) in bad_blocks {
+                    let block_number = event.event_block_number;
+                    log::debug!(
+                        "Found suspicious data in block {}: {}",
+                        block_number,
+                        hex::encode(&event.event_transaction)
+                    );
+                    self.clone().check_suspicious_event(event);
+                    entry.remove().expect("Fatal db error");
+                }
+            }
+            tokio::time::delay_for(Duration::from_secs(10)).await;
         }
     }
 

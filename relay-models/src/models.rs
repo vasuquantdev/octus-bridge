@@ -7,6 +7,8 @@ pub struct InitData {
     pub eth_seed: String,
     pub password: String,
     pub language: String,
+    pub ton_derivation_path: Option<String>,
+    pub eth_derivation_path: Option<String>,
 }
 
 #[derive(Deserialize, Debug, OpgModel, Serialize)]

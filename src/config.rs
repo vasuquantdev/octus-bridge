@@ -85,10 +85,6 @@ pub struct EthSettings {
 
     /// Number of concurrent tcp connection to ethereum node
     pub tcp_connection_count: usize,
-
-    /// Custom ETH key derivation path, used for testing
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub seed_derivation_path: Option<String>,
 }
 
 impl Default for EthSettings {
@@ -96,7 +92,6 @@ impl Default for EthSettings {
         Self {
             node_address: "http://localhost:1234".into(),
             tcp_connection_count: 100,
-            seed_derivation_path: None,
         }
     }
 }
@@ -105,10 +100,6 @@ impl Default for EthSettings {
 pub struct TonSettings {
     /// Bridge contract address
     pub bridge_contract_address: TonAddress,
-
-    /// Custom TON key derivation path, used for testing
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub seed_derivation_path: Option<String>,
 
     /// TON transport config
     pub transport: TonTransportConfig,
@@ -140,7 +131,6 @@ impl Default for TonSettings {
     fn default() -> Self {
         Self {
             bridge_contract_address: Default::default(),
-            seed_derivation_path: None,
             transport: TonTransportConfig::default(),
             event_configuration_details_retry_count: 100,
             event_configuration_details_retry_interval: Duration::from_secs(5),
