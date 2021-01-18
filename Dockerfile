@@ -21,7 +21,6 @@ COPY relay-eth ./relay-eth
 COPY relay-models ./relay-models
 COPY relay-ton ./relay-ton
 COPY client ./client
-COPY util ./util
 RUN ls -lah
 RUN cargo build --release
 
