@@ -100,7 +100,7 @@ impl TonEventConfigurationContract {
             .message("confirmEvent")?
             .arg(event_init_data)
             .arg(Vec::<u8>::new())
-            .arg(BigUint256(0u8.into()))
+            .arg(MsgAddrStd::default())
             .build_internal(self.bridge_address.clone(), CONFIRM_VALUE)?;
 
         let messages = self.subscription.simulate_call(message).await?;

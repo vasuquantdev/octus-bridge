@@ -76,32 +76,53 @@ impl RunLocal for GraphQLTransport {
 
 #[async_trait]
 impl Transport for GraphQLTransport {
-    async fn subscribe(
+    async fn subscribe_without_events(
         &self,
-        addr: MsgAddressInt,
-    ) -> TransportResult<(Arc<dyn AccountSubscription>, RawEventsRx)> {
-        let (subscription, rx) = GraphQLAccountSubscription::new(
+        account: MsgAddressInt,
+    ) -> TransportResult<Arc<dyn AccountSubscription>> {
+        let subscription = GraphQLAccountSubscription::<SliceData>::new(
             self.client.clone(),
             self.config.next_block_timeout_sec,
-            addr,
+            account,
+            None,
         )
         .await?;
 
-        Ok((subscription, rx))
+        Ok(subscription)
+    }
+
+    async fn subscribe(
+        &self,
+        account: MsgAddressInt,
+    ) -> TransportResult<(Arc<dyn AccountSubscription>, RawEventsRx)> {
+        let (events_tx, events_rx) = mpsc::unbounded_channel();
+
+        let subscription = GraphQLAccountSubscription::new(
+            self.client.clone(),
+            self.config.next_block_timeout_sec,
+            account,
+            Some(events_tx),
+        )
+        .await?;
+
+        Ok((subscription, events_rx))
     }
 
     async fn subscribe_full(
         &self,
-        addr: MsgAddressInt,
-    ) -> TransportResult<(Arc<dyn AccountSubscription>, FullEventsRx)> {
-        let (subscription, rx) = GraphQLAccountSubscription::new(
+        account: MsgAddressInt,
+    ) -> TransportResult<(Arc<dyn AccountSubscriptionFull>, FullEventsRx)> {
+        let (events_tx, events_rx) = mpsc::unbounded_channel();
+
+        let subscription = GraphQLAccountSubscription::new(
             self.client.clone(),
             self.config.next_block_timeout_sec,
-            addr,
+            account,
+            Some(events_tx),
         )
         .await?;
 
-        Ok((subscription, rx))
+        Ok((subscription, events_rx))
     }
 
     fn rescan_events(
@@ -140,11 +161,10 @@ where
         client: NodeClient,
         next_block_timeout: u32,
         addr: MsgAddressInt,
-    ) -> TransportResult<(Arc<Self>, EventsRx<T>)> {
+        events_tx: Option<EventsTx<T>>,
+    ) -> TransportResult<Arc<Self>> {
         let client = client.clone();
         let last_block = client.get_latest_block(&addr).await?;
-
-        let (events_tx, rx) = mpsc::unbounded_channel();
 
         let subscription = Arc::new(Self {
             since_lt: last_block.end_lt,
@@ -163,12 +183,12 @@ where
         });
         subscription.start_loop(events_tx, last_block.id, next_block_timeout);
 
-        Ok((subscription, rx))
+        Ok(subscription)
     }
 
     fn start_loop(
         self: &Arc<Self>,
-        events_tx: EventsTx<T>,
+        events_tx: Option<EventsTx<T>>,
         mut last_block_id: String,
         next_block_timeout: u32,
     ) {
@@ -273,7 +293,7 @@ where
                                             event_transaction: &hash,
                                             event_transaction_lt: transaction.lt,
                                             abi_function: Some(pending_message.abi()),
-                                            events_tx: Some(&events_tx),
+                                            events_tx: events_tx.as_ref(),
                                         },
                                     );
                                     pending_message.set_result(result);
@@ -283,7 +303,7 @@ where
                                         event_transaction: &hash,
                                         event_transaction_lt: transaction.lt,
                                         abi_function: None,
-                                        events_tx: Some(&events_tx),
+                                        events_tx: events_tx.as_ref(),
                                     },
                                 ) {
                                     log::error!("error during out messages processing. {:?}", e);

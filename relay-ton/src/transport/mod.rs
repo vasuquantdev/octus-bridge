@@ -27,6 +27,11 @@ pub trait RunLocal: Send + Sync + 'static {
 
 #[async_trait]
 pub trait Transport: RunLocal {
+    async fn subscribe_without_events(
+        &self,
+        account: MsgAddressInt,
+    ) -> TransportResult<Arc<dyn AccountSubscription>>;
+
     async fn subscribe(
         &self,
         account: MsgAddressInt,

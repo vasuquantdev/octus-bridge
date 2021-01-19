@@ -5,7 +5,7 @@
     {
       "name": "constructor",
       "inputs": [
-        {"name":"relayKey","type":"uint256"}
+        {"name":"relay","type":"address"}
       ],
       "outputs": [
       ]
@@ -13,7 +13,7 @@
     {
       "name": "confirm",
       "inputs": [
-        {"name":"relayKey","type":"uint256"}
+        {"name":"relay","type":"address"}
       ],
       "outputs": [
       ]
@@ -21,7 +21,14 @@
     {
       "name": "reject",
       "inputs": [
-        {"name":"relayKey","type":"uint256"}
+        {"name":"relay","type":"address"}
+      ],
+      "outputs": [
+      ]
+    },
+    {
+      "name": "executeProxyCallback",
+      "inputs": [
       ],
       "outputs": [
       ]
@@ -33,8 +40,8 @@
       "outputs": [
         {"components":[{"name":"eventTransaction","type":"uint256"},{"name":"eventIndex","type":"uint256"},{"name":"eventData","type":"cell"},{"name":"eventBlockNumber","type":"uint256"},{"name":"eventBlock","type":"uint256"},{"name":"ethereumEventConfiguration","type":"address"},{"name":"requiredConfirmations","type":"uint256"},{"name":"requiredRejects","type":"uint256"},{"name":"proxyAddress","type":"address"}],"name":"_initData","type":"tuple"},
         {"name":"_status","type":"uint8"},
-        {"name":"_confirmKeys","type":"uint256[]"},
-        {"name":"_rejectKeys","type":"uint256[]"}
+        {"name":"_confirmRelays","type":"address[]"},
+        {"name":"_rejectRelays","type":"address[]"}
       ]
     }
   ],

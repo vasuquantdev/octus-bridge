@@ -196,7 +196,7 @@ impl Client {
     pub fn get_stats(&self) -> Result<(), Error> {
         let our_key = self
             .get::<Status>("status")?
-            .ton_pubkey
+            .ton_relay_address
             .ok_or_else(|| anyhow!("Relay is locked or not initialized"))?;
         let theme = ColorfulTheme::default();
         let mut selection = Select::with_theme(&theme);

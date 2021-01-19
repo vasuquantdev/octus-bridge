@@ -21,22 +21,22 @@ pub async fn get_status(state: Arc<RwLock<State>>) -> Result<impl Reply, Infalli
             password_needed: true,
             init_data_needed: true,
             is_working: false,
-            ton_pubkey: None,
+            ton_relay_address: None,
             eth_pubkey: None,
         },
         BridgeState::Locked => Status {
             password_needed: true,
             init_data_needed: true,
             is_working: false,
-            ton_pubkey: None,
+            ton_relay_address: None,
             eth_pubkey: None,
         },
         BridgeState::Running(bridge) => {
-            let ton_pubkey = bridge.ton_pubkey();
+            let ton_relay_address = bridge.ton_relay_address();
             let eth_pubkey = bridge.eth_pubkey();
 
             Status {
-                ton_pubkey: Some(ton_pubkey.to_hex_string()),
+                ton_relay_address: Some(ton_relay_address.to_string()),
                 eth_pubkey: Some(eth_pubkey.to_string()),
                 password_needed: false,
                 init_data_needed: false,
