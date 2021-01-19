@@ -340,7 +340,7 @@ impl NodeClient {
         start_lt: Option<u64>,
         end_lt: Option<u64>,
         limit: u32,
-    ) -> TransportResult<Vec<(u64, TransportResult<Message>)>> {
+    ) -> TransportResult<Vec<OutboundMessage>> {
         #[derive(GraphQLQuery)]
         #[graphql(
             schema_path = "src/transport/graphql_transport/schema.graphql",
@@ -366,15 +366,72 @@ impl NodeClient {
                     .as_ref()
                     .and_then(|lt| u64::from_str_radix(lt.trim_start_matches("0x"), 16).ok())?;
 
-                Some((
+                Some(OutboundMessage {
                     lt,
-                    ton_block::Message::construct_from_base64(boc).map_err(|e| {
+                    data: ton_block::Message::construct_from_base64(boc).map_err(|e| {
                         TransportError::FailedToParseMessage {
                             reason: e.to_string(),
                         }
                     }),
-                ))
+                })
             })
+            .collect())
+    }
+
+    pub async fn get_outbound_messages_full(
+        &self,
+        addr: MsgAddressInt,
+        start_lt: Option<u64>,
+        end_lt: Option<u64>,
+        limit: u32,
+    ) -> TransportResult<Vec<OutboundMessageFull>> {
+        #[derive(GraphQLQuery)]
+        #[graphql(
+            schema_path = "src/transport/graphql_transport/schema.graphql",
+            query_path = "src/transport/graphql_transport/query_outbound_messages_full.graphql"
+        )]
+        struct QueryOutboundMessagesFull;
+
+        Ok(self
+            .fetch::<QueryOutboundMessagesFull>(query_outbound_messages_full::Variables {
+                address: addr.to_string(),
+                start_lt: start_lt.unwrap_or(0).to_string(),
+                end_lt: end_lt.unwrap_or_else(u64::max_value).to_string(),
+                limit: limit as i64,
+            })
+            .await?
+            .messages
+            .map(|messages| messages.into_iter().flatten())
+            .ok_or_else(invalid_response)?
+            .filter_map(|message| -> Option<_> {
+                let src_transaction = message.src_transaction?;
+                let transaction_hash = UInt256::from_str(src_transaction.id.as_ref()?).ok()?;
+                let transaction_lt =
+                    u64::from_str_radix(src_transaction.lt.as_ref()?.trim_start_matches("0x"), 16)
+                        .ok()?;
+
+                src_transaction.out_messages.map(|messages| {
+                    messages.into_iter().flatten().enumerate().filter_map(
+                        move |(i, out_message)| {
+                            let boc = out_message.boc.as_ref()?;
+
+                            let data =
+                                ton_block::Message::construct_from_base64(boc).map_err(|e| {
+                                    TransportError::FailedToParseMessage {
+                                        reason: e.to_string(),
+                                    }
+                                });
+                            Some(OutboundMessageFull {
+                                data,
+                                transaction_hash: transaction_hash.clone(),
+                                transaction_lt,
+                                event_index: i as u64,
+                            })
+                        },
+                    )
+                })
+            })
+            .flatten()
             .collect())
     }
 
@@ -407,6 +464,20 @@ impl NodeClient {
 
         Ok(())
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct OutboundMessage {
+    pub lt: u64,
+    pub data: TransportResult<ton_block::Message>,
+}
+
+#[derive(Debug, Clone)]
+pub struct OutboundMessageFull {
+    pub data: TransportResult<ton_block::Message>,
+    pub transaction_hash: UInt256,
+    pub transaction_lt: u64,
+    pub event_index: u64,
 }
 
 #[derive(Debug, Clone)]

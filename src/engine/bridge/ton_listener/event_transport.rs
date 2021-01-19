@@ -18,6 +18,8 @@ where
         VotingStats<<<C as ConfigurationContract>::ReceivedVote as ReceivedVote>::VoteWithData>,
     votes_queue: VotesQueue<<C as ConfigurationContract>::EventTransaction>,
 
+    transport: Arc<dyn Transport>,
+    scanning_state: ScanningState,
     bridge_contract: Arc<BridgeContract>,
     event_contract: Arc<C::EventContract>,
     config_contracts: RwLock<ConfigContractsMap<C>>,
@@ -46,6 +48,7 @@ where
     pub async fn new(
         db: &Db,
         transport: Arc<dyn Transport>,
+        scanning_state: ScanningState,
         bridge_contract: Arc<BridgeContract>,
         settings: TonSettings,
     ) -> Result<Self, Error> {
@@ -62,6 +65,8 @@ where
             relay_key,
             voting_stats,
             votes_queue,
+            transport,
+            scanning_state,
             bridge_contract,
             event_contract,
             config_contracts: Default::default(),
@@ -293,6 +298,21 @@ where
         tokio::spawn(self.clone().ensure_sent(event_address, data));
 
         Ok(())
+    }
+
+    /// Bridge contract for this event transport
+    pub fn bridge_contract(&self) -> &Arc<BridgeContract> {
+        &self.bridge_contract
+    }
+
+    /// TON transport, used to send events to the network
+    pub fn ton_transport(&self) -> &Arc<dyn Transport> {
+        &self.transport
+    }
+
+    /// Current account scanning positions
+    pub fn scanning_state(&self) -> &ScanningState {
+        &self.scanning_state
     }
 
     /// Compute event address based on its data
