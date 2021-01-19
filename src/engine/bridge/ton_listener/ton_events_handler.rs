@@ -1,10 +1,7 @@
 use relay_ton::contracts::*;
-use relay_ton::transport::*;
 
 use super::utils;
-use crate::config::TonSettings;
 use crate::crypto::key_managment::*;
-use crate::db::*;
 use crate::models::*;
 use crate::prelude::*;
 
@@ -23,7 +20,6 @@ struct State {
     eth_signer: EthSigner,
 
     configuration_id: BigUint,
-    address: MsgAddressInt,
     details: TonEventConfiguration,
     config_contract: Arc<TonEventConfigurationContract>,
     swapback_contract: Arc<TonSwapBackContract>,
@@ -95,7 +91,6 @@ impl TonEventsHandler {
                 transport: transport.clone(),
                 eth_signer,
                 configuration_id,
-                address,
                 details,
                 config_contract: config_contract.clone(),
                 swapback_contract: swapback_contract.clone(),

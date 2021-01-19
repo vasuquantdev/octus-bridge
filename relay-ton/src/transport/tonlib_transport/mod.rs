@@ -16,7 +16,7 @@ use tonlib::{AccountStats, TonlibClient};
 use super::errors::*;
 use super::tvm;
 use super::utils::*;
-use super::{AccountSubscription, RunLocal, Transport};
+use super::{AccountSubscription, AccountSubscriptionFull, RunLocal, Transport};
 use crate::models::*;
 use crate::prelude::*;
 
@@ -461,6 +461,23 @@ where
     }
 }
 
+#[async_trait]
+impl AccountSubscriptionFull for TonlibAccountSubscription<FullEventInfo> {
+    fn rescan_events_full(
+        &self,
+        since_lt: Option<u64>,
+        until_lt: Option<u64>,
+    ) -> BoxStream<'_, TransportResult<FullEventInfo>> {
+        EventsScanner::new(
+            Cow::Borrowed(&self.account),
+            &self.client,
+            since_lt,
+            until_lt,
+        )
+        .boxed()
+    }
+}
+
 impl PendingMessage<(u32, u64)> {
     pub fn expires_at(&self) -> u32 {
         self.data().0
@@ -477,7 +494,7 @@ const MESSAGES_PER_SCAN_ITER: u8 = 16;
 type AccountStateResponse = Result<(AccountStats, AccountStuff), failure::Error>;
 type TransactionsResponse = Result<Vec<(UInt256, Transaction)>, failure::Error>;
 
-struct EventsScanner<'a> {
+struct EventsScanner<'a, T> {
     account: Cow<'a, MsgAddressInt>,
     client: Arc<tonlib::TonlibClient>,
     since_lt: Option<u64>,
@@ -490,11 +507,13 @@ struct EventsScanner<'a> {
     current_transaction: usize,
     messages: Option<Vec<Message>>,
     current_message: usize,
+    _marker: std::marker::PhantomData<T>,
 }
 
-impl<'a> EventsScanner<'a>
+impl<'a, T> EventsScanner<'a, T>
 where
-    Self: Stream<Item = TransportResult<SliceData>>,
+    Self: Stream<Item = TransportResult<T>>,
+    T: PrepareEventExt,
 {
     fn new(
         account: Cow<'a, MsgAddressInt>,
@@ -522,6 +541,7 @@ where
             current_transaction: 0,
             messages: None,
             current_message: 0,
+            _marker: Default::default(),
         }
     }
 
@@ -548,22 +568,17 @@ where
                 &mut self.account_state_fut,
             ) {
                 (None, None, None, None) => return Poll::Ready(None),
-                (_, Some(messages), _, _) if self.current_message < messages.len() => {
+                (Some(transactions), Some(messages), _, _)
+                    if self.current_message < messages.len() =>
+                {
+                    let (latest_hash, transaction) = &transactions[self.current_transaction];
+                    let index = self.current_message as u64;
                     let message = &messages[self.current_message];
                     self.current_message += 1;
 
-                    match message.header() {
-                        CommonMsgInfo::ExtOutMsgInfo(_) => {
-                            let result = message.body().ok_or_else(|| {
-                                TransportError::FailedToParseMessage {
-                                    reason: "event message has no body".to_owned(),
-                                }
-                            });
-                            return Poll::Ready(Some(result));
-                        }
-                        _ => {
-                            continue 'outer;
-                        }
+                    match T::handle_item(transaction.lt, latest_hash, index, message) {
+                        MessageAction::Skip => continue 'outer,
+                        MessageAction::Emit(result) => return Poll::Ready(Some(result)),
                     }
                 }
                 (_, Some(_), _, _) => {
@@ -639,11 +654,76 @@ where
     }
 }
 
-impl<'a> Stream for EventsScanner<'a> {
-    type Item = TransportResult<SliceData>;
+impl<'a, T> Stream for EventsScanner<'a, T>
+where
+    T: PrepareEventExt,
+{
+    type Item = TransportResult<T>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         self.get_mut().handle_state(cx)
+    }
+}
+
+enum MessageAction<T> {
+    Skip,
+    Emit(T),
+}
+
+#[async_trait]
+trait PrepareEventExt: PrepareEvent + Unpin {
+    fn handle_item(
+        latest_lt: u64,
+        latest_hash: &UInt256,
+        index: u64,
+        message: &Message,
+    ) -> MessageAction<TransportResult<Self>>;
+}
+
+impl PrepareEventExt for SliceData {
+    fn handle_item(
+        _latest_lt: u64,
+        _latest_hash: &UInt256,
+        _index: u64,
+        message: &Message,
+    ) -> MessageAction<TransportResult<Self>> {
+        match message.header() {
+            CommonMsgInfo::ExtOutMsgInfo(_) => {
+                let result = message
+                    .body()
+                    .ok_or_else(|| TransportError::FailedToParseMessage {
+                        reason: "event message has no body".to_owned(),
+                    });
+                MessageAction::Emit(result)
+            }
+            _ => MessageAction::Skip,
+        }
+    }
+}
+
+impl PrepareEventExt for FullEventInfo {
+    fn handle_item(
+        latest_lt: u64,
+        latest_hash: &UInt256,
+        index: u64,
+        message: &Message,
+    ) -> MessageAction<TransportResult<Self>> {
+        match message.header() {
+            CommonMsgInfo::ExtOutMsgInfo(_) => {
+                let result = message
+                    .body()
+                    .ok_or_else(|| TransportError::FailedToParseMessage {
+                        reason: "event message has no body".to_owned(),
+                    });
+                MessageAction::Emit(result.map(|event_data| FullEventInfo {
+                    event_transaction: latest_hash.clone(),
+                    event_transaction_lt: latest_lt,
+                    event_index: index,
+                    event_data,
+                }))
+            }
+            _ => MessageAction::Skip,
+        }
     }
 }
 

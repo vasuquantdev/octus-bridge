@@ -1,7 +1,5 @@
 use relay_ton::contracts::*;
-use relay_ton::transport::*;
 
-use crate::crypto::key_managment::*;
 use crate::db::*;
 use crate::models::*;
 use crate::prelude::*;
@@ -29,7 +27,6 @@ struct State {
     eth_queue: EthQueue,
 
     configuration_id: BigUint,
-    address: MsgAddressInt,
     details: EthEventConfiguration,
     config_contract: Arc<EthEventConfigurationContract>,
 }
@@ -80,7 +77,6 @@ impl EthEventsHandler {
             eth_queue,
 
             configuration_id,
-            address,
             details,
             config_contract,
         });

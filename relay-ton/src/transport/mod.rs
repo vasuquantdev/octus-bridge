@@ -40,7 +40,7 @@ pub trait Transport: RunLocal {
     async fn subscribe_full(
         &self,
         account: MsgAddressInt,
-    ) -> TransportResult<(Arc<dyn AccountSubscription>, FullEventsRx)>;
+    ) -> TransportResult<(Arc<dyn AccountSubscriptionFull>, FullEventsRx)>;
 
     fn rescan_events(
         &self,
@@ -70,4 +70,13 @@ pub trait AccountSubscription: RunLocal {
         since_lt: Option<u64>,
         until_lt: Option<u64>,
     ) -> BoxStream<TransportResult<SliceData>>;
+}
+
+#[async_trait]
+pub trait AccountSubscriptionFull: AccountSubscription {
+    fn rescan_events_full(
+        &self,
+        since_lt: Option<u64>,
+        until_lt: Option<u64>,
+    ) -> BoxStream<TransportResult<FullEventInfo>>;
 }
