@@ -10,7 +10,7 @@ pub async fn make_ton_swapback_contract(
     transport: Arc<dyn Transport>,
     account: MsgAddressInt,
     event_abi: String,
-) -> ContractResult<TonSwapBackEvents> {
+) -> ContractResult<(Arc<TonSwapBackContract>, SwapBackEvents)> {
     let event_abi: SwapBackEventAbi =
         serde_json::from_str(&event_abi).map_err(|_| ContractError::InvalidAbi)?;
 
@@ -25,25 +25,32 @@ pub async fn make_ton_swapback_contract(
     } else {
         abi.get_function_id() & 0x7FFFFFFF
     };
+    let abi = Arc::new(abi);
 
     let (subscription, events_rx) = transport.subscribe_full(account.clone()).await?;
 
-    Ok(TonSwapBackEvents {
-        account,
-        abi: Arc::new(abi),
-        subscription,
+    let stream = SwapBackEvents {
+        abi: abi.clone(),
         events_rx,
-    })
+    };
+
+    Ok((
+        Arc::new(TonSwapBackContract {
+            account,
+            abi,
+            subscription,
+        }),
+        stream,
+    ))
 }
 
-pub struct TonSwapBackEvents {
+pub struct TonSwapBackContract {
     account: MsgAddressInt,
     abi: Arc<AbiEvent>,
-    subscription: Arc<dyn AccountSubscription>,
-    events_rx: FullEventsRx,
+    subscription: Arc<dyn AccountSubscriptionFull>,
 }
 
-impl TonSwapBackEvents {
+impl TonSwapBackContract {
     pub fn address(&self) -> &MsgAddressInt {
         &self.account
     }
@@ -60,13 +67,18 @@ impl TonSwapBackEvents {
         &self,
         since_lt: Option<u64>,
         until_lt: u64,
-    ) -> BoxStream<'_, Vec<Token>> {
+    ) -> BoxStream<'_, SwapBackEvent> {
         self.subscription
-            .rescan_events(since_lt, Some(until_lt + 1))
+            .rescan_events_full(since_lt, Some(until_lt + 1))
             .filter_map(move |raw_event| async move {
                 match raw_event {
-                    Ok(raw_event) => match self.abi.decode_input(raw_event) {
-                        Ok(tokens) => Some(tokens),
+                    Ok(raw_event) => match self.abi.decode_input(raw_event.event_data) {
+                        Ok(tokens) => Some(SwapBackEvent {
+                            event_transaction: raw_event.event_transaction,
+                            event_transaction_lt: raw_event.event_transaction_lt,
+                            event_index: raw_event.event_index,
+                            tokens,
+                        }),
                         Err(e) => {
                             log::debug!("Skipping unknown swapback event: {}", e.to_string());
                             None
@@ -82,7 +94,12 @@ impl TonSwapBackEvents {
     }
 }
 
-impl Stream for TonSwapBackEvents {
+pub struct SwapBackEvents {
+    abi: Arc<AbiEvent>,
+    events_rx: FullEventsRx,
+}
+
+impl Stream for SwapBackEvents {
     type Item = SwapBackEvent;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {

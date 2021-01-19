@@ -1,4 +1,4 @@
-query QueryOutboundMessages($address: String!, $start_lt: String!, $end_lt: String!, $limit: Int!) {
+query QueryOutboundMessagesFull($address: String!, $start_lt: String!, $end_lt: String!, $limit: Int!) {
     messages(filter: {
         src: { eq: $address },
         msg_type: { eq: 2 },
@@ -9,7 +9,12 @@ query QueryOutboundMessages($address: String!, $start_lt: String!, $end_lt: Stri
             direction: DESC
         }
     ], limit: $limit) {
-        created_lt
-        boc
+        src_transaction(timeout: 60) {
+            id
+            lt
+            out_messages {
+                boc
+            }
+        }
     }
 }

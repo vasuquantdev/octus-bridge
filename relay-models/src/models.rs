@@ -63,7 +63,7 @@ pub struct Status {
     pub password_needed: bool,
     pub init_data_needed: bool,
     pub is_working: bool,
-    pub ton_pubkey: Option<String>,
+    pub ton_relay_address: Option<String>,
     pub eth_pubkey: Option<String>,
 }
 

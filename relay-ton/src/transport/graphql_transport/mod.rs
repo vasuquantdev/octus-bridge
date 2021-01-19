@@ -14,7 +14,7 @@ use ton_types::HashmapType;
 use crate::models::*;
 use crate::prelude::*;
 use crate::transport::errors::*;
-use crate::transport::{AccountSubscription, RunLocal, Transport};
+use crate::transport::{AccountSubscription, AccountSubscriptionFull, RunLocal, Transport};
 
 use super::tvm;
 use super::utils::*;
@@ -76,32 +76,53 @@ impl RunLocal for GraphQLTransport {
 
 #[async_trait]
 impl Transport for GraphQLTransport {
-    async fn subscribe(
+    async fn subscribe_without_events(
         &self,
-        addr: MsgAddressInt,
-    ) -> TransportResult<(Arc<dyn AccountSubscription>, RawEventsRx)> {
-        let (subscription, rx) = GraphQLAccountSubscription::new(
+        account: MsgAddressInt,
+    ) -> TransportResult<Arc<dyn AccountSubscription>> {
+        let subscription = GraphQLAccountSubscription::<SliceData>::new(
             self.client.clone(),
             self.config.next_block_timeout_sec,
-            addr,
+            account,
+            None,
         )
         .await?;
 
-        Ok((subscription, rx))
+        Ok(subscription)
+    }
+
+    async fn subscribe(
+        &self,
+        account: MsgAddressInt,
+    ) -> TransportResult<(Arc<dyn AccountSubscription>, RawEventsRx)> {
+        let (events_tx, events_rx) = mpsc::unbounded_channel();
+
+        let subscription = GraphQLAccountSubscription::new(
+            self.client.clone(),
+            self.config.next_block_timeout_sec,
+            account,
+            Some(events_tx),
+        )
+        .await?;
+
+        Ok((subscription, events_rx))
     }
 
     async fn subscribe_full(
         &self,
-        addr: MsgAddressInt,
-    ) -> TransportResult<(Arc<dyn AccountSubscription>, FullEventsRx)> {
-        let (subscription, rx) = GraphQLAccountSubscription::new(
+        account: MsgAddressInt,
+    ) -> TransportResult<(Arc<dyn AccountSubscriptionFull>, FullEventsRx)> {
+        let (events_tx, events_rx) = mpsc::unbounded_channel();
+
+        let subscription = GraphQLAccountSubscription::new(
             self.client.clone(),
             self.config.next_block_timeout_sec,
-            addr,
+            account,
+            Some(events_tx),
         )
         .await?;
 
-        Ok((subscription, rx))
+        Ok((subscription, events_rx))
     }
 
     fn rescan_events(
@@ -118,6 +139,7 @@ impl Transport for GraphQLTransport {
             request_fut: None,
             messages: None,
             current_message: 0,
+            _marker: Default::default(),
         }
         .boxed()
     }
@@ -140,11 +162,10 @@ where
         client: NodeClient,
         next_block_timeout: u32,
         addr: MsgAddressInt,
-    ) -> TransportResult<(Arc<Self>, EventsRx<T>)> {
+        events_tx: Option<EventsTx<T>>,
+    ) -> TransportResult<Arc<Self>> {
         let client = client.clone();
         let last_block = client.get_latest_block(&addr).await?;
-
-        let (events_tx, rx) = mpsc::unbounded_channel();
 
         let subscription = Arc::new(Self {
             since_lt: last_block.end_lt,
@@ -163,12 +184,12 @@ where
         });
         subscription.start_loop(events_tx, last_block.id, next_block_timeout);
 
-        Ok((subscription, rx))
+        Ok(subscription)
     }
 
     fn start_loop(
         self: &Arc<Self>,
-        events_tx: EventsTx<T>,
+        events_tx: Option<EventsTx<T>>,
         mut last_block_id: String,
         next_block_timeout: u32,
     ) {
@@ -273,7 +294,7 @@ where
                                             event_transaction: &hash,
                                             event_transaction_lt: transaction.lt,
                                             abi_function: Some(pending_message.abi()),
-                                            events_tx: Some(&events_tx),
+                                            events_tx: events_tx.as_ref(),
                                         },
                                     );
                                     pending_message.set_result(result);
@@ -283,7 +304,7 @@ where
                                         event_transaction: &hash,
                                         event_transaction_lt: transaction.lt,
                                         abi_function: None,
-                                        events_tx: Some(&events_tx),
+                                        events_tx: events_tx.as_ref(),
                                     },
                                 ) {
                                     log::error!("error during out messages processing. {:?}", e);
@@ -410,7 +431,7 @@ where
         since_lt: Option<u64>,
         until_lt: Option<u64>,
     ) -> BoxStream<TransportResult<SliceData>> {
-        EventsScanner {
+        EventsScanner::<SliceData> {
             account: self.account.clone(),
             client: &self.client,
             since_lt,
@@ -418,6 +439,28 @@ where
             request_fut: None,
             messages: None,
             current_message: 0,
+            _marker: Default::default(),
+        }
+        .boxed()
+    }
+}
+
+#[async_trait]
+impl AccountSubscriptionFull for GraphQLAccountSubscription<FullEventInfo> {
+    fn rescan_events_full(
+        &self,
+        since_lt: Option<u64>,
+        until_lt: Option<u64>,
+    ) -> BoxStream<'_, TransportResult<FullEventInfo>> {
+        EventsScanner::<FullEventInfo> {
+            account: self.account.clone(),
+            client: &self.client,
+            since_lt,
+            until_lt,
+            request_fut: None,
+            messages: None,
+            current_message: 0,
+            _marker: Default::default(),
         }
         .boxed()
     }
@@ -431,27 +474,31 @@ impl PendingMessage<u32> {
 
 const MESSAGES_PER_SCAN_ITER: u32 = 50;
 
-struct EventsScanner<'a> {
+struct EventsScanner<'a, T: PrepareEventExt> {
     account: MsgAddressInt,
     client: &'a NodeClient,
     since_lt: Option<u64>,
     until_lt: Option<u64>,
-    request_fut: Option<BoxFuture<'static, TransportResult<MessagesResponse>>>,
-    messages: Option<MessagesResponse>,
+    request_fut: Option<BoxFuture<'static, TransportResult<MessagesResponse<T>>>>,
+    messages: Option<MessagesResponse<T>>,
     current_message: usize,
+    _marker: std::marker::PhantomData<T>,
 }
 
-impl<'a> EventsScanner<'a>
+type MessagesResponse<T> = Vec<<T as PrepareEventExt>::ResponseItem>;
+
+impl<'a, T> EventsScanner<'a, T>
 where
-    Self: Stream<Item = TransportResult<SliceData>>,
+    Self: Stream<Item = TransportResult<T>>,
+    T: PrepareEventExt,
 {
-    fn poll_request_fut<'c, F>(fut: Pin<&mut F>, cx: &mut Context<'c>) -> Poll<MessagesResponse>
+    fn poll_request_fut<'c, F>(fut: Pin<&mut F>, cx: &mut Context<'c>) -> Poll<MessagesResponse<T>>
     where
-        F: Future<Output = TransportResult<MessagesResponse>> + ?Sized,
+        F: Future<Output = TransportResult<MessagesResponse<T>>> + ?Sized,
     {
         match fut.poll(cx) {
             Poll::Ready(Ok(new_messages)) => Poll::Ready(new_messages),
-            Poll::Ready(Err(err)) => Poll::Ready(vec![(0, Err(err))]),
+            Poll::Ready(Err(err)) => Poll::Ready(vec![T::from_error(err)]),
             Poll::Pending => Poll::Pending,
         }
     }
@@ -460,29 +507,13 @@ where
         'outer: loop {
             match (&mut self.messages, &mut self.request_fut) {
                 (Some(messages), _) if self.current_message < messages.len() => {
-                    let (lt, result) = &messages[self.current_message];
-                    self.until_lt = Some(*lt);
-
+                    let message = &messages[self.current_message];
                     self.current_message += 1;
 
-                    if matches!(self.since_lt.as_ref(), Some(since_lt) if lt < since_lt) {
-                        continue 'outer;
+                    match T::handle_item(&mut self.until_lt, self.since_lt, message) {
+                        MessageAction::Skip => continue 'outer,
+                        MessageAction::Emit(result) => return Poll::Ready(Some(result)),
                     }
-
-                    let result = result.clone().and_then(|message| match message.header() {
-                        CommonMsgInfo::ExtOutMsgInfo(_) => {
-                            message
-                                .body()
-                                .ok_or_else(|| TransportError::FailedToParseMessage {
-                                    reason: "event message has no body".to_owned(),
-                                })
-                        }
-                        _ => Err(TransportError::ApiFailure {
-                            reason: "got internal message for event".to_string(),
-                        }),
-                    });
-
-                    return Poll::Ready(Some(result));
                 }
                 (Some(_), _) => self.messages = None,
                 (None, Some(fut)) => match Self::poll_request_fut(fut.as_mut(), cx) {
@@ -505,16 +536,13 @@ where
                     let until_lt = self.until_lt;
 
                     self.request_fut = Some(
-                        async move {
-                            client
-                                .get_outbound_messages(
-                                    address,
-                                    since_lt,
-                                    until_lt,
-                                    MESSAGES_PER_SCAN_ITER,
-                                )
-                                .await
-                        }
+                        T::get_outbound_messages(
+                            client,
+                            address,
+                            since_lt,
+                            until_lt,
+                            MESSAGES_PER_SCAN_ITER,
+                        )
                         .boxed(),
                     );
                 }
@@ -523,15 +551,16 @@ where
     }
 }
 
-impl<'a> Stream for EventsScanner<'a> {
-    type Item = TransportResult<SliceData>;
+impl<'a, T> Stream for EventsScanner<'a, T>
+where
+    T: PrepareEventExt,
+{
+    type Item = TransportResult<T>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         self.get_mut().handle_state(cx)
     }
 }
-
-type MessagesResponse = Vec<(u64, TransportResult<Message>)>;
 
 async fn run_local<T>(node_client: &NodeClient, message: T) -> TransportResult<Vec<Message>>
 where
@@ -551,6 +580,145 @@ where
     )?;
 
     Ok(messages)
+}
+
+enum MessageAction<T> {
+    Skip,
+    Emit(T),
+}
+
+#[async_trait]
+trait PrepareEventExt: PrepareEvent + Unpin {
+    type ResponseItem: std::fmt::Debug + Unpin;
+
+    async fn get_outbound_messages(
+        node: NodeClient,
+        addr: MsgAddressInt,
+        start_lt: Option<u64>,
+        end_lt: Option<u64>,
+        limit: u32,
+    ) -> TransportResult<Vec<Self::ResponseItem>>;
+
+    fn handle_item(
+        until_lt: &mut Option<u64>,
+        since_lt: Option<u64>,
+        message: &Self::ResponseItem,
+    ) -> MessageAction<TransportResult<Self>>;
+
+    fn from_error(err: TransportError) -> Self::ResponseItem;
+}
+
+#[async_trait]
+impl PrepareEventExt for SliceData {
+    type ResponseItem = OutboundMessage;
+
+    async fn get_outbound_messages(
+        node: NodeClient,
+        addr: MsgAddressInt,
+        start_lt: Option<u64>,
+        end_lt: Option<u64>,
+        limit: u32,
+    ) -> TransportResult<Vec<Self::ResponseItem>> {
+        node.get_outbound_messages(addr, start_lt, end_lt, limit)
+            .await
+    }
+
+    fn handle_item(
+        until_lt: &mut Option<u64>,
+        since_lt: Option<u64>,
+        message: &Self::ResponseItem,
+    ) -> MessageAction<TransportResult<Self>> {
+        *until_lt = Some(message.lt);
+
+        if matches!(since_lt.as_ref(), Some(since_lt) if &message.lt < since_lt) {
+            return MessageAction::Skip;
+        }
+
+        let result = message
+            .data
+            .clone()
+            .and_then(|message| match message.header() {
+                CommonMsgInfo::ExtOutMsgInfo(_) => {
+                    message
+                        .body()
+                        .ok_or_else(|| TransportError::FailedToParseMessage {
+                            reason: "event message has no body".to_owned(),
+                        })
+                }
+                _ => Err(TransportError::ApiFailure {
+                    reason: "got internal message for event".to_string(),
+                }),
+            });
+
+        MessageAction::Emit(result)
+    }
+
+    fn from_error(err: TransportError) -> Self::ResponseItem {
+        Self::ResponseItem {
+            lt: 0,
+            data: Err(err),
+        }
+    }
+}
+
+#[async_trait]
+impl PrepareEventExt for FullEventInfo {
+    type ResponseItem = OutboundMessageFull;
+
+    async fn get_outbound_messages(
+        node: NodeClient,
+        addr: MsgAddressInt,
+        start_lt: Option<u64>,
+        end_lt: Option<u64>,
+        limit: u32,
+    ) -> TransportResult<Vec<Self::ResponseItem>> {
+        node.get_outbound_messages_full(addr, start_lt, end_lt, limit)
+            .await
+    }
+
+    fn handle_item(
+        until_lt: &mut Option<u64>,
+        since_lt: Option<u64>,
+        message: &Self::ResponseItem,
+    ) -> MessageAction<TransportResult<Self>> {
+        *until_lt = Some(message.transaction_lt);
+
+        if matches!(since_lt.as_ref(), Some(since_lt) if &message.transaction_lt < since_lt) {
+            return MessageAction::Skip;
+        }
+
+        let result = message
+            .data
+            .clone()
+            .and_then(|message| match message.header() {
+                CommonMsgInfo::ExtOutMsgInfo(_) => {
+                    message
+                        .body()
+                        .ok_or_else(|| TransportError::FailedToParseMessage {
+                            reason: "event message has no body".to_owned(),
+                        })
+                }
+                _ => Err(TransportError::ApiFailure {
+                    reason: "got internal message for event".to_string(),
+                }),
+            });
+
+        MessageAction::Emit(result.map(|event_data| FullEventInfo {
+            event_transaction: message.transaction_hash.clone(),
+            event_transaction_lt: message.transaction_lt,
+            event_index: message.event_index,
+            event_data,
+        }))
+    }
+
+    fn from_error(err: TransportError) -> Self::ResponseItem {
+        Self::ResponseItem {
+            data: Err(err),
+            transaction_hash: Default::default(),
+            transaction_lt: 0,
+            event_index: 0,
+        }
+    }
 }
 
 #[cfg(test)]
