@@ -359,7 +359,7 @@ fn provide_eth_derivation_path() -> Result<String, Error> {
         .default("m/44'/00'/0'/0/0".to_string())
         .interact()?;
 
-    Ok(derivation_path.into())
+    Ok(derivation_path)
 }
 
 fn provide_ton_derivation_path() -> Result<String, Error> {
@@ -367,7 +367,7 @@ fn provide_ton_derivation_path() -> Result<String, Error> {
         .with_prompt("Provide derivation path for ton")
         .default("m/44'/396'/0'/0/0".to_string())
         .interact()?;
-    Ok(derivation_path.into())
+    Ok(derivation_path)
 }
 
 #[derive(Serialize, Deserialize)]

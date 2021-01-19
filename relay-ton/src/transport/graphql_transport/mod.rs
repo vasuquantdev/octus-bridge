@@ -324,7 +324,7 @@ where
 
                 for (_, message) in pending_messages.iter() {
                     log::trace!(
-                        "CURRENT: {}, {}, {}",
+                        "message stats: block utime: {}, expiresa at: {}, diff: {}",
                         block_info.gen_utime().0,
                         message.expires_at(),
                         message.expires_at() as i64 - block_info.gen_utime().0 as i64
@@ -334,7 +334,7 @@ where
                 pending_messages
                     .retain(|_, message| block_info.gen_utime().0 <= message.expires_at());
                 log::debug!(
-                    "PENDING: {}. TIME DIFF: {}",
+                    "pending messages: {}. time diff: {}",
                     pending_messages.len(),
                     block_info.gen_utime().0 as i64 - Utc::now().timestamp(),
                 );
@@ -506,29 +506,40 @@ where
     fn handle_state<'c>(&mut self, cx: &mut Context<'c>) -> Poll<Option<<Self as Stream>::Item>> {
         'outer: loop {
             match (&mut self.messages, &mut self.request_fut) {
+                // Process messages if some left
                 (Some(messages), _) if self.current_message < messages.len() => {
                     let message = &messages[self.current_message];
+                    // Increase message idx on each invocation
                     self.current_message += 1;
 
-                    match T::handle_item(&mut self.until_lt, self.since_lt, message) {
+                    // Handle message. Reduce `until_lt`
+                    match T::handle_item(self.since_lt, &mut self.until_lt, message) {
+                        // Messages with lt less than `since_lt` will be skipped. Means that there are no messages left
                         MessageAction::Skip => continue 'outer,
+                        // Return message
                         MessageAction::Emit(result) => return Poll::Ready(Some(result)),
                     }
                 }
+                // Clear messages array when `current_message` exceeded messages length
                 (Some(_), _) => self.messages = None,
+                // Poll request future if it exists and when no messages left
                 (None, Some(fut)) => match Self::poll_request_fut(fut.as_mut(), cx) {
+                    // Reset messages array and index when getting non-empty response
                     Poll::Ready(response) if !response.is_empty() => {
                         log::trace!("got messages: {:?}", response);
                         self.current_message = 0;
                         self.messages = Some(response);
                         self.request_fut = None;
                     }
+                    // Empty response means that stream has finished
                     Poll::Ready(_) => {
                         log::trace!("got empty response");
                         return Poll::Ready(None);
                     }
+                    // Wait notification
                     Poll::Pending => return Poll::Pending,
                 },
+                // Create request future
                 (None, None) => {
                     let client = self.client.clone();
                     let address = self.account.clone();
@@ -566,7 +577,7 @@ async fn run_local<T>(node_client: &NodeClient, message: T) -> TransportResult<V
 where
     T: ExecutableMessage,
 {
-    let utime = Utc::now().timestamp() as u32; // TODO: make sure it is not used by contract. Otherwise force tonlabs to add gen_utime for account response
+    let utime = Utc::now().timestamp() as u32;
 
     let account_state = node_client.get_account_state(message.dest()).await?;
 
@@ -600,8 +611,8 @@ trait PrepareEventExt: PrepareEvent + Unpin {
     ) -> TransportResult<Vec<Self::ResponseItem>>;
 
     fn handle_item(
-        until_lt: &mut Option<u64>,
         since_lt: Option<u64>,
+        until_lt: &mut Option<u64>,
         message: &Self::ResponseItem,
     ) -> MessageAction<TransportResult<Self>>;
 
@@ -624,8 +635,8 @@ impl PrepareEventExt for SliceData {
     }
 
     fn handle_item(
-        until_lt: &mut Option<u64>,
         since_lt: Option<u64>,
+        until_lt: &mut Option<u64>,
         message: &Self::ResponseItem,
     ) -> MessageAction<TransportResult<Self>> {
         *until_lt = Some(message.lt);
@@ -677,8 +688,8 @@ impl PrepareEventExt for FullEventInfo {
     }
 
     fn handle_item(
-        until_lt: &mut Option<u64>,
         since_lt: Option<u64>,
+        until_lt: &mut Option<u64>,
         message: &Self::ResponseItem,
     ) -> MessageAction<TransportResult<Self>> {
         *until_lt = Some(message.transaction_lt);

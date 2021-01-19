@@ -567,43 +567,60 @@ where
                 &mut self.request_fut,
                 &mut self.account_state_fut,
             ) {
+                // Finish stream if no unfinished futures left
                 (None, None, None, None) => return Poll::Ready(None),
+                // Process messages in current transaction if some left
                 (Some(transactions), Some(messages), _, _)
                     if self.current_message < messages.len() =>
                 {
                     let (latest_hash, transaction) = &transactions[self.current_transaction];
                     let index = self.current_message as u64;
                     let message = &messages[self.current_message];
+                    // Increase message idx on each invocation
                     self.current_message += 1;
 
+                    // Handle message
                     match T::handle_item(transaction.lt, latest_hash, index, message) {
+                        // Skip internal messages
                         MessageAction::Skip => continue 'outer,
+                        // Return message
                         MessageAction::Emit(result) => return Poll::Ready(Some(result)),
                     }
                 }
+                // Clear messages array when `current_message` exceeded messages length
                 (_, Some(_), _, _) => {
                     self.messages = None;
+                    // Shift transaction
                     self.current_transaction += 1
                 }
+                // Advance current transaction if messages array is empty
                 (Some(transactions), _, _, _) if self.current_transaction < transactions.len() => {
                     let (_, transaction) = &transactions[self.current_transaction];
                     self.latest_lt = transaction.prev_trans_lt;
                     self.latest_hash = transaction.prev_trans_hash.clone();
 
+                    // Check lt range
                     match (self.since_lt, self.until_lt) {
+                        // If current transaction is not in requested range
                         (Some(since_lt), _) if transaction.lt < since_lt => {
+                            // skip it
                             self.current_transaction += 1;
                             continue 'outer;
                         }
+                        // If current transaction is not in requested range
                         (_, Some(until_lt)) if transaction.lt > until_lt => {
+                            // skip it
                             self.current_transaction += 1;
                             continue 'outer;
                         }
+                        // Try to parse messages if current transaction is in requested range
                         _ => match parse_transaction_messages(transaction) {
+                            // Reset messages array and index
                             Ok(messages) => {
                                 self.messages = Some(messages);
                                 self.current_message = 0;
                             }
+                            // Stop stream on parsing error. (hope it will never happen)
                             Err(e) => {
                                 self.transactions = None;
                                 self.messages = None;
@@ -612,13 +629,17 @@ where
                         },
                     }
                 }
+                // Clear transactions array when `current_transaction` exceeded transactions length
                 (Some(_), _, _, _) => {
                     self.transactions = None;
+                    // Initiate transaction fetching if latest transaction was still in lt range
                     if !matches!(self.since_lt, Some(since_lt) if self.latest_lt < since_lt) {
                         self.request_fut = Some(self.get_transactions());
                     }
                 }
+                // Poll transactions future
                 (_, _, Some(fut), _) => match fut.as_mut().poll(cx) {
+                    // Reset transactions array and index when getting non-empty response
                     Poll::Ready(Ok(transactions)) if !transactions.is_empty() => {
                         self.request_fut = None;
 
@@ -626,16 +647,21 @@ where
                         self.current_transaction = 0;
                         self.current_message = 0;
                     }
+                    // Empty response means that stream has finished
                     Poll::Ready(Ok(_)) => {
                         return Poll::Ready(None);
                     }
+                    // Emit stream error on future error
                     Poll::Ready(Err(e)) => {
                         self.request_fut = None;
                         return Poll::Ready(Some(Err(to_api_error(e))));
                     }
+                    // Wait notification
                     Poll::Pending => return Poll::Pending,
                 },
+                // Initial state goes here. Fetch account state with its latest transaction
                 (_, _, _, Some(fut)) => match fut.as_mut().poll(cx) {
+                    // Start getting transactions since latest
                     Poll::Ready(Ok((stats, _))) => {
                         self.account_state_fut = None;
 
@@ -643,10 +669,12 @@ where
                         self.latest_hash = stats.last_trans_hash;
                         self.request_fut = Some(self.get_transactions());
                     }
+                    // Emit stream error on future error
                     Poll::Ready(Err(e)) => {
                         self.account_state_fut = None;
                         return Poll::Ready(Some(Err(to_api_error(e))));
                     }
+                    // Wait notification
                     Poll::Pending => return Poll::Pending,
                 },
             }
