@@ -392,11 +392,11 @@ mod test {
     use ton_abi::TokenValue as TonTokenValue;
 
     use relay_eth::ws::H256;
-    use relay_ton::contracts::utils::pack_token_values;
     use relay_ton::prelude::serialize_toc;
 
     use crate::engine::bridge::utils::{
-        eth_param_from_str, map_eth_to_ton, map_ton_to_eth_with_abi, parse_eth_abi,
+        eth_param_from_str, map_eth_to_ton, map_ton_to_eth_with_abi, pack_token_values,
+        parse_eth_abi,
     };
 
     const ABI: &str = r#"

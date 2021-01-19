@@ -12,7 +12,7 @@ pub fn derive_from_words_eth(
     let hd = Seed::new(&mnemonic, "");
     let seed_bytes = hd.as_bytes();
 
-    let path = derivation_path.unwrap_or("m/44'/60'/0'/0/0");
+    let path = derivation_path.unwrap_or("m/44'/00'/0'/0/0");
     let derived =
         ExtendedPrivKey::derive(seed_bytes, path).map_err(|e| Error::msg(format!("{:#?}", e)))?;
     Ok(SecretKey::from_slice(&derived.secret())?)
