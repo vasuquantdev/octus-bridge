@@ -186,7 +186,7 @@ impl From<TonEventTransaction> for TonEthTransactionView {
 pub struct CommonReceivedVote<T, A> {
     configuration_id: BigUint,
     event_addr: MsgAddrStd,
-    relay_key: UInt256,
+    relay: MsgAddrStd,
     kind: Voting,
     additional_data: T,
     _data: std::marker::PhantomData<A>,
@@ -208,14 +208,14 @@ impl EthEventReceivedVote {
     pub fn new(
         configuration_id: BigUint,
         event_addr: MsgAddrStd,
-        relay_key: UInt256,
+        relay: MsgAddrStd,
         kind: Voting,
         eth_blocks_to_confirm: u16,
     ) -> Self {
         Self {
             configuration_id,
             event_addr,
-            relay_key,
+            relay,
             kind,
             additional_data: eth_blocks_to_confirm,
             _data: Default::default(),
@@ -227,14 +227,14 @@ impl TonEventReceivedVote {
     pub fn new(
         configuration_id: BigUint,
         event_addr: MsgAddrStd,
-        relay_key: UInt256,
+        relay: MsgAddrStd,
         kind: Voting,
         abi: Arc<AbiEvent>,
     ) -> Self {
         Self {
             configuration_id,
             event_addr,
-            relay_key,
+            relay,
             kind,
             additional_data: abi,
             _data: Default::default(),
@@ -252,7 +252,7 @@ pub trait ReceivedVote: Send + Sync {
 
     fn configuration_id(&self) -> &BigUint;
     fn event_address(&self) -> &MsgAddrStd;
-    fn relay_key(&self) -> &UInt256;
+    fn relay(&self) -> &MsgAddrStd;
     fn kind(&self) -> Voting;
     fn additional(&self) -> &Self::AdditionalData;
     fn with_data(self, data: Self::Data) -> Self::VoteWithData;
@@ -278,8 +278,8 @@ where
     }
 
     #[inline]
-    fn relay_key(&self) -> &UInt256 {
-        &self.relay_key
+    fn relay(&self) -> &MsgAddrStd {
+        &self.relay
     }
 
     #[inline]

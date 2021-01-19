@@ -203,12 +203,12 @@ impl TonEventsHandler {
     ) {
         log::debug!("Got TON->ETH event vote: {:?}", event);
 
-        let (event_address, relay_key, vote) = match event {
-            TonEventConfigurationContractEvent::EventConfirmation { address, relay_key } => {
-                (address, relay_key, Voting::Confirm)
+        let (event_address, relay, vote) = match event {
+            TonEventConfigurationContractEvent::EventConfirmation { address, relay } => {
+                (address, relay, Voting::Confirm)
             }
-            TonEventConfigurationContractEvent::EventReject { address, relay_key } => {
-                (address, relay_key, Voting::Reject)
+            TonEventConfigurationContractEvent::EventReject { address, relay } => {
+                (address, relay, Voting::Reject)
             }
         };
 
@@ -223,7 +223,7 @@ impl TonEventsHandler {
                         TonEventReceivedVote::new(
                             state.configuration_id.clone(),
                             event_address,
-                            relay_key,
+                            relay,
                             vote,
                             state.swapback_contract.abi().clone(),
                         ),
@@ -339,7 +339,7 @@ impl std::fmt::Display for DisplayReceivedVote<'_, TonEventReceivedVoteWithData>
             info.kind(),
             hex::encode(&data.init_data.event_transaction),
             data.init_data.event_transaction_lt,
-            hex::encode(&info.relay_key()),
+            info.relay(),
             data.status,
             info.event_address()
         ))

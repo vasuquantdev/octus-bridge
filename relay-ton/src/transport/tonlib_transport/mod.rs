@@ -87,36 +87,59 @@ impl RunLocal for TonlibTransport {
 
 #[async_trait]
 impl Transport for TonlibTransport {
-    async fn subscribe(
+    async fn subscribe_without_events(
         &self,
         account: MsgAddressInt,
-    ) -> TransportResult<(Arc<dyn AccountSubscription>, RawEventsRx)> {
-        let (subscription, rx) = TonlibAccountSubscription::new(
+    ) -> TransportResult<Arc<dyn AccountSubscription>> {
+        let subscription = TonlibAccountSubscription::<SliceData>::new(
             &self.client,
             &self.subscription_polling_interval,
             self.max_initial_rescan_gap,
             self.max_rescan_gap,
             account,
+            None,
         )
         .await?;
 
-        Ok((subscription, rx))
+        Ok(subscription)
+    }
+
+    async fn subscribe(
+        &self,
+        account: MsgAddressInt,
+    ) -> TransportResult<(Arc<dyn AccountSubscription>, RawEventsRx)> {
+        let (events_tx, events_rx) = mpsc::unbounded_channel();
+
+        let subscription = TonlibAccountSubscription::new(
+            &self.client,
+            &self.subscription_polling_interval,
+            self.max_initial_rescan_gap,
+            self.max_rescan_gap,
+            account,
+            Some(events_tx),
+        )
+        .await?;
+
+        Ok((subscription, events_rx))
     }
 
     async fn subscribe_full(
         &self,
         account: MsgAddressInt,
     ) -> TransportResult<(Arc<dyn AccountSubscriptionFull>, FullEventsRx)> {
-        let (subscription, rx) = TonlibAccountSubscription::new(
+        let (events_tx, events_rx) = mpsc::unbounded_channel();
+
+        let subscription = TonlibAccountSubscription::new(
             &self.client,
             &self.subscription_polling_interval,
             self.max_initial_rescan_gap,
             self.max_rescan_gap,
             account,
+            Some(events_tx),
         )
         .await?;
 
-        Ok((subscription, rx))
+        Ok((subscription, events_rx))
     }
 
     fn rescan_events(
@@ -148,7 +171,8 @@ where
         max_initial_rescan_gap: Option<u32>,
         max_rescan_gap: Option<u32>,
         account: MsgAddressInt,
-    ) -> TransportResult<(Arc<Self>, EventsRx<T>)> {
+        events_tx: Option<EventsTx<T>>,
+    ) -> TransportResult<Arc<Self>> {
         let client = client.clone();
         let (stats, known_state) = client
             .get_account_state(&account)
@@ -156,8 +180,6 @@ where
             .map_err(to_api_error)?;
 
         let last_trans_lt = stats.last_trans_lt;
-
-        let (tx, rx) = mpsc::unbounded_channel();
 
         let subscription = Arc::new(Self {
             since_lt: last_trans_lt,
@@ -168,19 +190,19 @@ where
             _marker: Default::default(),
         });
         subscription.start_loop(
-            tx,
+            events_tx,
             last_trans_lt,
             *polling_interval,
             max_initial_rescan_gap,
             max_rescan_gap,
         );
 
-        Ok((subscription, rx))
+        Ok(subscription)
     }
 
     fn start_loop(
         self: &Arc<Self>,
-        state_notifier: EventsTx<T>,
+        events_tx: Option<EventsTx<T>>,
         mut last_trans_lt: u64,
         interval: Duration,
         mut max_initial_rescan_gap: Option<u32>,
@@ -274,7 +296,7 @@ where
                                         event_transaction: &current_trans_hash,
                                         event_transaction_lt: current_trans_lt,
                                         abi_function: Some(pending_message.abi()),
-                                        events_tx: Some(&state_notifier),
+                                        events_tx: events_tx.as_ref(),
                                     },
                                 );
                                 pending_message.set_result(result);
@@ -284,7 +306,7 @@ where
                                     event_transaction: &current_trans_hash,
                                     event_transaction_lt: current_trans_lt,
                                     abi_function: None,
-                                    events_tx: Some(&state_notifier),
+                                    events_tx: events_tx.as_ref(),
                                 },
                             ) {
                                 log::error!("error during out messages processing. {}", e);

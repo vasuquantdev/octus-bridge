@@ -1,8 +1,6 @@
 use relay_ton::contracts::*;
 use relay_ton::transport::*;
 
-use super::utils;
-use crate::config::TonSettings;
 use crate::crypto::key_managment::*;
 use crate::db::*;
 use crate::models::*;
@@ -100,12 +98,12 @@ impl EthEventsHandler {
     ) {
         log::debug!("got ETH->TON event vote: {:?}", event);
 
-        let (event_address, relay_key, vote) = match event {
-            EthEventConfigurationContractEvent::EventConfirmation { address, relay_key } => {
-                (address, relay_key, Voting::Confirm)
+        let (event_addr, relay, kind) = match event {
+            EthEventConfigurationContractEvent::EventConfirmation { address, relay } => {
+                (address, relay, Voting::Confirm)
             }
-            EthEventConfigurationContractEvent::EventReject { address, relay_key } => {
-                (address, relay_key, Voting::Reject)
+            EthEventConfigurationContractEvent::EventReject { address, relay } => {
+                (address, relay, Voting::Reject)
             }
         };
 
@@ -119,9 +117,9 @@ impl EthEventsHandler {
                         state.as_ref(),
                         EthEventReceivedVote::new(
                             state.configuration_id.clone(),
-                            event_address,
-                            relay_key,
-                            vote,
+                            event_addr,
+                            relay,
+                            kind,
                             state.details.event_blocks_to_confirm,
                         ),
                     )
@@ -234,7 +232,7 @@ impl std::fmt::Display for DisplayReceivedVote<'_, EthEventReceivedVoteWithData>
             info.kind(),
             hex::encode(&data.init_data.event_transaction),
             data.init_data.event_block_number,
-            hex::encode(&info.relay_key()),
+            info.relay(),
             data.status,
             info.event_address()
         ))

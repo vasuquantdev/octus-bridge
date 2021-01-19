@@ -21,7 +21,7 @@ use self::ton_events_handler::*;
 /// Listens to config streams and maps them.
 pub struct TonListener {
     transport: Arc<dyn Transport>,
-    bridge_contract: Arc<BridgeContract>,
+    relay_contract: Arc<RelayContract>,
 
     eth_signer: EthSigner,
     eth_queue: EthQueue,
@@ -37,7 +37,7 @@ pub struct TonListener {
 pub async fn make_ton_listener(
     db: &Db,
     transport: Arc<dyn Transport>,
-    bridge_contract: Arc<BridgeContract>,
+    relay_contract: Arc<RelayContract>,
     eth_queue: EthQueue,
     eth_signer: EthSigner,
     settings: TonSettings,
@@ -49,7 +49,7 @@ pub async fn make_ton_listener(
             db,
             transport.clone(),
             scanning_state.clone(),
-            bridge_contract.clone(),
+            relay_contract.clone(),
             settings.clone(),
         )
         .await?,
@@ -59,7 +59,7 @@ pub async fn make_ton_listener(
             db,
             transport.clone(),
             scanning_state.clone(),
-            bridge_contract.clone(),
+            relay_contract.clone(),
             settings.clone(),
         )
         .await?,
@@ -67,7 +67,7 @@ pub async fn make_ton_listener(
 
     Ok(Arc::new(TonListener {
         transport,
-        bridge_contract,
+        relay_contract,
         eth_signer,
         eth_queue,
         ton,
@@ -119,7 +119,8 @@ impl TonListener {
 
         // Get all configs before now
         let known_contracts = self
-            .bridge_contract
+            .relay_contract
+            .bridge()
             .get_active_event_configurations()
             .await
             .expect("Failed to get known event configurations"); // TODO: is it really a fatal error?
@@ -426,7 +427,7 @@ impl EventTransactionExt for EthEventTransaction {
         }
     }
 
-    async fn send(&self, bridge: Arc<BridgeContract>) -> ContractResult<()> {
+    async fn send(&self, bridge: Arc<RelayContract>) -> ContractResult<()> {
         let id = self.configuration_id().clone();
         let data = self.init_data();
         match self.kind() {
@@ -473,7 +474,7 @@ impl EventTransactionExt for TonEventTransaction {
         }
     }
 
-    async fn send(&self, bridge: Arc<BridgeContract>) -> ContractResult<()> {
+    async fn send(&self, bridge: Arc<RelayContract>) -> ContractResult<()> {
         match self.clone() {
             Self::Confirm(SignedEventVotingData { data, signature }) => {
                 let id = data.configuration_id.clone();

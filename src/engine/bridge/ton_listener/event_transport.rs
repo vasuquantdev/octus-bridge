@@ -11,7 +11,7 @@ where
     C: ConfigurationContract,
 {
     settings: TonSettings,
-    relay_key: UInt256,
+    relay: MsgAddrStd,
 
     parallel_spawned_contracts_limiter: tokio::sync::Semaphore,
     voting_stats:
@@ -20,7 +20,7 @@ where
 
     transport: Arc<dyn Transport>,
     scanning_state: ScanningState,
-    bridge_contract: Arc<BridgeContract>,
+    relay_contract: Arc<RelayContract>,
     event_contract: Arc<C::EventContract>,
     config_contracts: RwLock<ConfigContractsMap<C>>,
 
@@ -49,10 +49,10 @@ where
         db: &Db,
         transport: Arc<dyn Transport>,
         scanning_state: ScanningState,
-        bridge_contract: Arc<BridgeContract>,
+        relay_contract: Arc<RelayContract>,
         settings: TonSettings,
     ) -> Result<Self, Error> {
-        let relay_key = bridge_contract.pubkey();
+        let relay = relay_contract.address().clone();
         let event_contract = C::make_event_contract(transport.clone()).await;
         let voting_stats = C::make_voting_stats(db)?;
         let votes_queue = C::make_votes_queue(db)?;
@@ -62,12 +62,12 @@ where
                 settings.parallel_spawned_contracts_limit,
             ),
             settings,
-            relay_key,
+            relay,
             voting_stats,
             votes_queue,
             transport,
             scanning_state,
-            bridge_contract,
+            relay_contract,
             event_contract,
             config_contracts: Default::default(),
             confirmations: Default::default(),
@@ -94,7 +94,7 @@ where
 
         let should_check = vote_info.kind() == Voting::Confirm
             && received_vote.status() == EventStatus::InProcess
-            && vote_info.relay_key() != self.relay_key // event from other relay
+            && vote_info.relay() != &self.relay // event from other relay
             && !self.is_in_queue(vote_info.event_address())
             && !self.has_already_voted(vote_info.event_address());
 
@@ -109,7 +109,7 @@ where
             .await
             .expect("Fatal db error");
 
-        if vote_info.relay_key() == self.relay_key {
+        if vote_info.relay() == &self.relay {
             // Stop retrying after our event response was found
             if let Err(e) = self.votes_queue.mark_complete(vote_info.event_address()) {
                 log::error!("Failed to mark transaction completed. {:?}", e);
@@ -176,7 +176,7 @@ where
             );
 
             // Try to send message
-            if let Err(e) = data.send(self.bridge_contract.clone()).await {
+            if let Err(e) = data.send(self.relay_contract.clone()).await {
                 log::error!(
                     "Failed to vote for event: {:?}. Retrying ({} left)",
                     e,
@@ -228,7 +228,7 @@ where
             // Check if event arrived nevertheless unsuccessful sending
             if self
                 .voting_stats
-                .has_already_voted(&event_address, &self.relay_key)
+                .has_already_voted(&event_address, &self.relay)
                 .expect("Fatal db error")
             {
                 break Ok(());
@@ -300,9 +300,9 @@ where
         Ok(())
     }
 
-    /// Bridge contract for this event transport
+    /// Relay contract for this event transport
     pub fn bridge_contract(&self) -> &Arc<BridgeContract> {
-        &self.bridge_contract
+        self.relay_contract.bridge()
     }
 
     /// TON transport, used to send events to the network
@@ -342,7 +342,7 @@ where
     /// Check statistics whether transaction exists
     fn has_already_voted(&self, event_address: &MsgAddrStd) -> bool {
         self.voting_stats
-            .has_already_voted(event_address, &self.relay_key)
+            .has_already_voted(event_address, &self.relay)
             .expect("Fatal db error")
     }
 
@@ -512,5 +512,5 @@ pub trait EventTransactionExt: std::fmt::Display + Clone + Send + Sync {
     fn configuration_id(&self) -> &BigUint;
     fn kind(&self) -> Voting;
     fn init_data(&self) -> Self::InitData;
-    async fn send(&self, bridge: Arc<BridgeContract>) -> ContractResult<()>;
+    async fn send(&self, bridge: Arc<RelayContract>) -> ContractResult<()>;
 }
