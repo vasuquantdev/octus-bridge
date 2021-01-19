@@ -50,7 +50,8 @@ pack it according to [conversion scheme](#supported-conversions). Sign it and
 send to event contract.
 
 You can read more about
-contracts [here](https://github.com/broxus/ton-eth-bridge-contracts/tree/master/docs).
+contracts [here](https://github.com/broxus/ton-eth-bridge-contracts/tree/master/docs)
+.
 
 ### Supported types in ethereum abi
 
@@ -60,6 +61,26 @@ contracts [here](https://github.com/broxus/ton-eth-bridge-contracts/tree/master/
 - bool
 - string
 - bytes
+
+Abi should be in json. Example:
+
+```json
+{
+  "inputs": [
+    {
+      "name": "state",
+      "type": "uint256"
+    },
+    {
+      "name": "author",
+      "type": "address"
+    }
+  ],
+  "name": "StateChange"
+}
+```
+
+All the fields are mandatory. Other fields will be ignored.
 
 #### Supported conversions
 

@@ -11,21 +11,15 @@ pub fn parse_eth_abi(abi: &str) -> Result<(H256, Vec<EthParamType>, Vec<TonParam
     #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct Abi {
-        pub anonymous: Option<bool>,
         pub inputs: Vec<Input>,
         pub name: String,
-        #[serde(rename = "type")]
-        pub type_field: String,
         #[serde(default)]
         pub outputs: Vec<Output>,
-        pub state_mutability: Option<String>,
     }
 
     #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct Input {
-        pub indexed: Option<bool>,
-        pub internal_type: String,
         pub name: String,
         #[serde(rename = "type")]
         pub type_field: String,
@@ -34,11 +28,11 @@ pub fn parse_eth_abi(abi: &str) -> Result<(H256, Vec<EthParamType>, Vec<TonParam
     #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct Output {
-        pub internal_type: String,
         pub name: String,
         #[serde(rename = "type")]
         pub type_field: String,
     }
+
     let abi: Abi = serde_json::from_str(abi)?;
     let fn_name = abi.name;
 
@@ -52,7 +46,7 @@ pub fn parse_eth_abi(abi: &str) -> Result<(H256, Vec<EthParamType>, Vec<TonParam
     let eth_abi_params = abi
         .inputs
         .iter()
-        .map(|x| eth_param_from_str(x.internal_type.as_str()))
+        .map(|x| eth_param_from_str(x.type_field.as_str()))
         .collect::<Result<Vec<_>, Error>>()?;
 
     let ton_abi_params = map_eth_abi(&eth_abi_params)?;
