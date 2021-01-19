@@ -109,6 +109,18 @@ impl TonListener {
                                 None,
                             ));
                         }
+                        BridgeContractEvent::EventConfigurationCreationEnd {
+                            id,
+                            address,
+                            active: true,
+                            event_type: EventType::TON,
+                        } => {
+                            tokio::spawn(
+                                listener
+                                    .clone()
+                                    .subscribe_to_ton_events_configuration(id, address),
+                            );
+                        }
                         _ => {
                             // TODO: handle other events
                         }

@@ -589,14 +589,12 @@ impl FunctionArg for TonEventInitData {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct TonEventDetails {
     pub init_data: TonEventInitData,
     pub status: EventStatus,
-    #[serde(with = "serde_vec_uint256")]
-    pub confirm_keys: Vec<UInt256>,
-    #[serde(with = "serde_vec_uint256")]
-    pub reject_keys: Vec<UInt256>,
+    pub confirm_keys: Vec<MsgAddrStd>,
+    pub reject_keys: Vec<MsgAddrStd>,
     pub event_data_signatures: Vec<Vec<u8>>,
 }
 
