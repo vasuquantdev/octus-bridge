@@ -88,7 +88,8 @@ impl Client {
         let language = provide_language()?;
         let eth_seed = provide_eth_seed()?;
         let password = provide_password()?;
-
+        let ton_derivation_path = provide_ton_derivation_path()?;
+        let eth_derivation_path = provide_eth_derivation_path()?;
         let _ = self.post_raw(
             "init",
             &InitData {
@@ -96,8 +97,8 @@ impl Client {
                 eth_seed,
                 ton_seed,
                 language,
-                ton_derivation_path: None,
-                eth_derivation_path: None,
+                ton_derivation_path: Some(ton_derivation_path),
+                eth_derivation_path: Some(eth_derivation_path),
             },
         )?;
 
@@ -350,6 +351,23 @@ fn provide_password() -> Result<String, Error> {
         return Err(anyhow!("Password len is {}", password.len()));
     }
     Ok(password)
+}
+
+fn provide_eth_derivation_path() -> Result<String, Error> {
+    let derivation_path = Input::with_theme(&ColorfulTheme::default())
+        .with_prompt("Provide derivation path for eth")
+        .default("m/44'/00'/0'/0/0".to_string())
+        .interact()?;
+
+    Ok(derivation_path.into())
+}
+
+fn provide_ton_derivation_path() -> Result<String, Error> {
+    let derivation_path = Input::with_theme(&ColorfulTheme::default())
+        .with_prompt("Provide derivation path for ton")
+        .default("m/44'/396'/0'/0/0".to_string())
+        .interact()?;
+    Ok(derivation_path.into())
 }
 
 #[derive(Serialize, Deserialize)]
