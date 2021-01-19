@@ -31,7 +31,7 @@ pub async fn make_bridge(
             .map_err(|e| Error::msg(e.to_string()))?;
 
     let relay_contract_address =
-        MsgAddressInt::from_str(&*config.ton_settings.relay_account_address.0)
+        MsgAddressInt::from_str(&*config.ton_settings.relay_contract_address.0)
             .map_err(|e| Error::msg(e.to_string()))
             .and_then(|address| match address {
                 MsgAddressInt::AddrStd(addr) => Ok(addr),

@@ -32,30 +32,30 @@ fn main() -> Result<(), Error> {
         .item("Get status", Client::get_status)
         .item("Init", Client::init_bridge)
         .item("Provide password", Client::unlock_bridge)
-        .item("Set eth block", Client::set_eth_block)
+        .item("Set ETH block", Client::set_eth_block)
         .item("Retry failed votes", Client::retry_failed_votes)
         .item(
             "Vote for ETH event configuration",
             Client::vote_for_ethereum_event_configuration,
         )
         .item(
-            "Get pending transactions eth->ton",
+            "Get pending transactions ETH->TON",
             Client::get_pending_transactions_eth_to_ton,
         )
         .item(
-            "Get pending transactions ton->eth",
+            "Get pending transactions TON->ETH",
             Client::get_pending_transactions_ton_to_eth,
         )
         .item(
-            "Get failed transactions eth->ton",
+            "Get failed transactions ETH->TON",
             Client::get_failed_transactions_eth_to_ton,
         )
         .item(
-            "Get failed transactions ton->eth",
+            "Get failed transactions TON->ETH",
             Client::get_failed_transactions_ton_to_eth,
         )
         .item(
-            "Get verified transactions eth->ton",
+            "Get verified transactions ETH->TON",
             Client::get_verified_transactions_eth_to_ton,
         )
         .item("Get all confirmed transactions", Client::get_stats)
@@ -84,19 +84,19 @@ impl Client {
     }
 
     pub fn init_bridge(&self) -> Result<(), Error> {
-        let ton_seed = provide_ton_seed()?;
         let language = provide_language()?;
-        let eth_seed = provide_eth_seed()?;
-        let password = provide_password()?;
+        let ton_seed = provide_ton_seed()?;
         let ton_derivation_path = provide_ton_derivation_path()?;
+        let eth_seed = provide_eth_seed()?;
         let eth_derivation_path = provide_eth_derivation_path()?;
+        let password = provide_password()?;
         let _ = self.post_raw(
             "init",
             &InitData {
                 password,
+                language,
                 eth_seed,
                 ton_seed,
-                language,
                 ton_derivation_path: Some(ton_derivation_path),
                 eth_derivation_path: Some(eth_derivation_path),
             },
@@ -145,6 +145,7 @@ impl Client {
         minus::page_all(output)?;
         Ok(())
     }
+
     pub fn get_verified_transactions_eth_to_ton(&self) -> Result<(), Error> {
         let response: HashMap<u64, Vec<EthEventVotingDataView>> =
             self.get("status/eth_to_ton/verification-queue")?;
@@ -307,20 +308,30 @@ impl ResponseExt for reqwest::blocking::Response {
     }
 }
 
+fn provide_language() -> Result<String, Error> {
+    let langs = ["en", "zh-hans", "zh-hant", "fr", "it", "ja", "ko", "es"];
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Choose bip39 mnemonic language")
+        .items(&langs)
+        .default(0)
+        .interact()?;
+    Ok(langs[selection].to_string())
+}
+
 fn provide_ton_seed() -> Result<String, Error> {
     let input: String = Input::with_theme(&ColorfulTheme::default())
-        .with_prompt("Provide ton seed words. 12 words are needed.")
+        .with_prompt("Provide TON seed words. 12 words are needed.")
         .interact_text()?;
     let words: Vec<String> = input.split(' ').map(|x| x.to_string()).collect();
-    if words.len() != 12 {
-        return Err(anyhow!("{} words for ton seed are provided", words.len()));
+    if words.len() < 12 {
+        return Err(anyhow!("{} words for TON seed are provided", words.len()));
     }
     Ok(words.join(" "))
 }
 
 fn provide_eth_seed() -> Result<String, Error> {
     let input: String = Input::with_theme(&ColorfulTheme::default())
-        .with_prompt("Provide eth seed words.")
+        .with_prompt("Provide ETH seed words.")
         .interact_text()?;
     let words: Vec<String> = input.split(' ').map(|x| x.to_string()).collect();
     if words.len() < 12 {
@@ -330,16 +341,6 @@ fn provide_eth_seed() -> Result<String, Error> {
         ));
     }
     Ok(words.join(" "))
-}
-
-fn provide_language() -> Result<String, Error> {
-    let langs = ["en", "zh-hans", "zh-hant", "fr", "it", "ja", "ko", "es"];
-    let selection = Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("Choose bip39 mnemonic language for eth")
-        .items(&langs)
-        .default(0)
-        .interact()?;
-    Ok(langs[selection].to_string())
 }
 
 fn provide_password() -> Result<String, Error> {
@@ -355,8 +356,8 @@ fn provide_password() -> Result<String, Error> {
 
 fn provide_eth_derivation_path() -> Result<String, Error> {
     let derivation_path = Input::with_theme(&ColorfulTheme::default())
-        .with_prompt("Provide derivation path for eth")
-        .default("m/44'/00'/0'/0/0".to_string())
+        .with_prompt("Provide derivation path for ETH")
+        .with_initial_text("m/44'/00'/0'/0/0".to_string())
         .interact()?;
 
     Ok(derivation_path)
@@ -364,8 +365,8 @@ fn provide_eth_derivation_path() -> Result<String, Error> {
 
 fn provide_ton_derivation_path() -> Result<String, Error> {
     let derivation_path = Input::with_theme(&ColorfulTheme::default())
-        .with_prompt("Provide derivation path for ton")
-        .default("m/44'/396'/0'/0/0".to_string())
+        .with_prompt("Provide derivation path for TON")
+        .with_initial_text("m/44'/396'/0'/0/0".to_string())
         .interact()?;
     Ok(derivation_path)
 }
