@@ -6,7 +6,7 @@ use url::Url;
 
 use relay_eth::ws::{EthListener, SyncedHeight};
 use relay_ton::contracts::*;
-use relay_ton::prelude::MsgAddressInt;
+use relay_ton::prelude::{MsgAddressInt, UInt256};
 
 use crate::config::RelayConfig;
 use crate::crypto::key_managment::{EthSigner, KeyData};
@@ -30,22 +30,10 @@ pub async fn make_bridge(
         MsgAddressInt::from_str(&*config.ton_settings.bridge_contract_address.0)
             .map_err(|e| Error::msg(e.to_string()))?;
 
-    let relay_contract_address =
-        MsgAddressInt::from_str(&*config.ton_settings.relay_account_address.0)
-            .map_err(|e| Error::msg(e.to_string()))
-            .and_then(|address| match address {
-                MsgAddressInt::AddrStd(addr) => Ok(addr),
-                MsgAddressInt::AddrVar(_) => Err(anyhow!("Unsupported relay address")),
-            })?;
-
-    let (bridge_contract, bridge_contract_events) =
-        make_bridge_contract(transport.clone(), ton_contract_address).await?;
-
-    let relay_contract = make_relay_contract(
+    let (bridge_contract, bridge_contract_events) = make_bridge_contract(
         transport.clone(),
-        relay_contract_address,
+        ton_contract_address,
         key_data.ton.keypair(),
-        bridge_contract,
     )
     .await?;
 
@@ -64,7 +52,7 @@ pub async fn make_bridge(
     let ton_listener = make_ton_listener(
         &db,
         transport,
-        relay_contract.clone(),
+        bridge_contract.clone(),
         eth_queue.clone(),
         key_data.eth.clone(),
         config.ton_settings.clone(),
@@ -75,7 +63,7 @@ pub async fn make_bridge(
         eth_signer: key_data.eth,
         eth_listener,
         ton_listener,
-        relay_contract,
+        bridge_contract,
         eth_queue,
     });
 
@@ -92,7 +80,7 @@ pub struct Bridge {
     eth_listener: Arc<EthListener>,
     ton_listener: Arc<TonListener>,
 
-    relay_contract: Arc<RelayContract>,
+    bridge_contract: Arc<BridgeContract>,
     eth_queue: EthQueue,
 }
 
@@ -102,8 +90,8 @@ impl Bridge {
         T: Stream<Item = BridgeContractEvent> + Send + Unpin + 'static,
     {
         log::info!(
-            "Bridge started. Relay account: {}",
-            self.relay_contract.address()
+            "Bridge started. Pubkey: {}",
+            self.bridge_contract.pubkey().to_hex_string()
         );
 
         // Subscribe for new event configuration contracts
@@ -161,7 +149,7 @@ impl Bridge {
         configuration_id: BigUint,
         voting: Voting,
     ) -> Result<(), anyhow::Error> {
-        self.relay_contract
+        self.bridge_contract
             .vote_for_event_configuration_creation(configuration_id, voting)
             .await?;
         Ok(())
@@ -366,8 +354,8 @@ impl Bridge {
             .expect("Fatal db error");
     }
 
-    pub fn ton_relay_address(&self) -> MsgAddrStd {
-        self.relay_contract.address().clone()
+    pub fn ton_pubkey(&self) -> UInt256 {
+        self.bridge_contract.pubkey()
     }
 
     pub fn eth_pubkey(&self) -> PublicKey {

@@ -82,11 +82,10 @@ where
         let info = event.info();
 
         let event_addr = info.event_address().address.get_bytestring(0);
-        let relay_addr = info.relay().address.get_bytestring(0);
 
         let mut key = [0; 65];
         key[0..32].copy_from_slice(&event_addr);
-        key[32..64].copy_from_slice(&relay_addr);
+        key[32..64].copy_from_slice(info.relay_key().as_slice());
         key[64] = (info.kind() == Voting::Confirm) as u8;
 
         let stored = event.get_stored_data();
@@ -101,11 +100,11 @@ where
     pub fn has_already_voted(
         &self,
         event_addr: &MsgAddrStd,
-        relay_key: &MsgAddrStd,
+        relay_key: &UInt256,
     ) -> Result<bool, Error> {
         let mut key = Vec::with_capacity(64);
         key.extend_from_slice(&event_addr.address.get_bytestring(0));
-        key.extend_from_slice(&relay_key.address.get_bytestring(0));
+        key.extend_from_slice(relay_key.as_slice());
         Ok(self.tree.scan_prefix(&key).keys().next().is_some())
     }
 }

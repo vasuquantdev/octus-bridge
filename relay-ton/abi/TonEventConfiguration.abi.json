@@ -14,7 +14,7 @@
       "inputs": [
         {"components":[{"name":"eventTransaction","type":"uint256"},{"name":"eventIndex","type":"uint256"},{"name":"eventData","type":"cell"},{"name":"eventBlockNumber","type":"uint256"},{"name":"eventBlock","type":"uint256"},{"name":"tonEventConfiguration","type":"address"},{"name":"requiredConfirmations","type":"uint256"},{"name":"requiredRejects","type":"uint256"}],"name":"eventInitData","type":"tuple"},
         {"name":"eventDataSignature","type":"bytes"},
-        {"name":"relay","type":"address"}
+        {"name":"relayKey","type":"uint256"}
       ],
       "outputs": [
       ]
@@ -23,7 +23,7 @@
       "name": "rejectEvent",
       "inputs": [
         {"components":[{"name":"eventTransaction","type":"uint256"},{"name":"eventIndex","type":"uint256"},{"name":"eventData","type":"cell"},{"name":"eventBlockNumber","type":"uint256"},{"name":"eventBlock","type":"uint256"},{"name":"tonEventConfiguration","type":"address"},{"name":"requiredConfirmations","type":"uint256"},{"name":"requiredRejects","type":"uint256"}],"name":"eventInitData","type":"tuple"},
-        {"name":"relay","type":"address"}
+        {"name":"relayKey","type":"uint256"}
       ],
       "outputs": [
       ]
@@ -64,7 +64,7 @@
       "name": "EventConfirmation",
       "inputs": [
         {"name":"addr","type":"address"},
-        {"name":"relay","type":"address"}
+        {"name":"relayKey","type":"uint256"}
       ],
       "outputs": [
       ]
@@ -73,7 +73,7 @@
       "name": "EventReject",
       "inputs": [
         {"name":"addr","type":"address"},
-        {"name":"relay","type":"address"}
+        {"name":"relayKey","type":"uint256"}
       ],
       "outputs": [
       ]

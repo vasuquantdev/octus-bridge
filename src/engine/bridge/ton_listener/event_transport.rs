@@ -11,16 +11,14 @@ where
     C: ConfigurationContract,
 {
     settings: TonSettings,
-    relay: MsgAddrStd,
+    relay_key: UInt256,
 
     parallel_spawned_contracts_limiter: tokio::sync::Semaphore,
     voting_stats:
         VotingStats<<<C as ConfigurationContract>::ReceivedVote as ReceivedVote>::VoteWithData>,
     votes_queue: VotesQueue<<C as ConfigurationContract>::EventTransaction>,
 
-    transport: Arc<dyn Transport>,
-    scanning_state: ScanningState,
-    relay_contract: Arc<RelayContract>,
+    bridge_contract: Arc<BridgeContract>,
     event_contract: Arc<C::EventContract>,
     config_contracts: RwLock<ConfigContractsMap<C>>,
 
@@ -48,11 +46,10 @@ where
     pub async fn new(
         db: &Db,
         transport: Arc<dyn Transport>,
-        scanning_state: ScanningState,
-        relay_contract: Arc<RelayContract>,
+        bridge_contract: Arc<BridgeContract>,
         settings: TonSettings,
     ) -> Result<Self, Error> {
-        let relay = relay_contract.address().clone();
+        let relay_key = bridge_contract.pubkey();
         let event_contract = C::make_event_contract(transport.clone()).await;
         let voting_stats = C::make_voting_stats(db)?;
         let votes_queue = C::make_votes_queue(db)?;
@@ -62,12 +59,10 @@ where
                 settings.parallel_spawned_contracts_limit,
             ),
             settings,
-            relay,
+            relay_key,
             voting_stats,
             votes_queue,
-            transport,
-            scanning_state,
-            relay_contract,
+            bridge_contract,
             event_contract,
             config_contracts: Default::default(),
             confirmations: Default::default(),
@@ -94,7 +89,7 @@ where
 
         let should_check = vote_info.kind() == Voting::Confirm
             && received_vote.status() == EventStatus::InProcess
-            && vote_info.relay() != &self.relay // event from other relay
+            && vote_info.relay_key() != self.relay_key // event from other relay
             && !self.is_in_queue(vote_info.event_address())
             && !self.has_already_voted(vote_info.event_address());
 
@@ -109,7 +104,7 @@ where
             .await
             .expect("Fatal db error");
 
-        if vote_info.relay() == &self.relay {
+        if vote_info.relay_key() == self.relay_key {
             // Stop retrying after our event response was found
             if let Err(e) = self.votes_queue.mark_complete(vote_info.event_address()) {
                 log::error!("Failed to mark transaction completed. {:?}", e);
@@ -176,7 +171,7 @@ where
             );
 
             // Try to send message
-            if let Err(e) = data.send(self.relay_contract.clone()).await {
+            if let Err(e) = data.send(self.bridge_contract.clone()).await {
                 log::error!(
                     "Failed to vote for event: {:?}. Retrying ({} left)",
                     e,
@@ -228,7 +223,7 @@ where
             // Check if event arrived nevertheless unsuccessful sending
             if self
                 .voting_stats
-                .has_already_voted(&event_address, &self.relay)
+                .has_already_voted(&event_address, &self.relay_key)
                 .expect("Fatal db error")
             {
                 break Ok(());
@@ -300,21 +295,6 @@ where
         Ok(())
     }
 
-    /// Relay contract for this event transport
-    pub fn bridge_contract(&self) -> &Arc<BridgeContract> {
-        self.relay_contract.bridge()
-    }
-
-    /// TON transport, used to send events to the network
-    pub fn ton_transport(&self) -> &Arc<dyn Transport> {
-        &self.transport
-    }
-
-    /// Current account scanning positions
-    pub fn scanning_state(&self) -> &ScanningState {
-        &self.scanning_state
-    }
-
     /// Compute event address based on its data
     async fn get_event_contract_address(
         &self,
@@ -342,7 +322,7 @@ where
     /// Check statistics whether transaction exists
     fn has_already_voted(&self, event_address: &MsgAddrStd) -> bool {
         self.voting_stats
-            .has_already_voted(event_address, &self.relay)
+            .has_already_voted(event_address, &self.relay_key)
             .expect("Fatal db error")
     }
 
@@ -512,5 +492,5 @@ pub trait EventTransactionExt: std::fmt::Display + Clone + Send + Sync {
     fn configuration_id(&self) -> &BigUint;
     fn kind(&self) -> Voting;
     fn init_data(&self) -> Self::InitData;
-    async fn send(&self, bridge: Arc<RelayContract>) -> ContractResult<()>;
+    async fn send(&self, bridge: Arc<BridgeContract>) -> ContractResult<()>;
 }

@@ -99,7 +99,7 @@ impl EthEventConfigurationContract {
         let message = self
             .message("confirmEvent")?
             .arg(event_init_data)
-            .arg(MsgAddrStd::default())
+            .arg(BigUint256(0u8.into()))
             .build_internal(self.bridge_address.clone(), CONFIRM_VALUE)?;
 
         let messages = self.subscription.simulate_call(message).await?;

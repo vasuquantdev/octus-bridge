@@ -208,15 +208,6 @@ impl ParseToken<BigUint> for TokenValue {
     }
 }
 
-impl ParseToken<BigInt> for TokenValue {
-    fn try_parse(self) -> ContractResult<BigInt> {
-        match self {
-            TokenValue::Int(data) => Ok(data.number),
-            _ => Err(ContractError::InvalidAbi),
-        }
-    }
-}
-
 impl ParseToken<UInt256> for TokenValue {
     fn try_parse(self) -> ContractResult<UInt256> {
         match self {
@@ -232,14 +223,6 @@ impl ParseToken<UInt128> for TokenValue {
             TokenValue::Uint(data) => Ok(data.number.to_bytes_be().into()),
             _ => Err(ContractError::InvalidAbi),
         }
-    }
-}
-
-impl ParseToken<i8> for TokenValue {
-    fn try_parse(self) -> ContractResult<i8> {
-        ParseToken::<BigInt>::try_parse(self)?
-            .to_i8()
-            .ok_or(ContractError::InvalidAbi)
     }
 }
 
@@ -341,7 +324,6 @@ impl StandaloneToken for AccountId {}
 impl StandaloneToken for UInt256 {}
 impl StandaloneToken for UInt128 {}
 impl StandaloneToken for BigUint {}
-impl StandaloneToken for BigInt {}
 impl StandaloneToken for u16 {}
 impl StandaloneToken for u64 {}
 impl StandaloneToken for bool {}

@@ -10,11 +10,12 @@ use crate::transport::*;
 pub async fn make_bridge_contract(
     transport: Arc<dyn Transport>,
     account: MsgAddressInt,
+    keypair: Arc<Keypair>,
 ) -> ContractResult<(
     Arc<BridgeContract>,
     EventsRx<<BridgeContract as ContractWithEvents>::Event>,
 )> {
-    let (subscription, events_rx) = transport.subscribe(account.clone()).await?;
+    let (transport, events_rx) = transport.subscribe(account.clone()).await?;
     let contract = abi();
     let events_map = shared_events_map();
 
@@ -25,7 +26,7 @@ pub async fn make_bridge_contract(
 
     let contract = Arc::new(BridgeContract {
         transport,
-        subscription,
+        keypair,
         config,
         events_map,
         contract,
@@ -38,16 +39,59 @@ pub async fn make_bridge_contract(
 
 #[derive(Clone)]
 pub struct BridgeContract {
-    transport: Arc<dyn Transport>,
-    subscription: Arc<dyn AccountSubscription>,
+    transport: Arc<dyn AccountSubscription>,
+    keypair: Arc<Keypair>,
     config: ContractConfig,
     events_map: Arc<EventsMap>,
-    contract: Arc<AbiContract>,
+    contract: Arc<ton_abi::Contract>,
 }
 
 impl BridgeContract {
+    #[inline]
+    fn message(&self, name: &str) -> ContractResult<SignedMessageBuilder> {
+        SignedMessageBuilder::new(
+            Cow::Borrowed(&self.config),
+            &self.contract,
+            self.transport.as_ref(),
+            self.keypair.as_ref(),
+            name,
+        )
+    }
+
     pub fn address(&self) -> &MsgAddressInt {
         &self.config.account
+    }
+
+    pub fn pubkey(&self) -> UInt256 {
+        UInt256::from(self.keypair.public.to_bytes())
+    }
+
+    pub async fn initialize_event_configuration_creation(
+        &self,
+        id: BigUint,
+        event_configuration: &MsgAddressInt,
+        event_type: EventType,
+    ) -> ContractResult<()> {
+        self.message("initializeEventConfigurationCreation")?
+            .arg(BigUint256(id))
+            .arg(event_configuration)
+            .arg(event_type)
+            .send()
+            .await?
+            .ignore_output()
+    }
+
+    pub async fn vote_for_event_configuration_creation(
+        &self,
+        id: BigUint,
+        voting: Voting,
+    ) -> ContractResult<()> {
+        self.message("voteForEventConfigurationCreation")?
+            .arg(BigUint256(id))
+            .arg(voting)
+            .send()
+            .await?
+            .ignore_output()
     }
 
     pub async fn get_active_event_configurations(
@@ -59,10 +103,105 @@ impl BridgeContract {
             .parse_all()
     }
 
+    pub async fn confirm_ethereum_event(
+        &self,
+        configuration_id: BigUint,
+        event_init_data: EthEventInitData,
+    ) -> ContractResult<()> {
+        log::info!(
+            "CONFIRMING ETH EVENT: {:?}, {}, {}",
+            hex::encode(&event_init_data.event_transaction),
+            event_init_data.event_index,
+            event_init_data.event_block_number
+        );
+
+        self.message("confirmEthereumEvent")?
+            .arg(event_init_data)
+            .arg(BigUint256(configuration_id))
+            .send()
+            .await?
+            .ignore_output()
+    }
+
+    pub async fn reject_ethereum_event(
+        &self,
+        configuration_id: BigUint,
+        event_init_data: EthEventInitData,
+    ) -> ContractResult<()> {
+        log::info!(
+            "REJECTING ETH EVENT: {:?}, {}, {}",
+            hex::encode(&event_init_data.event_transaction),
+            event_init_data.event_index,
+            event_init_data.event_block_number
+        );
+
+        self.message("rejectEthereumEvent")?
+            .arg(event_init_data)
+            .arg(BigUint256(configuration_id))
+            .send()
+            .await?
+            .ignore_output()
+    }
+
+    pub async fn confirm_ton_event(
+        &self,
+        configuration_id: BigUint,
+        event_init_data: TonEventInitData,
+        event_data_signature: Vec<u8>,
+    ) -> ContractResult<()> {
+        log::info!(
+            "CONFIRMING TON EVENT: {}, {}, {}",
+            hex::encode(&event_init_data.event_transaction),
+            event_init_data.event_transaction_lt,
+            event_init_data.event_index,
+        );
+
+        self.message("confirmTonEvent")?
+            .arg(event_init_data)
+            .arg(event_data_signature)
+            .arg(BigUint256(configuration_id))
+            .send()
+            .await?
+            .ignore_output()
+    }
+
+    pub async fn reject_ton_event(
+        &self,
+        configuration_id: BigUint,
+        event_init_data: TonEventInitData,
+    ) -> ContractResult<()> {
+        log::info!(
+            "CONFIRMING TON EVENT: {}, {}, {}",
+            hex::encode(&event_init_data.event_transaction),
+            event_init_data.event_transaction_lt,
+            event_init_data.event_index,
+        );
+
+        self.message("rejectTonEvent")?
+            .arg(event_init_data)
+            .arg(BigUint256(configuration_id))
+            .send()
+            .await?
+            .ignore_output()
+    }
+
+    pub async fn update_bridge_configuration(
+        &self,
+        configuration: BridgeConfiguration,
+        vote: VoteData,
+    ) -> ContractResult<()> {
+        self.message("updateBridgeConfiguration")?
+            .arg(configuration)
+            .arg(vote)
+            .send()
+            .await?
+            .ignore_output()
+    }
+
     pub async fn get_bridge_configuration_votes(
         &self,
         configuration: BridgeConfiguration,
-    ) -> ContractResult<(Vec<MsgAddressInt>, Vec<MsgAddressInt>)> {
+    ) -> ContractResult<(Vec<UInt256>, Vec<UInt256>)> {
         self.message("getBridgeConfigurationVotes")?
             .arg(configuration)
             .run_local()
@@ -70,9 +209,9 @@ impl BridgeContract {
             .parse_all()
     }
 
-    pub async fn is_relay_active(&self, relay: MsgAddressInt) -> ContractResult<bool> {
-        self.message("getAccountStatus")?
-            .arg(relay)
+    pub async fn is_key_active(&self, key: UInt256) -> ContractResult<bool> {
+        self.message("getKeyStatus")?
+            .arg(key)
             .run_local()
             .await?
             .parse_first()
@@ -84,27 +223,18 @@ impl BridgeContract {
 
     pub async fn get_ethereum_account(
         &self,
-        relay: MsgAddressInt,
+        key: UInt256,
     ) -> ContractResult<ethereum_types::Address> {
         self.message("getEthereumAccount")?
-            .arg(relay)
+            .arg(key)
             .run_local()
             .await?
             .parse_first()
     }
 
     pub async fn get_keys(&self) -> ContractResult<Vec<BridgeKey>> {
-        self.message("getAccounts")?.run_local().await?.parse_all()
-    }
-
-    #[inline]
-    fn message(&self, name: &str) -> ContractResult<MessageBuilder> {
-        MessageBuilder::new(
-            Cow::Borrowed(&self.config),
-            &self.contract,
-            self.transport.as_ref(),
-            name,
-        )
+        let output: BridgeKeys = self.message("getKeys")?.run_local().await?.parse_all()?;
+        Ok(output.keys)
     }
 }
 
@@ -124,7 +254,7 @@ static ABI: OnceCell<Arc<AbiContract>> = OnceCell::new();
 static EVENTS: OnceCell<Arc<EventsMap>> = OnceCell::new();
 const JSON_ABI: &str = include_str!("../../../abi/Bridge.abi.json");
 
-pub fn abi() -> Arc<AbiContract> {
+fn abi() -> Arc<AbiContract> {
     ABI.get_or_init(|| {
         Arc::new(
             AbiContract::load(Cursor::new(JSON_ABI))

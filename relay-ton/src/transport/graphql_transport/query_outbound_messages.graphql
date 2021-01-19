@@ -5,7 +5,7 @@ query QueryOutboundMessages($address: String!, $start_lt: String!, $end_lt: Stri
         created_lt: { ge: $start_lt, lt: $end_lt }
     }, orderBy: [
         {
-            path: "created_lt",
+            path: "created_at",
             direction: DESC
         }
     ], limit: $limit) {

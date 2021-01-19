@@ -98,9 +98,6 @@ impl Default for EthSettings {
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct TonSettings {
-    /// Relay account address
-    pub relay_account_address: TonAddress,
-
     /// Bridge contract address
     pub bridge_contract_address: TonAddress,
 
@@ -133,7 +130,6 @@ pub struct TonSettings {
 impl Default for TonSettings {
     fn default() -> Self {
         Self {
-            relay_account_address: Default::default(),
             bridge_contract_address: Default::default(),
             transport: TonTransportConfig::default(),
             event_configuration_details_retry_count: 100,

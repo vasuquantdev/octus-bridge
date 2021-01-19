@@ -70,10 +70,6 @@ impl<'a> MessageBuilder<'a> {
         self.0.build_internal(src, value)
     }
 
-    pub fn build_internal_body(self) -> ContractResult<BuilderData> {
-        self.0.build_internal_body()
-    }
-
     pub async fn run_local(self) -> ContractResult<ContractOutput> {
         let transport = self.0.transport;
         let output = transport
@@ -229,20 +225,17 @@ where
 
     pub fn build_internal(self, src: MsgAddressInt, value: u64) -> ContractResult<InternalMessage> {
         let header = InternalMessageHeader { src, value };
-        let body = self.build_internal_body()?;
+        let encoded_input = self
+            .function
+            .encode_input(&Default::default(), &self.input, true, None)
+            .map_err(|_| ContractError::InvalidInput)?;
 
         Ok(InternalMessage {
             dest: self.config.account.clone(),
             init: None,
-            body: Some(body.into()),
+            body: Some(encoded_input.into()),
             header,
         })
-    }
-
-    pub fn build_internal_body(&self) -> ContractResult<BuilderData> {
-        self.function
-            .encode_input(&Default::default(), &self.input, true, None)
-            .map_err(|_| ContractError::InvalidInput)
     }
 }
 
@@ -330,15 +323,6 @@ impl FunctionArg for BigUint128 {
         TokenValue::Uint(ton_abi::Uint {
             number: self.0,
             size: 128,
-        })
-    }
-}
-
-impl FunctionArg for i8 {
-    fn token_value(self) -> TokenValue {
-        TokenValue::Int(ton_abi::Int {
-            number: BigInt::from(self),
-            size: 8,
         })
     }
 }
