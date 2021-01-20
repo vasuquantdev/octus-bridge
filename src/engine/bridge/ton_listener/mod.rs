@@ -220,7 +220,7 @@ impl TonListener {
         let handler = match EthEventsHandler::uninit(
             self.eth.clone(),
             self.eth_queue.clone(),
-            configuration_id,
+            configuration_id.clone(),
             address,
         )
         .await
@@ -232,8 +232,14 @@ impl TonListener {
             }
         };
 
+        // Insert configuration
+        self.configs_state
+            .write()
+            .await
+            .set_configuration(configuration_id, handler.details());
+
         // Start listening ETH events
-        self.notify_subscription(subscriptions_tx, *handler.ethereum_event_address())
+        self.notify_subscription(subscriptions_tx, handler.details().event_address)
             .await;
 
         let _handler = handler.start().await;
@@ -270,7 +276,7 @@ impl ConfigsState {
     fn set_configuration(
         &mut self,
         configuration_id: BigUint,
-        configuration: EthEventConfiguration,
+        configuration: &EthEventConfiguration,
     ) {
         let (topic_hash, eth_abi, ton_abi) =
             match utils::parse_eth_abi(&configuration.common.event_abi) {
@@ -281,16 +287,22 @@ impl ConfigsState {
                 }
             };
 
-        self.eth_addr.insert(configuration.event_address);
+        self.eth_addr.insert(configuration.event_address.clone());
         self.address_topic_map.insert(
-            configuration.event_address,
+            configuration.event_address.clone(),
             (topic_hash, eth_abi.clone(), ton_abi),
         );
         self.topic_abi_map.insert(topic_hash, eth_abi);
         self.eth_configs_map.insert(
             configuration.event_address,
-            (configuration_id, configuration),
+            (configuration_id, configuration.clone()),
         );
+    }
+
+    fn remove_event_address(&mut self, event_address: &Address) {
+        self.eth_addr.remove(event_address);
+        self.address_topic_map.remove(event_address);
+        self.eth_configs_map.remove(event_address);
     }
 }
 

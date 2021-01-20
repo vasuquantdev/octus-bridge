@@ -11,7 +11,7 @@ use super::semaphore::*;
 pub trait UnInitEventsHandler: Sized {
     type Handler;
 
-    fn ethereum_event_address(&self) -> &Address;
+    fn details(&self) -> &EthEventConfiguration;
 
     async fn start(self) -> Arc<Self::Handler>;
 }
@@ -137,8 +137,8 @@ struct UnInitEthEventsHandler {
 impl UnInitEventsHandler for UnInitEthEventsHandler {
     type Handler = EthEventsHandler;
 
-    fn ethereum_event_address(&self) -> &Address {
-        &self.state.details.event_address
+    fn details(&self) -> &EthEventConfiguration {
+        &self.state.details
     }
 
     async fn start(self) -> Arc<Self::Handler> {

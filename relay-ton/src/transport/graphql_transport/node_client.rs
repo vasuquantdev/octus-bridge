@@ -280,7 +280,7 @@ impl NodeClient {
                     id: current.to_owned(),
                     timeout,
                 },
-                Duration::from_millis(timeout as u64),
+                Duration::from_millis(timeout as u64 * 2),
             )
             .await?
             .blocks
