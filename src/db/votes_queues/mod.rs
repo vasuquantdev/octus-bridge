@@ -1,13 +1,9 @@
-use anyhow::Error;
-use borsh::{BorshDeserialize, BorshSerialize};
 use sled::transaction::{ConflictableTransactionError, ConflictableTransactionResult};
-use sled::{Db, Transactional, Tree};
-
-use relay_ton::prelude::{MsgAddrStd, UInt256};
-
-use crate::models::*;
+use sled::Transactional;
 
 use super::constants::*;
+use crate::models::*;
+use crate::prelude::*;
 
 pub type TonEventVotesQueue = VotesQueue<TonEventTransaction>;
 

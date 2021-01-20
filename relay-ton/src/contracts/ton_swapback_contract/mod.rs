@@ -59,6 +59,10 @@ impl TonSwapBackContract {
         self.subscription.since_lt()
     }
 
+    pub async fn current_time(&self) -> (u64, u32) {
+        self.subscription.current_time().await
+    }
+
     pub fn abi(&self) -> &Arc<AbiEvent> {
         &self.abi
     }

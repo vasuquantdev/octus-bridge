@@ -154,10 +154,11 @@ impl NodeClient {
             Some(block) => {
                 // Handle simple case when searched account is in masterchain
                 if workchain_id == -1 {
-                    return match (block.id, block.end_lt) {
-                        (Some(id), Some(end_lt)) => Ok(LatestBlock {
+                    return match (block.id, block.end_lt, block.gen_utime) {
+                        (Some(id), Some(end_lt), Some(gen_utime)) => Ok(LatestBlock {
                             id,
                             end_lt: u64::from_str(&end_lt).unwrap_or_default(),
+                            timestamp: gen_utime as u32,
                         }),
                         _ => Err(no_blocks_found()),
                     };
@@ -181,6 +182,7 @@ impl NodeClient {
                                             id: descr.root_hash?,
                                             end_lt: u64::from_str(&descr.end_lt?)
                                                 .unwrap_or_default(),
+                                            timestamp: descr.gen_utime? as u32,
                                         })
                                     })
                                     .ok_or_else(no_blocks_found);
@@ -220,6 +222,7 @@ impl NodeClient {
                         Some(LatestBlock {
                             id: block.id?,
                             end_lt: u64::from_str(&block.end_lt?).unwrap_or_default(),
+                            timestamp: block.gen_utime? as u32,
                         })
                     })
                 })
@@ -417,6 +420,7 @@ impl NodeClient {
                 let transaction_lt =
                     u64::from_str_radix(src_transaction.lt.as_ref()?.trim_start_matches("0x"), 16)
                         .ok()?;
+                let timestamp = src_transaction.now? as u32;
 
                 src_transaction.out_messages.map(|messages| {
                     messages.into_iter().flatten().enumerate().filter_map(
@@ -433,6 +437,7 @@ impl NodeClient {
                                 data,
                                 transaction_hash: transaction_hash.clone(),
                                 transaction_lt,
+                                event_timestamp: timestamp,
                                 event_index: i as u32,
                             })
                         },
@@ -485,6 +490,7 @@ pub struct OutboundMessageFull {
     pub data: TransportResult<ton_block::Message>,
     pub transaction_hash: UInt256,
     pub transaction_lt: u64,
+    pub event_timestamp: u32,
     pub event_index: u32,
 }
 
@@ -492,6 +498,7 @@ pub struct OutboundMessageFull {
 pub struct LatestBlock {
     pub id: String,
     pub end_lt: u64,
+    pub timestamp: u32,
 }
 
 #[derive(GraphQLQuery)]

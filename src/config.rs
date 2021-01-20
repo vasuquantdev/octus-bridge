@@ -29,7 +29,7 @@ mod serde_seconds {
     where
         D: serde::Deserializer<'de>,
     {
-        let seconds = u64::deserialize(deserializer)?;
+        let seconds: u64 = serde::Deserialize::deserialize(deserializer)?;
         Ok(Duration::from_secs(seconds))
     }
 }

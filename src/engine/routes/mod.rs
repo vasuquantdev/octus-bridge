@@ -13,7 +13,7 @@ use crate::crypto::key_managment::KeyData;
 use crate::crypto::recovery::*;
 use crate::engine::models::*;
 use crate::engine::routes::api::get_api;
-use crate::models::SignedVoteData;
+use crate::models::SignedTonEventVoteData;
 use crate::prelude::*;
 
 mod api;
@@ -85,14 +85,16 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
         .and(warp::get())
         .and(state.clone())
         .and_then(|(state, _)| {
-            status::pending::<SignedVoteData, TonEventVoteData, TonEthTransactionView>(state)
+            status::pending::<SignedTonEventVoteData, TonEventVoteData, TonEthTransactionView>(
+                state,
+            )
         });
 
     let failed_transactions_ton_to_eth = warp::path!("status" / "ton_to_eth" / "failed")
         .and(warp::get())
         .and(state.clone())
         .and_then(|(state, _)| {
-            status::failed::<SignedVoteData, TonEventVoteData, TonEthTransactionView>(state)
+            status::failed::<SignedTonEventVoteData, TonEventVoteData, TonEthTransactionView>(state)
         });
 
     let eth_queue = warp::path!("status" / "eth_to_ton" / "verification-queue")

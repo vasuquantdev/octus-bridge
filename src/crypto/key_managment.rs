@@ -109,7 +109,7 @@ where
     D: Deserializer<'de>,
 {
     use serde::de::Error;
-    String::deserialize(deserializer)
+    <String as serde::Deserialize>::deserialize(deserializer)
         .and_then(|string| hex::decode(string).map_err(|e| D::Error::custom(e.to_string())))
 }
 

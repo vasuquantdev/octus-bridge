@@ -12,6 +12,7 @@ query QueryOutboundMessagesFull($address: String!, $start_lt: String!, $end_lt: 
         src_transaction(timeout: 60) {
             id
             lt
+            now
             out_messages {
                 boc
             }

@@ -129,6 +129,7 @@ pub fn parse_transaction_messages(transaction: &Transaction) -> TransportResult<
 pub struct MessageProcessingParams<'a, T> {
     pub event_transaction: &'a UInt256,
     pub event_transaction_lt: u64,
+    pub event_timestamp: u32,
     pub abi_function: Option<&'a Function>,
     pub events_tx: Option<&'a EventsTx<T>>,
 }
@@ -176,6 +177,7 @@ where
                     body,
                     params.event_transaction,
                     params.event_transaction_lt,
+                    params.event_timestamp,
                     i as u32,
                 ));
             }
@@ -200,6 +202,7 @@ pub trait PrepareEvent: Sized + Send + Sync + 'static {
         event_data: SliceData,
         event_transaction: &UInt256,
         event_transaction_lt: u64,
+        event_timestamp: u32,
         event_index: u32,
     ) -> Self;
 }
@@ -209,6 +212,7 @@ impl PrepareEvent for SliceData {
         event_data: SliceData,
         _event_transaction: &UInt256,
         _event_transaction_lt: u64,
+        _event_timestamp: u32,
         _event_index: u32,
     ) -> Self {
         event_data
@@ -220,11 +224,13 @@ impl PrepareEvent for FullEventInfo {
         event_data: SliceData,
         event_transaction: &UInt256,
         event_transaction_lt: u64,
+        event_timestamp: u32,
         event_index: u32,
     ) -> Self {
         Self {
             event_transaction: event_transaction.clone(),
             event_transaction_lt,
+            event_timestamp,
             event_index,
             event_data,
         }

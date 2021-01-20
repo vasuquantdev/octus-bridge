@@ -1,5 +1,3 @@
-use borsh::{BorshDeserialize, BorshSerialize};
-
 use relay_ton::contracts::*;
 use relay_ton::transport::*;
 
@@ -39,6 +37,7 @@ where
     <C as ConfigurationContract>::ReceivedVote: ReceivedVote<
         Data = <<C as ConfigurationContract>::EventContract as EventContract>::Details,
     >,
+    <<C as ConfigurationContract>::ReceivedVote as ReceivedVote>::VoteWithData: IntoVote,
     <C as ConfigurationContract>::EventTransaction: EventTransactionExt<
             VoteData = <<C as ConfigurationContract>::EventContract as EventContract>::VoteData,
         > + std::fmt::Display,
@@ -79,11 +78,10 @@ where
         })
     }
 
-    pub async fn handle_event(
-        &self,
-        verification_queue: &dyn VerificationQueue<C::ReceivedVote>,
-        received_vote: C::ReceivedVote,
-    ) {
+    pub async fn handle_event<T>(&self, events_verifier: &Arc<T>, received_vote: C::ReceivedVote)
+    where
+        T: EventsVerifier<C::ReceivedVote>,
+    {
         let data = match self.get_event_details(received_vote.event_address()).await {
             Ok(data) => data,
             Err(e) => {
@@ -121,7 +119,7 @@ where
             self.notify_found(vote_info.event_address(), vote_info.kind())
                 .await;
         } else if should_check {
-            verification_queue.enqueue(received_vote).await
+            events_verifier.enqueue(received_vote).await
         }
     }
 
@@ -463,7 +461,7 @@ impl<'a, T> DisplayReceivedVote<'a, T> {
 type ConfigContractsMap<T> = HashMap<u64, Arc<T>>;
 
 #[async_trait]
-pub trait VerificationQueue<T: ReceivedVote>: Send + Sync {
+pub trait EventsVerifier<T: ReceivedVote>: Sized + Send + Sync {
     async fn enqueue(&self, event: T::VoteWithData);
 }
 
@@ -713,7 +711,7 @@ impl EventTransactionExt for TonEventTransaction {
 
     async fn send(&self, bridge: Arc<RelayContract>) -> ContractResult<()> {
         match self.clone() {
-            Self::Confirm(SignedVoteData { data, signature }) => {
+            Self::Confirm(SignedTonEventVoteData { data, signature }) => {
                 bridge.confirm_ton_event(data, signature).await
             }
             Self::Reject(data) => bridge.reject_ton_event(data).await,

@@ -8,6 +8,7 @@ query QueryLatestMasterchainBlock {
         }
     ], limit: 1) {
         id
+        gen_utime
         end_lt(format: DEC)
         master
         {
@@ -16,6 +17,7 @@ query QueryLatestMasterchainBlock {
                 shard
                 descr {
                     root_hash
+                    gen_utime
                     end_lt(format: DEC)
                 }
             }

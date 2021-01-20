@@ -1,12 +1,8 @@
-use borsh::{BorshDeserialize, BorshSerialize};
-use ethereum_types::H256;
-
 use relay_models::models::{EthTxStatView, EventVote, TonTxStatView};
 use relay_ton::contracts::Voting;
-use relay_ton::prelude::UInt256;
 
-use super::prelude::{Error, Tree};
-use crate::db::{constants::*, prelude::Table};
+use super::constants::*;
+use super::Table;
 use crate::models::*;
 use crate::prelude::*;
 

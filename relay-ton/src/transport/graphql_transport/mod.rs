@@ -67,6 +67,7 @@ impl RunLocal for GraphQLTransport {
             MessageProcessingParams {
                 event_transaction: &Default::default(),
                 event_transaction_lt: 0,
+                event_timestamp: 0,
                 abi_function: Some(abi),
                 events_tx: None,
             },
@@ -151,6 +152,7 @@ struct GraphQLAccountSubscription<T> {
     account: MsgAddressInt,
     account_id: UInt256,
     pending_messages: RwLock<HashMap<UInt256, PendingMessage<u32>>>,
+    current_time: RwLock<(u64, u32)>,
     _marker: std::marker::PhantomData<T>,
 }
 
@@ -180,6 +182,7 @@ where
                 })?
                 .into(),
             pending_messages: RwLock::new(HashMap::new()),
+            current_time: RwLock::new((last_block.end_lt, last_block.timestamp)),
             _marker: Default::default(),
         });
         subscription.start_loop(events_tx, last_block.id, next_block_timeout);
@@ -293,6 +296,7 @@ where
                                         MessageProcessingParams {
                                             event_transaction: &hash,
                                             event_transaction_lt: transaction.lt,
+                                            event_timestamp: transaction.now,
                                             abi_function: Some(pending_message.abi()),
                                             events_tx: events_tx.as_ref(),
                                         },
@@ -303,6 +307,7 @@ where
                                     MessageProcessingParams {
                                         event_transaction: &hash,
                                         event_transaction_lt: transaction.lt,
+                                        event_timestamp: transaction.now,
                                         abi_function: None,
                                         events_tx: events_tx.as_ref(),
                                     },
@@ -330,6 +335,9 @@ where
                         message.expires_at() as i64 - block_info.gen_utime().0 as i64
                     );
                 }
+
+                *subscription.current_time.write().await =
+                    (block_info.end_lt(), block_info.gen_utime().0);
 
                 pending_messages
                     .retain(|_, message| block_info.gen_utime().0 <= message.expires_at());
@@ -361,6 +369,7 @@ where
             MessageProcessingParams {
                 event_transaction: &Default::default(),
                 event_transaction_lt: 0,
+                event_timestamp: 0,
                 abi_function: Some(abi),
                 events_tx: None,
             },
@@ -375,6 +384,10 @@ where
 {
     fn since_lt(&self) -> u64 {
         self.since_lt
+    }
+
+    async fn current_time(&self) -> (u64, u32) {
+        *self.current_time.read().await
     }
 
     async fn simulate_call(&self, message: InternalMessage) -> TransportResult<Vec<Message>> {
@@ -717,6 +730,7 @@ impl PrepareEventExt for FullEventInfo {
         MessageAction::Emit(result.map(|event_data| FullEventInfo {
             event_transaction: message.transaction_hash.clone(),
             event_transaction_lt: message.transaction_lt,
+            event_timestamp: message.event_timestamp,
             event_index: message.event_index,
             event_data,
         }))
@@ -727,6 +741,7 @@ impl PrepareEventExt for FullEventInfo {
             data: Err(err),
             transaction_hash: Default::default(),
             transaction_lt: 0,
+            event_timestamp: 0,
             event_index: 0,
         }
     }

@@ -33,6 +33,7 @@ pub type EventsRx<T> = mpsc::UnboundedReceiver<T>;
 pub struct FullEventInfo {
     pub event_transaction: UInt256,
     pub event_transaction_lt: u64,
+    pub event_timestamp: u32,
     pub event_index: u32,
     pub event_data: SliceData,
 }

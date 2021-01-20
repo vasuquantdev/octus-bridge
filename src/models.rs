@@ -57,13 +57,13 @@ pub enum EventTransaction<C, R> {
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Clone)]
-pub struct SignedVoteData {
+pub struct SignedTonEventVoteData {
     pub data: TonEventVoteData,
     pub signature: Vec<u8>,
 }
 
 pub type EthEventTransaction = EventTransaction<EthEventVoteData, EthEventVoteData>;
-pub type TonEventTransaction = EventTransaction<SignedVoteData, TonEventVoteData>;
+pub type TonEventTransaction = EventTransaction<SignedTonEventVoteData, TonEventVoteData>;
 
 impl From<EthEventTransaction> for EthTonTransactionView {
     fn from(data: EthEventTransaction) -> Self {
@@ -209,6 +209,7 @@ pub trait ReceivedVoteWithData: Send + Sync {
     fn status(&self) -> EventStatus;
     fn info(&self) -> &Self::Info;
     fn data(&self) -> &Self::Data;
+    fn only_data(self) -> Self::Data;
 }
 
 impl<T, D> ReceivedVoteWithData for CommonReceivedVoteWithData<T, D>
@@ -232,6 +233,11 @@ where
     #[inline]
     fn data(&self) -> &Self::Data {
         &self.data
+    }
+
+    #[inline]
+    fn only_data(self) -> Self::Data {
+        self.data
     }
 }
 

@@ -79,7 +79,7 @@ where
 
 pub async fn eth_queue(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {
     let state = state.read().await;
-    let provider = EthQueue::new(&state.state_manager).expect("Fatal db error");
+    let provider = EthVerificationQueue::new(&state.state_manager).expect("Fatal db error");
     let data = provider.dump_elements();
     Ok(serde_json::to_string(&data).expect("Shouldn't fail"))
 }

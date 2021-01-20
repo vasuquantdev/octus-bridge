@@ -376,6 +376,11 @@ where
         self.since_lt
     }
 
+    async fn current_time(&self) -> (u64, u32) {
+        let state = self.known_state.read().await;
+        (state.0.gen_lt, state.0.gen_utime)
+    }
+
     async fn simulate_call(
         &self,
         message: InternalMessage,

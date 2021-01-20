@@ -54,6 +54,8 @@ pub trait Transport: RunLocal {
 pub trait AccountSubscription: RunLocal {
     fn since_lt(&self) -> u64;
 
+    async fn current_time(&self) -> (u64, u32);
+
     async fn simulate_call(
         &self,
         message: InternalMessage,

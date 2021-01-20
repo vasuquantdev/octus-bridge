@@ -24,7 +24,7 @@ pub struct EthEventsHandler {
 
 struct State {
     transport: Arc<EthEventTransport>,
-    eth_queue: EthQueue,
+    verification_queue: EthVerificationQueue,
 
     configuration_id: u64,
     details: EthEventConfiguration,
@@ -34,7 +34,7 @@ struct State {
 impl EthEventsHandler {
     pub async fn uninit(
         transport: Arc<EthEventTransport>,
-        eth_queue: EthQueue,
+        verification_queue: EthVerificationQueue,
         configuration_id: u64,
         address: MsgAddressInt,
     ) -> Result<impl UnInitEventsHandler<Handler = Self>, Error> {
@@ -74,7 +74,7 @@ impl EthEventsHandler {
 
         let state = Arc::new(State {
             transport,
-            eth_queue,
+            verification_queue,
 
             configuration_id,
             details,
@@ -110,7 +110,7 @@ impl EthEventsHandler {
                 state
                     .transport
                     .handle_event(
-                        state.as_ref(),
+                        &state,
                         EthEventReceivedVote::new(
                             state.configuration_id,
                             event_addr,
@@ -197,7 +197,7 @@ impl UnInitEventsHandler for UnInitEthEventsHandler {
 }
 
 #[async_trait]
-impl VerificationQueue<EthEventReceivedVote> for State {
+impl EventsVerifier<EthEventReceivedVote> for State {
     async fn enqueue(&self, event: <EthEventReceivedVote as ReceivedVote>::VoteWithData) {
         let info = event.info();
 
@@ -210,7 +210,7 @@ impl VerificationQueue<EthEventReceivedVote> for State {
             + *info.additional() as u64;
 
         if let Err(e) = self
-            .eth_queue
+            .verification_queue
             .insert(target_block_number, &event.into_vote())
             .await
         {

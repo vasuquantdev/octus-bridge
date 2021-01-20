@@ -7,7 +7,7 @@ use crate::prelude::*;
 
 use super::event_transport::*;
 use super::semaphore::*;
-use tokio::stream::StreamExt;
+use crate::db::TonVerificationQueue;
 
 pub type TonEventTransport = EventTransport<TonEventConfigurationContract>;
 
@@ -18,17 +18,20 @@ pub struct TonEventsHandler {
 struct State {
     transport: Arc<TonEventTransport>,
     eth_signer: EthSigner,
+    verification_queue: TonVerificationQueue,
 
     configuration_id: u64,
     details: TonEventConfiguration,
-    config_contract: Arc<TonEventConfigurationContract>,
+    _config_contract: Arc<TonEventConfigurationContract>,
     swapback_contract: Arc<TonSwapBackContract>,
+    is_scanning: RwLock<bool>,
 }
 
 impl TonEventsHandler {
     pub async fn new(
         transport: Arc<TonEventTransport>,
         eth_signer: EthSigner,
+        verification_queue: TonVerificationQueue,
         configuration_id: u64,
         address: MsgAddressInt,
     ) -> Result<Arc<Self>, Error> {
@@ -90,10 +93,12 @@ impl TonEventsHandler {
             state: Arc::new(State {
                 transport: transport.clone(),
                 eth_signer,
+                verification_queue,
                 configuration_id,
                 details,
-                config_contract: config_contract.clone(),
+                _config_contract: config_contract.clone(),
                 swapback_contract: swapback_contract.clone(),
+                is_scanning: RwLock::new(true),
             }),
         });
 
@@ -188,6 +193,8 @@ impl TonEventsHandler {
 
         futures::future::join(swapback_events_semaphore, votes_events_semaphore).await;
 
+        *handler.state.is_scanning.write().await = false;
+
         Ok(handler)
     }
 
@@ -214,7 +221,7 @@ impl TonEventsHandler {
                 state
                     .transport
                     .handle_event(
-                        state.as_ref(),
+                        &state,
                         TonEventReceivedVote::new(
                             state.configuration_id,
                             event_address,
@@ -268,40 +275,63 @@ impl State {
 }
 
 #[async_trait]
-impl VerificationQueue<TonEventReceivedVote> for State {
-    async fn enqueue(&self, event: <TonEventReceivedVote as ReceivedVote>::VoteWithData) {
-        // async fn verify(
-        //     listener: &TonListener,
-        //     transaction: TonEventReceivedVoteWithData,
-        // ) -> Result<(), Error> {
-        //     let abi: &Arc<AbiEvent> = transaction.info().additional();
-        //
-        //     let tokens = abi
-        //         .decode_input(transaction.data().init_data.event_data.clone().into())
-        //         .map_err(|e| anyhow!("failed decoding TON event data: {:?}", e))?;
-        //
-        //     let data = &transaction.data().init_data;
-        //     let signature = listener.calculate_signature(&SwapBackEvent {
-        //         event_transaction: data.event_transaction.clone(),
-        //         event_transaction_lt: data.event_transaction_lt,
-        //         event_index: data.event_index,
-        //         tokens,
-        //     })?;
-        //
-        //     listener
-        //         .ton
-        //         .enqueue_vote(TonEventTransaction::Confirm(SignedEventVotingData {
-        //             data: transaction.into(),
-        //             signature,
-        //         }))
-        //         .await
-        // }
-        //
-        // if let Err(e) = verify(self, event).await {
-        //     log::error!("Failed to enqueue TON event: {:?}", e);
-        // }
+impl EventsVerifier<TonEventReceivedVote> for State {
+    async fn enqueue(&self, event: TonEventReceivedVoteWithData) {
+        let reject = |event: TonEventReceivedVoteWithData| async move {
+            if let Err(e) = self
+                .transport
+                .enqueue_vote(EventTransaction::Reject(event.into_vote()))
+                .await
+            {
+                log::error!("Failed to enqueue invalid event rejection vote: {:?}", e);
+            }
+        };
 
-        todo!()
+        let event_lt = event.data().init_data.event_transaction_lt;
+        let latest_scanned_lt = self
+            .transport
+            .scanning_state()
+            .get_latest_scanned_lt(self.swapback_contract.address())
+            .expect("Fatal db error");
+
+        if let Some(lt) = latest_scanned_lt {
+            if event_lt < lt {
+                log::error!("Event is too old: {} < {}", event_lt, lt);
+                return reject(event).await;
+            }
+        }
+
+        let abi: &Arc<AbiEvent> = event.info().additional();
+        let init_data = &event.data().init_data;
+
+        let signature = match abi
+            .decode_input(init_data.event_data.clone().into())
+            .map_err(|e| anyhow!("failed decoding TON event data: {:?}", e))
+            .and_then(|tokens| {
+                self.calculate_signature(&SwapBackEvent {
+                    event_transaction: init_data.event_transaction.clone(),
+                    event_transaction_lt: init_data.event_transaction_lt,
+                    event_index: init_data.event_index,
+                    tokens,
+                })
+            }) {
+            Ok(signature) => signature,
+            Err(e) => {
+                log::error!("Failed to sign event from TON: {:?}", e);
+                return reject(event).await;
+            }
+        };
+
+        self.verification_queue
+            .insert(
+                event_lt,
+                &SignedTonEventVoteData {
+                    data: event.into_vote(),
+                    signature,
+                },
+            )
+            .await
+            .expect("Fatal db error");
     }
 }
 
@@ -316,7 +346,7 @@ impl SwapBackEventExt for SwapBackEvent {
         let signature = state.calculate_signature(&self)?;
         let event_data = utils::pack_event_data_into_cell(event_id, &self.tokens)?;
 
-        Ok(TonEventTransaction::Confirm(SignedVoteData {
+        Ok(TonEventTransaction::Confirm(SignedTonEventVoteData {
             data: TonEventVoteData {
                 configuration_id: state.configuration_id,
                 event_transaction: self.event_transaction,

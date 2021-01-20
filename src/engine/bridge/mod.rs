@@ -18,7 +18,6 @@ use self::event_transport::*;
 use self::semaphore::*;
 use self::ton_events_handler::*;
 
-mod prelude;
 mod utils;
 
 pub async fn make_bridge(
@@ -62,7 +61,7 @@ pub async fn make_bridge(
     );
 
     let eth_signer = key_data.eth.clone();
-    let eth_queue = EthQueue::new(&db)?;
+    let eth_verification_queue = EthVerificationQueue::new(&db)?;
     let scanning_state = ScanningState::new(&db)?;
 
     let ton = Arc::new(
@@ -87,12 +86,12 @@ pub async fn make_bridge(
     );
 
     let bridge = Arc::new(Bridge {
+        db,
         eth_listener,
         ton_transport,
         relay_contract,
         eth_signer,
-        eth_queue,
-        scanning_state,
+        eth_verification_queue,
         configs_state: Arc::new(Default::default()),
         ton,
         eth,
@@ -109,14 +108,14 @@ pub async fn make_bridge(
 }
 
 pub struct Bridge {
+    db: Db,
     eth_listener: Arc<EthListener>,
 
     ton_transport: Arc<dyn Transport>,
     relay_contract: Arc<RelayContract>,
 
     eth_signer: EthSigner,
-    eth_queue: EthQueue,
-    scanning_state: ScanningState,
+    eth_verification_queue: EthVerificationQueue,
     configs_state: Arc<RwLock<ConfigsState>>,
 
     ton: Arc<EventTransport<TonEventConfigurationContract>>,
@@ -361,8 +360,8 @@ impl Bridge {
             log::debug!("New block: {:?}", synced_block);
 
             let prepared_blocks = self
-                .eth_queue
-                .get_prepared_blocks(synced_block.as_u64())
+                .eth_verification_queue
+                .range_before(synced_block.as_u64())
                 .await;
 
             for (entry, event) in prepared_blocks {
@@ -377,7 +376,7 @@ impl Bridge {
             }
 
             if let SyncedHeight::Synced(a) = synced_block {
-                let bad_blocks = self.eth_queue.get_bad_blocks(a).await;
+                let bad_blocks = self.eth_verification_queue.range_after(a).await;
                 for (entry, event) in bad_blocks {
                     let block_number = event.event_block_number;
                     log::debug!(
@@ -479,7 +478,7 @@ impl Bridge {
             event.block_number,
             target_block_number
         );
-        self.eth_queue
+        self.eth_verification_queue
             .insert(target_block_number, &prepared_data)
             .await
             .expect("Fatal db error");
@@ -491,9 +490,22 @@ impl Bridge {
         configuration_id: u64,
         address: MsgAddressInt,
     ) {
+        let verification_queue = match TonVerificationQueue::new(&self.db, configuration_id) {
+            Ok(queue) => queue,
+            Err(e) => {
+                log::error!(
+                    "Failed to open verification queue db for configuration {}: {:?}",
+                    configuration_id,
+                    e
+                );
+                return;
+            }
+        };
+
         let handler = match TonEventsHandler::new(
             self.ton.clone(),
             self.eth_signer.clone(),
+            verification_queue,
             configuration_id,
             address,
         )
@@ -521,7 +533,7 @@ impl Bridge {
     ) {
         let handler = match EthEventsHandler::uninit(
             self.eth.clone(),
-            self.eth_queue.clone(),
+            self.eth_verification_queue.clone(),
             configuration_id,
             address,
         )
@@ -610,24 +622,4 @@ impl ConfigsState {
         self.address_topic_map.remove(event_address);
         self.eth_configs_map.remove(event_address);
     }
-}
-
-fn make_confirmed_ton_event_transaction(
-    event_id: u32,
-    configuration_id: u64,
-    event: SwapBackEvent,
-    signature: Vec<u8>,
-) -> Result<TonEventTransaction, Error> {
-    let event_data = utils::pack_event_data_into_cell(event_id, &event.tokens)?;
-
-    Ok(TonEventTransaction::Confirm(SignedVoteData {
-        data: TonEventVoteData {
-            configuration_id,
-            event_transaction: event.event_transaction,
-            event_transaction_lt: event.event_transaction_lt,
-            event_index: event.event_index,
-            event_data,
-        },
-        signature,
-    }))
 }

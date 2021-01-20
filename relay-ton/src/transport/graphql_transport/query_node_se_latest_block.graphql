@@ -10,5 +10,6 @@ query QueryNodeSELatestBlock($workchain: Int!) {
     ], limit: 1) {
         id
         end_lt(format: DEC)
+        gen_utime
     }
 }
