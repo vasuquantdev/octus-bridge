@@ -361,6 +361,24 @@ impl FunctionArg for u16 {
     }
 }
 
+impl FunctionArg for u32 {
+    fn token_value(self) -> TokenValue {
+        TokenValue::Uint(ton_abi::Uint {
+            number: BigUint::from(self),
+            size: 32,
+        })
+    }
+}
+
+impl FunctionArg for u64 {
+    fn token_value(self) -> TokenValue {
+        TokenValue::Uint(ton_abi::Uint {
+            number: BigUint::from(self),
+            size: 64,
+        })
+    }
+}
+
 impl FunctionArg for BuilderData {
     fn token_value(self) -> TokenValue {
         TokenValue::Cell(self.into())

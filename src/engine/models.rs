@@ -1,4 +1,3 @@
-use num_bigint::BigUint;
 use relay_models::models::{EventConfiguration, Voting};
 use relay_ton::contracts;
 
@@ -33,14 +32,13 @@ pub trait FromRequest<T>: Sized {
     fn try_from(request: T) -> Result<Self, Error>;
 }
 
-impl FromRequest<Voting> for (BigUint, contracts::models::Voting) {
+impl FromRequest<Voting> for (u64, contracts::models::Voting) {
     fn try_from(value: Voting) -> Result<Self, Error> {
         let (address, voting) = match value {
             Voting::Confirm(address) => (address, contracts::models::Voting::Confirm),
             Voting::Reject(address) => (address, contracts::models::Voting::Reject),
         };
-        let configuration_id =
-            BigUint::from_str(&address).map_err(|e| anyhow!("{}", e.to_string()))?;
+        let configuration_id = u64::from_str(&address).map_err(|e| anyhow!("{}", e.to_string()))?;
         Ok((configuration_id, voting))
     }
 }
@@ -49,10 +47,8 @@ pub trait FromContractModels<T>: Sized {
     fn from(model: T) -> Self;
 }
 
-impl FromContractModels<(BigUint, contracts::models::EthEventConfiguration)>
-    for EventConfiguration
-{
-    fn from((configuration_id, c): (BigUint, contracts::models::EthEventConfiguration)) -> Self {
+impl FromContractModels<(u64, contracts::models::EthEventConfiguration)> for EventConfiguration {
+    fn from((configuration_id, c): (u64, contracts::models::EthEventConfiguration)) -> Self {
         Self {
             configuration_id: configuration_id.to_string(),
             ethereum_event_abi: c.common.event_abi,

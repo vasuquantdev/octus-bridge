@@ -1,25 +1,30 @@
-use num_traits::ToPrimitive;
 use std::hash::Hash;
+use std::io::Write;
+
+use borsh::{BorshDeserialize, BorshSerialize};
+use num_traits::ToPrimitive;
+use ton_block::{Deserializable, Serializable};
 
 use crate::contracts::errors::*;
 use crate::contracts::prelude::*;
 use crate::models::*;
 use crate::prelude::*;
+use ethereum_types::H256;
 
 // Events
 
 crate::define_event!(BridgeContractEvent, BridgeContractEventKind, {
-    EventConfigurationCreationVote { id: BigUint, relay: MsgAddrStd, vote: Voting },
+    EventConfigurationCreationVote { id: u64, relay: MsgAddrStd, vote: Voting },
     EventConfigurationCreationEnd {
-        id: BigUint,
+        id: u64,
         active: bool,
         address: MsgAddressInt,
         event_type: EventType
     },
 
-    EventConfigurationUpdateVote { id: BigUint, relay: MsgAddrStd, vote: Voting },
+    EventConfigurationUpdateVote { id: u64, relay: MsgAddrStd, vote: Voting },
     EventConfigurationUpdateEnd {
-        id: BigUint,
+        id: u64,
         active: bool,
     },
 
@@ -203,7 +208,7 @@ impl TryFrom<(EthEventConfigurationContractEventKind, Vec<Token>)>
 
 // Models
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct BridgeConfiguration {
     pub event_configuration_required_confirmations: u16,
     pub event_configuration_required_rejections: u16,
@@ -269,7 +274,7 @@ impl ParseToken<BridgeConfiguration> for TokenValue {
 
 #[derive(Debug, Clone)]
 pub struct ActiveEventConfiguration {
-    pub id: BigUint,
+    pub id: u64,
     pub address: MsgAddressInt,
     pub event_type: EventType,
 }
@@ -279,7 +284,7 @@ impl TryFrom<ContractOutput> for Vec<ActiveEventConfiguration> {
 
     fn try_from(value: ContractOutput) -> Result<Self, Self::Error> {
         let mut tokens = value.into_parser();
-        let ids: Vec<BigUint> = tokens.parse_next()?;
+        let ids: Vec<u64> = tokens.parse_next()?;
         let addrs: Vec<MsgAddressInt> = tokens.parse_next()?;
         let types: Vec<EventType> = tokens.parse_next()?;
         if ids.len() != addrs.len() || ids.len() != types.len() {
@@ -365,7 +370,7 @@ impl ParseToken<RelayUpdateAction> for TokenValue {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct VoteData {
     pub signature: Vec<u8>,
 }
@@ -402,17 +407,15 @@ impl ParseToken<VoteData> for TokenValue {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct CommonEventConfigurationParams {
     pub event_abi: String,
 
     pub event_required_confirmations: u16,
     pub event_required_rejects: u16,
 
-    #[serde(with = "serde_cells")]
     pub event_code: Cell,
 
-    #[serde(with = "serde_int_addr")]
     pub bridge_address: MsgAddressInt,
 
     pub event_initial_balance: BigUint,
@@ -515,16 +518,13 @@ impl ParseToken<EventStatus> for TokenValue {
 
 impl StandaloneToken for EventStatus {}
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct TonEventInitData {
-    #[serde(with = "serde_uint256")]
     pub event_transaction: UInt256,
     pub event_transaction_lt: u64,
-    pub event_index: u64,
-    #[serde(with = "serde_cells")]
+    pub event_index: u32,
     pub event_data: Cell,
 
-    #[serde(with = "serde_int_addr")]
     pub ton_event_configuration: MsgAddressInt,
     pub required_confirmations: BigUint,
     pub required_rejections: BigUint,
@@ -537,55 +537,85 @@ impl ParseToken<TonEventInitData> for TokenValue {
             _ => return Err(ContractError::InvalidAbi),
         };
 
-        // TODO: update models
-
-        let event_transaction = tuple.next().try_parse()?;
-        let event_index = tuple.next().try_parse()?;
-        let event_data = tuple.next().try_parse()?;
-        let event_transaction_lt = tuple.next().try_parse()?; // event_block_number
-        let _event_block: UInt256 = tuple.next().try_parse()?;
-        let ton_event_configuration = tuple.next().try_parse()?;
-        let required_confirmations = tuple.next().try_parse()?;
-        let required_rejections = tuple.next().try_parse()?;
-
         Ok(TonEventInitData {
-            event_transaction,
-            event_transaction_lt,
-            event_index,
-            event_data,
-            ton_event_configuration,
-            required_confirmations,
-            required_rejections,
+            event_transaction: tuple.next().try_parse()?,
+            event_transaction_lt: tuple.next().try_parse()?,
+            event_index: tuple.next().try_parse()?,
+            event_data: tuple.next().try_parse()?,
+            ton_event_configuration: tuple.next().try_parse()?,
+            required_confirmations: tuple.next().try_parse()?,
+            required_rejections: tuple.next().try_parse()?,
         })
     }
 }
 
-impl StandaloneToken for TonEventInitData {}
+#[derive(Debug, Clone)]
+pub struct TonEventVoteData {
+    /// Not serializable!
+    pub configuration_id: u64,
 
-impl FunctionArg for TonEventInitData {
+    pub event_transaction: UInt256,
+    pub event_transaction_lt: u64,
+    pub event_index: u32,
+    pub event_data: Cell,
+}
+
+impl FunctionArg for TonEventVoteData {
     fn token_value(self) -> TokenValue {
         TokenValue::Tuple(vec![
             self.event_transaction
                 .token_value()
                 .named("eventTransaction"),
-            BigUint256(self.event_index.into())
+            self.event_transaction_lt
                 .token_value()
-                .named("eventIndex"),
+                .named("eventTransactionLt"),
+            self.event_index.token_value().named("eventIndex"),
             self.event_data.token_value().named("eventData"),
-            BigUint256(self.event_transaction_lt.into())
-                .token_value()
-                .named("eventBlockNumber"),
-            UInt256::default().token_value().named("eventBlock"),
-            self.ton_event_configuration
-                .token_value()
-                .named("tonEventConfiguration"),
-            BigUint256(self.required_confirmations)
-                .token_value()
-                .named("requiredConfirmations"),
-            BigUint256(self.required_rejections)
-                .token_value()
-                .named("requiredRejects"),
         ])
+    }
+}
+
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+struct StoredTonEventVotingData {
+    pub configuration_id: u64,
+    pub event_transaction: Vec<u8>,
+    pub event_transaction_lt: u64,
+    pub event_index: u32,
+    pub event_data: Vec<u8>,
+}
+
+impl BorshSerialize for TonEventVoteData {
+    fn serialize<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        let event_data = self
+            .event_data
+            .write_to_bytes()
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
+
+        StoredTonEventVotingData {
+            configuration_id: self.configuration_id,
+            event_transaction: self.event_transaction.as_slice().to_vec(),
+            event_transaction_lt: self.event_transaction_lt,
+            event_index: self.event_index,
+            event_data,
+        }
+        .serialize(writer)
+    }
+}
+
+impl BorshDeserialize for TonEventVoteData {
+    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
+        let stored: StoredTonEventVotingData = BorshDeserialize::deserialize(buf)?;
+
+        let event_data = Cell::construct_from_bytes(&stored.event_data)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
+
+        Ok(Self {
+            configuration_id: stored.configuration_id,
+            event_transaction: stored.event_data.into(),
+            event_transaction_lt: stored.event_transaction_lt,
+            event_index: stored.event_index,
+            event_data,
+        })
     }
 }
 
@@ -614,21 +644,18 @@ impl TryFrom<ContractOutput> for TonEventDetails {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct EthEventInitData {
     pub event_transaction: ethereum_types::H256,
-    pub event_index: BigUint,
-    #[serde(with = "serde_cells")]
+    pub event_index: u32,
     pub event_data: Cell,
     pub event_block_number: BigUint,
     pub event_block: ethereum_types::H256,
 
-    #[serde(with = "serde_int_addr")]
     pub eth_event_configuration: MsgAddressInt,
     pub required_confirmations: BigUint,
     pub required_rejections: BigUint,
 
-    #[serde(with = "serde_int_addr")]
     pub proxy_address: MsgAddressInt,
 }
 
@@ -653,33 +680,81 @@ impl ParseToken<EthEventInitData> for TokenValue {
     }
 }
 
-impl StandaloneToken for EthEventInitData {}
+#[derive(Debug, Clone)]
+pub struct EthEventVoteData {
+    /// Not serializable!
+    pub configuration_id: u64,
 
-impl FunctionArg for EthEventInitData {
+    pub event_transaction: ethereum_types::H256,
+    pub event_index: u32,
+    pub event_data: Cell,
+    pub event_block_number: u64,
+    pub event_block: ethereum_types::H256,
+}
+
+impl FunctionArg for EthEventVoteData {
     fn token_value(self) -> TokenValue {
         TokenValue::Tuple(vec![
             self.event_transaction
                 .token_value()
                 .named("eventTransaction"),
-            BigUint256(self.event_index)
-                .token_value()
-                .named("eventIndex"),
+            self.event_index.token_value().named("eventIndex"),
             self.event_data.token_value().named("eventData"),
-            BigUint256(self.event_block_number)
+            BigUint256(self.event_block_number.into())
                 .token_value()
                 .named("eventBlockNumber"),
             self.event_block.token_value().named("eventBlock"),
-            self.eth_event_configuration
-                .token_value()
-                .named("ethereumEventConfiguration"),
-            BigUint256(self.required_confirmations)
-                .token_value()
-                .named("requiredConfirmations"),
-            BigUint256(self.required_rejections)
-                .token_value()
-                .named("requiredRejects"),
-            self.proxy_address.token_value().named("proxyAddress"),
         ])
+    }
+}
+
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+pub struct StoredEthEventVoteData {
+    pub configuration_id: u64,
+    pub event_transaction: Vec<u8>,
+    pub event_index: u32,
+    pub event_data: Vec<u8>,
+    pub event_block_number: u64,
+    pub event_block: Vec<u8>,
+}
+
+impl BorshSerialize for EthEventVoteData {
+    fn serialize<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        let event_data = self
+            .event_data
+            .write_to_bytes()
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
+
+        StoredEthEventVoteData {
+            configuration_id: self.configuration_id,
+            event_transaction: self.event_transaction.as_bytes().to_vec(),
+            event_index: self.event_index,
+            event_data,
+            event_block_number: self.event_block_number,
+            event_block: self.event_block.as_bytes().to_vec(),
+        }
+        .serialize(writer)
+    }
+}
+
+impl BorshDeserialize for EthEventVoteData {
+    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
+        let stored: StoredEthEventVoteData = BorshDeserialize::deserialize(buf)?;
+
+        let event_data = Cell::construct_from_bytes(&stored.event_data)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
+
+        let event_transaction: UInt256 = stored.event_transaction.into();
+        let event_block: UInt256 = stored.event_block.into();
+
+        Ok(Self {
+            configuration_id: stored.configuration_id,
+            event_transaction: H256::from_slice(event_transaction.as_slice()),
+            event_index: stored.event_index,
+            event_data,
+            event_block_number: stored.event_block_number,
+            event_block: H256::from_slice(event_block.as_slice()),
+        })
     }
 }
 

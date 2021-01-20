@@ -259,6 +259,14 @@ impl ParseToken<u16> for TokenValue {
     }
 }
 
+impl ParseToken<u32> for TokenValue {
+    fn try_parse(self) -> ContractResult<u32> {
+        ParseToken::<BigUint>::try_parse(self)?
+            .to_u32()
+            .ok_or(ContractError::InvalidAbi)
+    }
+}
+
 impl ParseToken<u64> for TokenValue {
     fn try_parse(self) -> ContractResult<u64> {
         ParseToken::<BigUint>::try_parse(self)?

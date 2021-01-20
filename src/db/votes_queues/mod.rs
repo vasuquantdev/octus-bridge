@@ -1,5 +1,5 @@
 use anyhow::Error;
-use serde::{de::DeserializeOwned, Serialize};
+use borsh::{BorshDeserialize, BorshSerialize};
 use sled::transaction::{ConflictableTransactionError, ConflictableTransactionResult};
 use sled::{Db, Transactional, Tree};
 
@@ -58,17 +58,14 @@ pub struct VotesQueue<T> {
 
 impl<T> VotesQueue<T>
 where
-    T: Serialize + DeserializeOwned,
+    T: BorshSerialize + BorshDeserialize,
 {
     pub fn insert_pending(&self, event_address: &MsgAddrStd, data: &T) -> Result<(), Error> {
         let key = make_key(event_address);
 
         (&self.pending, &self.failed).transaction(|(pending, failed)| {
             failed.remove(key.clone())?;
-            pending.insert(
-                key.clone(),
-                bincode::serialize(data).expect("Shouldn't fail"),
-            )?;
+            pending.insert(key.clone(), data.try_to_vec().expect("Shouldn't fail"))?;
             ConflictableTransactionResult::<(), std::io::Error>::Ok(())
         })?;
 
@@ -128,7 +125,8 @@ where
             .map(|(key, value)| {
                 (
                     parse_key(&key),
-                    bincode::deserialize::<T>(&value).expect("Shouldn't fail"),
+                    <T as BorshDeserialize>::deserialize(&mut value.as_ref())
+                        .expect("Shouldn't fail"),
                 )
             })
     }
@@ -146,7 +144,8 @@ where
             .map(|(key, value)| {
                 (
                     parse_key(&key),
-                    bincode::deserialize::<T>(&value).expect("Shouldn't fail"),
+                    <T as BorshDeserialize>::deserialize(&mut value.as_ref())
+                        .expect("Shouldn't fail"),
                 )
             })
     }

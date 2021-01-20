@@ -55,13 +55,13 @@ impl RelayContract {
 
     pub async fn initialize_event_configuration_creation(
         &self,
-        id: BigUint,
+        id: u64,
         event_configuration: &MsgAddressInt,
         event_type: EventType,
     ) -> ContractResult<()> {
         self.send(
             self.message("initializeEventConfigurationCreation")?
-                .arg(BigUint256(id))
+                .arg(BigUint256(id.into()))
                 .arg(event_configuration)
                 .arg(event_type),
         )
@@ -70,95 +70,90 @@ impl RelayContract {
 
     pub async fn vote_for_event_configuration_creation(
         &self,
-        id: BigUint,
+        id: u64,
         voting: Voting,
     ) -> ContractResult<()> {
         self.send(
             self.message("voteForEventConfigurationCreation")?
-                .arg(BigUint256(id))
+                .arg(BigUint256(id.into()))
                 .arg(voting),
         )
         .await
     }
 
-    pub async fn confirm_ethereum_event(
-        &self,
-        configuration_id: BigUint,
-        event_init_data: EthEventInitData,
-    ) -> ContractResult<()> {
+    pub async fn confirm_ethereum_event(&self, vote: EthEventVoteData) -> ContractResult<()> {
         log::info!(
             "CONFIRMING ETH EVENT: {:?}, {}, {}",
-            hex::encode(&event_init_data.event_transaction),
-            event_init_data.event_index,
-            event_init_data.event_block_number
+            hex::encode(&vote.event_transaction),
+            vote.event_index,
+            vote.event_block_number
         );
+
+        let configuration_id = vote.configuration_id;
 
         self.send(
             self.message("confirmEthereumEvent")?
-                .arg(event_init_data)
-                .arg(BigUint256(configuration_id)),
+                .arg(vote)
+                .arg(BigUint256(configuration_id.into())),
         )
         .await
     }
 
-    pub async fn reject_ethereum_event(
-        &self,
-        configuration_id: BigUint,
-        event_init_data: EthEventInitData,
-    ) -> ContractResult<()> {
+    pub async fn reject_ethereum_event(&self, vote: EthEventVoteData) -> ContractResult<()> {
         log::info!(
             "REJECTING ETH EVENT: {:?}, {}, {}",
-            hex::encode(&event_init_data.event_transaction),
-            event_init_data.event_index,
-            event_init_data.event_block_number
+            hex::encode(&vote.event_transaction),
+            vote.event_index,
+            vote.event_block_number
         );
+
+        let configuration_id = vote.configuration_id;
 
         self.send(
             self.message("rejectEthereumEvent")?
-                .arg(event_init_data)
-                .arg(BigUint256(configuration_id)),
+                .arg(vote)
+                .arg(BigUint256(configuration_id.into())),
         )
         .await
     }
 
     pub async fn confirm_ton_event(
         &self,
-        configuration_id: BigUint,
-        event_init_data: TonEventInitData,
+        vote: TonEventVoteData,
         event_data_signature: Vec<u8>,
     ) -> ContractResult<()> {
         log::info!(
             "CONFIRMING TON EVENT: {}, {}, {}",
-            hex::encode(&event_init_data.event_transaction),
-            event_init_data.event_transaction_lt,
-            event_init_data.event_index,
+            hex::encode(&vote.event_transaction),
+            vote.event_transaction_lt,
+            vote.event_index,
         );
+
+        let configuration_id = vote.configuration_id;
 
         self.send(
             self.message("confirmTonEvent")?
-                .arg(event_init_data)
+                .arg(vote)
                 .arg(event_data_signature)
-                .arg(BigUint256(configuration_id)),
+                .arg(BigUint256(configuration_id.into())),
         )
         .await
     }
 
-    pub async fn reject_ton_event(
-        &self,
-        configuration_id: BigUint,
-        event_init_data: TonEventInitData,
-    ) -> ContractResult<()> {
+    pub async fn reject_ton_event(&self, vote: TonEventVoteData) -> ContractResult<()> {
         log::info!(
             "CONFIRMING TON EVENT: {}, {}, {}",
-            hex::encode(&event_init_data.event_transaction),
-            event_init_data.event_transaction_lt,
-            event_init_data.event_index,
+            hex::encode(&vote.event_transaction),
+            vote.event_transaction_lt,
+            vote.event_index,
         );
+
+        let configuration_id = vote.configuration_id;
 
         self.send(
             self.message("rejectTonEvent")?
-                .arg(event_init_data)
-                .arg(BigUint256(configuration_id)),
+                .arg(vote)
+                .arg(BigUint256(configuration_id.into())),
         )
         .await
     }

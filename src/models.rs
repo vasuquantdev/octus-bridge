@@ -1,171 +1,75 @@
-use num_bigint::BigUint;
+use borsh::{BorshDeserialize, BorshSerialize};
 
-use relay_eth::ws::H256;
 use relay_models::models::{
-    EthEventVotingDataView, EthTonTransactionView, SignedEventDataView, TonEthTransactionView,
-    TonEventVotingDataView,
+    EthEventVoteDataView, EthTonTransactionView, SignedVoteDataView, TonEthTransactionView,
+    TonEventVoteDataView,
 };
 use relay_ton::contracts::*;
 use relay_ton::prelude::*;
 
 use super::prelude::*;
 
-pub mod buf_to_hex {
-    use serde::{Deserialize, Deserializer, Serializer};
+pub trait IntoView {
+    type View: Serialize;
 
-    /// Serializes `buffer` to a lowercase hex string.
-    pub fn serialize<T, S>(buffer: &T, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        T: AsRef<[u8]> + ?Sized,
-        S: Serializer,
-    {
-        serializer.serialize_str(&*hex::encode(&buffer.as_ref()))
-    }
-
-    /// Deserializes a lowercase hex string to a `Vec<u8>`.
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        use serde::de::Error;
-        String::deserialize(deserializer)
-            .and_then(|string| hex::decode(string).map_err(|e| D::Error::custom(e.to_string())))
-    }
+    fn into_view(self) -> Self::View;
 }
 
-pub mod h256_to_hex {
-    use ethereum_types::H256;
-    use serde::{Deserialize, Deserializer, Serializer};
+impl IntoView for TonEventVoteData {
+    type View = TonEventVoteDataView;
 
-    pub fn serialize<T, S>(buffer: &T, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        T: AsRef<[u8]> + ?Sized,
-        S: Serializer,
-    {
-        serializer.serialize_str(&*hex::encode(&buffer.as_ref()))
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<H256, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        use serde::de::Error;
-
-        String::deserialize(deserializer).and_then(|string| {
-            hex::decode(string)
-                .map_err(|e| D::Error::custom(e.to_string()))
-                .map(|x| H256::from_slice(&*x))
-        })
-    }
-}
-
-#[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct TonEventVotingData {
-    #[serde(with = "serde_uint256")]
-    pub event_transaction: UInt256,
-    pub event_transaction_lt: u64,
-    pub event_index: u64,
-    #[serde(with = "serde_cells")]
-    pub event_data: Cell,
-
-    pub configuration_id: BigUint,
-}
-
-impl From<TonEventVotingData> for TonEventInitData {
-    fn from(data: TonEventVotingData) -> Self {
-        TonEventInitData {
-            event_transaction: data.event_transaction,
-            event_transaction_lt: data.event_transaction_lt,
-            event_index: data.event_index,
-            event_data: data.event_data,
-            ton_event_configuration: Default::default(),
-            required_confirmations: Default::default(),
-            required_rejections: Default::default(),
+    fn into_view(self) -> Self::View {
+        TonEventVoteDataView {
+            configuration_id: self.configuration_id.to_string(),
+            event_transaction: hex::encode(self.event_transaction.as_slice()),
+            event_transaction_lt: self.event_transaction_lt,
+            event_index: self.event_index,
         }
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct EthEventVotingData {
-    pub event_transaction: H256,
-    pub event_index: u64,
-    #[serde(with = "serde_cells")]
-    pub event_data: Cell,
-    pub event_block_number: u64,
-    pub event_block: H256,
+impl IntoView for EthEventVoteData {
+    type View = EthEventVoteDataView;
 
-    pub configuration_id: BigUint,
-}
-
-impl From<EthEventVotingData> for EthEventInitData {
-    fn from(data: EthEventVotingData) -> Self {
-        EthEventInitData {
-            event_transaction: data.event_transaction,
-            event_index: data.event_index.into(),
-            event_data: data.event_data,
-            event_block_number: data.event_block_number.into(),
-            event_block: data.event_block,
-
-            // TODO: replace voting data model
-            eth_event_configuration: Default::default(),
-            required_confirmations: Default::default(),
-            required_rejections: Default::default(),
-            proxy_address: Default::default(),
-        }
-    }
-}
-
-impl From<EthEventVotingData> for EthEventVotingDataView {
-    fn from(data: EthEventVotingData) -> Self {
-        let event_block = match serialize_toc(&data.event_data) {
+    fn into_view(self) -> Self::View {
+        let event_data = match serialize_toc(&self.event_data) {
             Ok(a) => hex::encode(a),
             Err(e) => {
                 log::error!("Failed serializing boc: {}", e);
                 "BAD DATA IN BLOCK".to_string()
             }
         };
-        EthEventVotingDataView {
-            event_transaction: hex::encode(&data.event_transaction.0),
-            event_index: data.event_index,
-            event_data: event_block,
-            event_block_number: data.event_block_number,
-            event_block: hex::encode(&data.event_block.0),
-            configuration_id: data.configuration_id.to_string(),
+        EthEventVoteDataView {
+            configuration_id: self.configuration_id.to_string(),
+            event_transaction: hex::encode(&self.event_transaction.0),
+            event_index: self.event_index,
+            event_data,
+            event_block_number: self.event_block_number,
+            event_block: hex::encode(&self.event_block.0),
         }
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Clone)]
 pub enum EventTransaction<C, R> {
     Confirm(C),
     Reject(R),
 }
 
-#[derive(Serialize, Deserialize, Clone)]
-pub struct SignedEventVotingData {
-    pub data: TonEventVotingData,
+#[derive(BorshSerialize, BorshDeserialize, Clone)]
+pub struct SignedVoteData {
+    pub data: TonEventVoteData,
     pub signature: Vec<u8>,
 }
 
-impl From<TonEventVotingData> for TonEventVotingDataView {
-    fn from(data: TonEventVotingData) -> Self {
-        TonEventVotingDataView {
-            event_transaction: hex::encode(data.event_transaction.as_slice()),
-            event_transaction_lt: data.event_transaction_lt,
-            event_index: data.event_index,
-            configuration_id: data.configuration_id.to_string(),
-        }
-    }
-}
-
-pub type EthEventTransaction = EventTransaction<EthEventVotingData, EthEventVotingData>;
-pub type TonEventTransaction = EventTransaction<SignedEventVotingData, TonEventVotingData>;
+pub type EthEventTransaction = EventTransaction<EthEventVoteData, EthEventVoteData>;
+pub type TonEventTransaction = EventTransaction<SignedVoteData, TonEventVoteData>;
 
 impl From<EthEventTransaction> for EthTonTransactionView {
     fn from(data: EthEventTransaction) -> Self {
         match data {
-            EventTransaction::Confirm(a) => EthTonTransactionView::Confirm(a.into()),
-            EventTransaction::Reject(a) => EthTonTransactionView::Reject(a.into()),
+            EventTransaction::Confirm(a) => EthTonTransactionView::Confirm(a.into_view()),
+            EventTransaction::Reject(a) => EthTonTransactionView::Reject(a.into_view()),
         }
     }
 }
@@ -173,18 +77,18 @@ impl From<EthEventTransaction> for EthTonTransactionView {
 impl From<TonEventTransaction> for TonEthTransactionView {
     fn from(data: TonEventTransaction) -> Self {
         match data {
-            EventTransaction::Confirm(a) => TonEthTransactionView::Confirm(SignedEventDataView {
+            EventTransaction::Confirm(a) => TonEthTransactionView::Confirm(SignedVoteDataView {
                 signature: hex::encode(&a.signature),
-                data: a.data.into(),
+                data: a.data.into_view(),
             }),
-            EventTransaction::Reject(a) => TonEthTransactionView::Reject(a.into()),
+            EventTransaction::Reject(a) => TonEthTransactionView::Reject(a.into_view()),
         }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct CommonReceivedVote<T, A> {
-    configuration_id: BigUint,
+    configuration_id: u64,
     event_addr: MsgAddrStd,
     relay: MsgAddrStd,
     kind: Voting,
@@ -206,7 +110,7 @@ pub type TonEventReceivedVote = CommonReceivedVote<Arc<AbiEvent>, TonEventDetail
 
 impl EthEventReceivedVote {
     pub fn new(
-        configuration_id: BigUint,
+        configuration_id: u64,
         event_addr: MsgAddrStd,
         relay: MsgAddrStd,
         kind: Voting,
@@ -225,7 +129,7 @@ impl EthEventReceivedVote {
 
 impl TonEventReceivedVote {
     pub fn new(
-        configuration_id: BigUint,
+        configuration_id: u64,
         event_addr: MsgAddrStd,
         relay: MsgAddrStd,
         kind: Voting,
@@ -250,7 +154,7 @@ pub trait ReceivedVote: Send + Sync {
     type Data: ReceivedVoteEventData;
     type VoteWithData: ReceivedVoteWithData;
 
-    fn configuration_id(&self) -> &BigUint;
+    fn configuration_id(&self) -> u64;
     fn event_address(&self) -> &MsgAddrStd;
     fn relay(&self) -> &MsgAddrStd;
     fn kind(&self) -> Voting;
@@ -268,8 +172,8 @@ where
     type VoteWithData = CommonReceivedVoteWithData<T, D>;
 
     #[inline]
-    fn configuration_id(&self) -> &BigUint {
-        &self.configuration_id
+    fn configuration_id(&self) -> u64 {
+        self.configuration_id
     }
 
     #[inline]
@@ -347,38 +251,47 @@ impl ReceivedVoteEventData for TonEventDetails {
     }
 }
 
-impl From<EthEventReceivedVoteWithData> for EthEventVotingData {
-    fn from(event: EthEventReceivedVoteWithData) -> Self {
-        Self {
-            event_transaction: event.data.init_data.event_transaction,
-            event_index: event
+pub trait IntoVote {
+    type Vote;
+
+    fn into_vote(self) -> Self::Vote;
+}
+
+impl IntoVote for EthEventReceivedVoteWithData {
+    type Vote = EthEventVoteData;
+
+    fn into_vote(self) -> Self::Vote {
+        Self::Vote {
+            configuration_id: self.info.configuration_id,
+            event_transaction: self.data.init_data.event_transaction,
+            event_index: self
                 .data
                 .init_data
                 .event_index
-                .to_u64()
-                .unwrap_or_else(u64::max_value),
-            event_data: event.data.init_data.event_data,
-            event_block_number: event
+                .to_u32()
+                .unwrap_or_else(u32::max_value),
+            event_data: self.data.init_data.event_data,
+            event_block_number: self
                 .data
                 .init_data
                 .event_block_number
                 .to_u64()
                 .unwrap_or_else(u64::max_value),
-            event_block: event.data.init_data.event_block,
-            configuration_id: event.info.configuration_id,
+            event_block: self.data.init_data.event_block,
         }
     }
 }
 
-impl From<TonEventReceivedVoteWithData> for TonEventVotingData {
-    fn from(event: TonEventReceivedVoteWithData) -> Self {
-        Self {
-            event_transaction: event.data.init_data.event_transaction,
-            event_transaction_lt: event.data.init_data.event_transaction_lt,
-            event_index: event.data.init_data.event_index,
-            event_data: event.data.init_data.event_data,
+impl IntoVote for TonEventReceivedVoteWithData {
+    type Vote = TonEventVoteData;
 
-            configuration_id: event.info.configuration_id,
+    fn into_vote(self) -> Self::Vote {
+        Self::Vote {
+            configuration_id: self.info.configuration_id,
+            event_transaction: self.data.init_data.event_transaction,
+            event_transaction_lt: self.data.init_data.event_transaction_lt,
+            event_index: self.data.init_data.event_index,
+            event_data: self.data.init_data.event_data,
         }
     }
 }

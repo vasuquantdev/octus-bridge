@@ -1,8 +1,10 @@
 use std::collections::HashMap;
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use tokio::sync::{Mutex, MutexGuard};
 
-use relay_models::models::EthEventVotingDataView;
+use relay_models::models::EthEventVoteDataView;
+use relay_ton::contracts::EthEventVoteData;
 
 use crate::models::*;
 
@@ -27,7 +29,7 @@ impl EthQueue {
     pub async fn get_prepared_blocks(
         &self,
         block_number: u64,
-    ) -> EthQueueLock<'_, impl Iterator<Item = (sled::IVec, EthEventVotingData)>> {
+    ) -> EthQueueLock<'_, impl Iterator<Item = (sled::IVec, EthEventVoteData)>> {
         let guard = self.guard.lock().await;
 
         let results = self
@@ -36,7 +38,7 @@ impl EthQueue {
             .keys()
             .filter_map(|key| {
                 let key = key.ok()?;
-                let value = bincode::deserialize(&key[8..]).ok()?;
+                let value = BorshDeserialize::deserialize(&mut &key[8..]).ok()?;
                 Some((key, value))
             });
 
@@ -50,7 +52,7 @@ impl EthQueue {
     pub async fn get_bad_blocks(
         &self,
         block_number: u64,
-    ) -> EthQueueLock<'_, impl Iterator<Item = (sled::IVec, EthEventVotingData)>> {
+    ) -> EthQueueLock<'_, impl Iterator<Item = (sled::IVec, EthEventVoteData)>> {
         let guard = self.guard.lock().await;
         let results = self
             .db
@@ -58,7 +60,7 @@ impl EthQueue {
             .keys()
             .filter_map(|key| {
                 let key = key.ok()?;
-                let value = bincode::deserialize(&key[8..]).ok()?;
+                let value = BorshDeserialize::deserialize(&mut &key[8..]).ok()?;
                 Some((key, value))
             });
 
@@ -72,7 +74,7 @@ impl EthQueue {
     pub async fn insert(
         &self,
         target_block_number: u64,
-        value: &EthEventVotingData,
+        value: &EthEventVoteData,
     ) -> Result<(), Error> {
         let _guard = self.guard.lock().await;
         self.db.insert(make_key(target_block_number, value), &[])?;
@@ -83,8 +85,8 @@ impl EthQueue {
 }
 
 #[inline]
-fn make_key(target_block_number: u64, value: &EthEventVotingData) -> Vec<u8> {
-    let value = bincode::serialize(value).expect("Shouldn't fail");
+fn make_key(target_block_number: u64, value: &EthEventVoteData) -> Vec<u8> {
+    let value = value.try_to_vec().expect("Shouldn't fail");
 
     let mut key = target_block_number.to_be_bytes().to_vec();
     key.extend_from_slice(&value);
@@ -94,7 +96,7 @@ fn make_key(target_block_number: u64, value: &EthEventVotingData) -> Vec<u8> {
 
 impl Table for EthQueue {
     type Key = u64;
-    type Value = Vec<EthEventVotingDataView>;
+    type Value = Vec<EthEventVoteDataView>;
 
     fn dump_elements(&self) -> HashMap<Self::Key, Self::Value> {
         self.db
@@ -111,14 +113,13 @@ impl Table for EthQueue {
                 block_number.copy_from_slice(&k[0..8]);
                 let block_number = u64::from_be_bytes(block_number);
 
-                let value = bincode::deserialize::<EthEventVotingData>(&k[8..])
-                    .expect("Shouldn't fail")
-                    .into();
+                let value: EthEventVoteData =
+                    BorshDeserialize::deserialize(&mut &k[8..]).expect("Shouldn't fail");
 
                 result
                     .entry(block_number)
                     .or_insert_with(Vec::new)
-                    .push(value);
+                    .push(value.into_view());
                 result
             })
     }
@@ -132,9 +133,9 @@ pub struct EthQueueLock<'a, I> {
 
 impl<'a, I> Iterator for EthQueueLock<'a, I>
 where
-    I: Iterator<Item = (sled::IVec, EthEventVotingData)>,
+    I: Iterator<Item = (sled::IVec, EthEventVoteData)>,
 {
-    type Item = (EthQueueLockEntry<'a>, EthEventVotingData);
+    type Item = (EthQueueLockEntry<'a>, EthEventVoteData);
 
     fn next(&mut self) -> Option<Self::Item> {
         self.results.next().map(|(key, value)| {

@@ -91,14 +91,14 @@ impl EthEventConfigurationContract {
 
     pub async fn compute_event_address(
         &self,
-        event_init_data: EthEventInitData,
+        vote: EthEventVoteData,
     ) -> ContractResult<MsgAddrStd> {
         const TON: u64 = 1_000_000_000;
         const CONFIRM_VALUE: u64 = 1_000_000 * TON;
 
         let message = self
             .message("confirmEvent")?
-            .arg(event_init_data)
+            .arg(vote)
             .arg(MsgAddrStd::default())
             .build_internal(self.bridge_address.clone(), CONFIRM_VALUE)?;
 

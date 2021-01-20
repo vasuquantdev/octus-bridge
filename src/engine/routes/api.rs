@@ -55,7 +55,7 @@ pub fn get_api() -> String {
             },
             ("status" / "eth"): {
                 GET: {
-                    200: HashMap<u64, EthEventVotingDataView>
+                    200: HashMap<u64, EthEventVoteDataView>
                 }
             },
             ("status" / "relay"): {

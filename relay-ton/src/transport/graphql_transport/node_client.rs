@@ -433,7 +433,7 @@ impl NodeClient {
                                 data,
                                 transaction_hash: transaction_hash.clone(),
                                 transaction_lt,
-                                event_index: i as u64,
+                                event_index: i as u32,
                             })
                         },
                     )
@@ -485,7 +485,7 @@ pub struct OutboundMessageFull {
     pub data: TransportResult<ton_block::Message>,
     pub transaction_hash: UInt256,
     pub transaction_lt: u64,
-    pub event_index: u64,
+    pub event_index: u32,
 }
 
 #[derive(Debug, Clone)]

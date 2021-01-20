@@ -129,7 +129,7 @@ impl Stream for SwapBackEvents {
 pub struct SwapBackEvent {
     pub event_transaction: UInt256,
     pub event_transaction_lt: u64,
-    pub event_index: u64,
+    pub event_index: u32,
     pub tokens: Vec<Token>,
 }
 

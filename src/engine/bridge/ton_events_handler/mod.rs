@@ -19,7 +19,7 @@ struct State {
     transport: Arc<TonEventTransport>,
     eth_signer: EthSigner,
 
-    configuration_id: BigUint,
+    configuration_id: u64,
     details: TonEventConfiguration,
     config_contract: Arc<TonEventConfigurationContract>,
     swapback_contract: Arc<TonSwapBackContract>,
@@ -29,7 +29,7 @@ impl TonEventsHandler {
     pub async fn new(
         transport: Arc<TonEventTransport>,
         eth_signer: EthSigner,
-        configuration_id: BigUint,
+        configuration_id: u64,
         address: MsgAddressInt,
     ) -> Result<Arc<Self>, Error> {
         use futures::FutureExt;
@@ -65,7 +65,7 @@ impl TonEventsHandler {
 
         // Register contract
         transport
-            .add_configuration_contract(configuration_id.clone(), config_contract.clone())
+            .add_configuration_contract(configuration_id, config_contract.clone())
             .await;
 
         // Get swapback contract
@@ -216,7 +216,7 @@ impl TonEventsHandler {
                     .handle_event(
                         state.as_ref(),
                         TonEventReceivedVote::new(
-                            state.configuration_id.clone(),
+                            state.configuration_id,
                             event_address,
                             relay,
                             vote,
@@ -246,6 +246,10 @@ impl TonEventsHandler {
                 semaphore.try_notify().await;
             }
         });
+    }
+
+    pub fn details(&self) -> &TonEventConfiguration {
+        &self.state.details
     }
 }
 
@@ -312,13 +316,13 @@ impl SwapBackEventExt for SwapBackEvent {
         let signature = state.calculate_signature(&self)?;
         let event_data = utils::pack_event_data_into_cell(event_id, &self.tokens)?;
 
-        Ok(TonEventTransaction::Confirm(SignedEventVotingData {
-            data: TonEventVotingData {
+        Ok(TonEventTransaction::Confirm(SignedVoteData {
+            data: TonEventVoteData {
+                configuration_id: state.configuration_id,
                 event_transaction: self.event_transaction,
                 event_transaction_lt: self.event_transaction_lt,
                 event_index: self.event_index,
                 event_data,
-                configuration_id: state.configuration_id.clone(),
             },
             signature,
         }))

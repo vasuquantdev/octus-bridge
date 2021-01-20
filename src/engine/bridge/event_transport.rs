@@ -1,6 +1,9 @@
+use borsh::{BorshDeserialize, BorshSerialize};
+
 use relay_ton::contracts::*;
 use relay_ton::transport::*;
 
+use super::utils;
 use crate::config::TonSettings;
 use crate::db::*;
 use crate::models::*;
@@ -37,11 +40,11 @@ where
         Data = <<C as ConfigurationContract>::EventContract as EventContract>::Details,
     >,
     <C as ConfigurationContract>::EventTransaction: EventTransactionExt<
-            InitData = <<C as ConfigurationContract>::EventContract as EventContract>::InitData,
+            VoteData = <<C as ConfigurationContract>::EventContract as EventContract>::VoteData,
         > + std::fmt::Display,
     <C::ReceivedVote as ReceivedVote>::VoteWithData: GetStoredData,
     <<C::ReceivedVote as ReceivedVote>::VoteWithData as GetStoredData>::Stored:
-        Serialize + DeserializeOwned,
+        BorshSerialize + BorshDeserialize,
     for<'a> DisplayReceivedVote<'a, <C::ReceivedVote as ReceivedVote>::VoteWithData>:
         std::fmt::Display,
 {
@@ -333,7 +336,7 @@ where
         };
 
         let event_addr = config_contract
-            .compute_event_address(transaction.init_data())
+            .compute_event_address(transaction.vote_data())
             .await?;
 
         Ok(event_addr)
@@ -354,7 +357,7 @@ where
     }
 
     /// Add new configuration contract
-    pub async fn add_configuration_contract(&self, configuration_id: BigUint, contract: Arc<C>) {
+    pub async fn add_configuration_contract(&self, configuration_id: u64, contract: Arc<C>) {
         self.config_contracts
             .write()
             .await
@@ -362,11 +365,11 @@ where
     }
 
     /// Find configuration contract by its id
-    pub async fn get_configuration_contract(&self, configuration_id: &BigUint) -> Option<Arc<C>> {
+    pub async fn get_configuration_contract(&self, configuration_id: u64) -> Option<Arc<C>> {
         self.config_contracts
             .read()
             .await
-            .get(configuration_id)
+            .get(&configuration_id)
             .cloned()
     }
 
@@ -457,7 +460,7 @@ impl<'a, T> DisplayReceivedVote<'a, T> {
     }
 }
 
-type ConfigContractsMap<T> = HashMap<BigUint, Arc<T>>;
+type ConfigContractsMap<T> = HashMap<u64, Arc<T>>;
 
 #[async_trait]
 pub trait VerificationQueue<T: ReceivedVote>: Send + Sync {
@@ -469,7 +472,7 @@ pub trait ConfigurationContract: ContractWithEvents {
     type Details;
     type EventContract: EventContract;
     type ReceivedVote: ReceivedVote;
-    type EventTransaction: Serialize + DeserializeOwned + Send + Sync;
+    type EventTransaction: BorshDeserialize + BorshSerialize + Send + Sync;
 
     async fn make_config_contract(
         transport: Arc<dyn Transport>,
@@ -491,7 +494,7 @@ pub trait ConfigurationContract: ContractWithEvents {
 
     async fn compute_event_address(
         &self,
-        init_data: <Self::EventContract as EventContract>::InitData,
+        vote: <Self::EventContract as EventContract>::VoteData,
     ) -> ContractResult<MsgAddrStd>;
 
     async fn get_details(&self) -> ContractResult<Self::Details>;
@@ -500,17 +503,233 @@ pub trait ConfigurationContract: ContractWithEvents {
 #[async_trait]
 pub trait EventContract: Send + Sync {
     type Details;
-    type InitData;
+    type VoteData;
 
     async fn get_details(&self, address: &MsgAddrStd) -> ContractResult<Self::Details>;
 }
 
 #[async_trait]
 pub trait EventTransactionExt: std::fmt::Display + Clone + Send + Sync {
-    type InitData: Clone;
+    type VoteData: Clone;
 
-    fn configuration_id(&self) -> &BigUint;
+    fn configuration_id(&self) -> u64;
     fn kind(&self) -> Voting;
-    fn init_data(&self) -> Self::InitData;
+    fn vote_data(&self) -> Self::VoteData;
     async fn send(&self, bridge: Arc<RelayContract>) -> ContractResult<()>;
+}
+
+#[async_trait]
+impl ConfigurationContract for EthEventConfigurationContract {
+    type Details = EthEventConfiguration;
+    type EventContract = EthEventContract;
+    type ReceivedVote = EthEventReceivedVote;
+    type EventTransaction = EthEventTransaction;
+
+    async fn make_config_contract(
+        transport: Arc<dyn Transport>,
+        account: MsgAddressInt,
+        bridge_address: MsgAddressInt,
+    ) -> ContractResult<(Arc<Self>, EventsRx<<Self as ContractWithEvents>::Event>)> {
+        make_eth_event_configuration_contract(transport, account, bridge_address).await
+    }
+
+    async fn make_event_contract(transport: Arc<dyn Transport>) -> Arc<Self::EventContract> {
+        make_eth_event_contract(transport).await
+    }
+
+    fn make_voting_stats(
+        db: &Db,
+    ) -> Result<VotingStats<<Self::ReceivedVote as ReceivedVote>::VoteWithData>, Error> {
+        EthVotingStats::new(db)
+    }
+
+    fn make_votes_queue(db: &Db) -> Result<VotesQueue<Self::EventTransaction>, Error> {
+        EthEventVotesQueue::new(db)
+    }
+
+    fn address(&self) -> &MsgAddressInt {
+        self.address()
+    }
+
+    fn validate(&self, details: &Self::Details) -> Result<(), Error> {
+        utils::validate_ethereum_event_configuration(details)
+    }
+
+    async fn compute_event_address(
+        &self,
+        init_data: <Self::EventContract as EventContract>::VoteData,
+    ) -> ContractResult<MsgAddrStd> {
+        self.compute_event_address(init_data).await
+    }
+
+    async fn get_details(&self) -> ContractResult<Self::Details> {
+        self.get_details().await
+    }
+}
+
+#[async_trait]
+impl ConfigurationContract for TonEventConfigurationContract {
+    type Details = TonEventConfiguration;
+    type EventContract = TonEventContract;
+    type ReceivedVote = TonEventReceivedVote;
+    type EventTransaction = TonEventTransaction;
+
+    async fn make_config_contract(
+        transport: Arc<dyn Transport>,
+        account: MsgAddressInt,
+        bridge_address: MsgAddressInt,
+    ) -> ContractResult<(Arc<Self>, EventsRx<<Self as ContractWithEvents>::Event>)> {
+        make_ton_event_configuration_contract(transport, account, bridge_address).await
+    }
+
+    async fn make_event_contract(transport: Arc<dyn Transport>) -> Arc<Self::EventContract> {
+        make_ton_event_contract(transport).await
+    }
+
+    fn make_voting_stats(
+        db: &Db,
+    ) -> Result<VotingStats<<Self::ReceivedVote as ReceivedVote>::VoteWithData>, Error> {
+        TonVotingStats::new(db)
+    }
+
+    fn make_votes_queue(db: &Db) -> Result<VotesQueue<Self::EventTransaction>, Error> {
+        TonEventVotesQueue::new(db)
+    }
+
+    fn address(&self) -> &MsgAddressInt {
+        self.address()
+    }
+
+    fn validate(&self, config: &Self::Details) -> Result<(), Error> {
+        let _ = serde_json::from_str::<SwapBackEventAbi>(&config.common.event_abi)
+            .map_err(|e| Error::new(e).context("Bad SwapBack event ABI"))?;
+        Ok(())
+    }
+
+    async fn compute_event_address(
+        &self,
+        vote: <Self::EventContract as EventContract>::VoteData,
+    ) -> ContractResult<MsgAddrStd> {
+        self.compute_event_address(vote).await
+    }
+
+    async fn get_details(&self) -> ContractResult<Self::Details> {
+        self.get_details().await
+    }
+}
+
+#[async_trait]
+impl EventContract for EthEventContract {
+    type Details = EthEventDetails;
+    type VoteData = EthEventVoteData;
+
+    async fn get_details(&self, address: &MsgAddrStd) -> ContractResult<Self::Details> {
+        self.get_details(address.clone()).await
+    }
+}
+
+#[async_trait]
+impl EventContract for TonEventContract {
+    type Details = TonEventDetails;
+    type VoteData = TonEventVoteData;
+
+    async fn get_details(&self, address: &MsgAddrStd) -> ContractResult<Self::Details> {
+        self.get_details(address.clone()).await
+    }
+}
+
+#[async_trait]
+impl EventTransactionExt for EthEventTransaction {
+    type VoteData = <EthEventContract as EventContract>::VoteData;
+
+    #[inline]
+    fn configuration_id(&self) -> u64 {
+        match self {
+            Self::Confirm(data) => data.configuration_id,
+            Self::Reject(data) => data.configuration_id,
+        }
+    }
+
+    #[inline]
+    fn kind(&self) -> Voting {
+        match self {
+            Self::Confirm(_) => Voting::Confirm,
+            Self::Reject(_) => Voting::Reject,
+        }
+    }
+
+    fn vote_data(&self) -> Self::VoteData {
+        match self.clone() {
+            Self::Confirm(data) => data,
+            Self::Reject(data) => data,
+        }
+    }
+
+    async fn send(&self, bridge: Arc<RelayContract>) -> ContractResult<()> {
+        let data = self.vote_data();
+        match self.kind() {
+            Voting::Confirm => bridge.confirm_ethereum_event(data).await,
+            Voting::Reject => bridge.reject_ethereum_event(data).await,
+        }
+    }
+}
+
+impl std::fmt::Display for EthEventTransaction {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let transaction = match self {
+            Self::Confirm(data) => &data.event_transaction,
+            Self::Reject(data) => &data.event_transaction,
+        };
+        f.write_fmt(format_args!("Vote for ETH transaction {}", transaction))
+    }
+}
+
+#[async_trait]
+impl EventTransactionExt for TonEventTransaction {
+    type VoteData = <TonEventContract as EventContract>::VoteData;
+
+    #[inline]
+    fn configuration_id(&self) -> u64 {
+        match self {
+            Self::Confirm(signed) => signed.data.configuration_id,
+            Self::Reject(data) => data.configuration_id,
+        }
+    }
+
+    #[inline]
+    fn kind(&self) -> Voting {
+        match self {
+            Self::Confirm(_) => Voting::Confirm,
+            Self::Reject(_) => Voting::Reject,
+        }
+    }
+
+    fn vote_data(&self) -> Self::VoteData {
+        match self {
+            Self::Confirm(signed) => signed.data.clone(),
+            Self::Reject(data) => data.clone(),
+        }
+    }
+
+    async fn send(&self, bridge: Arc<RelayContract>) -> ContractResult<()> {
+        match self.clone() {
+            Self::Confirm(SignedVoteData { data, signature }) => {
+                bridge.confirm_ton_event(data, signature).await
+            }
+            Self::Reject(data) => bridge.reject_ton_event(data).await,
+        }
+    }
+}
+
+impl std::fmt::Display for TonEventTransaction {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let transaction = match self {
+            Self::Confirm(signed) => &signed.data.event_transaction,
+            Self::Reject(data) => &data.event_transaction,
+        };
+        f.write_fmt(format_args!(
+            "Vote for TON transaction {}",
+            hex::encode(transaction.as_slice())
+        ))
+    }
 }

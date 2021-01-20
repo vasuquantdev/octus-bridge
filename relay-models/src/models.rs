@@ -77,8 +77,8 @@ pub struct EthTonVoteView {
 #[derive(Serialize, Deserialize, Clone, opg::OpgModel)]
 #[serde(tag = "type")]
 pub enum EthTonTransactionView {
-    Confirm(EthEventVotingDataView),
-    Reject(EthEventVotingDataView),
+    Confirm(EthEventVoteDataView),
+    Reject(EthEventVoteDataView),
 }
 
 #[derive(Serialize, Deserialize, Clone, opg::OpgModel)]
@@ -91,29 +91,29 @@ pub struct TonEthVoteView {
 #[derive(Serialize, Deserialize, Clone, opg::OpgModel)]
 #[serde(tag = "type")]
 pub enum TonEthTransactionView {
-    Confirm(SignedEventDataView),
-    Reject(TonEventVotingDataView),
+    Confirm(SignedVoteDataView),
+    Reject(TonEventVoteDataView),
 }
 
 #[derive(Serialize, Deserialize, Clone, opg::OpgModel)]
-pub struct SignedEventDataView {
+pub struct SignedVoteDataView {
     pub signature: String,
-    pub data: TonEventVotingDataView,
+    pub data: TonEventVoteDataView,
 }
 
 #[derive(Serialize, Deserialize, Clone, opg::OpgModel)]
-pub struct TonEventVotingDataView {
+pub struct TonEventVoteDataView {
+    pub configuration_id: String,
     pub event_transaction: String,
     pub event_transaction_lt: u64,
-    pub event_index: u64,
-    pub configuration_id: String,
+    pub event_index: u32,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, opg::OpgModel)]
-pub struct EthEventVotingDataView {
+pub struct EthEventVoteDataView {
     #[opg(format = "hex")]
     pub event_transaction: String,
-    pub event_index: u64,
+    pub event_index: u32,
     #[opg(format = "hex")]
     pub event_data: String,
     pub event_block_number: u64,
@@ -126,7 +126,8 @@ pub struct EthEventVotingDataView {
 #[serde(rename_all = "lowercase")]
 pub struct EthTxStatView {
     pub tx_hash: String,
-    pub met: i64,
+    #[opg("Timestamp in seconds")]
+    pub met: String,
     pub event_addr: String,
     pub vote: EventVote,
 }
@@ -136,7 +137,8 @@ pub struct EthTxStatView {
 pub struct TonTxStatView {
     pub tx_hash: String,
     pub tx_lt: String,
-    pub met: i64,
+    #[opg("Timestamp in seconds")]
+    pub met: String,
     pub event_addr: String,
     pub vote: EventVote,
 }

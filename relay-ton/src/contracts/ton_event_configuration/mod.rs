@@ -91,14 +91,14 @@ impl TonEventConfigurationContract {
 
     pub async fn compute_event_address(
         &self,
-        event_init_data: TonEventInitData,
+        vote: TonEventVoteData,
     ) -> ContractResult<MsgAddrStd> {
         const TON: u64 = 1_000_000_000;
         const CONFIRM_VALUE: u64 = 1_000_000 * TON;
 
         let message = self
             .message("confirmEvent")?
-            .arg(event_init_data)
+            .arg(vote)
             .arg(Vec::<u8>::new())
             .arg(MsgAddrStd::default())
             .build_internal(self.bridge_address.clone(), CONFIRM_VALUE)?;

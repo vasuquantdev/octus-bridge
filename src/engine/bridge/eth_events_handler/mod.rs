@@ -26,7 +26,7 @@ struct State {
     transport: Arc<EthEventTransport>,
     eth_queue: EthQueue,
 
-    configuration_id: BigUint,
+    configuration_id: u64,
     details: EthEventConfiguration,
     config_contract: Arc<EthEventConfigurationContract>,
 }
@@ -35,7 +35,7 @@ impl EthEventsHandler {
     pub async fn uninit(
         transport: Arc<EthEventTransport>,
         eth_queue: EthQueue,
-        configuration_id: BigUint,
+        configuration_id: u64,
         address: MsgAddressInt,
     ) -> Result<impl UnInitEventsHandler<Handler = Self>, Error> {
         if !transport.ensure_configuration_identity(&address).await {
@@ -69,7 +69,7 @@ impl EthEventsHandler {
 
         // Register contract object
         transport
-            .add_configuration_contract(configuration_id.clone(), config_contract.clone())
+            .add_configuration_contract(configuration_id, config_contract.clone())
             .await;
 
         let state = Arc::new(State {
@@ -112,7 +112,7 @@ impl EthEventsHandler {
                     .handle_event(
                         state.as_ref(),
                         EthEventReceivedVote::new(
-                            state.configuration_id.clone(),
+                            state.configuration_id,
                             event_addr,
                             relay,
                             kind,
@@ -211,7 +211,7 @@ impl VerificationQueue<EthEventReceivedVote> for State {
 
         if let Err(e) = self
             .eth_queue
-            .insert(target_block_number, &event.into())
+            .insert(target_block_number, &event.into_vote())
             .await
         {
             log::error!("Failed to insert event confirmation. {:?}", e);

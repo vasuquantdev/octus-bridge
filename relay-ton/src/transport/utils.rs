@@ -176,7 +176,7 @@ where
                     body,
                     params.event_transaction,
                     params.event_transaction_lt,
-                    i as u64,
+                    i as u32,
                 ));
             }
             _ => {
@@ -200,7 +200,7 @@ pub trait PrepareEvent: Sized + Send + Sync + 'static {
         event_data: SliceData,
         event_transaction: &UInt256,
         event_transaction_lt: u64,
-        event_index: u64,
+        event_index: u32,
     ) -> Self;
 }
 
@@ -209,7 +209,7 @@ impl PrepareEvent for SliceData {
         event_data: SliceData,
         _event_transaction: &UInt256,
         _event_transaction_lt: u64,
-        _event_index: u64,
+        _event_index: u32,
     ) -> Self {
         event_data
     }
@@ -220,7 +220,7 @@ impl PrepareEvent for FullEventInfo {
         event_data: SliceData,
         event_transaction: &UInt256,
         event_transaction_lt: u64,
-        event_index: u64,
+        event_index: u32,
     ) -> Self {
         Self {
             event_transaction: event_transaction.clone(),

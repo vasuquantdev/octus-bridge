@@ -33,7 +33,7 @@ pub type EventsRx<T> = mpsc::UnboundedReceiver<T>;
 pub struct FullEventInfo {
     pub event_transaction: UInt256,
     pub event_transaction_lt: u64,
-    pub event_index: u64,
+    pub event_index: u32,
     pub event_data: SliceData,
 }
 
@@ -176,62 +176,6 @@ impl std::convert::AsRef<[u8]> for &UInt128 {
     }
 }
 
-pub mod serde_int_addr {
-    use super::*;
-    use ton_block::{Deserializable, Serializable};
-
-    pub fn serialize<S>(data: &ton_block::MsgAddressInt, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use serde::ser::Error;
-
-        let data = data
-            .write_to_bytes()
-            .map_err(|e| S::Error::custom(e.to_string()))?;
-        serializer.serialize_bytes(&data)
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<ton_block::MsgAddressInt, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        use serde::de::Error;
-
-        let data = Vec::<u8>::deserialize(deserializer)?;
-        ton_block::MsgAddressInt::construct_from_bytes(&data)
-            .map_err(|e| D::Error::custom(e.to_string()))
-    }
-}
-
-pub mod serde_std_addr {
-    use super::*;
-    use ton_block::{Deserializable, Serializable};
-
-    pub fn serialize<S>(data: &ton_block::MsgAddrStd, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use serde::ser::Error;
-
-        let data = data
-            .write_to_bytes()
-            .map_err(|e| S::Error::custom(e.to_string()))?;
-        serializer.serialize_bytes(&data)
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<ton_block::MsgAddrStd, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        use serde::de::Error;
-
-        let data = Vec::<u8>::deserialize(deserializer)?;
-        ton_block::MsgAddrStd::construct_from_bytes(&data)
-            .map_err(|e| D::Error::custom(e.to_string()))
-    }
-}
-
 pub mod serde_cells {
     use super::*;
     use ton_block::{Deserializable, Serializable};
@@ -274,40 +218,5 @@ pub mod serde_uint256 {
         D: serde::Deserializer<'de>,
     {
         Vec::<u8>::deserialize(deserializer).map(ton_types::UInt256::from)
-    }
-}
-
-pub mod serde_vec_uint256 {
-    use super::*;
-    use serde::ser::SerializeSeq;
-
-    pub fn serialize<S>(data: &[ton_types::UInt256], serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        #[derive(Serialize)]
-        #[serde(transparent)]
-        struct Helper<'a>(
-            #[serde(serialize_with = "super::serde_uint256::serialize")] &'a ton_types::UInt256,
-        );
-
-        let mut seq = serializer.serialize_seq(Some(data.len()))?;
-        for item in data {
-            seq.serialize_element(&Helper(item))?;
-        }
-        seq.end()
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<ton_types::UInt256>, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        #[serde(transparent)]
-        struct Helper(
-            #[serde(deserialize_with = "super::serde_uint256::deserialize")] ton_types::UInt256,
-        );
-        let data = Vec::<Helper>::deserialize(deserializer)?;
-        Ok(data.into_iter().map(|helper| helper.0).collect())
     }
 }

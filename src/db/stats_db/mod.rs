@@ -1,6 +1,5 @@
-use chrono::{DateTime, Utc};
+use borsh::{BorshDeserialize, BorshSerialize};
 use ethereum_types::H256;
-use serde::de::DeserializeOwned;
 
 use relay_models::models::{EthTxStatView, EventVote, TonTxStatView};
 use relay_ton::contracts::Voting;
@@ -91,7 +90,7 @@ where
 
         let stored = event.get_stored_data();
         self.tree
-            .insert(key, bincode::serialize(&stored).expect("Fatal db error"))?;
+            .insert(key, stored.try_to_vec().expect("Fatal db error"))?;
 
         #[cfg(feature = "paranoid")]
         self.tree.flush()?;
@@ -140,8 +139,9 @@ where
                     Voting::Confirm
                 };
 
-                let stored = bincode::deserialize::<<T as GetStoredData>::Stored>(&value)
-                    .expect("Shouldn't fail");
+                let stored =
+                    <<T as GetStoredData>::Stored as BorshDeserialize>::try_from_slice(&value)
+                        .expect("Shouldn't fail");
 
                 result
                     .entry(hex::encode(&relay_key))
@@ -154,7 +154,7 @@ where
 }
 
 pub trait GetStoredData {
-    type Stored: Serialize + DeserializeOwned;
+    type Stored: BorshSerialize + BorshDeserialize;
     type View: Serialize;
 
     fn get_stored_data(&self) -> Self::Stored;
@@ -169,8 +169,8 @@ impl GetStoredData for EthEventReceivedVoteWithData {
     #[inline]
     fn get_stored_data(&self) -> Self::Stored {
         EthStoredTxStat {
-            tx_hash: self.data().init_data.event_transaction,
-            met: chrono::Utc::now(),
+            tx_hash: self.data().init_data.event_transaction.as_bytes().to_vec(),
+            met: chrono::Utc::now().timestamp(),
         }
     }
 
@@ -178,7 +178,7 @@ impl GetStoredData for EthEventReceivedVoteWithData {
     fn create_view(event_addr: &MsgAddrStd, vote: Voting, stored: Self::Stored) -> Self::View {
         EthTxStatView {
             tx_hash: hex::encode(stored.tx_hash),
-            met: stored.met.timestamp(),
+            met: stored.met.to_string(),
             event_addr: event_addr.to_string(),
             vote: into_view(vote),
         }
@@ -192,9 +192,9 @@ impl GetStoredData for TonEventReceivedVoteWithData {
     #[inline]
     fn get_stored_data(&self) -> Self::Stored {
         TonStoredTxStat {
-            tx_hash: self.data().init_data.event_transaction.clone(),
+            tx_hash: self.data().init_data.event_transaction.as_slice().to_vec(),
             tx_lt: self.data().init_data.event_transaction_lt,
-            met: chrono::Utc::now(),
+            met: chrono::Utc::now().timestamp(),
         }
     }
 
@@ -203,25 +203,24 @@ impl GetStoredData for TonEventReceivedVoteWithData {
         TonTxStatView {
             tx_hash: hex::encode(stored.tx_hash.as_slice()),
             tx_lt: stored.tx_lt.to_string(),
-            met: stored.met.timestamp(),
+            met: stored.met.to_string(),
             event_addr: event_addr.to_string(),
             vote: into_view(vote),
         }
     }
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(BorshSerialize, BorshDeserialize)]
 pub struct EthStoredTxStat {
-    pub tx_hash: H256,
-    pub met: DateTime<Utc>,
+    pub tx_hash: Vec<u8>,
+    pub met: i64,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(BorshSerialize, BorshDeserialize)]
 pub struct TonStoredTxStat {
-    #[serde(with = "serde_uint256")]
-    pub tx_hash: UInt256,
+    pub tx_hash: Vec<u8>,
     pub tx_lt: u64,
-    pub met: DateTime<Utc>,
+    pub met: i64,
 }
 
 fn into_view(vote: Voting) -> EventVote {

@@ -1,7 +1,7 @@
 use std::convert::Infallible;
 use std::sync::Arc;
 
-use serde::de::DeserializeOwned;
+use borsh::{BorshDeserialize, BorshSerialize};
 use serde::Serialize;
 use tokio::sync::RwLock;
 use ton_block::MsgAddrStd;
@@ -51,8 +51,8 @@ pub async fn pending<Confirm, Reject, View>(
     state: Arc<RwLock<State>>,
 ) -> Result<impl Reply, Infallible>
 where
-    EventTransaction<Confirm, Reject>: VotesQueueExt + Serialize + DeserializeOwned,
-    EventTransaction<Confirm, Reject>: Into<View>,
+    EventTransaction<Confirm, Reject>: VotesQueueExt,
+    EventTransaction<Confirm, Reject>: Into<View> + BorshSerialize + BorshDeserialize,
     View: Serialize + From<EventTransaction<Confirm, Reject>>,
 {
     let state = state.read().await;
@@ -66,8 +66,8 @@ pub async fn failed<Confirm, Reject, View>(
     state: Arc<RwLock<State>>,
 ) -> Result<impl Reply, Infallible>
 where
-    EventTransaction<Confirm, Reject>: VotesQueueExt + Serialize + DeserializeOwned,
-    EventTransaction<Confirm, Reject>: Into<View>,
+    EventTransaction<Confirm, Reject>: VotesQueueExt,
+    EventTransaction<Confirm, Reject>: Into<View> + BorshSerialize + BorshDeserialize,
     View: Serialize + From<EventTransaction<Confirm, Reject>>,
 {
     let state = state.read().await;
@@ -106,7 +106,7 @@ pub async fn retry_failed(state: Arc<RwLock<State>>) -> Result<impl Reply, Infal
 fn fold_ton_stats<I, Confirm, Reject, View>(iter: I) -> Vec<View>
 where
     I: Iterator<Item = (MsgAddrStd, EventTransaction<Confirm, Reject>)>,
-    EventTransaction<Confirm, Reject>: VotesQueueExt + Serialize + DeserializeOwned,
+    EventTransaction<Confirm, Reject>: VotesQueueExt,
     EventTransaction<Confirm, Reject>: Into<View>,
     View: Serialize + From<EventTransaction<Confirm, Reject>>,
 {

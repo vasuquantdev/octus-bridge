@@ -5,6 +5,7 @@ use warp::http::StatusCode;
 use warp::{reply, Filter, Reply};
 
 use relay_models::models::*;
+use relay_ton::contracts::{EthEventVoteData, TonEventVoteData};
 use relay_ton::transport::Transport;
 
 use crate::config::{RelayConfig, TonTransportConfig};
@@ -12,7 +13,7 @@ use crate::crypto::key_managment::KeyData;
 use crate::crypto::recovery::*;
 use crate::engine::models::*;
 use crate::engine::routes::api::get_api;
-use crate::models::{EthEventVotingData, SignedEventVotingData, TonEventVotingData};
+use crate::models::SignedVoteData;
 use crate::prelude::*;
 
 mod api;
@@ -70,32 +71,28 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
         .and(warp::get())
         .and(state.clone())
         .and_then(|(state, _)| {
-            status::pending::<EthEventVotingData, EthEventVotingData, EthTonTransactionView>(state)
+            status::pending::<EthEventVoteData, EthEventVoteData, EthTonTransactionView>(state)
         });
 
     let failed_transactions_eth_to_ton = warp::path!("status" / "eth_to_ton" / "failed")
         .and(warp::get())
         .and(state.clone())
         .and_then(|(state, _)| {
-            status::failed::<EthEventVotingData, EthEventVotingData, EthTonTransactionView>(state)
+            status::failed::<EthEventVoteData, EthEventVoteData, EthTonTransactionView>(state)
         });
 
     let pending_transactions_ton_to_eth = warp::path!("status" / "ton_to_eth" / "pending")
         .and(warp::get())
         .and(state.clone())
         .and_then(|(state, _)| {
-            status::pending::<SignedEventVotingData, TonEventVotingData, TonEthTransactionView>(
-                state,
-            )
+            status::pending::<SignedVoteData, TonEventVoteData, TonEthTransactionView>(state)
         });
 
     let failed_transactions_ton_to_eth = warp::path!("status" / "ton_to_eth" / "failed")
         .and(warp::get())
         .and(state.clone())
         .and_then(|(state, _)| {
-            status::failed::<SignedEventVotingData, TonEventVotingData, TonEthTransactionView>(
-                state,
-            )
+            status::failed::<SignedVoteData, TonEventVoteData, TonEthTransactionView>(state)
         });
 
     let eth_queue = warp::path!("status" / "eth_to_ton" / "verification-queue")
