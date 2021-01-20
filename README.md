@@ -126,7 +126,7 @@ All the fields are mandatory. Other fields will be ignored.
 ## Configuration
 
 You can generate default config,
-using `relay --gen-config --crypto-store-path 'path/to/file/with/encrypted/data'`
+using `relay --gen-config 'config.yaml'`
 
 ### Example config with graphql transport
 
@@ -166,6 +166,7 @@ eth_settings:
   tcp_connection_count: 100
 ton_settings:
   bridge_contract_address: ""
+  relay_contract_address: ""
   transport:
     type: graphql
     address: "https://main.ton.dev/graphql"
@@ -180,6 +181,7 @@ ton_settings:
   message_retry_count: 10
   message_retry_interval_multiplier: 1.5
   parallel_spawned_contracts_limit: 10
+  ton_events_verification_interval: 1
 ``` 
 
 - `keys_path` path to file, where encrypted data is stored.
@@ -198,6 +200,7 @@ ton_settings:
 #### ton_settings
 
 - `bridge_contract_address` - address of bridge contract  
+- `relay_contract_address` - address of relay contract
   *Next section is optional to configure, default settings are just ok*
 - `event_configuration_details_retry_interval` - time to wait between retries
 - `event_configuration_details_retry_count` - times to get configuration details
@@ -209,6 +212,7 @@ ton_settings:
 - `message_retry_interval_multiplier`- coefficient, on which every interval will
   be multiplied
 - `parallel_spawned_contracts_limit`- amount of parallel sent messages
+- `ton_events_verification_interval`- interval for verification queue processing loop  
 
 ##### GraphQL
 
