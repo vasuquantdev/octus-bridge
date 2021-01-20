@@ -125,7 +125,11 @@ where
 
     /// Sends a message to TON with a small amount of retries on failures.
     /// Can be stopped using `cancel` or `notify_found`
-    async fn ensure_sent(self: Arc<Self>, event_address: MsgAddrStd, data: C::EventTransaction) {
+    pub async fn ensure_sent(
+        self: Arc<Self>,
+        event_address: MsgAddrStd,
+        data: C::EventTransaction,
+    ) {
         // Skip voting for events which are already in stats db and TON queue
         if self.has_already_voted(&event_address) {
             // Make sure that TON queue doesn't contain this event
@@ -316,6 +320,11 @@ where
         &self.scanning_state
     }
 
+    /// Settings from config
+    pub fn settings(&self) -> &TonSettings {
+        &self.settings
+    }
+
     /// Compute event address based on its data
     async fn get_event_contract_address(
         &self,
@@ -341,14 +350,14 @@ where
     }
 
     /// Check statistics whether transaction exists
-    fn has_already_voted(&self, event_address: &MsgAddrStd) -> bool {
+    pub fn has_already_voted(&self, event_address: &MsgAddrStd) -> bool {
         self.voting_stats
             .has_already_voted(event_address, &self.relay)
             .expect("Fatal db error")
     }
 
     /// Check current queue whether transaction exists
-    fn is_in_queue(&self, event_address: &MsgAddrStd) -> bool {
+    pub fn is_in_queue(&self, event_address: &MsgAddrStd) -> bool {
         self.votes_queue
             .has_event(event_address)
             .expect("Fatal db error")

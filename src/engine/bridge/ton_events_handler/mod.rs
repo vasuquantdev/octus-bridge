@@ -22,7 +22,7 @@ struct State {
 
     configuration_id: u64,
     details: TonEventConfiguration,
-    _config_contract: Arc<TonEventConfigurationContract>,
+    config_contract: Arc<TonEventConfigurationContract>,
     swapback_contract: Arc<TonSwapBackContract>,
     is_scanning: RwLock<bool>,
 }
@@ -44,7 +44,7 @@ impl TonEventsHandler {
         }
 
         // Create TON config contract
-        let (config_contract, mut config_contract_events) = make_ton_event_configuration_contract(
+        let (config_contract, config_contract_events) = make_ton_event_configuration_contract(
             transport.ton_transport().clone(),
             address.clone(),
             transport.bridge_contract().address().clone(),
@@ -72,7 +72,7 @@ impl TonEventsHandler {
             .await;
 
         // Get swapback contract
-        let (swapback_contract, mut swapback_events) = match make_ton_swapback_contract(
+        let (swapback_contract, swapback_events) = match make_ton_swapback_contract(
             transport.ton_transport().clone(),
             details.event_address.clone(),
             details.common.event_abi.clone(),
@@ -96,41 +96,16 @@ impl TonEventsHandler {
                 verification_queue,
                 configuration_id,
                 details,
-                _config_contract: config_contract.clone(),
+                config_contract: config_contract.clone(),
                 swapback_contract: swapback_contract.clone(),
                 is_scanning: RwLock::new(true),
             }),
         });
 
-        // Start listening swapback events
-        tokio::spawn({
-            let handler = Arc::downgrade(&handler);
-            async move {
-                while let Some(event) = swapback_events.next().await {
-                    match handler.upgrade() {
-                        // Handle event if handler is still alive
-                        Some(handler) => handler.handle_swapback(event, None),
-                        // Stop subscription when handler is dropped
-                        None => return,
-                    }
-                }
-            }
-        });
-
-        // Start listening vote events
-        tokio::spawn({
-            let handler = Arc::downgrade(&handler);
-            async move {
-                while let Some(event) = config_contract_events.next().await {
-                    match handler.upgrade() {
-                        // Handle event if handler is still alive
-                        Some(handler) => handler.handle_vote(event, None),
-                        // Stop subscription when handler is dropped
-                        None => return,
-                    }
-                }
-            }
-        });
+        // Start listeners
+        handler.start_listening_swapback_events(swapback_events);
+        handler.start_listening_vote_events(config_contract_events);
+        handler.start_watching_pending_confirmations();
 
         //
         let scanning_state = transport.scanning_state();
@@ -198,6 +173,26 @@ impl TonEventsHandler {
         Ok(handler)
     }
 
+    fn start_listening_vote_events(
+        self: &Arc<Self>,
+        mut config_contract_events: EventsRx<
+            <TonEventConfigurationContract as ContractWithEvents>::Event,
+        >,
+    ) {
+        let handler = Arc::downgrade(&self);
+
+        tokio::spawn(async move {
+            while let Some(event) = config_contract_events.next().await {
+                match handler.upgrade() {
+                    // Handle event if handler is still alive
+                    Some(handler) => handler.handle_vote(event, None),
+                    // Stop subscription when handler is dropped
+                    None => return,
+                }
+            }
+        });
+    }
+
     fn handle_vote(
         &self,
         event: <TonEventConfigurationContract as ContractWithEvents>::Event,
@@ -236,6 +231,21 @@ impl TonEventsHandler {
         });
     }
 
+    fn start_listening_swapback_events(self: &Arc<Self>, mut swapback_events: SwapBackEvents) {
+        let handler = Arc::downgrade(&self);
+
+        tokio::spawn(async move {
+            while let Some(event) = swapback_events.next().await {
+                match handler.upgrade() {
+                    // Handle event if handler is still alive
+                    Some(handler) => handler.handle_swapback(event, None),
+                    // Stop subscription when handler is dropped
+                    None => return,
+                }
+            }
+        });
+    }
+
     fn handle_swapback(&self, event: SwapBackEvent, semaphore: Option<Semaphore>) {
         async fn confirm(state: Arc<State>, event: SwapBackEvent) -> Result<(), Error> {
             state.transport.enqueue_vote(event.confirmed(&state)?).await
@@ -253,6 +263,58 @@ impl TonEventsHandler {
                 semaphore.try_notify().await;
             }
         });
+    }
+
+    fn start_watching_pending_confirmations(self: &Arc<Self>) {
+        let settings = self.state.transport.settings();
+        let interval = settings.ton_events_verification_interval;
+        let handler = Arc::downgrade(self);
+
+        tokio::spawn(async move {
+            {
+                let handler = match handler.upgrade() {
+                    Some(handler) => handler,
+                    None => return,
+                };
+
+                let (lt, _) = handler.state.swapback_contract.current_time().await;
+
+                let prepared_votes = handler.state.verification_queue.range_before(lt).await;
+                for (entry, event) in prepared_votes {
+                    tokio::spawn(handler.clone().handle_restored_swapback(event));
+                    entry.remove().expect("Fatal db error");
+                }
+            }
+
+            tokio::time::delay_for(interval).await;
+        });
+    }
+
+    async fn handle_restored_swapback(self: Arc<Self>, event: SignedTonEventVoteData) {
+        let event_address = match self
+            .state
+            .config_contract
+            .compute_event_address(event.data.clone())
+            .await
+        {
+            Ok(address) => address,
+            Err(e) => {
+                log::error!("Failed to compute address for restored event: {:?}", e);
+                // TODO: maybe retry several times here?
+                return;
+            }
+        };
+
+        if !self.state.transport.is_in_queue(&event_address)
+            && !self.state.transport.has_already_voted(&event_address)
+        {
+            tokio::spawn(
+                self.state
+                    .transport
+                    .clone()
+                    .ensure_sent(event_address, EventTransaction::Reject(event.data)),
+            );
+        }
     }
 
     pub fn details(&self) -> &TonEventConfiguration {

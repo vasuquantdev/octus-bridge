@@ -28,6 +28,14 @@ impl IntoView for TonEventVoteData {
     }
 }
 
+impl IntoView for SignedTonEventVoteData {
+    type View = TonEventVoteDataView;
+
+    fn into_view(self) -> Self::View {
+        self.data.into_view()
+    }
+}
+
 impl IntoView for EthEventVoteData {
     type View = EthEventVoteDataView;
 

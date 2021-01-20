@@ -17,6 +17,7 @@ use self::eth_events_handler::*;
 use self::event_transport::*;
 use self::semaphore::*;
 use self::ton_events_handler::*;
+use std::ops::Deref;
 
 mod utils;
 
@@ -280,70 +281,68 @@ impl Bridge {
         Ok(())
     }
 
-    fn check_suspicious_event(self: Arc<Self>, event: EthEventVoteData) {
+    async fn check_suspicious_event(self: Arc<Self>, event: EthEventVoteData) {
         async fn check_event(
             configs: &ConfigsState,
             check_result: Result<(Address, Vec<u8>), Error>,
             event: &EthEventVoteData,
         ) -> Result<(), Error> {
             let (address, data) = check_result?;
-            match configs.address_topic_map.get(&address) {
-                None => Err(anyhow!(
+            let (_, eth_abi, ton_abi) = if let Some(abi) = configs.address_topic_map.get(&address) {
+                abi
+            } else {
+                return Err(anyhow!(
                     "We have no info about {} to get abi. Rejecting transaction",
                     address
-                )),
-                Some((_, eth_abi, ton_abi)) => {
-                    // Decode event data
-                    let got_tokens: Vec<ethabi::Token> = utils::parse_eth_event_data(
-                        &eth_abi,
-                        &ton_abi,
-                        event.event_data.clone(),
-                    )
+                ));
+            };
+
+            // Decode event data
+            let got_tokens: Vec<ethabi::Token> =
+                utils::parse_eth_event_data(&eth_abi, &ton_abi, event.event_data.clone())
                     .map_err(|e| e.context("Failed decoding other relay data as eth types"))?;
 
-                    let expected_tokens = ethabi::decode(eth_abi, &data).map_err(|e| {
-                        Error::from(e).context(
-                            "Can not verify data, that other relay sent. Assuming it's fake.",
-                        )
-                    })?;
+            let expected_tokens = ethabi::decode(eth_abi, &data).map_err(|e| {
+                Error::from(e)
+                    .context("Can not verify data, that other relay sent. Assuming it's fake.")
+            })?;
 
-                    if got_tokens == expected_tokens {
-                        Ok(())
-                    } else {
-                        Err(anyhow!(
-                            "Decoded tokens are not equal with that other relay sent"
-                        ))
-                    }
-                }
+            if got_tokens == expected_tokens {
+                Ok(())
+            } else {
+                Err(anyhow!(
+                    "Decoded tokens are not equal with that other relay sent"
+                ))
             }
         }
 
-        tokio::spawn(async {
-            let configs = self.configs_state.read().await.clone();
-            let eth_listener = self.eth_listener.clone();
-            async move {
-                let check_result = eth_listener
-                    .check_transaction(event.event_transaction)
-                    .await;
-                if let Err(e) = {
-                    match check_event(&configs, check_result, &event).await {
-                        Ok(_) => {
-                            log::info!("Confirming transaction. Hash: {}", event.event_transaction);
-                            self.eth
-                                .enqueue_vote(EventTransaction::Confirm(event))
-                                .await
-                        }
-                        Err(e) => {
-                            log::warn!("Rejection: {:?}", e);
-                            self.eth.enqueue_vote(EventTransaction::Reject(event)).await
-                        }
-                    }
-                } {
-                    log::error!("Critical error while spawning vote: {:?}", e)
+        let check_result = self
+            .eth_listener
+            .check_transaction(event.event_transaction)
+            .await;
+
+        if let Err(e) = {
+            match check_event(
+                self.configs_state.read().await.deref(),
+                check_result,
+                &event,
+            )
+            .await
+            {
+                Ok(_) => {
+                    log::info!("Confirming transaction. Hash: {}", event.event_transaction);
+                    self.eth
+                        .enqueue_vote(EventTransaction::Confirm(event))
+                        .await
+                }
+                Err(e) => {
+                    log::warn!("Rejection: {:?}", e);
+                    self.eth.enqueue_vote(EventTransaction::Reject(event)).await
                 }
             }
-            .await
-        });
+        } {
+            log::error!("Critical error while spawning vote: {:?}", e)
+        }
     }
 
     // Watch ETH votes queue
@@ -371,7 +370,7 @@ impl Bridge {
                     block_number,
                     hex::encode(&event.event_transaction)
                 );
-                self.clone().check_suspicious_event(event);
+                tokio::spawn(self.clone().check_suspicious_event(event));
                 entry.remove().expect("Fatal db error");
             }
 
@@ -384,7 +383,7 @@ impl Bridge {
                         block_number,
                         hex::encode(&event.event_transaction)
                     );
-                    self.clone().check_suspicious_event(event);
+                    tokio::spawn(self.clone().check_suspicious_event(event));
                     entry.remove().expect("Fatal db error");
                 }
             }

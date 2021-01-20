@@ -176,7 +176,7 @@ impl GetStoredData for EthEventReceivedVoteWithData {
             tx_hash: hex::encode(stored.tx_hash),
             met: stored.met.to_string(),
             event_addr: event_addr.to_string(),
-            vote: into_view(vote),
+            vote: vote.into_view(),
         }
     }
 }
@@ -201,7 +201,7 @@ impl GetStoredData for TonEventReceivedVoteWithData {
             tx_lt: stored.tx_lt.to_string(),
             met: stored.met.to_string(),
             event_addr: event_addr.to_string(),
-            vote: into_view(vote),
+            vote: vote.into_view(),
         }
     }
 }
@@ -219,9 +219,13 @@ pub struct TonStoredTxStat {
     pub met: i64,
 }
 
-fn into_view(vote: Voting) -> EventVote {
-    match vote {
-        Voting::Confirm => EventVote::Confirm,
-        Voting::Reject => EventVote::Reject,
+impl IntoView for Voting {
+    type View = EventVote;
+
+    fn into_view(self) -> Self::View {
+        match self {
+            Voting::Confirm => EventVote::Confirm,
+            Voting::Reject => EventVote::Reject,
+        }
     }
 }

@@ -75,7 +75,7 @@ pub struct EthTonVoteView {
 }
 
 #[derive(Serialize, Deserialize, Clone, opg::OpgModel)]
-#[serde(tag = "type")]
+#[serde(rename_all = "lowercase", tag = "type")]
 pub enum EthTonTransactionView {
     Confirm(EthEventVoteDataView),
     Reject(EthEventVoteDataView),
@@ -89,7 +89,7 @@ pub struct TonEthVoteView {
 }
 
 #[derive(Serialize, Deserialize, Clone, opg::OpgModel)]
-#[serde(tag = "type")]
+#[serde(rename_all = "lowercase", tag = "type")]
 pub enum TonEthTransactionView {
     Confirm(SignedVoteDataView),
     Reject(TonEventVoteDataView),
@@ -133,7 +133,6 @@ pub struct EthTxStatView {
 }
 
 #[derive(Deserialize, Serialize, opg::OpgModel)]
-#[serde(rename_all = "lowercase")]
 pub struct TonTxStatView {
     pub tx_hash: String,
     pub tx_lt: String,

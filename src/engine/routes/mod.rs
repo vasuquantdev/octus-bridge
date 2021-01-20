@@ -33,55 +33,70 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
 
     let swagger = warp::path!("swagger.yaml").and(warp::get()).map(get_api);
 
-    let password = warp::path!("unlock")
-        .and(warp::post())
-        .and(json_data::<Password>())
-        .and(state.clone())
-        .and_then(|data, (state, config)| wait_for_password(data, config, state));
-
-    let status = warp::path!("status")
-        .and(warp::get())
-        .and(state.clone())
-        .and_then(|(state, _)| status::get_status(state));
-
     let init = warp::path!("init")
         .and(warp::post())
         .and(json_data::<InitData>())
         .and(state.clone())
         .and_then(|data, (state, config)| wait_for_init(data, config, state));
 
-    let rescan_from_block_eth = warp::path!("rescan_eth")
+    let unlock = warp::path!("unlock")
+        .and(warp::post())
+        .and(json_data::<Password>())
+        .and(state.clone())
+        .and_then(|data, (state, config)| wait_for_password(data, config, state));
+
+    let retry_failed = warp::path!("retry-failed")
+        .and(warp::post())
+        .and(state.clone())
+        .and_then(|(state, _)| status::retry_failed(state));
+
+    let rescan_eth = warp::path!("rescan-eth")
         .and(warp::post())
         .and(json_data::<RescanEthData>())
         .and(state.clone())
         .and_then(|data, (state, _)| set_eth_block_height(state, data));
 
-    let get_event_configuration = warp::path!("event_configurations")
+    let status = warp::path!("status")
+        .and(warp::get())
+        .and(state.clone())
+        .and_then(|(state, _)| status::get_status(state));
+
+    let get_event_configuration = warp::path!("event-configurations")
         .and(warp::get())
         .and(state.clone())
         .and_then(|(state, _)| get_event_configurations(state));
 
-    let vote_for_ethereum_event_configuration = warp::path!("event_configurations" / "vote")
+    let vote_for_ethereum_event_configuration = warp::path!("event-configurations" / "vote")
         .and(warp::post())
         .and(json_data::<Voting>())
         .and(state.clone())
         .and_then(|data, (state, _)| vote_for_ethereum_event_configuration(state, data));
 
-    let pending_transactions_eth_to_ton = warp::path!("status" / "eth_to_ton" / "pending")
+    let pending_transactions_eth_to_ton = warp::path!("eth-to-ton" / "pending")
         .and(warp::get())
         .and(state.clone())
         .and_then(|(state, _)| {
             status::pending::<EthEventVoteData, EthEventVoteData, EthTonTransactionView>(state)
         });
 
-    let failed_transactions_eth_to_ton = warp::path!("status" / "eth_to_ton" / "failed")
+    let failed_transactions_eth_to_ton = warp::path!("eth-to-ton" / "failed")
         .and(warp::get())
         .and(state.clone())
         .and_then(|(state, _)| {
             status::failed::<EthEventVoteData, EthEventVoteData, EthTonTransactionView>(state)
         });
 
-    let pending_transactions_ton_to_eth = warp::path!("status" / "ton_to_eth" / "pending")
+    let queued_transactions_eth_to_ton = warp::path!("eth-to-ton" / "queued")
+        .and(warp::get())
+        .and(state.clone())
+        .and_then(|(state, _)| status::eth_queue(state));
+
+    let eth_relay_stats = warp::path!("eth-to-ton" / "stats")
+        .and(warp::get())
+        .and(state.clone())
+        .and_then(|(state, _)| status::eth_relay_stats(state));
+
+    let pending_transactions_ton_to_eth = warp::path!("ton-to-eth" / "pending")
         .and(warp::get())
         .and(state.clone())
         .and_then(|(state, _)| {
@@ -90,42 +105,39 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
             )
         });
 
-    let failed_transactions_ton_to_eth = warp::path!("status" / "ton_to_eth" / "failed")
+    let failed_transactions_ton_to_eth = warp::path!("ton-to-eth" / "failed")
         .and(warp::get())
         .and(state.clone())
         .and_then(|(state, _)| {
             status::failed::<SignedTonEventVoteData, TonEventVoteData, TonEthTransactionView>(state)
         });
 
-    let eth_queue = warp::path!("status" / "eth_to_ton" / "verification-queue")
+    let queued_transactions_ton_to_eth = warp::path!("ton-to-eth" / "queued" / u64)
         .and(warp::get())
         .and(state.clone())
-        .and_then(|(state, _)| status::eth_queue(state));
+        .and_then(|configuration_id, (state, _)| status::ton_queue(state, configuration_id));
 
-    let relay_stats = warp::path!("status" / "relay")
+    let ton_relay_stats = warp::path!("ton-to-eth" / "stats")
         .and(warp::get())
         .and(state.clone())
-        .and_then(|(state, _)| status::all_relay_stats(state));
-
-    let retry_failed = warp::path!("status" / "retry_failed")
-        .and(warp::post())
-        .and(state.clone())
-        .and_then(|(state, _)| status::retry_failed(state));
+        .and_then(|(state, _)| status::ton_relay_stats(state));
 
     let routes = swagger
         .or(init)
-        .or(password)
+        .or(unlock)
+        .or(retry_failed)
+        .or(rescan_eth)
         .or(status)
+        .or(get_event_configuration)
+        .or(vote_for_ethereum_event_configuration)
         .or(pending_transactions_eth_to_ton)
         .or(failed_transactions_eth_to_ton)
+        .or(queued_transactions_eth_to_ton)
+        .or(eth_relay_stats)
         .or(pending_transactions_ton_to_eth)
         .or(failed_transactions_ton_to_eth)
-        .or(eth_queue)
-        .or(relay_stats)
-        .or(rescan_from_block_eth)
-        .or(get_event_configuration)
-        .or(retry_failed)
-        .or(vote_for_ethereum_event_configuration);
+        .or(queued_transactions_ton_to_eth)
+        .or(ton_relay_stats);
 
     let server = warp::serve(routes);
     let (_, server) = server.bind_with_graceful_shutdown(serve_address, async {

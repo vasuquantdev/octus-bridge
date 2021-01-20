@@ -84,9 +84,27 @@ pub async fn eth_queue(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallib
     Ok(serde_json::to_string(&data).expect("Shouldn't fail"))
 }
 
-pub async fn all_relay_stats(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {
+pub async fn ton_queue(
+    state: Arc<RwLock<State>>,
+    configuration_id: u64,
+) -> Result<impl Reply, Infallible> {
+    let state = state.read().await;
+    let provider =
+        TonVerificationQueue::new(&state.state_manager, configuration_id).expect("Fatal db error");
+    let data = provider.dump_elements();
+    Ok(serde_json::to_string(&data).expect("Shouldn't fail"))
+}
+
+pub async fn eth_relay_stats(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {
     let state = state.read().await;
     let provider = EthVotingStats::new(&state.state_manager).expect("Fatal db error");
+    let data = provider.dump_elements();
+    Ok(serde_json::to_string(&data).expect("Shouldn't fail"))
+}
+
+pub async fn ton_relay_stats(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {
+    let state = state.read().await;
+    let provider = TonVotingStats::new(&state.state_manager).expect("Fatal db error");
     let data = provider.dump_elements();
     Ok(serde_json::to_string(&data).expect("Shouldn't fail"))
 }

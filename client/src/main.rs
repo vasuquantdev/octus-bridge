@@ -14,7 +14,8 @@ use serde_json::json;
 
 use relay_models::models::{
     EthEventVoteDataView, EthTonTransactionView, EthTxStatView, EventConfiguration, InitData,
-    Password as PasswordData, RescanEthData, Status, TonEthTransactionView, Voting,
+    Password as PasswordData, RescanEthData, Status, TonEthTransactionView, TonEventVoteDataView,
+    TonTxStatView, Voting,
 };
 
 #[derive(Clap)]
@@ -43,22 +44,33 @@ fn main() -> Result<(), Error> {
             Client::get_pending_transactions_eth_to_ton,
         )
         .item(
-            "Get pending transactions TON->ETH",
-            Client::get_pending_transactions_ton_to_eth,
-        )
-        .item(
             "Get failed transactions ETH->TON",
             Client::get_failed_transactions_eth_to_ton,
+        )
+        .item(
+            "Get queued transactions ETH->TON",
+            Client::get_queued_transactions_eth_to_ton,
+        )
+        .item(
+            "Get all confirmed transactions from ETH",
+            Client::get_eth_stats,
+        )
+        .item(
+            "Get pending transactions TON->ETH",
+            Client::get_pending_transactions_ton_to_eth,
         )
         .item(
             "Get failed transactions TON->ETH",
             Client::get_failed_transactions_ton_to_eth,
         )
         .item(
-            "Get verified transactions ETH->TON",
-            Client::get_verified_transactions_eth_to_ton,
+            "Get queued transactions TON->ETH",
+            Client::get_queued_transactions_ton_to_eth,
         )
-        .item("Get all confirmed transactions", Client::get_stats)
+        .item(
+            "Get all confirmed transactions from TON",
+            Client::get_ton_stats,
+        )
         .execute()
 }
 
@@ -122,33 +134,20 @@ impl Client {
             .with_prompt("Give block number")
             .interact_text()?;
 
-        let _ = self.post_raw("rescan_eth", &RescanEthData { block })?;
+        let _ = self.post_raw("rescan-eth", &RescanEthData { block })?;
 
         println!("Success!");
         Ok(())
     }
 
     pub fn retry_failed_votes(&self) -> Result<(), Error> {
-        self.post_raw("status/failed/retry", &())?;
+        self.post_raw("retry-failed", &())?;
         println!("Success!");
         Ok(())
     }
 
     pub fn get_pending_transactions_eth_to_ton(&self) -> Result<(), Error> {
-        let response: Vec<EthTonTransactionView> = self.get("status/eth_to_ton/pending")?;
-        let mut output = Pager::new().set_prompt("Pending transactions");
-        writeln!(
-            output.lines,
-            "{}",
-            serde_json::to_string_pretty(&response)?.to_colored_json(ColorMode::On)?
-        )?;
-        minus::page_all(output)?;
-        Ok(())
-    }
-
-    pub fn get_verified_transactions_eth_to_ton(&self) -> Result<(), Error> {
-        let response: HashMap<u64, Vec<EthEventVoteDataView>> =
-            self.get("status/eth_to_ton/verification-queue")?;
+        let response: Vec<EthTonTransactionView> = self.get("eth-to-ton/pending")?;
         let mut output = Pager::new().set_prompt("Pending transactions");
         writeln!(
             output.lines,
@@ -160,7 +159,7 @@ impl Client {
     }
 
     pub fn get_pending_transactions_ton_to_eth(&self) -> Result<(), Error> {
-        let response: Vec<TonEthTransactionView> = self.get("status/ton_to_eth/pending")?;
+        let response: Vec<TonEthTransactionView> = self.get("ton-to-eth/pending")?;
         let mut output = Pager::new().set_prompt("Pending transactions");
         writeln!(
             output.lines,
@@ -171,20 +170,8 @@ impl Client {
         Ok(())
     }
 
-    pub fn get_failed_transactions_ton_to_eth(&self) -> Result<(), Error> {
-        let response: Vec<TonEthTransactionView> = self.get("status/ton_to_eth/failed")?;
-        let mut output = Pager::new().set_prompt("Failed transactions");
-        writeln!(
-            output.lines,
-            "{}",
-            serde_json::to_string_pretty(&response)?.to_colored_json(ColorMode::On)?
-        )?;
-        minus::page_all(output)?;
-        Ok(())
-    }
-
     pub fn get_failed_transactions_eth_to_ton(&self) -> Result<(), Error> {
-        let response: Vec<TonEthTransactionView> = self.get("status/eth_to_ton/failed")?;
+        let response: Vec<EthTonTransactionView> = self.get("eth-to-ton/failed")?;
         let mut output = Pager::new().set_prompt("Failed transactions");
         writeln!(
             output.lines,
@@ -195,7 +182,59 @@ impl Client {
         Ok(())
     }
 
-    pub fn get_stats(&self) -> Result<(), Error> {
+    pub fn get_failed_transactions_ton_to_eth(&self) -> Result<(), Error> {
+        let response: Vec<TonEthTransactionView> = self.get("ton-to-eth/failed")?;
+        let mut output = Pager::new().set_prompt("Failed transactions");
+        writeln!(
+            output.lines,
+            "{}",
+            serde_json::to_string_pretty(&response)?.to_colored_json(ColorMode::On)?
+        )?;
+        minus::page_all(output)?;
+        Ok(())
+    }
+
+    pub fn get_queued_transactions_eth_to_ton(&self) -> Result<(), Error> {
+        let response: HashMap<u64, Vec<EthEventVoteDataView>> = self.get("eth-to-ton/queued")?;
+        let mut output = Pager::new().set_prompt("Queued transactions");
+        writeln!(
+            output.lines,
+            "{}",
+            serde_json::to_string_pretty(&response)?.to_colored_json(ColorMode::On)?
+        )?;
+        minus::page_all(output)?;
+        Ok(())
+    }
+
+    pub fn get_queued_transactions_ton_to_eth(&self) -> Result<(), Error> {
+        let configuration_id: u64 = Input::with_theme(&ColorfulTheme::default())
+            .with_prompt("Enter configuration id:")
+            .interact()?;
+
+        let response: HashMap<u64, Vec<TonEventVoteDataView>> =
+            self.get(&format!("ton-to-eth/queued/{}", configuration_id))?;
+        let mut output = Pager::new().set_prompt("Queued transactions");
+        writeln!(
+            output.lines,
+            "{}",
+            serde_json::to_string_pretty(&response)?.to_colored_json(ColorMode::On)?
+        )?;
+        minus::page_all(output)?;
+        Ok(())
+    }
+
+    pub fn get_eth_stats(&self) -> Result<(), Error> {
+        self.get_stats::<EthTxStatView>("eth-to-ton/stats")
+    }
+
+    pub fn get_ton_stats(&self) -> Result<(), Error> {
+        self.get_stats::<TonTxStatView>("ton-to-eth/stats")
+    }
+
+    fn get_stats<T>(&self, url: &str) -> Result<(), Error>
+    where
+        for<'a> T: Deserialize<'a> + Serialize,
+    {
         let our_key = self
             .get::<Status>("status")?
             .ton_relay_address
@@ -205,7 +244,7 @@ impl Client {
         selection
             .with_prompt(format!("Select relay key. Our key is: {}", our_key))
             .default(0);
-        let response: HashMap<String, Vec<EthTxStatView>> = self.get("status/relay")?;
+        let response: HashMap<String, Vec<T>> = self.get(url)?;
         let keys: Vec<_> = response.keys().cloned().collect();
         selection.items(&keys);
         let selection = &keys[selection.interact()?];
@@ -223,7 +262,7 @@ impl Client {
     pub fn vote_for_ethereum_event_configuration(&self) -> Result<(), Error> {
         let theme = ColorfulTheme::default();
 
-        let known_configs: Vec<EventConfiguration> = self.get("event_configurations")?;
+        let known_configs: Vec<EventConfiguration> = self.get("event-configurations")?;
 
         let mut selection = Select::with_theme(&theme);
         selection.with_prompt("Select config to vote").default(0);
@@ -254,7 +293,7 @@ impl Client {
             _ => unreachable!(),
         };
 
-        let _ = self.post_raw("event_configurations/vote", &voting)?;
+        let _ = self.post_raw("event-configurations/vote", &voting)?;
 
         println!("Success!");
         Ok(())

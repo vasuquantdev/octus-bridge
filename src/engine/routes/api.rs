@@ -7,68 +7,126 @@ use super::*;
 pub fn get_api() -> String {
     let api = describe_api! {
         info: {
-            title: "My super API",
-            version: "0.0.0",
+            title: "Relay API",
+            version: "0.0.1",
+        },
+        tags: {
+            stuff("Methods for managing relay state"),
+            event_configurations("Methods for managing event configurations"),
+            eth_to_ton("Statistics for events emitted from ETH"),
+            ton_to_eth("Statistics for events emitted from TON"),
         },
         paths: {
-            ("unlock"): {
-                POST: {
-                    summary: "Provide password to unlock relay",
-                    body: Password,
-                    200: String
-                }
-            },
-            ("event_configurations"): {
-                GET: {
-                    200: String, // todo: change to models
-                }
-            },
-            ("event_configurations" / "vote"): {
-                POST: {
-                    body: Voting,
-                    200: (),
-                }
-            },
             ("init"): {
                 POST: {
-                    summary: "Provide data to init relay",
+                    tags: { stuff },
+                    summary: "Initialize relay with new keys",
                     body: InitData,
                     200: String,
                     400: String,
                     405: String
                 }
             },
+            ("unlock"): {
+                POST: {
+                    tags: { stuff },
+                    summary: "Unlock relay with password",
+                    body: Password,
+                    200: String,
+                }
+            },
+            ("retry-failed"): {
+                POST: {
+                    tags: { stuff },
+                    summary: "Retry failed vote transactions",
+                    200: Vec<EthTonTransactionView>,
+                }
+            },
+            ("rescan-eth"): {
+                POST: {
+                    tags: { stuff },
+                    summary: "Set current ETH block",
+                    200: (),
+                }
+            },
             ("status"): {
                 GET: {
+                    tags: { stuff },
+                    summary: "Brief relay info",
                     200: Status
                 }
             },
-            ("status" / "pending"): {
+            ("event-configurations"): {
                 GET: {
+                    tags: { event_configurations },
+                    summary: "Get known event configurations",
+                    200: String, // todo: change to models
+                }
+            },
+            ("event-configurations" / "vote"): {
+                POST: {
+                    tags: { event_configurations },
+                    summary: "Vote for new event configuration",
+                    body: Voting,
+                    200: (),
+                }
+            },
+            ("eth-to-ton" / "pending"): {
+                GET: {
+                    tags: { eth_to_ton },
+                    summary: "Pending votes for ETH-to-TON events",
                     200: Vec<EthTonTransactionView>
                 }
             },
-            ("status" / "failed"): {
+            ("eth-to-ton" / "failed"): {
                 GET: {
+                    tags: { eth_to_ton },
+                    summary: "Failed votes for ETH-to-TON events",
                     200: Vec<EthTonTransactionView>
                 }
             },
-            ("status" / "eth"): {
+            ("eth-to-ton" / "queued"): {
                 GET: {
+                    tags: { eth_to_ton },
+                    summary: "Verification queue",
                     200: HashMap<u64, EthEventVoteDataView>
                 }
             },
-            ("status" / "relay"): {
+            ("eth-to-ton" / "stats"): {
                 GET: {
-                    summary: "Returns object, where key is relay key and values is list of confirmed transactions",
+                    tags: { eth_to_ton },
+                    summary: "Known votes for all relays",
                     200: HashMap<String, Vec<EthTxStatView>>
                 }
             },
-            ("status" / "failed" / "retry"): {
-                POST: {
-                    200: Vec<EthTonTransactionView>
+            ("ton-to-eth" / "pending"): {
+                GET: {
+                    tags: { ton_to_eth },
+                    summary: "Pending votes for TON-to-ETH events",
+                    200: Vec<TonEthTransactionView>,
                 }
             },
+            ("ton-to-eth" / "failed"): {
+                GET: {
+                    tags: { ton_to_eth },
+                    summary: "Failed votes for TON-to-ETH events",
+                    200: Vec<TonEthTransactionView>
+                }
+            },
+            ("ton-to-eth" / "queued" / { configuration_id: u64 }): {
+                GET: {
+                    tags: { eth_to_ton },
+                    summary: "Verification queue",
+                    200: HashMap<u64, TonEventVoteDataView>,
+                }
+            },
+            ("ton-to-eth" / "stats"): {
+                GET: {
+                    tags: { eth_to_ton },
+                    summary: "Known votes for all relays",
+                    200: HashMap<String, Vec<TonTxStatView>>
+                }
+            }
         }
     };
     serde_yaml::to_string(&api).unwrap()
