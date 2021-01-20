@@ -160,7 +160,9 @@ impl TonListener {
         }
 
         // Wait until all initial subscriptions done
+        log::trace!("waiting semaphore");
         semaphore.wait().await;
+        log::trace!("semaphore done");
 
         // Restart sending for all enqueued confirmations
         self.eth.retry_pending();
@@ -244,6 +246,7 @@ impl TonListener {
 
         let _handler = handler.start().await;
 
+        log::trace!("notifying semaphore: {}", semaphore.is_some());
         semaphore.try_notify().await;
 
         // TODO: insert to map

@@ -17,7 +17,7 @@ impl Semaphore {
                 target: count,
                 allow_notify: false,
             })),
-            counter: Arc::new(Mutex::new(count)),
+            counter: Arc::new(Mutex::new(0)),
             done: Arc::new(Notify::new()),
         }
     }
