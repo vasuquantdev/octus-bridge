@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, Error};
-use futures::stream::{Stream, StreamExt};
+use futures::stream::Stream;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
 use sled::{Db, Tree};
@@ -147,36 +147,11 @@ impl EthListener {
         Ok(())
     }
 
-    pub async fn start<S>(
+    pub async fn start(
         self: &Arc<Self>,
-        subscriptions: S,
-    ) -> Result<impl Stream<Item = Result<Event, Error>>, Error>
-    where
-        S: Stream<Item = (Address, H256)> + Send + Unpin + 'static,
-    {
+    ) -> Result<impl Stream<Item = Result<Event, Error>>, Error> {
         log::debug!("Started iterating over ethereum blocks.");
         let from_height = self.current_block.clone();
-
-        tokio::spawn({
-            let mut subscriptions = subscriptions;
-            let ws = Arc::downgrade(&self);
-            async move {
-                while let Some((address, topic)) = subscriptions.next().await {
-                    let ws = match ws.upgrade() {
-                        Some(ws) => ws,
-                        None => return,
-                    };
-
-                    log::info!(
-                        "Subscribing for address: {:?} with topic: {:?}",
-                        address,
-                        topic
-                    );
-
-                    ws.add_topic(address, topic).await
-                }
-            }
-        });
 
         let events_rx = spawn_blocks_scanner(
             self.db.clone(),
@@ -361,6 +336,12 @@ impl EthListener {
 
     ///subscribe on address and topic
     pub async fn add_topic(&self, address: Address, topic: H256) {
+        log::info!(
+            "Subscribing for address: {:?} with topic: {:?}",
+            address,
+            topic
+        );
+
         let mut topics = self.topics.write().await;
         topics.0.insert(address);
         topics.1.insert(topic);
