@@ -189,7 +189,7 @@ where
                 );
 
                 retries_count -= 1;
-                if retries_count < 0 {
+                if retries_count == 0 {
                     break Err(e.into());
                 }
 
@@ -216,7 +216,7 @@ where
                         );
 
                         retries_count -= 1;
-                        if retries_count < 0 {
+                        if retries_count == 0 {
                             break Err(anyhow!(
                                 "Failed to vote for an event, no retries left ({})",
                                 data
