@@ -171,7 +171,11 @@ impl EthListener {
         })
     }
 
-    pub async fn check_transaction(&self, hash: H256) -> Result<(Address, Vec<u8>), Error> {
+    pub async fn check_transaction(
+        &self,
+        hash: H256,
+        event_index: u32,
+    ) -> Result<(Address, Vec<u8>), Error> {
         let mut attempts = 100;
         loop {
             // Trying to get data. Retrying in case of error
@@ -210,11 +214,10 @@ impl EthListener {
                                     ));
                                 }
                             };
-
                             // if any event matches
                             let event: Option<_> = events
                                 .into_iter()
-                                .find(|x| x.tx_hash == hash /* && x.data == data */);
+                                .find(|x| x.tx_hash == hash && x.event_index == event_index);
                             match event {
                                 Some(a) => Ok((a.address, a.data)),
                                 None => Err(anyhow!(
@@ -302,8 +305,8 @@ impl EthListener {
                 return Err(Error::msg(err));
             }
         };
-        let event_index = match log.transaction_log_index {
-            Some(a) => a.as_u64(),
+        let event_index = match log.log_index {
+            Some(a) => a.as_u32(),
             None => {
                 let err = format!(
                     "No transaction_log_index in log. Tx hash: {}. Block: {}",
@@ -561,7 +564,7 @@ pub struct Event {
     pub data: Vec<u8>,
     pub tx_hash: H256,
     pub topics: Vec<H256>,
-    pub event_index: u64,
+    pub event_index: u32,
     pub block_number: u64,
     pub block_hash: H256,
 }

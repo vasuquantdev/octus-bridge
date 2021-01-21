@@ -296,10 +296,10 @@ impl Bridge {
     async fn check_suspicious_event(self: Arc<Self>, event: EthEventVoteData) {
         async fn check_event(
             configs: &ConfigsState,
-            check_result: Result<(Address, Vec<u8>), Error>,
+            result_to_check: Result<(Address, Vec<u8>), Error>,
             event: &EthEventVoteData,
         ) -> Result<(), Error> {
-            let (address, data) = check_result?;
+            let (address, data) = result_to_check?;
             let (_, eth_abi, ton_abi) = if let Some(abi) = configs.address_topic_map.get(&address) {
                 abi
             } else {
@@ -308,16 +308,16 @@ impl Bridge {
                     address
                 ));
             };
-
-            // Decode event data
-            let got_tokens: Vec<ethabi::Token> =
-                utils::parse_eth_event_data(&eth_abi, &ton_abi, event.event_data.clone())
-                    .map_err(|e| e.context("Failed decoding other relay data as eth types"))?;
-
+            dbg!(&eth_abi, &ton_abi);
             let expected_tokens = ethabi::decode(eth_abi, &data).map_err(|e| {
                 Error::from(e)
                     .context("Can not verify data, that other relay sent. Assuming it's fake.")
             })?;
+            dbg!(&expected_tokens);
+            // Decode event data
+            let got_tokens: Vec<ethabi::Token> =
+                utils::parse_eth_event_data(&eth_abi, &ton_abi, event.event_data.clone())
+                    .map_err(|e| e.context("Failed decoding other relay data as eth types"))?;
 
             if got_tokens == expected_tokens {
                 Ok(())
@@ -327,10 +327,9 @@ impl Bridge {
                 ))
             }
         }
-
         let check_result = self
             .eth_listener
-            .check_transaction(event.event_transaction)
+            .check_transaction(event.event_transaction, event.event_index)
             .await;
 
         if let Err(e) = {

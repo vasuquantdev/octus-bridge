@@ -102,7 +102,7 @@ pub fn parse_eth_event_data(
     if eth_abi.len() != ton_abi.len() {
         return Err(anyhow!("TON and ETH ABI are different")); // unreachable!
     }
-
+    dbg!(&eth_abi, &ton_abi);
     let abi_version = 2;
     let mut cursor = data.into();
     let mut tokens = Vec::with_capacity(eth_abi.len());
@@ -113,15 +113,17 @@ pub fn parse_eth_event_data(
         let (token_value, new_cursor) =
             TonTokenValue::read_from(ton_param_type, cursor, last, abi_version)
                 .map_err(|e| anyhow!(e))?;
-
+        dbg!(&token_value);
         cursor = new_cursor;
+        println!("{:#.1024}", cursor.into_cell());
 
         tokens.push(map_ton_to_eth_with_abi(
             token_value,
             eth_param_type.clone(),
         )?);
     }
-
+    dbg!(&tokens);
+    println!("{:#.1024}", cursor.into_cell());
     if cursor.remaining_references() != 0 || cursor.remaining_bits() != 0 {
         Err(anyhow!("incomplete event data deserialization"))
     } else {
@@ -385,8 +387,8 @@ const TON_ABI_VERSION: u8 = 2;
 
 #[cfg(test)]
 mod test {
-    use ethabi::ParamType;
     use ethabi::Token as EthTokenValue;
+    use ethabi::{Int, ParamType, Uint};
     use num_bigint::{BigInt, BigUint};
     use sha3::Digest;
     use sha3::Keccak256;
@@ -485,6 +487,20 @@ mod test {
         ));
         println!("{}", hex::encode(expected.0));
         assert_eq!(expected, hash);
+    }
+
+    #[test]
+    fn test_decode() {
+        let data = hex::decode("0000000000000000000000000000000000000000000000008ac7230489e80000000000000000000000000000000000000000000000000000000000000000000040628cbba5476dc0611da83610c9ffd2dfa0e8c9da2e3c4b71cf3d33db43c9cc0000000000000000000000000000000000000000000000000000000000000000").unwrap();
+        let types = [
+            ethabi::param_type::ParamType::Uint(128),
+            ethabi::param_type::ParamType::Uint(8),
+            ethabi::param_type::ParamType::Uint(256),
+            ethabi::param_type::ParamType::Uint(256),
+        ];
+
+        let data = ethabi::decode(&types, &*data);
+        println!("{:#?}", data.unwrap());
     }
 
     #[test]
