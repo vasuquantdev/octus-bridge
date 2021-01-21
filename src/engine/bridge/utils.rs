@@ -8,6 +8,7 @@ use crate::prelude::*;
 
 /// Returns topic hash and abi for ETH and TON
 pub fn parse_eth_abi(abi: &str) -> Result<(H256, Vec<EthParamType>, Vec<TonParamType>), Error> {
+    log::trace!("Parsing eth abi: {}", abi);
     #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct Abi {
@@ -435,6 +436,32 @@ mod test {
       "type":"event"
    }
   "#;
+    const ABI3: &str = r#"
+  {
+   "name":"TokenLock",
+   "inputs":[
+      {
+         "name":"amount",
+         "type":"uint128"
+      },
+      {
+         "name":"wid",
+         "type":"int8"
+      },
+      {
+         "name":"addr",
+         "type":"uint256"
+      },
+      {
+         "name":"pubkey",
+         "type":"uint256"
+      }
+   ],
+   "outputs":[
+      
+   ]
+}
+  "#;
 
     #[test]
     fn test_event_contract_abi() {
@@ -447,6 +474,16 @@ mod test {
     fn test_event_contract_abi2() {
         let hash = parse_eth_abi(ABI2).unwrap().0;
         let expected = H256::from_slice(&*Keccak256::digest(b"EthereumStateChange(uint256)"));
+        assert_eq!(expected, hash);
+    }
+
+    #[test]
+    fn test_event_contract_abi3() {
+        let hash = parse_eth_abi(ABI3).unwrap().0;
+        let expected = H256::from_slice(&*Keccak256::digest(
+            b"TokenLock(uint128,int8,uint256,uint256)",
+        ));
+        println!("{}", hex::encode(expected.0));
         assert_eq!(expected, hash);
     }
 
