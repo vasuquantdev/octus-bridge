@@ -26,6 +26,8 @@ crate::define_event!(BridgeContractEvent, BridgeContractEventKind, {
     EventConfigurationUpdateEnd {
         id: u64,
         active: bool,
+        address: MsgAddressInt,
+        event_type: EventType
     },
 
     BridgeConfigurationUpdateVote {
@@ -84,6 +86,8 @@ impl TryFrom<(BridgeContractEventKind, Vec<Token>)> for BridgeContractEvent {
                 BridgeContractEvent::EventConfigurationUpdateEnd {
                     id: tokens.next().try_parse()?,
                     active: tokens.next().try_parse()?,
+                    address: tokens.next().try_parse()?,
+                    event_type: tokens.next().try_parse()?,
                 }
             }
             BridgeContractEventKind::BridgeConfigurationUpdateVote => {

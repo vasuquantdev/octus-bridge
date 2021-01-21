@@ -249,7 +249,9 @@
       "name": "EventConfigurationUpdateEnd",
       "inputs": [
         {"name":"id","type":"uint256"},
-        {"name":"active","type":"bool"}
+        {"name":"active","type":"bool"},
+        {"name":"addr","type":"address"},
+        {"name":"_type","type":"uint8"}
       ],
       "outputs": [
       ]

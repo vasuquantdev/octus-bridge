@@ -169,6 +169,12 @@ impl Bridge {
                                     .subscribe_to_ton_events_configuration(id, address),
                             );
                         }
+                        BridgeContractEvent::EventConfigurationUpdateEnd {
+                            id,
+                            active: true,
+                            address,
+                            event_type,
+                        } => {}
                         _ => {
                             // TODO: handle other events
                         }

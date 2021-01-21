@@ -128,7 +128,13 @@ where
                     workchain_id: 0,
                     address: UInt256::from(&key[0..32]).into(),
                 };
-                let relay_key = H256::from_slice(&key[32..64]);
+
+                let relay = MsgAddrStd {
+                    anycast: None,
+                    workchain_id: 0,
+                    address: UInt256::from(&key[32..64]).into(),
+                };
+
                 let vote = if key[64] == 0 {
                     Voting::Reject
                 } else {
@@ -140,7 +146,7 @@ where
                         .expect("Shouldn't fail");
 
                 result
-                    .entry(hex::encode(&relay_key))
+                    .entry(relay.to_string())
                     .or_insert_with(Vec::new)
                     .push(<T as GetStoredData>::create_view(&event_addr, vote, stored));
 
