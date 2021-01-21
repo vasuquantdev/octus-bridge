@@ -418,7 +418,7 @@ impl Bridge {
         );
 
         // Extend event info
-        let (configuration_id, ethereum_event_blocks_to_confirm, topic_tokens) = {
+        let (configuration_id, ethereum_event_blocks_to_confirm, ton_data) = {
             let state = self.configs_state.read().await;
 
             // Find suitable event configuration
@@ -431,16 +431,16 @@ impl Bridge {
             };
 
             // Decode event data
-            let decoded_data: Option<Result<Vec<ethabi::Token>, _>> = event
+            let decoded_data: Option<Result<(&[ethabi::ParamType], Vec<ethabi::Token>), _>> = event
                 .topics
                 .iter()
                 .map(|topic_id| state.topic_abi_map.get(topic_id))
                 .filter_map(|x| x)
-                .map(|x| ethabi::decode(x, &event.data))
+                .map(|x| ethabi::decode(x, &event.data).map(|values| (x.as_slice(), values)))
                 // Taking first element, cause topics and abi shouldn't overlap more than once
                 .next();
 
-            let topic_tokens = match decoded_data {
+            let (abi, topic_tokens) = match decoded_data {
                 Some(a) => match a {
                     Ok(a) => a,
                     Err(e) => {
@@ -454,22 +454,33 @@ impl Bridge {
                 }
             };
 
+            let ton_data: Result<Vec<_>, _> = topic_tokens
+                .into_iter()
+                .zip(abi.iter())
+                .into_iter()
+                .map(|(eth, abi)| utils::map_eth_to_ton_with_abi(eth, abi))
+                .collect();
+
+            let ton_data = match ton_data {
+                Ok(data) => data,
+                Err(e) => {
+                    log::error!("Failed mapping eth event data: {}", e);
+                    return;
+                }
+            };
+
             (
                 *configuration_id,
                 event_config
                     .event_blocks_to_confirm
                     .to_u64()
                     .unwrap_or_else(u64::max_value),
-                topic_tokens,
+                ton_data,
             )
         };
 
         // Prepare confirmation
 
-        let ton_data: Vec<_> = topic_tokens
-            .into_iter()
-            .map(utils::map_eth_to_ton)
-            .collect();
         let event_data = match utils::pack_token_values(ton_data) {
             Ok(a) => a,
             Err(e) => {
