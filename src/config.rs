@@ -123,7 +123,7 @@ pub struct TonSettings {
     #[serde(with = "serde_seconds")]
     pub message_retry_interval: Duration,
     /// Amount of unsuccessful attempts
-    pub message_retry_count: i64,
+    pub message_retry_count: u64,
     /// Coefficient, on which every interval will be multiplied
     pub message_retry_interval_multiplier: f64,
 
@@ -133,6 +133,9 @@ pub struct TonSettings {
     /// TON events verification interval
     #[serde(with = "serde_seconds")]
     pub ton_events_verification_interval: Duration,
+
+    /// TON events verification queue logical time offset
+    pub ton_events_verification_queue_lt_offset: u64,
 }
 
 impl Default for TonSettings {
@@ -150,6 +153,7 @@ impl Default for TonSettings {
             message_retry_interval_multiplier: 1.5,
             parallel_spawned_contracts_limit: 10,
             ton_events_verification_interval: Duration::from_secs(1),
+            ton_events_verification_queue_lt_offset: 10,
         }
     }
 }

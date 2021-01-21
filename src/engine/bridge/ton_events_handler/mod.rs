@@ -279,7 +279,21 @@ impl TonEventsHandler {
 
                 let (lt, _) = handler.state.swapback_contract.current_time().await;
 
-                let prepared_votes = handler.state.verification_queue.range_before(lt).await;
+                let prepared_votes = handler
+                    .state
+                    .verification_queue
+                    .range_before(
+                        lt.checked_sub(
+                            handler
+                                .state
+                                .transport
+                                .settings()
+                                .ton_events_verification_queue_lt_offset,
+                        )
+                        .unwrap_or_default(),
+                    )
+                    .await;
+
                 for (entry, event) in prepared_votes {
                     tokio::spawn(handler.clone().handle_restored_swapback(event));
                     entry.remove().expect("Fatal db error");

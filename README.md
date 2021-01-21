@@ -213,6 +213,7 @@ ton_settings:
   be multiplied
 - `parallel_spawned_contracts_limit`- amount of parallel sent messages
 - `ton_events_verification_interval`- interval for verification queue processing loop  
+- `ton_events_verification_queue_lt_offset` - lt delay before current logical time
 
 ##### GraphQL
 
