@@ -314,12 +314,10 @@ impl Bridge {
                     address
                 ));
             };
-            dbg!(&eth_abi, &ton_abi);
             let expected_tokens = ethabi::decode(eth_abi, &data).map_err(|e| {
                 Error::from(e)
                     .context("Can not verify data, that other relay sent. Assuming it's fake.")
             })?;
-            dbg!(&expected_tokens);
             // Decode event data
             let got_tokens: Vec<ethabi::Token> =
                 utils::parse_eth_event_data(&eth_abi, &ton_abi, event.event_data.clone())

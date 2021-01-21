@@ -318,7 +318,6 @@ mod test {
     use pretty_assertions::assert_eq;
     use secp256k1::SecretKey;
     use secstr::SecStr;
-    use std::str::FromStr;
 
     use crate::crypto::key_managment::{EthSigner, KeyData};
 
@@ -345,9 +344,7 @@ mod test {
 
     #[test]
     fn test_sign() {
-        use hex::decode;
         use secp256k1::PublicKey;
-        use secp256k1::SecretKey;
         let message_text = b"hello_world1";
 
         let (private_key, _) = default_keys();

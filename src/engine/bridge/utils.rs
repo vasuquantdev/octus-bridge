@@ -102,7 +102,6 @@ pub fn parse_eth_event_data(
     if eth_abi.len() != ton_abi.len() {
         return Err(anyhow!("TON and ETH ABI are different")); // unreachable!
     }
-    dbg!(&eth_abi, &ton_abi);
     let abi_version = 2;
     let mut cursor = data.into();
     let mut tokens = Vec::with_capacity(eth_abi.len());
@@ -113,17 +112,13 @@ pub fn parse_eth_event_data(
         let (token_value, new_cursor) =
             TonTokenValue::read_from(ton_param_type, cursor, last, abi_version)
                 .map_err(|e| anyhow!(e))?;
-        dbg!(&token_value);
         cursor = new_cursor;
-        println!("{:#.1024}", cursor.into_cell());
 
         tokens.push(map_ton_to_eth_with_abi(
             token_value,
             eth_param_type.clone(),
         )?);
     }
-    dbg!(&tokens);
-    println!("{:#.1024}", cursor.into_cell());
     if cursor.remaining_references() != 0 || cursor.remaining_bits() != 0 {
         Err(anyhow!("incomplete event data deserialization"))
     } else {
@@ -399,8 +394,8 @@ const TON_ABI_VERSION: u8 = 2;
 
 #[cfg(test)]
 mod test {
+    use ethabi::ParamType;
     use ethabi::Token as EthTokenValue;
-    use ethabi::{Int, ParamType, Uint};
     use num_bigint::{BigInt, BigUint};
     use sha3::Digest;
     use sha3::Keccak256;
@@ -410,7 +405,7 @@ mod test {
     use relay_ton::prelude::serialize_toc;
 
     use crate::engine::bridge::utils::{
-        eth_param_from_str, map_eth_to_ton, map_ton_to_eth_with_abi, pack_token_values,
+        eth_param_from_str, map_eth_to_ton_with_abi, map_ton_to_eth_with_abi, pack_token_values,
         parse_eth_abi,
     };
 
@@ -548,7 +543,10 @@ mod test {
         use ton_abi::Uint as TUint;
         let eth = EthTokenValue::Uint(EUint::from(1234567));
         let ton_expected = TonTokenValue::Uint(TUint::new(1234567, 256));
-        assert_eq!(map_eth_to_ton(eth), ton_expected);
+        assert_eq!(
+            map_eth_to_ton_with_abi(eth, &ethabi::ParamType::Uint(256)).unwrap(),
+            ton_expected
+        );
     }
 
     fn make_int256_le(number: i64) -> [u8; 32] {
@@ -578,7 +576,28 @@ mod test {
             number: BigInt::from_signed_bytes_le(&number),
             size: 256,
         });
-        assert_eq!(map_eth_to_ton(eth), ton_expected);
+        assert_eq!(
+            map_eth_to_ton_with_abi(eth, &ethabi::ParamType::Int(256)).unwrap(),
+            ton_expected
+        );
+    }
+
+    #[test]
+    fn test_conversion_int8() {
+        use ethabi::Int as EInt;
+        use ton_abi::Int as TInt;
+
+        let number = 8i8;
+
+        let eth = EthTokenValue::Int(EInt::from(number));
+        let ton_expected = TonTokenValue::Int(TInt {
+            number: BigInt::from(number),
+            size: 8,
+        });
+        assert_eq!(
+            map_eth_to_ton_with_abi(eth, &ethabi::ParamType::Int(8)).unwrap(),
+            ton_expected
+        );
     }
 
     #[test]
@@ -593,7 +612,10 @@ mod test {
             number: BigInt::from_signed_bytes_le(&number),
             size: 256,
         });
-        assert_eq!(map_eth_to_ton(eth), ton_expected);
+        assert_eq!(
+            map_eth_to_ton_with_abi(eth, &ethabi::ParamType::Int(256)).unwrap(),
+            ton_expected
+        );
         println!(
             "{}",
             base64::encode(serialize_toc(&pack_token_values(vec![ton_expected]).unwrap()).unwrap())
@@ -621,7 +643,17 @@ mod test {
         let eth_token_bytes = ethabi::Token::Bytes("hello from rust".to_string().into());
         let eth = EthTokenValue::Tuple(vec![eth_token_uint, eth_token_bytes]);
         let ton_expected = TonTokenValue::Tuple(vec![ton_token_uint, ton_token_bytes]);
-        assert_eq!(map_eth_to_ton(eth), ton_expected);
+        assert_eq!(
+            map_eth_to_ton_with_abi(
+                eth,
+                &ethabi::ParamType::Tuple(vec![
+                    Box::new(ethabi::ParamType::Uint(256)),
+                    Box::new(ethabi::ParamType::Bytes)
+                ])
+            )
+            .unwrap(),
+            ton_expected
+        );
         println!(
             "{}",
             base64::encode(serialize_toc(&pack_token_values(vec![ton_expected]).unwrap()).unwrap())
