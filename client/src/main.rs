@@ -41,8 +41,9 @@ fn main() -> Result<(), Error> {
         )
         .item(
             "Vote for event configuration",
-            Client::vote_for_ethereum_event_configuration,
+            Client::vote_for_event_configuration,
         )
+        .item("Get event configurations", Client::get_event_configurations)
         .item(
             "Get pending transactions ETH->TON",
             Client::get_pending_transactions_eth_to_ton,
@@ -295,10 +296,14 @@ impl Client {
         Ok(())
     }
 
-    pub fn vote_for_ethereum_event_configuration(&self) -> Result<(), Error> {
+    pub fn get_event_configurations(&self) -> Result<(), Error> {
         let theme = ColorfulTheme::default();
 
         let known_configs: Vec<EventConfiguration> = self.get("event-configurations")?;
+        if known_configs.is_empty() {
+            println!("There are no active configs");
+            return Ok(());
+        }
 
         let mut selection = Select::with_theme(&theme);
         selection.with_prompt("Select config to vote").default(0);
@@ -313,19 +318,26 @@ impl Client {
             "Config:\n{}\n",
             serde_json::to_string_pretty(&selected_config)?.to_colored_json_auto()?
         );
+        Ok(())
+    }
 
-        let config_id = selected_config.configuration_id.clone();
+    pub fn vote_for_event_configuration(&self) -> Result<(), Error> {
+        let theme = ColorfulTheme::default();
+
+        let config_id: u64 = Input::with_theme(&theme)
+            .with_prompt("Enter configuration id:")
+            .interact()?;
 
         let selected_vote = Select::with_theme(&theme)
-            .with_prompt("Voting for event configuration contract")
+            .with_prompt("Select vote")
             .item("Confirm")
             .item("Reject")
             .interact_opt()?
             .ok_or_else(|| anyhow!("You must confirm or reject selection"))?;
 
         let voting = match selected_vote {
-            0 => Voting::Confirm(config_id),
-            1 => Voting::Reject(config_id),
+            0 => Voting::Confirm(config_id.to_string()),
+            1 => Voting::Reject(config_id.to_string()),
             _ => unreachable!(),
         };
 

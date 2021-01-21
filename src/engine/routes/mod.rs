@@ -61,10 +61,12 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
         .and(state.clone())
         .and_then(|(state, _)| status::get_status(state));
 
-    let get_event_configuration = warp::path!("event-configurations")
+    let get_all_event_configurations = warp::path!("event-configurations")
         .and(warp::get())
         .and(state.clone())
         .and_then(|(state, _)| get_event_configurations(state));
+
+    // TODO: add request for getting event configuration by id
 
     let create_event_configuration = warp::path!("event-configurations")
         .and(warp::post())
@@ -134,7 +136,7 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
         .or(retry_failed)
         .or(rescan_eth)
         .or(status)
-        .or(get_event_configuration)
+        .or(get_all_event_configurations)
         .or(create_event_configuration)
         .or(vote_for_ethereum_event_configuration)
         .or(pending_transactions_eth_to_ton)

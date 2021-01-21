@@ -35,7 +35,7 @@ pub enum EventConfigurationType {
     Ton,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, OpgModel)]
 pub struct EventConfiguration {
     pub configuration_id: String,
     pub ethereum_event_abi: String,

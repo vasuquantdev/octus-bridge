@@ -77,6 +77,14 @@ pub fn get_api() -> String {
                     200: (),
                 }
             },
+            ("event-configurations" / { configuration_id: u64 }): {
+                GET: {
+                    tags: { event_configuration },
+                    summary: "Get event configuration by id",
+                    200: EventConfiguration,
+                    400: (),
+                }
+            },
             ("eth-to-ton" / "pending"): {
                 GET: {
                     tags: { eth_to_ton },
