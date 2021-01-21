@@ -129,14 +129,14 @@ pub fn get_api() -> String {
             },
             ("ton-to-eth" / "queued" / { configuration_id: u64 }): {
                 GET: {
-                    tags: { eth_to_ton },
+                    tags: { ton_to_eth },
                     summary: "Verification queue",
                     200: HashMap<u64, TonEventVoteDataView>,
                 }
             },
             ("ton-to-eth" / "stats"): {
                 GET: {
-                    tags: { eth_to_ton },
+                    tags: { ton_to_eth },
                     summary: "Known votes for all relays",
                     200: HashMap<String, Vec<TonTxStatView>>
                 }
