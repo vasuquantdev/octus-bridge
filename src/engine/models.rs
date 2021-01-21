@@ -1,4 +1,6 @@
-use relay_models::models::{EventConfiguration, Voting};
+use relay_models::models::{
+    EventConfiguration, EventConfigurationType, NewEventConfiguration, Voting,
+};
 use relay_ton::contracts;
 
 use crate::config::RelayConfig;
@@ -40,6 +42,23 @@ impl FromRequest<Voting> for (u64, contracts::models::Voting) {
         };
         let configuration_id = u64::from_str(&address).map_err(|e| anyhow!("{}", e.to_string()))?;
         Ok((configuration_id, voting))
+    }
+}
+
+impl FromRequest<NewEventConfiguration> for (u64, MsgAddressInt, contracts::models::EventType) {
+    fn try_from(request: NewEventConfiguration) -> Result<Self, Error> {
+        let configuration_id =
+            u64::from_str(&request.configuration_id).map_err(|e| anyhow!("{}", e.to_string()))?;
+
+        let event_address =
+            MsgAddressInt::from_str(&request.address).map_err(|e| anyhow!("{}", e.to_string()))?;
+
+        let event_type = match request.configuration_type {
+            EventConfigurationType::Eth => contracts::models::EventType::ETH,
+            EventConfigurationType::Ton => contracts::models::EventType::TON,
+        };
+
+        Ok((configuration_id, event_address, event_type))
     }
 }
 

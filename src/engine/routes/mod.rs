@@ -66,6 +66,12 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
         .and(state.clone())
         .and_then(|(state, _)| get_event_configurations(state));
 
+    let create_event_configuration = warp::path!("event-configurations")
+        .and(warp::post())
+        .and(json_data::<NewEventConfiguration>())
+        .and(state.clone())
+        .and_then(|data, (state, _)| create_event_configuration(state, data));
+
     let vote_for_ethereum_event_configuration = warp::path!("event-configurations" / "vote")
         .and(warp::post())
         .and(json_data::<Voting>())
@@ -129,6 +135,7 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
         .or(rescan_eth)
         .or(status)
         .or(get_event_configuration)
+        .or(create_event_configuration)
         .or(vote_for_ethereum_event_configuration)
         .or(pending_transactions_eth_to_ton)
         .or(failed_transactions_eth_to_ton)
@@ -208,6 +215,43 @@ async fn get_event_configurations(state: Arc<RwLock<State>>) -> Result<impl Repl
                 serde_json::to_string(&event_configurations).expect("shouldn't fail"),
                 StatusCode::OK,
             ),
+            Err(err) => {
+                let err = format!("Failed getting configuration events: {}", err);
+                log::error!("{}", err);
+                reply::with_status(err, StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        },
+    )
+}
+
+async fn create_event_configuration(
+    state: Arc<RwLock<State>>,
+    data: NewEventConfiguration,
+) -> Result<impl Reply, Infallible> {
+    let (configuration_id, address, event_type) = match FromRequest::<_>::try_from(data) {
+        Ok(data) => data,
+        Err(err) => {
+            log::error!("{}", err);
+            return Ok(reply::with_status(err.to_string(), StatusCode::BAD_REQUEST));
+        }
+    };
+
+    let state = state.write().await;
+    let bridge = match &state.bridge_state {
+        BridgeState::Running(bridge) => bridge,
+        _ => {
+            let err = "Bridge was not initialized";
+            log::error!("{}", err);
+            return Ok(reply::with_status(err.to_string(), StatusCode::BAD_REQUEST));
+        }
+    };
+
+    Ok(
+        match bridge
+            .create_event_configuration(configuration_id, address, event_type)
+            .await
+        {
+            Ok(()) => reply::with_status(String::new(), StatusCode::OK),
             Err(err) => {
                 let err = format!("Failed getting configuration events: {}", err);
                 log::error!("{}", err);

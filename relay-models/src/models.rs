@@ -23,13 +23,16 @@ pub struct RescanEthData {
 
 #[derive(Deserialize, Serialize, OpgModel)]
 pub struct NewEventConfiguration {
-    pub ethereum_event_abi: String,
-    pub ethereum_event_address: String,
-    pub ethereum_event_blocks_to_confirm: u64,
-    pub required_confirmations: u64,
-    pub required_rejections: u64,
-    pub ethereum_event_initial_balance: u64,
-    pub event_proxy_address: String,
+    pub configuration_id: String,
+    pub address: String,
+    pub configuration_type: EventConfigurationType,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize, Serialize, OpgModel)]
+#[serde(rename_all = "lowercase")]
+pub enum EventConfigurationType {
+    Eth,
+    Ton,
 }
 
 #[derive(Deserialize, Serialize)]

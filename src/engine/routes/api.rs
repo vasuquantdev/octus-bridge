@@ -58,9 +58,15 @@ pub fn get_api() -> String {
             },
             ("event-configurations"): {
                 GET: {
-                    tags: { event_configurations },
+                    tags: { event_configuration },
                     summary: "Get known event configurations",
                     200: String, // todo: change to models
+                },
+                POST: {
+                    tags: { event_configuration },
+                    summary: "Create new event configuration",
+                    body: NewEventConfiguration,
+                    200: (),
                 }
             },
             ("event-configurations" / "vote"): {

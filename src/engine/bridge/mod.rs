@@ -270,6 +270,18 @@ impl Bridge {
         Ok(state.eth_configs_map.values().cloned().collect())
     }
 
+    pub async fn create_event_configuration(
+        &self,
+        configuration_id: u64,
+        address: MsgAddressInt,
+        event_type: EventType,
+    ) -> Result<(), anyhow::Error> {
+        self.relay_contract
+            .initialize_event_configuration_creation(configuration_id, &address, event_type)
+            .await?;
+        Ok(())
+    }
+
     pub async fn vote_for_ethereum_event_configuration(
         &self,
         configuration_id: u64,

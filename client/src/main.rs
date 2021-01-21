@@ -13,9 +13,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use relay_models::models::{
-    EthEventVoteDataView, EthTonTransactionView, EthTxStatView, EventConfiguration, InitData,
-    Password as PasswordData, RescanEthData, Status, TonEthTransactionView, TonEventVoteDataView,
-    TonTxStatView, Voting,
+    EthEventVoteDataView, EthTonTransactionView, EthTxStatView, EventConfiguration,
+    EventConfigurationType, InitData, NewEventConfiguration, Password as PasswordData,
+    RescanEthData, Status, TonEthTransactionView, TonEventVoteDataView, TonTxStatView, Voting,
 };
 
 #[derive(Clap)]
@@ -36,7 +36,11 @@ fn main() -> Result<(), Error> {
         .item("Set ETH block", Client::set_eth_block)
         .item("Retry failed votes", Client::retry_failed_votes)
         .item(
-            "Vote for ETH event configuration",
+            "Add new event configuration",
+            Client::add_new_event_configuration,
+        )
+        .item(
+            "Vote for event configuration",
             Client::vote_for_ethereum_event_configuration,
         )
         .item(
@@ -256,6 +260,38 @@ impl Client {
             serde_json::to_string_pretty(&response[selection])?.to_colored_json(ColorMode::On)?
         )?;
         minus::page_all(output)?;
+        Ok(())
+    }
+
+    pub fn add_new_event_configuration(&self) -> Result<(), Error> {
+        let theme = ColorfulTheme::default();
+
+        let configuration_id: u64 = Input::with_theme(&theme)
+            .with_prompt("Enter configuration id:")
+            .interact()?;
+
+        let address: String = Input::with_theme(&theme)
+            .with_prompt("Enter contract address:")
+            .interact()?;
+
+        let types = [EventConfigurationType::Eth, EventConfigurationType::Ton];
+        let contract_type = Select::with_theme(&theme)
+            .with_prompt("Select configuration type:")
+            .item("ETH event configuration")
+            .item("TON event configuration")
+            .default(0)
+            .interact()?;
+
+        let _ = self.post_raw(
+            "event-configurations",
+            &NewEventConfiguration {
+                configuration_id: configuration_id.to_string(),
+                address,
+                configuration_type: types[contract_type],
+            },
+        )?;
+
+        println!("Success!");
         Ok(())
     }
 
