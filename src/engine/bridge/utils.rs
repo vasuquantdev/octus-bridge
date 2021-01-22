@@ -346,7 +346,7 @@ pub fn prepare_ton_event_payload(
         map_ton_to_eth(
             BigUint256(details.common.event_required_confirmations.into()).token_value(),
         )?, // requiredConfirmations
-        map_ton_to_eth(UInt256::default().token_value())?, //requiredRejects
+        map_ton_to_eth(BigUint256(details.common.event_required_rejects.into()).token_value())?, //requiredRejects
     ]);
 
     Ok(ethabi::encode(&[tuple]).to_vec())
