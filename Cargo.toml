@@ -63,7 +63,7 @@ ed25519-dalek = "1.0.1"
 ring = "0.16.15"
 sodiumoxide = "0.2.6"
 secstr = "0.4.0"
-tiny-hderive = "0.2.1"
+tiny-hderive = "0.3.0"
 tiny-bip39 = "0.8.0"
 
 [dev-dependencies]
