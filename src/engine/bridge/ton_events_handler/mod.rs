@@ -338,7 +338,11 @@ impl TonEventsHandler {
 
 impl State {
     fn calculate_signature(&self, event: &SwapBackEvent) -> Result<Vec<u8>, Error> {
-        let payload = utils::prepare_ton_event_payload(event)?;
+        let payload = utils::prepare_ton_event_payload(
+            &self.config_contract.address(),
+            &self.details,
+            event,
+        )?;
         let signature = self.eth_signer.sign(&payload);
 
         log::info!(
