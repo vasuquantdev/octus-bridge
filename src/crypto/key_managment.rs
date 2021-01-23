@@ -148,20 +148,27 @@ where
 impl EthSigner {
     /// signs data according to https://eips.ethereum.org/EIPS/eip-191
     pub fn sign(&self, data: &[u8]) -> Vec<u8> {
-        let mut eth_data: Vec<u8> = format!("\x19Ethereum Signed Message:\n{}", data.len()).into();
-        eth_data.extend_from_slice(&data);
+        // 1. Calculate prefixed hash
+        let data_hash = Keccak256::digest(data);
+        let mut eth_data: Vec<u8> = format!("\x19Ethereum Signed Message:\n32").into();
+        eth_data.extend_from_slice(data_hash.as_slice());
 
+        // 2. Calculate hash of prefixed hash
         let hash = Keccak256::digest(&eth_data);
         let message = Message::from_slice(&*hash).expect("Shouldn't fail");
 
+        // 3. Sign
         let secp = secp256k1::Secp256k1::new();
         let (id, sign) = secp
             .sign_recoverable(&message, &self.private_key)
             .serialize_compact();
 
+        // 4. Prepare for ETH
         let mut ex_sign = Vec::with_capacity(65);
         ex_sign.extend_from_slice(&sign);
         ex_sign.push(id.to_i32() as u8 + 27); //recovery id with eth specific offset
+
+        // Done
         ex_sign
     }
 
