@@ -150,7 +150,7 @@ impl EthSigner {
     pub fn sign(&self, data: &[u8]) -> Vec<u8> {
         // 1. Calculate prefixed hash
         let data_hash = Keccak256::digest(data);
-        let mut eth_data: Vec<u8> = format!("\x19Ethereum Signed Message:\n32").into();
+        let mut eth_data: Vec<u8> = format!("\x19Ethereum Signed Message:\n{}", data.len()).into();
         eth_data.extend_from_slice(data_hash.as_slice());
 
         // 2. Calculate hash of prefixed hash
