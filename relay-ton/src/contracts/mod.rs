@@ -65,7 +65,7 @@ mod tests {
             GraphQLTransport::new(
                 Config {
                     address: LOCAL_SERVER_ADDR.to_string(),
-                    next_block_timeout_sec: 60,
+                    next_block_timeout: 60,
                 },
                 db,
             )

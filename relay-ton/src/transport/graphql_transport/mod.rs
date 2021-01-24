@@ -1,5 +1,6 @@
 use std::collections::hash_map;
 use std::pin::Pin;
+use std::time::Duration;
 
 use futures::task::{Context, Poll};
 use futures::{Future, FutureExt};
@@ -47,7 +48,7 @@ impl GraphQLTransport {
             client,
             config.address.clone(),
             config.parallel_connections,
-            std::time::Duration::from_secs(config.fetch_timeout_secs as u64),
+            config.fetch_timeout,
         );
 
         Ok(Self { client, config })
@@ -83,7 +84,7 @@ impl Transport for GraphQLTransport {
     ) -> TransportResult<Arc<dyn AccountSubscription>> {
         let subscription = GraphQLAccountSubscription::<SliceData>::new(
             self.client.clone(),
-            self.config.next_block_timeout_sec,
+            self.config.next_block_timeout,
             account,
             None,
         )
@@ -100,7 +101,7 @@ impl Transport for GraphQLTransport {
 
         let subscription = GraphQLAccountSubscription::new(
             self.client.clone(),
-            self.config.next_block_timeout_sec,
+            self.config.next_block_timeout,
             account,
             Some(events_tx),
         )
@@ -117,7 +118,7 @@ impl Transport for GraphQLTransport {
 
         let subscription = GraphQLAccountSubscription::new(
             self.client.clone(),
-            self.config.next_block_timeout_sec,
+            self.config.next_block_timeout,
             account,
             Some(events_tx),
         )
@@ -162,7 +163,7 @@ where
 {
     async fn new(
         client: NodeClient,
-        next_block_timeout: u32,
+        next_block_timeout: Duration,
         addr: MsgAddressInt,
         events_tx: Option<EventsTx<T>>,
     ) -> TransportResult<Arc<Self>> {
@@ -194,7 +195,7 @@ where
         self: &Arc<Self>,
         events_tx: Option<EventsTx<T>>,
         mut last_block_id: String,
-        next_block_timeout: u32,
+        next_block_timeout: Duration,
     ) {
         let account = self.account.clone();
         let subscription = Arc::downgrade(self);
@@ -761,7 +762,7 @@ mod tests {
         GraphQLTransport::new(
             Config {
                 address: "https://main.ton.dev/graphql".to_string(),
-                next_block_timeout_sec: 60,
+                next_block_timeout: 60,
             },
             db,
         )

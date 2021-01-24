@@ -57,19 +57,24 @@ eth_settings:
   tcp_connection_count: 1
 ton_settings:
   bridge_contract_address: '0:07d898301a542a686ea86b7137d063b5886f6614187ab37754f63a0d4b2d808a'
+  relay_contract_address: "..." // TODO: set relay address
   seed_derivation_path  : "m/44'/396'/0'/0/{der_path}"
   transport:
     type: graphql
     address: "http://3.239.148.226/graphql"
-    next_block_timeout_sec: 60
-    parallel_connections: 1
-  event_configuration_details_retry_interval: 5
+    next_block_timeout: 60s
+    parallel_connections: 100
+    fetch_timeout: 10s
+  event_configuration_details_retry_interval: 5s
   event_configuration_details_retry_count: 100
-  event_details_retry_interval: 0
+  event_details_retry_interval: 5s
   event_details_retry_count: 100
-  message_retry_interval: 20
-  message_retry_count: 50
-  message_retry_interval_multiplier: 1.1
+  message_retry_interval: 60s
+  message_retry_count: 10
+  message_retry_interval_multiplier: 1.5
+  parallel_spawned_contracts_limit: 10
+  ton_events_verification_interval: 1s
+  ton_events_verification_queue_lt_offset: 10
 """
 
 for i in range(0, 3):

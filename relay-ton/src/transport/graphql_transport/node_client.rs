@@ -266,7 +266,7 @@ impl NodeClient {
         &self,
         current: &str,
         addr: &MsgAddressInt,
-        timeout: u32,
+        timeout: Duration,
     ) -> TransportResult<String> {
         #[derive(GraphQLQuery)]
         #[graphql(
@@ -275,15 +275,16 @@ impl NodeClient {
         )]
         struct QueryNextBlock;
 
-        let timeout = (timeout * 1000) as f64; // timeout in ms
+        let timeout_ms = timeout.as_secs_f64() * 1000.0;
+        let fetch_timeout = timeout * 2;
 
         let block = self
             .fetch_blocking::<QueryNextBlock>(
                 query_next_block::Variables {
                     id: current.to_owned(),
-                    timeout,
+                    timeout: timeout_ms,
                 },
-                Duration::from_millis(timeout as u64 * 2),
+                fetch_timeout,
             )
             .await?
             .blocks
@@ -306,11 +307,14 @@ impl NodeClient {
                 )]
                 struct QueryBlockAfterSplit;
 
-                self.fetch::<QueryBlockAfterSplit>(query_block_after_split::Variables {
-                    block_id,
-                    prev_id: current.to_owned(),
-                    timeout,
-                })
+                self.fetch_blocking::<QueryBlockAfterSplit>(
+                    query_block_after_split::Variables {
+                        block_id,
+                        prev_id: current.to_owned(),
+                        timeout: timeout_ms,
+                    },
+                    fetch_timeout,
+                )
                 .await?
                 .blocks
                 .and_then(|block| block.into_iter().flatten().next())

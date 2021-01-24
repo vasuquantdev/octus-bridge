@@ -5,6 +5,8 @@ authors = ["Ivan Kalinin <i.kalinin@dexpa.io>"]
 edition = "2018"
 
 [dependencies]
+relay-utils = { path = "../relay-utils" }
+
 anyhow = "1.0.33"
 async-trait = "0.1"
 base64 = "0.13"

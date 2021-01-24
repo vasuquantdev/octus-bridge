@@ -15,25 +15,6 @@ use relay_ton::transport::tonlib_transport::Config as TonTonlibConfig;
 
 use crate::prelude::*;
 
-mod serde_seconds {
-    use super::*;
-
-    pub fn serialize<S>(data: &Duration, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_u64(data.as_secs())
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Duration, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let seconds: u64 = serde::Deserialize::deserialize(deserializer)?;
-        Ok(Duration::from_secs(seconds))
-    }
-}
-
 #[derive(Deserialize, Serialize, Clone, Debug, Default, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct EthAddress(String);
 
@@ -108,19 +89,19 @@ pub struct TonSettings {
     pub transport: TonTransportConfig,
 
     /// Interval between attempts to get event configuration details
-    #[serde(with = "serde_seconds")]
+    #[serde(with = "relay_utils::serde_time")]
     pub event_configuration_details_retry_interval: Duration,
     /// Amount of unsuccessful attempts
     pub event_configuration_details_retry_count: u64,
 
     /// Interval between attempts to get event details
-    #[serde(with = "serde_seconds")]
+    #[serde(with = "relay_utils::serde_time")]
     pub event_details_retry_interval: Duration,
     /// Amount of unsuccessful attempts
     pub event_details_retry_count: u64,
 
     /// Interval between attempts to get send message
-    #[serde(with = "serde_seconds")]
+    #[serde(with = "relay_utils::serde_time")]
     pub message_retry_interval: Duration,
     /// Amount of unsuccessful attempts
     pub message_retry_count: u64,
@@ -131,7 +112,7 @@ pub struct TonSettings {
     pub parallel_spawned_contracts_limit: usize,
 
     /// TON events verification interval
-    #[serde(with = "serde_seconds")]
+    #[serde(with = "relay_utils::serde_time")]
     pub ton_events_verification_interval: Duration,
 
     /// TON events verification queue logical time offset

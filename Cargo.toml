@@ -8,10 +8,11 @@ license-file = "LICENSE"
 
 [workspace]
 members = [
-    "relay-eth",
     "client",
+    "relay-eth",
     "relay-ton",
-    "relay-models"
+    "relay-models",
+    "relay-utils"
 ]
 
 [dependencies]
@@ -19,6 +20,7 @@ members = [
 relay-eth = { path = "./relay-eth" }
 relay-ton = { path = "./relay-ton" }
 relay-models = { path = "./relay-models" }
+relay-utils = { path = "./relay-utils" }
 
 # General dependencies
 async-trait = "0.1"
@@ -84,5 +86,6 @@ assets = [
 ]
 conf-files = ["/etc/relay.conf"]
 maintainer-scripts = "debian/"
+
 [package.metadata.deb.systemd-units]
 unit-scripts = "debian/"

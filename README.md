@@ -170,18 +170,19 @@ ton_settings:
   transport:
     type: graphql
     address: "https://main.ton.dev/graphql"
-    next_block_timeout_sec: 60
+    next_block_timeout: 60s
     parallel_connections: 100
-    fetch_timeout_secs: 10
-  event_configuration_details_retry_interval: 5
+    fetch_timeout: 10s
+  event_configuration_details_retry_interval: 5s
   event_configuration_details_retry_count: 100
-  event_details_retry_interval: 0
+  event_details_retry_interval: 5s
   event_details_retry_count: 100
-  message_retry_interval: 60
+  message_retry_interval: 60s
   message_retry_count: 10
   message_retry_interval_multiplier: 1.5
   parallel_spawned_contracts_limit: 10
-  ton_events_verification_interval: 1
+  ton_events_verification_interval: 1s
+  ton_events_verification_queue_lt_offset: 10
 ``` 
 
 - `keys_path` path to file, where encrypted data is stored.
@@ -201,7 +202,9 @@ ton_settings:
 
 - `bridge_contract_address` - address of bridge contract  
 - `relay_contract_address` - address of relay contract
+
   *Next section is optional to configure, default settings are just ok*
+
 - `event_configuration_details_retry_interval` - time to wait between retries
 - `event_configuration_details_retry_count` - times to get configuration details
   in case of errors
@@ -217,17 +220,17 @@ ton_settings:
 
 ##### GraphQL
 
-- `addr` - address of graphql endpoint
-- `next_block_timeout_sec`  - timeout for blocks emission
+- `address` - address of graphql endpoint
+- `next_block_timeout`  - timeout for blocks emission
+- `fetch_timeout` - timeout for GraphQL queries
 - `parallel_connections` - amount of parallel connections to GraphQL
-- `fetch_timeout_secs` - timeout for GraphQL queries
 
 #### Tonlib
 
 - `server_address` address of ton lite server
 - `server_key` key of lite server
-- `last_block_threshold_sec`  last block id caching duration
-- `subscription_polling_interval_sec` how often accounts are polled. Has sense
+- `last_block_threshold`  last block id caching duration
+- `subscription_polling_interval` how often accounts are polled. Has sense
   when it's greater or equal `last_block_threshold_sec`
 
 ## How to use
