@@ -330,10 +330,6 @@ impl TonEventsHandler {
             );
         }
     }
-
-    pub fn details(&self) -> &TonEventConfiguration {
-        &self.state.details
-    }
 }
 
 impl State {

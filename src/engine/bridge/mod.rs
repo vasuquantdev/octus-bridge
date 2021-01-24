@@ -3,9 +3,11 @@ mod event_transport;
 mod semaphore;
 mod ton_events_handler;
 
+use std::collections::hash_map::Entry;
+use std::ops::Deref;
+
 use relay_eth::ws::{EthListener, SyncedHeight};
 use relay_ton::contracts::*;
-use relay_ton::transport::*;
 
 use crate::config::RelayConfig;
 use crate::crypto::key_managment::*;
@@ -17,7 +19,6 @@ use self::eth_events_handler::*;
 use self::event_transport::*;
 use self::semaphore::*;
 use self::ton_events_handler::*;
-use std::ops::Deref;
 
 mod utils;
 
@@ -89,7 +90,6 @@ pub async fn make_bridge(
     let bridge = Arc::new(Bridge {
         db,
         eth_listener,
-        ton_transport,
         relay_contract,
         eth_signer,
         eth_verification_queue,
@@ -112,7 +112,6 @@ pub struct Bridge {
     db: Db,
     eth_listener: Arc<EthListener>,
 
-    ton_transport: Arc<dyn Transport>,
     relay_contract: Arc<RelayContract>,
 
     eth_signer: EthSigner,
@@ -151,11 +150,12 @@ impl Bridge {
                             active: true,
                             event_type: EventType::ETH,
                         } => {
-                            tokio::spawn(
+                            let bridge = bridge.clone();
+                            tokio::spawn(async move {
                                 bridge
-                                    .clone()
-                                    .subscribe_to_eth_events_configuration(id, address, None),
-                            );
+                                    .subscribe_to_eth_events_configuration(id, address, None)
+                                    .await
+                            });
                         }
                         BridgeContractEvent::EventConfigurationCreationEnd {
                             id,
@@ -163,18 +163,48 @@ impl Bridge {
                             active: true,
                             event_type: EventType::TON,
                         } => {
-                            tokio::spawn(
+                            let bridge = bridge.clone();
+                            tokio::spawn(async move {
                                 bridge
-                                    .clone()
-                                    .subscribe_to_ton_events_configuration(id, address),
-                            );
+                                    .subscribe_to_ton_events_configuration(id, address)
+                                    .await
+                            });
                         }
                         BridgeContractEvent::EventConfigurationUpdateEnd {
                             id,
-                            active: true,
+                            active,
                             address,
                             event_type,
-                        } => {}
+                        } => {
+                            let bridge = bridge.clone();
+                            tokio::spawn(async move {
+                                match event_type {
+                                    EventType::ETH => {
+                                        bridge.unsubscribe_from_eth_events_configuration(id).await;
+                                    }
+                                    EventType::TON => {
+                                        bridge.unsubscribe_from_ton_events_configuration(id).await;
+                                    }
+                                };
+
+                                if active {
+                                    match event_type {
+                                        EventType::ETH => {
+                                            bridge
+                                                .subscribe_to_eth_events_configuration(
+                                                    id, address, None,
+                                                )
+                                                .await
+                                        }
+                                        EventType::TON => {
+                                            bridge
+                                                .subscribe_to_ton_events_configuration(id, address)
+                                                .await
+                                        }
+                                    }
+                                }
+                            });
+                        }
                         _ => {
                             // TODO: handle other events
                         }
@@ -194,22 +224,30 @@ impl Bridge {
         // Wait for all existing configuration contracts subscriptions to start ETH part properly
         let semaphore = Semaphore::new(known_contracts.len());
         for active_configuration in known_contracts.into_iter() {
-            match active_configuration.event_type {
-                EventType::ETH => {
-                    tokio::spawn(self.clone().subscribe_to_eth_events_configuration(
-                        active_configuration.id,
-                        active_configuration.address,
-                        Some(semaphore.clone()),
-                    ));
+            let bridge = self.clone();
+            let semaphore = semaphore.clone();
+            tokio::spawn(async move {
+                match active_configuration.event_type {
+                    EventType::ETH => {
+                        bridge
+                            .subscribe_to_eth_events_configuration(
+                                active_configuration.id,
+                                active_configuration.address,
+                                Some(semaphore),
+                            )
+                            .await
+                    }
+                    EventType::TON => {
+                        bridge
+                            .subscribe_to_ton_events_configuration(
+                                active_configuration.id,
+                                active_configuration.address,
+                            )
+                            .await;
+                        semaphore.notify().await;
+                    }
                 }
-                EventType::TON => {
-                    tokio::spawn(self.clone().subscribe_to_ton_events_configuration(
-                        active_configuration.id,
-                        active_configuration.address,
-                    ));
-                    semaphore.notify().await;
-                }
-            }
+            });
         }
 
         // Wait until all initial subscriptions done
@@ -549,9 +587,17 @@ impl Bridge {
             .insert(configuration_id, handler);
     }
 
+    /// Unsubscribe from TON event configuration
+    async fn unsubscribe_from_ton_events_configuration(&self, configuration_id: u64) {
+        self.ton_event_handlers
+            .write()
+            .await
+            .remove(&configuration_id);
+    }
+
     /// Creates a listener for ETH event votes in TON
     async fn subscribe_to_eth_events_configuration(
-        self: Arc<Self>,
+        &self,
         configuration_id: u64,
         address: MsgAddressInt,
         semaphore: Option<Semaphore>,
@@ -584,6 +630,16 @@ impl Bridge {
             .write()
             .await
             .insert(configuration_id, handler);
+    }
+
+    /// Unsubscribe from ETH event configuration
+    async fn unsubscribe_from_eth_events_configuration(&self, configuration_id: u64) {
+        let mut eth_events_handlers = self.eth_event_handlers.write().await;
+        if let Entry::Occupied(entry) = eth_events_handlers.entry(configuration_id) {
+            let eth_event_configuration = entry.remove();
+            self.unsubscribe_from_eth_topic(eth_event_configuration.details())
+                .await;
+        }
     }
 
     /// Registers topic for specified address in ETH

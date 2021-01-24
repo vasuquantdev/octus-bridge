@@ -126,6 +126,10 @@ impl EthEventsHandler {
             }
         });
     }
+
+    pub fn details(&self) -> &EthEventConfiguration {
+        &self.state.details
+    }
 }
 
 struct UnInitEthEventsHandler {
