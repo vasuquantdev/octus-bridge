@@ -2732,7 +2732,6 @@ version = "0.1.0"
 dependencies = [
  "humantime",
  "serde 1.0.122",
- "serde_yaml",
 ]
 
 [[package]]

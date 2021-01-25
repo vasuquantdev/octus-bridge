@@ -21,7 +21,9 @@ COPY relay-eth ./relay-eth
 COPY relay-models ./relay-models
 COPY relay-ton ./relay-ton
 COPY client ./client
-RUN ls -lah
+COPY relay-utils ./relay-utils
+COPY LICENSE ./LICENSE
+RUN ls -lah 
 RUN cargo build --release
 
 FROM debian:buster-slim
