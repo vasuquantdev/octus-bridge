@@ -125,8 +125,7 @@ All the fields are mandatory. Other fields will be ignored.
 
 ## Configuration
 
-You can generate default config,
-using `relay --gen-config 'config.yaml'`
+You can generate default config, using `relay --gen-config 'config.yaml'`
 
 ### Example config with graphql transport
 
@@ -200,7 +199,7 @@ ton_settings:
 
 #### ton_settings
 
-- `bridge_contract_address` - address of bridge contract  
+- `bridge_contract_address` - address of bridge contract
 - `relay_contract_address` - address of relay contract
 
   *Next section is optional to configure, default settings are just ok*
@@ -215,8 +214,10 @@ ton_settings:
 - `message_retry_interval_multiplier`- coefficient, on which every interval will
   be multiplied
 - `parallel_spawned_contracts_limit`- amount of parallel sent messages
-- `ton_events_verification_interval`- interval for verification queue processing loop  
-- `ton_events_verification_queue_lt_offset` - lt delay before current logical time
+- `ton_events_verification_interval`- interval for verification queue processing
+  loop
+- `ton_events_verification_queue_lt_offset` - lt delay before current logical
+  time
 
 ##### GraphQL
 
@@ -230,16 +231,19 @@ ton_settings:
 - `server_address` address of ton lite server
 - `server_key` key of lite server
 - `last_block_threshold`  last block id caching duration
-- `subscription_polling_interval` how often accounts are polled. Has sense
-  when it's greater or equal `last_block_threshold_sec`
+- `subscription_polling_interval` how often accounts are polled. Has sense when
+  it's greater or equal `last_block_threshold_sec`
 
 ## How to use
 
 ### First run
 
-We provide prebuilt `.deb` packages, so you need to:
+We don't provide prebuilt `.deb` packages due security reasons. So, to
+get `.deb`
+you should run this:
 
-- run `sudo dpkg -i relay_0.1.0_amd64.deb`
+- `./scripts/build_deb.sh`
+- run `sudo dpkg -i name_of_deb_package_you_got_on_previous_step`
 - change [config](#configuration) in you favourite editor (default location is
   `/etc/relay.conf`)
 - run it: `sudo systemctl start relay`
