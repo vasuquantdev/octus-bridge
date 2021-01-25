@@ -2,8 +2,10 @@ use sled::transaction::{ConflictableTransactionError, ConflictableTransactionRes
 use sled::Transactional;
 
 use super::constants::*;
+use crate::db::migrate::Migration;
 use crate::models::*;
 use crate::prelude::*;
+use semver::Version;
 
 pub type TonEventVotesQueue = VotesQueue<TonEventTransaction>;
 
@@ -160,5 +162,11 @@ fn parse_key(key: &[u8]) -> MsgAddrStd {
         anycast: None,
         workchain_id: 0,
         address: UInt256::from(key).into(),
+    }
+}
+
+impl Migration for EthEventVotesQueue {
+    fn update_to_next(&self, version: Version) -> Result<Option<Self>, Error> {
+        unimplemented!()
     }
 }

@@ -46,5 +46,18 @@ impl Migrator {
 
 /// Updates data in database in case of schema update.
 pub trait Migration {
-    fn update(&self, version: Version) -> Result<(), Error>;
+    fn update_to_next(&self, version: Version) -> Result<Option<Self>, Error>;
+}
+
+pub struct VersionIterator {
+    versions: Vec<Version>,
+}
+
+impl IntoIterator for VersionIterator {
+    type Item = (Version, Version);
+    type IntoIter = ();
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.versions.into_iter().
+    }
 }
