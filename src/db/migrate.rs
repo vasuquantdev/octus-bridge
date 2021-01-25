@@ -30,22 +30,34 @@ impl Migrator {
             db: db.clone(),
         })
     }
+
     pub fn run_migrations(&self) -> Result<(), Error> {
         const APP_VERSION: &str = clap::crate_version!();
-        let version = Version::parse(&APP_VERSION)?;
-        //todo             verification_queue::TonVerificationQueue::new(&db)
+        let version = &self.previous_version;
         let db = &self.db;
-        stats_db::TonVotingStats::new(&db)?;
+        let ton_voting_stats = stats_db::TonVotingStats::new(&db)?;
+        let mut ton_breaking_versions = stats_db::TonVotingStats::get_breaking_versions();
+        ton_breaking_versions.bulk_upgrade(&version, &ton_voting_stats as &dyn Migration)?;
         // stats_db::EthVotingStats::new(&db),
         // verification_queue::EthVerificationQueue::new(&db)?,
         // votes_queues::EthEventVotesQueue::new(&db?),
         // votes_queues::TonEventVotesQueue::new(&db)?,
-        todo!()
+        // todo             verification_queue::TonVerificationQueue::new(&db)
+        self.update_version()
+    }
+
+    fn update_version(&self) -> Result<(), Error> {
+        self.tree
+            .insert(VERSION_FIELD.as_bytes(), clap::crate_version!())?;
+        Ok(())
     }
 }
 
 /// Updates data in database in case of schema update.
 pub trait Migration {
+    fn get_breaking_versions() -> VersionIterator
+    where
+        Self: Sized;
     ///update from `version1` to `version2`
     fn update(&self, version1: &Version, version2: &Version) -> Result<(), Error>;
 }

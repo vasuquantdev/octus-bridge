@@ -164,9 +164,3 @@ fn parse_key(key: &[u8]) -> MsgAddrStd {
         address: UInt256::from(key).into(),
     }
 }
-
-impl Migration for EthEventVotesQueue {
-    fn update_to_next(&self, version: Version) -> Result<Option<Self>, Error> {
-        unimplemented!()
-    }
-}
