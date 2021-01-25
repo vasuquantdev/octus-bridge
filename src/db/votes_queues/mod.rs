@@ -2,10 +2,8 @@ use sled::transaction::{ConflictableTransactionError, ConflictableTransactionRes
 use sled::Transactional;
 
 use super::constants::*;
-use crate::db::migrate::Migration;
 use crate::models::*;
 use crate::prelude::*;
-use semver::Version;
 
 pub type TonEventVotesQueue = VotesQueue<TonEventTransaction>;
 

@@ -24,6 +24,11 @@ fn get_previous_version(tree: &Tree) -> Result<Version, Error> {
 impl Migrator {
     pub fn init(db: &Db) -> Result<Self, Error> {
         let tree = db.open_tree(SYSTEM_DATA)?;
+        let previous_version = get_previous_version(&tree)?;
+        let current_version = Version::parse(clap::crate_version!())?;
+        if current_version < previous_version {
+            return Err(anyhow::anyhow!("You are running relay with build version lower, than recorded in db. Versions are incompatible. Upgrade relay to {} or higher.",previous_version));
+        }
         Ok(Self {
             previous_version: get_previous_version(&tree)?,
             tree,
@@ -32,7 +37,6 @@ impl Migrator {
     }
 
     pub fn run_migrations(&self) -> Result<(), Error> {
-        const APP_VERSION: &str = clap::crate_version!();
         let version = &self.previous_version;
         let db = &self.db;
         let ton_voting_stats = stats_db::TonVotingStats::new(&db)?;
@@ -83,7 +87,6 @@ impl VersionIterator {
         self.versions
             .windows(2)
             .skip_while(|x| &x[0] < start_version)
-            .map(|x| migrator.update(&x[0], &x[1]))
-            .collect()
+            .try_for_each(|x| migrator.update(&x[0], &x[1]))
     }
 }
