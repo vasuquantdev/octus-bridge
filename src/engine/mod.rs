@@ -19,6 +19,11 @@ pub async fn run(config: RelayConfig) -> Result<(), Error> {
         );
         Error::new(e).context(context)
     })?;
+    let migrator = super::db::migrate::Migrator::init(&state_manager)
+        .map_err(|e| e.context("Failed initializing migrator"))?;
+    migrator
+        .run_migrations()
+        .map_err(|e| e.context("Failed running migrations"))?;
     setup_panic_handler(state_manager.clone());
     let crypto_data_metadata = std::fs::File::open(&config.keys_path);
 

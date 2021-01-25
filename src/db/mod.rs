@@ -3,6 +3,7 @@ mod verification_queue;
 mod votes_queues;
 
 mod constants;
+pub mod migrate;
 
 use std::collections::HashMap;
 
