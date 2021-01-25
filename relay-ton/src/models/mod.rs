@@ -1,3 +1,4 @@
+use ethereum_types::H160;
 use num_bigint::BigInt;
 use ton_abi::Token;
 use ton_block::{MsgAddrStd, MsgAddressInt};
@@ -79,4 +80,47 @@ pub struct InternalMessage {
 pub struct ContractOutput {
     pub transaction_id: Option<TransactionId>,
     pub tokens: Vec<Token>,
+}
+
+pub struct BridgeRelay {
+    pub addr: MsgAddrStd,
+    pub ethereum_account: H160,
+    pub action: Action,
+}
+
+pub enum Action {
+    Add,
+    Remove,
+}
+
+impl From<bool> for Action {
+    fn from(b: bool) -> Self {
+        if b {
+            Action::Add
+        } else {
+            Action::Remove
+        }
+    }
+}
+
+impl Into<bool> for Action {
+    fn into(self) -> bool {
+        matches!(self, Action::Add)
+    }
+}
+
+struct BridgeRelayEth {
+    account: H160,
+    action: Action,
+}
+
+impl Into<Vec<u8>> for BridgeRelayEth {
+    fn into(self) -> Vec<u8> {
+        const LEN: usize = H160::len_bytes() + std::mem::size_of::<bool>();
+        let act: bool = self.action.into();
+        let mut buf = Vec::with_capacity(LEN);
+        buf.extend(self.account.0.iter());
+        buf.push(act as u8);
+        buf
+    }
 }
