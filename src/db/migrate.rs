@@ -16,7 +16,7 @@ fn get_previous_version(tree: &Tree) -> Result<Version, Error> {
     let version = String::from_utf8(
         tree.get(VERSION_FIELD.as_bytes())?
             .unwrap_or_else(|| IVec::from(clap::crate_version!()))
-            .into_vec(),
+            .to_vec(),
     )?;
     Ok(Version::parse(&version)?)
 }
@@ -46,18 +46,32 @@ impl Migrator {
 
 /// Updates data in database in case of schema update.
 pub trait Migration {
-    fn update_to_next(&self, version: Version) -> Result<Option<Self>, Error>;
+    ///update from `version1` to `version2`
+    fn update(&self, version1: &Version, version2: &Version) -> Result<(), Error>;
 }
 
 pub struct VersionIterator {
     versions: Vec<Version>,
 }
 
-impl IntoIterator for VersionIterator {
-    type Item = (Version, Version);
-    type IntoIter = ();
+impl VersionIterator {
+    pub fn new(versions: &[&str]) -> Result<Self, Error> {
+        let versions = versions
+            .iter()
+            .map(|x| Version::parse(*x))
+            .collect::<Result<Vec<Version>, semver::SemVerError>>()?;
+        Ok(Self { versions })
+    }
 
-    fn into_iter(self) -> Self::IntoIter {
-        self.versions.into_iter().
+    pub fn bulk_upgrade(
+        &mut self,
+        start_version: &Version,
+        migrator: &dyn Migration,
+    ) -> Result<(), Error> {
+        self.versions
+            .windows(2)
+            .skip_while(|x| &x[0] < start_version)
+            .map(|x| migrator.update(&x[0], &x[1]))
+            .collect()
     }
 }
