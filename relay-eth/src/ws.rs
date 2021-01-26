@@ -45,7 +45,7 @@ async fn get_actual_eth_height<T: Transport>(
         Ok(a) => match a {
             Ok(a) => {
                 let height = a.as_u64();
-                log::trace!("Got height: {}", height);
+                log::debug!("Got height: {}", height);
                 Some(height)
             }
             Err(e) => {
@@ -438,10 +438,13 @@ fn spawn_blocks_scanner(
             };
 
             let mut loaded_height = scanned_height.load(Ordering::SeqCst);
+            //if sleeping in case of synchronization with eth
+            if loaded_height >= ethereum_actual_height {
+                tokio::time::delay_for(ETH_POLL_INTERVAL).await;
+                continue;
+            }
             // polling if we are near head and sleeping
-            if loaded_height > ethereum_actual_height
-                || (ethereum_actual_height - loaded_height) <= 2
-            {
+            else if (ethereum_actual_height - loaded_height) <= 2 {
                 let block_number = BlockNumber::from(loaded_height);
                 process_block(
                     &w3,
@@ -452,6 +455,7 @@ fn spawn_blocks_scanner(
                     &connection_pool,
                 )
                 .await;
+                loaded_height += 1;
                 tokio::time::delay_for(ETH_POLL_INTERVAL).await;
             }
             // batch processing all blocks from `loaded_height` to `ethereum_actual_height`
@@ -472,7 +476,6 @@ fn spawn_blocks_scanner(
                 )
                 .await;
                 loaded_height = ethereum_actual_height - 1;
-                scanned_height.store(loaded_height, Ordering::SeqCst);
             }
 
             if let Err(e) = update_eth_state(&db, loaded_height, ETH_LAST_MET_HEIGHT) {
@@ -480,7 +483,8 @@ fn spawn_blocks_scanner(
                 log::error!("{}", &err);
             };
 
-            scanned_height.fetch_add(1, Ordering::SeqCst);
+            scanned_height.store(loaded_height, Ordering::SeqCst);
+            log::trace!("Scanned height: {}", scanned_height.load(Ordering::SeqCst))
         }
     });
 

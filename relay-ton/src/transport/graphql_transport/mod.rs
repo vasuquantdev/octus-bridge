@@ -342,7 +342,7 @@ where
 
                 pending_messages
                     .retain(|_, message| block_info.gen_utime().0 <= message.expires_at());
-                log::debug!(
+                log::trace!(
                     "pending messages: {}. time diff: {}",
                     pending_messages.len(),
                     block_info.gen_utime().0 as i64 - Utc::now().timestamp(),
