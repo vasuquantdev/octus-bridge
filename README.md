@@ -200,6 +200,11 @@ ton_settings:
 - `node_address`  - address of ethereum node
 - `tcp_connection_count` - maximum number of parallel tcp connections to
   ethereum node
+- `get_eth_data_timeout` - timeout and delay between retries for getting
+  non-critical data, like current eth sync status or current height
+- `get_eth_data_attempts` - number of attempts for prevoius field
+- `eth_poll_interval` - poll interval between fetching new blocks
+- `eth_poll_attempts`  - number of attempts to get logs in the block
 
 #### ton_settings
 
