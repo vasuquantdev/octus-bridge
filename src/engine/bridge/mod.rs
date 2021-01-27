@@ -1,8 +1,3 @@
-mod eth_events_handler;
-mod event_transport;
-mod semaphore;
-mod ton_events_handler;
-
 use std::collections::hash_map::Entry;
 use std::ops::Deref;
 
@@ -19,6 +14,11 @@ use self::eth_events_handler::*;
 use self::event_transport::*;
 use self::semaphore::*;
 use self::ton_events_handler::*;
+
+mod eth_events_handler;
+mod event_transport;
+mod semaphore;
+mod ton_events_handler;
 
 mod utils;
 
@@ -58,6 +58,10 @@ pub async fn make_bridge(
                 .map_err(|e| Error::new(e).context("Bad url for eth_config provided"))?,
             db.clone(),
             config.eth_settings.tcp_connection_count,
+            config.eth_settings.get_eth_data_timeout,
+            config.eth_settings.get_eth_data_attempts,
+            config.eth_settings.eth_poll_interval,
+            config.eth_settings.eth_poll_attempts,
         )
         .await?,
     );

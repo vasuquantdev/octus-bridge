@@ -161,8 +161,12 @@ logger_settings:
         - stdout
       additive: false
 eth_settings:
-  node_address: "http://localhost:1234"
+  node_address: "http://localhost:8545"
   tcp_connection_count: 100
+  get_eth_data_timeout: 10s
+  get_eth_data_attempts: 50
+  eth_poll_interval: 10s
+  eth_poll_attempts: 8640
 ton_settings:
   bridge_contract_address: ""
   relay_contract_address: ""
