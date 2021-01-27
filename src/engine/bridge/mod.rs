@@ -62,6 +62,7 @@ pub async fn make_bridge(
             configs.eth_settings.get_eth_data_attempts,
             configs.eth_settings.eth_poll_interval,
             configs.eth_settings.eth_poll_attempts,
+            configs.eth_settings.bridge_address,
         )
         .await?,
     );

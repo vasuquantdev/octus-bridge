@@ -167,6 +167,7 @@ eth_settings:
   get_eth_data_attempts: 50
   eth_poll_interval: 10s
   eth_poll_attempts: 8640
+  bridge_address: ""
 ton_settings:
   bridge_contract_address: ""
   relay_contract_address: ""
@@ -204,10 +205,10 @@ ton_settings:
   ethereum node
 - `get_eth_data_timeout` - timeout and delay between retries for getting
   non-critical data, like current eth sync status or current height
-- `get_eth_data_attempts` - number of attempts for prevoius field
+- `get_eth_data_attempts` - number of attempts for previous field
 - `eth_poll_interval` - poll interval between fetching new blocks
 - `eth_poll_attempts`  - number of attempts to get logs in the block
-
+- `bridge_address` - address of bridge contract in ethereum
 #### ton_settings
 
 - `bridge_contract_address` - address of bridge contract

@@ -38,6 +38,7 @@ pub struct EthListener {
     connections_pool: Arc<Semaphore>,
     relay_keys_function_to_topic_map: HashMap<String, H256>,
     timeouts: Timeouts,
+    bridge_address: Address,
 }
 
 async fn get_actual_eth_height<T: Transport>(
@@ -127,6 +128,7 @@ impl SyncedHeight {
 }
 
 impl EthListener {
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         url: Url,
         db: Db,
@@ -135,6 +137,7 @@ impl EthListener {
         get_eth_data_attempts: u64,
         eth_poll_interval: Duration,
         eth_poll_attempts: u64,
+        bridge_address: Address,
     ) -> Result<Self, Error> {
         let connection = Http::new(url.as_str()).expect("Failed connecting to ethereum node");
         log::info!("Connected to: {}", &url);
@@ -157,8 +160,9 @@ impl EthListener {
                 eth_poll_interval,
                 eth_poll_attempts,
             },
+            bridge_address,
         };
-        listener.get_actual_keys().await?; //todo use it
+        dbg!(listener.get_actual_keys().await?); //todo use it
         Ok(listener)
     }
 
@@ -167,7 +171,6 @@ impl EthListener {
     ) -> Result<impl Stream<Item = Result<Event, Error>>, Error> {
         log::debug!("Started iterating over ethereum blocks.");
         let from_height = self.current_block.clone();
-
         let events_rx = spawn_blocks_scanner(
             self.db.clone(),
             self.web3.clone(),
@@ -264,8 +267,8 @@ impl EthListener {
         }
     }
 
-    async fn get_actual_keys(&self) -> Result<HashMap<Address, Vec<H160>>, Error> {
-        let addresses = (*self.topics.read().await).0.clone();
+    async fn get_actual_keys(&self) -> Result<(Address, Vec<H160>), Error> {
+        let address = self.bridge_address;
         async fn get_keys(
             topic: H256,
             address: Address,
@@ -285,28 +288,41 @@ impl EthListener {
                 .into_iter()
                 .map(EthListener::log_to_event)
                 .filter_map(|x| match x {
-                    Ok(a) if a.data.len() == 20 => Some(H160::from_slice(&*a.data)),
+                    Ok(a) if !a.data.is_empty() => {
+                        match ethabi::decode(&[ethabi::ParamType::Address], &*a.data) {
+                            Ok(a) => {
+                                if a.is_empty() {
+                                    log::error!("No addresses in data");
+                                    None
+                                } else {
+                                    Some(a[0].clone().into_address().map(|x| H160::from(x.0)))
+                                }
+                            }
+                            Err(e) => {
+                                log::error!("Failed decoding data as address: {}", e);
+                                None
+                            }
+                        }
+                    }
                     Err(e) => {
                         log::error!("Failed parsing log as event: {}", e);
                         None
                     }
                     Ok(a) => {
-                        log::error!("Bad address len: {}", a.data.len());
+                        log::error!("Bad data len: {}", a.data.len());
                         None
                     }
                 })
+                .filter_map(|x| x)
                 .collect())
         }
         let ok_topic = self.relay_keys_function_to_topic_map["OwnershipGranted"];
         let bad_topic = self.relay_keys_function_to_topic_map["OwnershipRemoved"];
-        let mut keys_map = HashMap::with_capacity(addresses.len());
-        for address in addresses {
-            let ok_fut = get_keys(ok_topic, address, &self.web3);
-            let bad_fut = get_keys(bad_topic, address, &self.web3);
-            let (ok, bad): (HashSet<_>, HashSet<_>) = futures::try_join!(ok_fut, bad_fut)?;
-            keys_map.insert(address, ok.difference(&bad).cloned().collect());
-        }
-        Ok(keys_map)
+        // use hex::ToHex;
+        let ok_fut = get_keys(ok_topic, address, &self.web3);
+        let bad_fut = get_keys(bad_topic, address, &self.web3);
+        let (ok, bad): (HashSet<_>, HashSet<_>) = futures::try_join!(ok_fut, bad_fut)?;
+        Ok((address, ok.difference(&bad).cloned().collect()))
     }
 
     fn log_to_event(log: Log) -> Result<Event, Error> {

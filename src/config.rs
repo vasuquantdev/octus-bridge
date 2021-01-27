@@ -76,6 +76,8 @@ pub struct EthSettings {
     pub eth_poll_interval: Duration,
     /// Number of attempts to get logs in the block
     pub eth_poll_attempts: u64,
+    /// Bridge address in ethereum
+    pub bridge_address: Address,
 }
 
 impl Default for EthSettings {
@@ -87,6 +89,7 @@ impl Default for EthSettings {
             get_eth_data_attempts: 50,
             eth_poll_interval: Duration::from_secs(10),
             eth_poll_attempts: 86400 / 10,
+            bridge_address: Default::default(),
         }
     }
 }
