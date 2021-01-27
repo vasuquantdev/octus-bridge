@@ -24,17 +24,17 @@ mod utils;
 
 pub async fn make_bridge(
     db: Db,
-    config: RelayConfig,
+    configs: RelayConfig,
     key_data: KeyData,
 ) -> Result<Arc<Bridge>, Error> {
-    let ton_transport = config.ton_settings.transport.make_transport().await?;
+    let ton_transport = configs.ton_settings.transport.make_transport().await?;
 
     let ton_contract_address =
-        MsgAddressInt::from_str(&*config.ton_settings.bridge_contract_address.0)
+        MsgAddressInt::from_str(&*configs.ton_settings.bridge_contract_address.0)
             .map_err(|e| Error::msg(e.to_string()))?;
 
     let relay_contract_address =
-        MsgAddressInt::from_str(&*config.ton_settings.relay_contract_address.0)
+        MsgAddressInt::from_str(&*configs.ton_settings.relay_contract_address.0)
             .map_err(|e| Error::msg(e.to_string()))
             .and_then(|address| match address {
                 MsgAddressInt::AddrStd(addr) => Ok(addr),
@@ -54,14 +54,14 @@ pub async fn make_bridge(
 
     let eth_listener = Arc::new(
         EthListener::new(
-            Url::parse(&config.eth_settings.node_address)
+            Url::parse(&configs.eth_settings.node_address)
                 .map_err(|e| Error::new(e).context("Bad url for eth_config provided"))?,
             db.clone(),
-            config.eth_settings.tcp_connection_count,
-            config.eth_settings.get_eth_data_timeout,
-            config.eth_settings.get_eth_data_attempts,
-            config.eth_settings.eth_poll_interval,
-            config.eth_settings.eth_poll_attempts,
+            configs.eth_settings.tcp_connection_count,
+            configs.eth_settings.get_eth_data_timeout,
+            configs.eth_settings.get_eth_data_attempts,
+            configs.eth_settings.eth_poll_interval,
+            configs.eth_settings.eth_poll_attempts,
         )
         .await?,
     );
@@ -76,7 +76,7 @@ pub async fn make_bridge(
             ton_transport.clone(),
             scanning_state.clone(),
             relay_contract.clone(),
-            config.ton_settings.clone(),
+            configs.ton_settings.clone(),
         )
         .await?,
     );
@@ -86,7 +86,7 @@ pub async fn make_bridge(
             ton_transport.clone(),
             scanning_state.clone(),
             relay_contract.clone(),
-            config.ton_settings.clone(),
+            configs.ton_settings.clone(),
         )
         .await?,
     );
@@ -102,6 +102,7 @@ pub async fn make_bridge(
         eth,
         eth_event_handlers: Arc::new(Default::default()),
         ton_event_handlers: Arc::new(Default::default()),
+        configs,
     });
 
     tokio::spawn({
@@ -114,6 +115,7 @@ pub async fn make_bridge(
 
 pub struct Bridge {
     db: Db,
+    configs: RelayConfig,
     eth_listener: Arc<EthListener>,
 
     relay_contract: Arc<RelayContract>,
@@ -575,6 +577,7 @@ impl Bridge {
             verification_queue,
             configuration_id,
             address,
+            &self.configs.ton_settings,
         )
         .await
         {
@@ -611,6 +614,7 @@ impl Bridge {
             self.eth_verification_queue.clone(),
             configuration_id,
             address,
+            &self.configs.ton_settings,
         )
         .await
         {

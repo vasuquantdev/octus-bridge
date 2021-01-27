@@ -34,6 +34,7 @@ impl TonEventsHandler {
         verification_queue: TonVerificationQueue,
         configuration_id: u64,
         address: MsgAddressInt,
+        ton_config: &crate::config::TonSettings,
     ) -> Result<Arc<Self>, Error> {
         use futures::FutureExt;
 
@@ -42,6 +43,7 @@ impl TonEventsHandler {
                 "Already subscribed to this TON configuration contract"
             ));
         }
+        let mut attempts_count = ton_config.events_handler_retry_count;
 
         // Create TON config contract
         let (config_contract, config_contract_events) = loop {
@@ -54,12 +56,21 @@ impl TonEventsHandler {
             {
                 Ok(a) => break a,
                 Err(e) => {
-                    log::error!("Failed creating ton config contract: {}", e);
-                    tokio::time::delay_for(Duration::from_secs(10)).await;
+                    log::error!(
+                        "Failed creating ton config contract: {}. Attempts left: {}",
+                        e,
+                        attempts_count
+                    );
+                    tokio::time::delay_for(ton_config.events_handler_interval).await;
+                    if attempts_count == 0 {
+                        log::error!("Failed creating ton config contract. Giving up.")
+                    }
+                    attempts_count -= 1;
                     continue;
                 }
-            };
+            }
         };
+
         // Get its data
         let details = match transport
             .get_event_configuration_details(config_contract.as_ref())
@@ -314,7 +325,6 @@ impl TonEventsHandler {
 
     async fn handle_restored_swapback(self: Arc<Self>, event: SignedTonEventVoteData) {
         let mut counter = 50;
-
         let event_address = loop {
             match self
                 .state

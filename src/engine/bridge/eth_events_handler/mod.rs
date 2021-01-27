@@ -8,6 +8,8 @@ use super::event_transport::*;
 use super::semaphore::*;
 
 #[async_trait]
+/// `EthEventsHandler` but in uninitialized state.
+/// Made for not spawning several same `EthEventsHandlerS`
 pub trait UnInitEventsHandler: Sized {
     type Handler;
 
@@ -37,13 +39,14 @@ impl EthEventsHandler {
         verification_queue: EthVerificationQueue,
         configuration_id: u64,
         address: MsgAddressInt,
+        ton_config: &crate::config::TonSettings,
     ) -> Result<impl UnInitEventsHandler<Handler = Self>, Error> {
         if !transport.ensure_configuration_identity(&address).await {
             return Err(anyhow!(
                 "Already subscribed to this ETH configuration contract"
             ));
         }
-
+        let mut attempts_count = ton_config.events_handler_retry_count;
         // Create ETH config contract
         let (config_contract, config_contract_events) = loop {
             match make_eth_event_configuration_contract(
@@ -55,8 +58,16 @@ impl EthEventsHandler {
             {
                 Ok(a) => break a,
                 Err(e) => {
-                    log::error!("Failed creating eth config contract: {}", e);
-                    tokio::time::delay_for(Duration::from_secs(10)).await;
+                    log::error!(
+                        "Failed creating eth config contract: {}. Attempts left: {}",
+                        e,
+                        attempts_count
+                    );
+                    tokio::time::delay_for(ton_config.events_handler_interval).await;
+                    if attempts_count == 0 {
+                        log::error!("Failed creating eth config contract. Giving up.")
+                    }
+                    attempts_count -= 1;
                     continue;
                 }
             }

@@ -66,10 +66,10 @@ pub struct EthSettings {
 
     /// Number of concurrent tcp connection to ethereum node
     pub tcp_connection_count: usize,
-    ///Timeout and delay between retries for getting non-critical data, like current eth sync status
+    /// Timeout and delay between retries for getting non-critical data, like current eth sync status
     #[serde(with = "relay_utils::serde_time")]
     pub get_eth_data_timeout: Duration,
-    ///Number of attempts  for getting non-critical data, like current eth sync status
+    /// Number of attempts  for getting non-critical data, like current eth sync status
     pub get_eth_data_attempts: u64,
     /// Poll interval between fetching new blocks
     #[serde(with = "relay_utils::serde_time")]
@@ -131,6 +131,12 @@ pub struct TonSettings {
 
     /// TON events verification queue logical time offset
     pub ton_events_verification_queue_lt_offset: u64,
+
+    /// Amount of attempts to create events handler
+    pub events_handler_retry_count: u64,
+    /// Duration between attempts to create events handler
+    #[serde(with = "relay_utils::serde_time")]
+    pub events_handler_interval: Duration,
 }
 
 impl Default for TonSettings {
@@ -149,6 +155,8 @@ impl Default for TonSettings {
             parallel_spawned_contracts_limit: 10,
             ton_events_verification_interval: Duration::from_secs(1),
             ton_events_verification_queue_lt_offset: 10,
+            events_handler_retry_count: 50,
+            events_handler_interval: Duration::from_secs(10),
         }
     }
 }

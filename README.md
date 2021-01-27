@@ -186,6 +186,8 @@ ton_settings:
   parallel_spawned_contracts_limit: 10
   ton_events_verification_interval: 1s
   ton_events_verification_queue_lt_offset: 10
+  events_handler_retry_count: 50
+  events_handler_interval: 10s
 ``` 
 
 - `keys_path` path to file, where encrypted data is stored.
