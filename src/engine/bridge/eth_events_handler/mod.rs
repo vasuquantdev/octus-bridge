@@ -45,13 +45,22 @@ impl EthEventsHandler {
         }
 
         // Create ETH config contract
-        let (config_contract, config_contract_events) = make_eth_event_configuration_contract(
-            transport.ton_transport().clone(),
-            address.clone(),
-            transport.bridge_contract().address().clone(),
-        )
-        .await
-        .unwrap(); //todo retry subscription
+        let (config_contract, config_contract_events) = loop {
+            match make_eth_event_configuration_contract(
+                transport.ton_transport().clone(),
+                address.clone(),
+                transport.bridge_contract().address().clone(),
+            )
+            .await
+            {
+                Ok(a) => break a,
+                Err(e) => {
+                    log::error!("Failed creating eth config contract: {}", e);
+                    tokio::time::delay_for(Duration::from_secs(10)).await;
+                    continue;
+                }
+            }
+        };
 
         // Get its data
         let details = match transport

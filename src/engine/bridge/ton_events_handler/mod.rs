@@ -1,13 +1,13 @@
 use relay_ton::contracts::*;
 
-use super::utils;
 use crate::crypto::key_managment::*;
+use crate::db::TonVerificationQueue;
 use crate::models::*;
 use crate::prelude::*;
 
 use super::event_transport::*;
 use super::semaphore::*;
-use crate::db::TonVerificationQueue;
+use super::utils;
 
 pub type TonEventTransport = EventTransport<TonEventConfigurationContract>;
 
@@ -44,14 +44,22 @@ impl TonEventsHandler {
         }
 
         // Create TON config contract
-        let (config_contract, config_contract_events) = make_ton_event_configuration_contract(
-            transport.ton_transport().clone(),
-            address.clone(),
-            transport.bridge_contract().address().clone(),
-        )
-        .await
-        .unwrap(); // todo retry subscription
-
+        let (config_contract, config_contract_events) = loop {
+            match make_ton_event_configuration_contract(
+                transport.ton_transport().clone(),
+                address.clone(),
+                transport.bridge_contract().address().clone(),
+            )
+            .await
+            {
+                Ok(a) => break a,
+                Err(e) => {
+                    log::error!("Failed creating ton config contract: {}", e);
+                    tokio::time::delay_for(Duration::from_secs(10)).await;
+                    continue;
+                }
+            };
+        };
         // Get its data
         let details = match transport
             .get_event_configuration_details(config_contract.as_ref())
@@ -305,17 +313,25 @@ impl TonEventsHandler {
     }
 
     async fn handle_restored_swapback(self: Arc<Self>, event: SignedTonEventVoteData) {
-        let event_address = match self
-            .state
-            .config_contract
-            .compute_event_address(event.data.clone())
-            .await
-        {
-            Ok(address) => address,
-            Err(e) => {
-                log::error!("Failed to compute address for restored event: {:?}", e);
-                // TODO: maybe retry several times here?
-                return;
+        let mut counter = 50;
+
+        let event_address = loop {
+            match self
+                .state
+                .config_contract
+                .compute_event_address(event.data.clone())
+                .await
+            {
+                Ok(address) => break address,
+                Err(e) => {
+                    if counter == 0 {
+                        log::error!("Failed to compute address for restored event. 0 attempts left. Giving up to do it.");
+                        return;
+                    }
+                    log::error!("Failed to compute address for restored event: {:?}. Retrying. {} attempts left", e, counter);
+                    tokio::time::delay_for(Duration::from_secs(10)).await;
+                    counter -= 1;
+                }
             }
         };
 
