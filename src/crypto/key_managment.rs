@@ -361,7 +361,7 @@ mod test {
             private_key,
         };
         let res = signer.sign(message_text);
-        let expected = hex::decode("b1a996ea9f23729ea5f6602a13a906f9627af7ccd891c6d6e1d3a3a5b914c73e17f523b5379019d75df9342f7ffc5ce56333f57cd587f1aa056153d536252c951c").unwrap();
+        let expected = hex::decode("ff244ad5573d02bc6ead270d5ff48c490b0113225dd61617791ba6610ed1e56a007ec790f8fca53243907b888e6b33ad15c52fed3bc6a7ee5da2fa287ea4f8211b").unwrap();
         assert_eq!(expected.len(), res.len());
         assert_eq!(res, expected.as_slice());
     }
