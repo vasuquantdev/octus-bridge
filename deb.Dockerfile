@@ -17,6 +17,7 @@ COPY Cargo.toml ./Cargo.toml
 
 # Main library
 COPY src ./src
+COPY debian debian
 # supporting libraries
 COPY relay-eth ./relay-eth
 COPY relay-models ./relay-models

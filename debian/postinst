@@ -2,7 +2,7 @@
 set -e
 
 if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-deconfigure" ] || [ "$1" = "abort-remove" ]; then
-  useradd bridge -r
+  useradd bridge -r || true
   /usr/bin/relay --gen-config /etc/relay.conf
   (mkdir "/var/lib/relay" && chown bridge:bridge -R "/var/lib/relay") || true
 fi

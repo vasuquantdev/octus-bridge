@@ -444,7 +444,7 @@ fn provide_password() -> Result<String, Error> {
 fn provide_eth_derivation_path() -> Result<String, Error> {
     let derivation_path = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("Provide derivation path for ETH")
-        .with_initial_text("m/44'/00'/0'/0/0".to_string())
+        .with_initial_text("m/44'/60'/0'/0/0".to_string())
         .interact()?;
 
     Ok(derivation_path)
