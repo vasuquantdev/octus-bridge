@@ -20,7 +20,7 @@ impl IntoView for TonEventVoteData {
 
     fn into_view(self) -> Self::View {
         TonEventVoteDataView {
-            configuration_id: self.configuration_id.to_string(),
+            configuration_id: self.configuration_id,
             event_transaction: hex::encode(self.event_transaction.as_slice()),
             event_transaction_lt: self.event_transaction_lt,
             event_index: self.event_index,
@@ -48,7 +48,7 @@ impl IntoView for EthEventVoteData {
             }
         };
         EthEventVoteDataView {
-            configuration_id: self.configuration_id.to_string(),
+            configuration_id: self.configuration_id,
             event_transaction: hex::encode(&self.event_transaction.0),
             event_index: self.event_index,
             event_data,
@@ -96,7 +96,7 @@ impl From<TonEventTransaction> for TonEthTransactionView {
 
 #[derive(Debug, Clone)]
 pub struct CommonReceivedVote<T, A> {
-    configuration_id: u64,
+    configuration_id: u32,
     event_addr: MsgAddrStd,
     relay: MsgAddrStd,
     kind: Voting,
@@ -118,7 +118,7 @@ pub type TonEventReceivedVote = CommonReceivedVote<Arc<AbiEvent>, TonEventDetail
 
 impl EthEventReceivedVote {
     pub fn new(
-        configuration_id: u64,
+        configuration_id: u32,
         event_addr: MsgAddrStd,
         relay: MsgAddrStd,
         kind: Voting,
@@ -137,7 +137,7 @@ impl EthEventReceivedVote {
 
 impl TonEventReceivedVote {
     pub fn new(
-        configuration_id: u64,
+        configuration_id: u32,
         event_addr: MsgAddrStd,
         relay: MsgAddrStd,
         kind: Voting,
@@ -162,7 +162,7 @@ pub trait ReceivedVote: Send + Sync {
     type Data: ReceivedVoteEventData;
     type VoteWithData: ReceivedVoteWithData;
 
-    fn configuration_id(&self) -> u64;
+    fn configuration_id(&self) -> u32;
     fn event_address(&self) -> &MsgAddrStd;
     fn relay(&self) -> &MsgAddrStd;
     fn kind(&self) -> Voting;
@@ -180,7 +180,7 @@ where
     type VoteWithData = CommonReceivedVoteWithData<T, D>;
 
     #[inline]
-    fn configuration_id(&self) -> u64 {
+    fn configuration_id(&self) -> u32 {
         self.configuration_id
     }
 
@@ -278,19 +278,9 @@ impl IntoVote for EthEventReceivedVoteWithData {
         Self::Vote {
             configuration_id: self.info.configuration_id,
             event_transaction: self.data.init_data.event_transaction,
-            event_index: self
-                .data
-                .init_data
-                .event_index
-                .to_u32()
-                .unwrap_or_else(u32::max_value),
+            event_index: self.data.init_data.event_index,
             event_data: self.data.init_data.event_data,
-            event_block_number: self
-                .data
-                .init_data
-                .event_block_number
-                .to_u64()
-                .unwrap_or_else(u64::max_value),
+            event_block_number: self.data.init_data.event_block_number,
             event_block: self.data.init_data.event_block,
         }
     }
@@ -304,6 +294,7 @@ impl IntoVote for TonEventReceivedVoteWithData {
             configuration_id: self.info.configuration_id,
             event_transaction: self.data.init_data.event_transaction,
             event_transaction_lt: self.data.init_data.event_transaction_lt,
+            event_timestamp: self.data.init_data.event_timestamp,
             event_index: self.data.init_data.event_index,
             event_data: self.data.init_data.event_data,
         }

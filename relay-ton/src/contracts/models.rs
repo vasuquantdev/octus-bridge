@@ -14,17 +14,17 @@ use ethereum_types::H256;
 // Events
 
 crate::define_event!(BridgeContractEvent, BridgeContractEventKind, {
-    EventConfigurationCreationVote { id: u64, relay: MsgAddrStd, vote: Voting },
+    EventConfigurationCreationVote { id: u32, relay: MsgAddrStd, vote: Voting },
     EventConfigurationCreationEnd {
-        id: u64,
+        id: u32,
         active: bool,
         address: MsgAddressInt,
         event_type: EventType
     },
 
-    EventConfigurationUpdateVote { id: u64, relay: MsgAddrStd, vote: Voting },
+    EventConfigurationUpdateVote { id: u32, relay: MsgAddrStd, vote: Voting },
     EventConfigurationUpdateEnd {
-        id: u64,
+        id: u32,
         active: bool,
         address: MsgAddressInt,
         event_type: EventType
@@ -142,7 +142,7 @@ crate::define_event!(
 );
 
 impl TryFrom<(TonEventConfigurationContractEventKind, Vec<Token>)>
-    for TonEventConfigurationContractEvent
+for TonEventConfigurationContractEvent
 {
     type Error = ContractError;
 
@@ -184,7 +184,7 @@ crate::define_event!(
 );
 
 impl TryFrom<(EthEventConfigurationContractEventKind, Vec<Token>)>
-    for EthEventConfigurationContractEvent
+for EthEventConfigurationContractEvent
 {
     type Error = ContractError;
 
@@ -214,15 +214,9 @@ impl TryFrom<(EthEventConfigurationContractEventKind, Vec<Token>)>
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct BridgeConfiguration {
-    pub event_configuration_required_confirmations: u16,
-    pub event_configuration_required_rejections: u16,
-
-    pub bridge_configuration_update_required_confirmations: u16,
-    pub bridge_configuration_update_required_rejections: u16,
-
-    pub bridge_relay_update_required_confirmations: u16,
-    pub bridge_relay_update_required_rejections: u16,
-
+    pub nonce: u16,
+    pub bridge_update_required_confirmations: u16,
+    pub bridge_update_required_rejects: u16,
     pub active: bool,
 }
 
@@ -231,12 +225,9 @@ impl StandaloneToken for BridgeConfiguration {}
 fn parse_bridge_configuration(tokens: Vec<Token>) -> ContractResult<BridgeConfiguration> {
     let mut tokens = tokens.into_iter();
     Ok(BridgeConfiguration {
-        event_configuration_required_confirmations: tokens.next().try_parse()?,
-        event_configuration_required_rejections: tokens.next().try_parse()?,
-        bridge_configuration_update_required_confirmations: tokens.next().try_parse()?,
-        bridge_configuration_update_required_rejections: tokens.next().try_parse()?,
-        bridge_relay_update_required_confirmations: tokens.next().try_parse()?,
-        bridge_relay_update_required_rejections: tokens.next().try_parse()?,
+        nonce: tokens.next().try_parse()?,
+        bridge_update_required_confirmations: tokens.next().try_parse()?,
+        bridge_update_required_rejects: tokens.next().try_parse()?,
         active: tokens.next().try_parse()?,
     })
 }
@@ -244,24 +235,9 @@ fn parse_bridge_configuration(tokens: Vec<Token>) -> ContractResult<BridgeConfig
 impl FunctionArg for BridgeConfiguration {
     fn token_value(self) -> TokenValue {
         TokenValue::Tuple(vec![
-            self.event_configuration_required_confirmations
-                .token_value()
-                .named("eventConfigurationRequiredConfirmations"),
-            self.event_configuration_required_rejections
-                .token_value()
-                .named("eventConfigurationRequiredRejects"),
-            self.bridge_configuration_update_required_confirmations
-                .token_value()
-                .named("bridgeConfigurationUpdateRequiredConfirmations"),
-            self.bridge_configuration_update_required_rejections
-                .token_value()
-                .named("bridgeConfigurationUpdateRequiredRejects"),
-            self.bridge_relay_update_required_confirmations
-                .token_value()
-                .named("bridgeRelayUpdateRequiredConfirmations"),
-            self.bridge_relay_update_required_rejections
-                .token_value()
-                .named("bridgeRelayUpdateRequiredRejects"),
+            self.nonce.token_value().named("nonce"),
+            self.bridge_update_required_confirmations.token_value().named("bridgeUpdateRequiredConfirmations"),
+            self.bridge_update_required_rejects.token_value().named("bridgeUpdateRequiredRejects"),
             self.active.token_value().named("active"),
         ])
     }
@@ -278,7 +254,7 @@ impl ParseToken<BridgeConfiguration> for TokenValue {
 
 #[derive(Debug, Clone)]
 pub struct ActiveEventConfiguration {
-    pub id: u64,
+    pub id: u32,
     pub address: MsgAddressInt,
     pub event_type: EventType,
 }
@@ -288,7 +264,7 @@ impl TryFrom<ContractOutput> for Vec<ActiveEventConfiguration> {
 
     fn try_from(value: ContractOutput) -> Result<Self, Self::Error> {
         let mut tokens = value.into_parser();
-        let ids: Vec<u64> = tokens.parse_next()?;
+        let ids: Vec<u32> = tokens.parse_next()?;
         let addrs: Vec<MsgAddressInt> = tokens.parse_next()?;
         let types: Vec<EventType> = tokens.parse_next()?;
         if ids.len() != addrs.len() || ids.len() != types.len() {
@@ -310,6 +286,7 @@ impl TryFrom<ContractOutput> for Vec<ActiveEventConfiguration> {
 
 #[derive(Debug, Clone)]
 pub struct RelayUpdate {
+    pub nonce: u16,
     pub ton_account: MsgAddrStd,
     pub eth_account: ethereum_types::Address,
     pub action: RelayUpdateAction,
@@ -322,11 +299,13 @@ impl ParseToken<RelayUpdate> for TokenValue {
             _ => return Err(ContractError::InvalidAbi),
         };
 
+        let nonce = tuple.next().try_parse()?;
         let workchain_id = tuple.next().try_parse()?;
         let addr: UInt256 = tuple.next().try_parse()?;
         let ton_account = MsgAddrStd::with_address(None, workchain_id, addr.into());
 
         Ok(RelayUpdate {
+            nonce,
             ton_account,
             eth_account: tuple.next().try_parse()?,
             action: tuple.next().try_parse()?,
@@ -337,6 +316,7 @@ impl ParseToken<RelayUpdate> for TokenValue {
 impl FunctionArg for RelayUpdate {
     fn token_value(self) -> TokenValue {
         TokenValue::Tuple(vec![
+            self.nonce.token_value().named("nonce"),
             self.ton_account.workchain_id.token_value().named("wid"),
             UInt256::from(self.ton_account.address.get_bytestring(0))
                 .token_value()
@@ -526,12 +506,13 @@ impl StandaloneToken for EventStatus {}
 pub struct TonEventInitData {
     pub event_transaction: UInt256,
     pub event_transaction_lt: u64,
+    pub event_timestamp: u32,
     pub event_index: u32,
     pub event_data: Cell,
 
     pub ton_event_configuration: MsgAddressInt,
-    pub required_confirmations: BigUint,
-    pub required_rejections: BigUint,
+    pub required_confirmations: u16,
+    pub required_rejections: u16,
 }
 
 impl ParseToken<TonEventInitData> for TokenValue {
@@ -544,6 +525,7 @@ impl ParseToken<TonEventInitData> for TokenValue {
         Ok(TonEventInitData {
             event_transaction: tuple.next().try_parse()?,
             event_transaction_lt: tuple.next().try_parse()?,
+            event_timestamp: tuple.next().try_parse()?,
             event_index: tuple.next().try_parse()?,
             event_data: tuple.next().try_parse()?,
             ton_event_configuration: tuple.next().try_parse()?,
@@ -556,10 +538,11 @@ impl ParseToken<TonEventInitData> for TokenValue {
 #[derive(Debug, Clone)]
 pub struct TonEventVoteData {
     /// Not serializable!
-    pub configuration_id: u64,
+    pub configuration_id: u32,
 
     pub event_transaction: UInt256,
     pub event_transaction_lt: u64,
+    pub event_timestamp: u32,
     pub event_index: u32,
     pub event_data: Cell,
 }
@@ -573,6 +556,9 @@ impl FunctionArg for TonEventVoteData {
             self.event_transaction_lt
                 .token_value()
                 .named("eventTransactionLt"),
+            self.event_timestamp
+                .token_value()
+                .named("eventTimestamp"),
             self.event_index.token_value().named("eventIndex"),
             self.event_data.token_value().named("eventData"),
         ])
@@ -581,9 +567,10 @@ impl FunctionArg for TonEventVoteData {
 
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
 struct StoredTonEventVotingData {
-    pub configuration_id: u64,
+    pub configuration_id: u32,
     pub event_transaction: Vec<u8>,
     pub event_transaction_lt: u64,
+    pub event_timestamp: u32,
     pub event_index: u32,
     pub event_data: Vec<u8>,
 }
@@ -599,10 +586,11 @@ impl BorshSerialize for TonEventVoteData {
             configuration_id: self.configuration_id,
             event_transaction: self.event_transaction.as_slice().to_vec(),
             event_transaction_lt: self.event_transaction_lt,
+            event_timestamp: self.event_timestamp,
             event_index: self.event_index,
             event_data,
         }
-        .serialize(writer)
+            .serialize(writer)
     }
 }
 
@@ -617,6 +605,7 @@ impl BorshDeserialize for TonEventVoteData {
             configuration_id: stored.configuration_id,
             event_transaction: stored.event_data.into(),
             event_transaction_lt: stored.event_transaction_lt,
+            event_timestamp: stored.event_timestamp,
             event_index: stored.event_index,
             event_data,
         })
@@ -653,12 +642,12 @@ pub struct EthEventInitData {
     pub event_transaction: ethereum_types::H256,
     pub event_index: u32,
     pub event_data: Cell,
-    pub event_block_number: BigUint,
+    pub event_block_number: u32,
     pub event_block: ethereum_types::H256,
 
     pub eth_event_configuration: MsgAddressInt,
-    pub required_confirmations: BigUint,
-    pub required_rejections: BigUint,
+    pub required_confirmations: u16,
+    pub required_rejections: u16,
 
     pub proxy_address: MsgAddressInt,
 }
@@ -687,12 +676,12 @@ impl ParseToken<EthEventInitData> for TokenValue {
 #[derive(Debug, Clone)]
 pub struct EthEventVoteData {
     /// Not serializable!
-    pub configuration_id: u64,
+    pub configuration_id: u32,
 
     pub event_transaction: ethereum_types::H256,
     pub event_index: u32,
     pub event_data: Cell,
-    pub event_block_number: u64,
+    pub event_block_number: u32,
     pub event_block: ethereum_types::H256,
 }
 
@@ -704,7 +693,7 @@ impl FunctionArg for EthEventVoteData {
                 .named("eventTransaction"),
             self.event_index.token_value().named("eventIndex"),
             self.event_data.token_value().named("eventData"),
-            BigUint256(self.event_block_number.into())
+            self.event_block_number
                 .token_value()
                 .named("eventBlockNumber"),
             self.event_block.token_value().named("eventBlock"),
@@ -714,11 +703,11 @@ impl FunctionArg for EthEventVoteData {
 
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
 pub struct StoredEthEventVoteData {
-    pub configuration_id: u64,
+    pub configuration_id: u32,
     pub event_transaction: Vec<u8>,
     pub event_index: u32,
     pub event_data: Vec<u8>,
-    pub event_block_number: u64,
+    pub event_block_number: u32,
     pub event_block: Vec<u8>,
 }
 
@@ -737,7 +726,7 @@ impl BorshSerialize for EthEventVoteData {
             event_block_number: self.event_block_number,
             event_block: self.event_block.as_bytes().to_vec(),
         }
-        .serialize(writer)
+            .serialize(writer)
     }
 }
 

@@ -103,9 +103,9 @@ impl From<bool> for Action {
     }
 }
 
-impl Into<bool> for Action {
-    fn into(self) -> bool {
-        matches!(self, Action::Add)
+impl From<Action> for bool {
+    fn from(action: Action) -> Self {
+        matches!(action, Action::Add)
     }
 }
 
@@ -114,12 +114,12 @@ struct BridgeRelayEth {
     action: Action,
 }
 
-impl Into<Vec<u8>> for BridgeRelayEth {
-    fn into(self) -> Vec<u8> {
+impl From<BridgeRelayEth> for Vec<u8> {
+    fn from(relay: BridgeRelayEth) -> Self {
         const LEN: usize = H160::len_bytes() + std::mem::size_of::<bool>();
-        let act: bool = self.action.into();
+        let act: bool = relay.action.into();
         let mut buf = Vec::with_capacity(LEN);
-        buf.extend(self.account.0.iter());
+        buf.extend(relay.account.0.iter());
         buf.push(act as u8);
         buf
     }

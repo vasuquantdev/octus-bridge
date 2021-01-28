@@ -1,7 +1,7 @@
 use ethabi::{ParamType as EthParamType, Token as EthTokenValue};
 use ton_abi::{ParamType as TonParamType, Token as TonToken, TokenValue as TonTokenValue};
 
-use relay_ton::contracts::message_builder::{BigUint256, FunctionArg};
+use relay_ton::contracts::message_builder::FunctionArg;
 use relay_ton::contracts::{
     ContractError, ContractResult, EthEventConfiguration, SwapBackEvent, TonEventConfiguration,
 };
@@ -326,12 +326,13 @@ pub fn prepare_ton_event_payload(
     // struct TONEvent {
     //     uint eventTransaction;
     //     uint64 eventTransactionLt;
+    //     uint32 eventTimestamp;
     //     uint32 eventIndex;
     //     bytes eventData;
     //     int8 tonEventConfigurationWid;
     //     uint tonEventConfigurationAddress;
-    //     uint requiredConfirmations;
-    //     uint requiredRejects;
+    //     uint16 requiredConfirmations;
+    //     uint16 requiredRejects;
     // }
 
     let event_data = ton_tokens_to_ethereum_bytes(event.tokens.clone());
@@ -339,14 +340,13 @@ pub fn prepare_ton_event_payload(
     let tuple = EthTokenValue::Tuple(vec![
         map_ton_to_eth(event.event_transaction.clone().token_value())?,
         map_ton_to_eth(event.event_transaction_lt.clone().token_value())?,
+        map_ton_to_eth(event.event_timestamp.token_value())?,
         map_ton_to_eth(event.event_index.token_value())?,
         map_ton_to_eth(event_data.token_value())?,
         map_ton_to_eth((address.workchain_id() as i8).token_value())?, // tonEventConfigurationWid
         map_ton_to_eth(UInt256::from(address.address().get_bytestring(0)).token_value())?, // tonEventConfigurationAddress
-        map_ton_to_eth(
-            BigUint256(details.common.event_required_confirmations.into()).token_value(),
-        )?, // requiredConfirmations
-        map_ton_to_eth(BigUint256(details.common.event_required_rejects.into()).token_value())?, //requiredRejects
+        map_ton_to_eth(details.common.event_required_confirmations.token_value())?, // requiredConfirmations
+        map_ton_to_eth(details.common.event_required_rejects.token_value())?, //requiredRejects
     ]);
 
     Ok(ethabi::encode(&[tuple]).to_vec())
@@ -522,6 +522,7 @@ mod test {
         let got = eth_param_from_str("uint256").unwrap();
         assert_eq!(expected, got);
     }
+
     #[test]
     fn test_i64() {
         let expected = ParamType::Int(64);
@@ -655,7 +656,7 @@ mod test {
                 &ethabi::ParamType::Tuple(vec![
                     Box::new(ethabi::ParamType::Uint(256)),
                     Box::new(ethabi::ParamType::Bytes)
-                ])
+                ]),
             )
             .unwrap(),
             ton_expected

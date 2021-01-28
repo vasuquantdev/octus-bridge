@@ -34,22 +34,22 @@ pub trait FromRequest<T>: Sized {
     fn try_from(request: T) -> Result<Self, Error>;
 }
 
-impl FromRequest<Voting> for (u64, contracts::models::Voting) {
+impl FromRequest<Voting> for (u32, contracts::models::Voting) {
     fn try_from(value: Voting) -> Result<Self, Error> {
-        let (address, voting) = match value {
-            Voting::Confirm(address) => (address, contracts::models::Voting::Confirm),
-            Voting::Reject(address) => (address, contracts::models::Voting::Reject),
+        let (configuration_id, voting) = match value {
+            Voting::Confirm(configuration_id) => {
+                (configuration_id, contracts::models::Voting::Confirm)
+            }
+            Voting::Reject(configuration_id) => {
+                (configuration_id, contracts::models::Voting::Reject)
+            }
         };
-        let configuration_id = u64::from_str(&address).map_err(|e| anyhow!("{}", e.to_string()))?;
         Ok((configuration_id, voting))
     }
 }
 
-impl FromRequest<NewEventConfiguration> for (u64, MsgAddressInt, contracts::models::EventType) {
+impl FromRequest<NewEventConfiguration> for (u32, MsgAddressInt, contracts::models::EventType) {
     fn try_from(request: NewEventConfiguration) -> Result<Self, Error> {
-        let configuration_id =
-            u64::from_str(&request.configuration_id).map_err(|e| anyhow!("{}", e.to_string()))?;
-
         let event_address =
             MsgAddressInt::from_str(&request.address).map_err(|e| anyhow!("{}", e.to_string()))?;
 
@@ -58,7 +58,7 @@ impl FromRequest<NewEventConfiguration> for (u64, MsgAddressInt, contracts::mode
             EventConfigurationType::Ton => contracts::models::EventType::TON,
         };
 
-        Ok((configuration_id, event_address, event_type))
+        Ok((request.configuration_id, event_address, event_type))
     }
 }
 
@@ -66,29 +66,17 @@ pub trait FromContractModels<T>: Sized {
     fn from(model: T) -> Self;
 }
 
-impl FromContractModels<(u64, contracts::models::EthEventConfiguration)> for EventConfiguration {
-    fn from((configuration_id, c): (u64, contracts::models::EthEventConfiguration)) -> Self {
+impl FromContractModels<(u32, contracts::models::EthEventConfiguration)> for EventConfiguration {
+    fn from((configuration_id, c): (u32, contracts::models::EthEventConfiguration)) -> Self {
         Self {
-            configuration_id: configuration_id.to_string(),
+            configuration_id,
             ethereum_event_abi: c.common.event_abi,
             ethereum_event_address: hex::encode(c.event_address.as_bytes()),
             event_proxy_address: c.proxy_address.to_string(),
             ethereum_event_blocks_to_confirm: c.event_blocks_to_confirm,
-            event_required_confirmations: c
-                .common
-                .event_required_confirmations
-                .to_u64()
-                .unwrap_or(u64::max_value()),
-            event_required_rejects: c
-                .common
-                .event_required_rejects
-                .to_u64()
-                .unwrap_or(u64::max_value()),
-            event_initial_balance: c
-                .common
-                .event_initial_balance
-                .to_u64()
-                .unwrap_or(u64::max_value()),
+            event_required_confirmations: c.common.event_required_confirmations,
+            event_required_rejects: c.common.event_required_rejects,
+            event_initial_balance: c.common.event_initial_balance.to_u64().unwrap_or(u64::MAX),
             bridge_address: c.common.bridge_address.to_string(),
             event_code: relay_ton::prelude::serialize_toc(&c.common.event_code)
                 .map(hex::encode)

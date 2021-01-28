@@ -33,7 +33,7 @@
       "inputs": [
       ],
       "outputs": [
-        {"components":[{"name":"eventTransaction","type":"uint256"},{"name":"eventTransactionLt","type":"uint64"},{"name":"eventIndex","type":"uint32"},{"name":"eventData","type":"cell"},{"name":"tonEventConfiguration","type":"address"},{"name":"requiredConfirmations","type":"uint256"},{"name":"requiredRejects","type":"uint256"}],"name":"_initData","type":"tuple"},
+        {"components":[{"name":"eventTransaction","type":"uint256"},{"name":"eventTransactionLt","type":"uint64"},{"name":"eventTimestamp","type":"uint32"},{"name":"eventIndex","type":"uint32"},{"name":"eventData","type":"cell"},{"name":"tonEventConfiguration","type":"address"},{"name":"requiredConfirmations","type":"uint16"},{"name":"requiredRejects","type":"uint16"}],"name":"_initData","type":"tuple"},
         {"name":"_status","type":"uint8"},
         {"name":"_confirmRelays","type":"address[]"},
         {"name":"_rejectRelays","type":"address[]"},
@@ -42,7 +42,7 @@
     }
   ],
   "data": [
-    {"components":[{"name":"eventTransaction","type":"uint256"},{"name":"eventTransactionLt","type":"uint64"},{"name":"eventIndex","type":"uint32"},{"name":"eventData","type":"cell"},{"name":"tonEventConfiguration","type":"address"},{"name":"requiredConfirmations","type":"uint256"},{"name":"requiredRejects","type":"uint256"}],"key":1,"name":"initData","type":"tuple"}
+    {"components":[{"name":"eventTransaction","type":"uint256"},{"name":"eventTransactionLt","type":"uint64"},{"name":"eventTimestamp","type":"uint32"},{"name":"eventIndex","type":"uint32"},{"name":"eventData","type":"cell"},{"name":"tonEventConfiguration","type":"address"},{"name":"requiredConfirmations","type":"uint16"},{"name":"requiredRejects","type":"uint16"}],"key":1,"name":"initData","type":"tuple"}
   ],
   "events": [
   ]

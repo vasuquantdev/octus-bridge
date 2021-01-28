@@ -108,15 +108,15 @@ impl From<[u8; 16]> for UInt128 {
     }
 }
 
-impl Into<[u8; 16]> for UInt128 {
-    fn into(self) -> [u8; 16] {
-        self.0
+impl From<UInt128> for [u8; 16] {
+    fn from(data: UInt128) -> Self {
+        data.0
     }
 }
 
-impl<'a> Into<&'a [u8; 16]> for &'a UInt128 {
-    fn into(self) -> &'a [u8; 16] {
-        &self.0
+impl<'a> From<&'a UInt128> for &'a [u8; 16] {
+    fn from(data: &'a UInt128) -> Self {
+        &data.0
     }
 }
 

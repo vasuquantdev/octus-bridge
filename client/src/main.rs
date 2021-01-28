@@ -212,7 +212,7 @@ impl Client {
     }
 
     pub fn get_queued_transactions_ton_to_eth(&self) -> Result<(), Error> {
-        let configuration_id: u64 = Input::with_theme(&ColorfulTheme::default())
+        let configuration_id: u32 = Input::with_theme(&ColorfulTheme::default())
             .with_prompt("Enter configuration id:")
             .interact()?;
 
@@ -237,8 +237,8 @@ impl Client {
     }
 
     fn get_stats<T>(&self, url: &str) -> Result<(), Error>
-    where
-        for<'a> T: Deserialize<'a> + Serialize,
+        where
+                for<'a> T: Deserialize<'a> + Serialize,
     {
         let our_key = self
             .get::<Status>("status")?
@@ -267,7 +267,7 @@ impl Client {
     pub fn add_new_event_configuration(&self) -> Result<(), Error> {
         let theme = ColorfulTheme::default();
 
-        let configuration_id: u64 = Input::with_theme(&theme)
+        let configuration_id: u32 = Input::with_theme(&theme)
             .with_prompt("Enter configuration id:")
             .interact()?;
 
@@ -286,7 +286,7 @@ impl Client {
         let _ = self.post_raw(
             "event-configurations",
             &NewEventConfiguration {
-                configuration_id: configuration_id.to_string(),
+                configuration_id,
                 address,
                 configuration_type: types[contract_type],
             },
@@ -348,8 +348,8 @@ impl Client {
     }
 
     fn get<T>(&self, url: &str) -> Result<T, Error>
-    where
-        for<'de> T: Deserialize<'de>,
+        where
+                for<'de> T: Deserialize<'de>,
     {
         let url = self.url.join(url)?;
         let response = self.client.get(url).send()?.prepare()?;
@@ -358,9 +358,9 @@ impl Client {
 
     #[allow(dead_code)]
     fn post_json<T, B>(&self, url: &str, body: &B) -> Result<T, Error>
-    where
-        for<'de> T: Deserialize<'de>,
-        B: Serialize,
+        where
+                for<'de> T: Deserialize<'de>,
+                B: Serialize,
     {
         let url = self.url.join(url)?;
         let response = self.client.post(url).json(body).send()?.prepare()?;
@@ -368,8 +368,8 @@ impl Client {
     }
 
     fn post_raw<B>(&self, url: &str, body: &B) -> Result<String, Error>
-    where
-        B: Serialize,
+        where
+            B: Serialize,
     {
         let url = self.url.join(url)?;
         let response = self.client.post(url).json(body).send()?.prepare()?;
@@ -506,8 +506,8 @@ impl<'a> Prompt<'a> {
     }
 
     pub fn item<F>(&mut self, name: &'static str, f: F) -> &mut Self
-    where
-        F: FnMut(&Client) -> Result<(), Error> + 'static,
+        where
+            F: FnMut(&Client) -> Result<(), Error> + 'static,
     {
         self.select.item(name);
         self.items.push(Box::new(f));
@@ -525,8 +525,8 @@ trait PrepareRequest {
 }
 
 impl<T> PrepareRequest for Result<(Url, T), Error>
-where
-    T: Serialize,
+    where
+        T: Serialize,
 {
     fn prepare(self) -> Result<(Url, serde_json::Value), Error> {
         self.map(|(url, value)| (url, json!(value)))

@@ -28,7 +28,7 @@ struct State {
     transport: Arc<EthEventTransport>,
     verification_queue: EthVerificationQueue,
 
-    configuration_id: u64,
+    configuration_id: u32,
     details: EthEventConfiguration,
     config_contract: Arc<EthEventConfigurationContract>,
 }
@@ -37,7 +37,7 @@ impl EthEventsHandler {
     pub async fn uninit(
         transport: Arc<EthEventTransport>,
         verification_queue: EthVerificationQueue,
-        configuration_id: u64,
+        configuration_id: u32,
         address: MsgAddressInt,
         ton_config: &crate::config::TonSettings,
     ) -> Result<impl UnInitEventsHandler<Handler = Self>, Error> {

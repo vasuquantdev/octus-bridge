@@ -132,7 +132,7 @@ pub struct Bridge {
     ton_event_handlers: Arc<EventsHandlerMap<TonEventsHandler>>,
 }
 
-type EventsHandlerMap<T> = RwLock<HashMap<u64, Arc<T>>>;
+type EventsHandlerMap<T> = RwLock<HashMap<u32, Arc<T>>>;
 
 impl Bridge {
     async fn run<T>(self: Arc<Self>, mut bridge_contract_events: T) -> Result<(), Error>
@@ -331,14 +331,14 @@ impl Bridge {
 
     pub async fn get_event_configurations(
         &self,
-    ) -> Result<Vec<(u64, EthEventConfiguration)>, Error> {
+    ) -> Result<Vec<(u32, EthEventConfiguration)>, Error> {
         let state = self.configs_state.read().await;
         Ok(state.eth_configs_map.values().cloned().collect())
     }
 
     pub async fn create_event_configuration(
         &self,
-        configuration_id: u64,
+        configuration_id: u32,
         address: MsgAddressInt,
         event_type: EventType,
     ) -> Result<(), anyhow::Error> {
@@ -350,7 +350,7 @@ impl Bridge {
 
     pub async fn vote_for_ethereum_event_configuration(
         &self,
-        configuration_id: u64,
+        configuration_id: u32,
         voting: Voting,
     ) -> Result<(), anyhow::Error> {
         self.relay_contract
@@ -550,9 +550,9 @@ impl Bridge {
         let prepared_data = EthEventVoteData {
             configuration_id,
             event_transaction: event.tx_hash,
-            event_index: event.event_index as u32,
+            event_index: event.event_index,
             event_data,
-            event_block_number: event.block_number,
+            event_block_number: event.block_number as u32,
             event_block: event.block_hash,
         };
 
@@ -572,7 +572,7 @@ impl Bridge {
     /// Creates a listener for TON event votes in TON and its target contract
     async fn subscribe_to_ton_events_configuration(
         self: Arc<Self>,
-        configuration_id: u64,
+        configuration_id: u32,
         address: MsgAddressInt,
     ) {
         let verification_queue = match TonVerificationQueue::new(&self.db, configuration_id) {
@@ -611,7 +611,7 @@ impl Bridge {
     }
 
     /// Unsubscribe from TON event configuration
-    async fn unsubscribe_from_ton_events_configuration(&self, configuration_id: u64) {
+    async fn unsubscribe_from_ton_events_configuration(&self, configuration_id: u32) {
         self.ton_event_handlers
             .write()
             .await
@@ -621,7 +621,7 @@ impl Bridge {
     /// Creates a listener for ETH event votes in TON
     async fn subscribe_to_eth_events_configuration(
         &self,
-        configuration_id: u64,
+        configuration_id: u32,
         address: MsgAddressInt,
         semaphore: Option<Semaphore>,
     ) {
@@ -657,7 +657,7 @@ impl Bridge {
     }
 
     /// Unsubscribe from ETH event configuration
-    async fn unsubscribe_from_eth_events_configuration(&self, configuration_id: u64) {
+    async fn unsubscribe_from_eth_events_configuration(&self, configuration_id: u32) {
         let mut eth_events_handlers = self.eth_event_handlers.write().await;
         if let Entry::Occupied(entry) = eth_events_handlers.entry(configuration_id) {
             let eth_event_configuration = entry.remove();
@@ -667,7 +667,7 @@ impl Bridge {
     }
 
     /// Registers topic for specified address in ETH
-    async fn subscribe_to_eth_topic(&self, configuration_id: u64, details: &EthEventConfiguration) {
+    async fn subscribe_to_eth_topic(&self, configuration_id: u32, details: &EthEventConfiguration) {
         let mut configs_state = self.configs_state.write().await;
         configs_state.set_configuration(configuration_id, details);
 
@@ -694,13 +694,13 @@ pub struct ConfigsState {
     pub eth_addr: HashSet<Address>,
     pub address_topic_map: HashMap<Address, EthTopicItem>,
     pub topic_abi_map: HashMap<H256, Vec<ethabi::ParamType>>,
-    pub eth_configs_map: HashMap<Address, (u64, EthEventConfiguration)>,
+    pub eth_configs_map: HashMap<Address, (u32, EthEventConfiguration)>,
 }
 
 type EthTopicItem = (H256, Vec<ethabi::ParamType>, Vec<ton_abi::ParamType>);
 
 impl ConfigsState {
-    fn set_configuration(&mut self, configuration_id: u64, configuration: &EthEventConfiguration) {
+    fn set_configuration(&mut self, configuration_id: u32, configuration: &EthEventConfiguration) {
         let (topic_hash, eth_abi, ton_abi) =
             match utils::parse_eth_abi(&configuration.common.event_abi) {
                 Ok(a) => a,

@@ -21,10 +21,10 @@ impl EthVerificationQueue {
 }
 
 impl TonVerificationQueue {
-    pub fn new(db: &Db, configuration_id: u64) -> Result<Self, Error> {
+    pub fn new(db: &Db, configuration_id: u32) -> Result<Self, Error> {
         const COMMON_PREFIX_LEN: usize = TON_QUEUE.as_bytes().len();
 
-        let mut prefix = [0u8; COMMON_PREFIX_LEN + std::mem::size_of::<u64>()];
+        let mut prefix = [0u8; COMMON_PREFIX_LEN + std::mem::size_of::<u32>()];
         prefix[..COMMON_PREFIX_LEN].copy_from_slice(&TON_QUEUE.as_bytes());
         prefix[COMMON_PREFIX_LEN..].copy_from_slice(&configuration_id.to_le_bytes());
 

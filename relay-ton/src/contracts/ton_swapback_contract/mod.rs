@@ -80,6 +80,7 @@ impl TonSwapBackContract {
                         Ok(tokens) => Some(SwapBackEvent {
                             event_transaction: raw_event.event_transaction,
                             event_transaction_lt: raw_event.event_transaction_lt,
+                            event_timestamp: raw_event.event_timestamp,
                             event_index: raw_event.event_index,
                             tokens,
                         }),
@@ -114,6 +115,7 @@ impl Stream for SwapBackEvents {
                         return Poll::Ready(Some(SwapBackEvent {
                             event_transaction: raw_event.event_transaction,
                             event_transaction_lt: raw_event.event_transaction_lt,
+                            event_timestamp: raw_event.event_timestamp,
                             event_index: raw_event.event_index,
                             tokens,
                         }))
@@ -133,6 +135,7 @@ impl Stream for SwapBackEvents {
 pub struct SwapBackEvent {
     pub event_transaction: UInt256,
     pub event_transaction_lt: u64,
+    pub event_timestamp: u32,
     pub event_index: u32,
     pub tokens: Vec<Token>,
 }

@@ -12,7 +12,7 @@
     {
       "name": "confirmEvent",
       "inputs": [
-        {"components":[{"name":"eventTransaction","type":"uint256"},{"name":"eventTransactionLt","type":"uint64"},{"name":"eventIndex","type":"uint32"},{"name":"eventData","type":"cell"}],"name":"eventVoteData","type":"tuple"},
+        {"components":[{"name":"eventTransaction","type":"uint256"},{"name":"eventTransactionLt","type":"uint64"},{"name":"eventTimestamp","type":"uint32"},{"name":"eventIndex","type":"uint32"},{"name":"eventData","type":"cell"}],"name":"eventVoteData","type":"tuple"},
         {"name":"eventDataSignature","type":"bytes"},
         {"name":"relay","type":"address"}
       ],
@@ -22,7 +22,7 @@
     {
       "name": "rejectEvent",
       "inputs": [
-        {"components":[{"name":"eventTransaction","type":"uint256"},{"name":"eventTransactionLt","type":"uint64"},{"name":"eventIndex","type":"uint32"},{"name":"eventData","type":"cell"}],"name":"eventVoteData","type":"tuple"},
+        {"components":[{"name":"eventTransaction","type":"uint256"},{"name":"eventTransactionLt","type":"uint64"},{"name":"eventTimestamp","type":"uint32"},{"name":"eventIndex","type":"uint32"},{"name":"eventData","type":"cell"}],"name":"eventVoteData","type":"tuple"},
         {"name":"relay","type":"address"}
       ],
       "outputs": [
@@ -50,6 +50,22 @@
       "inputs": [
         {"components":[{"name":"eventABI","type":"bytes"},{"name":"eventRequiredConfirmations","type":"uint16"},{"name":"eventRequiredRejects","type":"uint16"},{"name":"eventCode","type":"cell"},{"name":"bridgeAddress","type":"address"},{"name":"eventInitialBalance","type":"uint128"}],"name":"_basicInitData","type":"tuple"},
         {"components":[{"name":"eventAddress","type":"address"},{"name":"proxyAddress","type":"uint160"}],"name":"_initData","type":"tuple"}
+      ],
+      "outputs": [
+      ]
+    },
+    {
+      "name": "transferAll",
+      "inputs": [
+        {"name":"receiver","type":"address"}
+      ],
+      "outputs": [
+      ]
+    },
+    {
+      "name": "transfer",
+      "inputs": [
+        {"name":"receiver","type":"address"}
       ],
       "outputs": [
       ]

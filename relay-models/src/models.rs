@@ -23,7 +23,7 @@ pub struct RescanEthData {
 
 #[derive(Deserialize, Serialize, OpgModel)]
 pub struct NewEventConfiguration {
-    pub configuration_id: String,
+    pub configuration_id: u32,
     pub address: String,
     pub configuration_type: EventConfigurationType,
 }
@@ -54,27 +54,21 @@ impl VoteDataView {
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize, OpgModel)]
 pub struct BridgeConfigurationView {
-    pub event_configuration_required_confirmations: u16,
-    pub event_configuration_required_rejections: u16,
-
-    pub bridge_configuration_update_required_confirmations: u16,
-    pub bridge_configuration_update_required_rejections: u16,
-
-    pub bridge_relay_update_required_confirmations: u16,
-    pub bridge_relay_update_required_rejections: u16,
-
+    pub nonce: u16,
+    pub bridge_update_required_confirmations: u16,
+    pub bridge_update_required_rejections: u16,
     pub active: bool,
 }
 
 #[derive(Deserialize, Serialize, OpgModel)]
 pub struct EventConfiguration {
-    pub configuration_id: String,
+    pub configuration_id: u32,
     pub ethereum_event_abi: String,
     pub ethereum_event_address: String,
     pub event_proxy_address: String,
     pub ethereum_event_blocks_to_confirm: u16,
-    pub event_required_confirmations: u64,
-    pub event_required_rejects: u64,
+    pub event_required_confirmations: u16,
+    pub event_required_rejects: u16,
     pub event_initial_balance: u64,
     pub bridge_address: String,
     pub event_code: String,
@@ -88,8 +82,8 @@ pub struct VotingAddress {
 #[derive(Debug, Clone, Serialize, Deserialize, OpgModel)]
 #[serde(rename_all = "lowercase", tag = "vote", content = "address")]
 pub enum Voting {
-    Confirm(String),
-    Reject(String),
+    Confirm(u32),
+    Reject(u32),
 }
 
 #[derive(Serialize, Deserialize, OpgModel)]
@@ -137,7 +131,7 @@ pub struct SignedVoteDataView {
 
 #[derive(Serialize, Deserialize, Clone, opg::OpgModel)]
 pub struct TonEventVoteDataView {
-    pub configuration_id: String,
+    pub configuration_id: u32,
     pub event_transaction: String,
     pub event_transaction_lt: u64,
     pub event_index: u32,
@@ -150,10 +144,10 @@ pub struct EthEventVoteDataView {
     pub event_index: u32,
     #[opg(format = "hex")]
     pub event_data: String,
-    pub event_block_number: u64,
+    pub event_block_number: u32,
     #[opg(format = "hex")]
     pub event_block: String,
-    pub configuration_id: String,
+    pub configuration_id: u32,
 }
 
 #[derive(Deserialize, Serialize, opg::OpgModel)]

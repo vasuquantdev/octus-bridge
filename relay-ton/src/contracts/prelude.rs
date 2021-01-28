@@ -351,6 +351,7 @@ impl StandaloneToken for UInt128 {}
 impl StandaloneToken for BigUint {}
 impl StandaloneToken for BigInt {}
 impl StandaloneToken for u16 {}
+impl StandaloneToken for u32 {}
 impl StandaloneToken for u64 {}
 impl StandaloneToken for bool {}
 impl StandaloneToken for Vec<u8> {}

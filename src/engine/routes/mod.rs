@@ -120,7 +120,7 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
             status::failed::<SignedTonEventVoteData, TonEventVoteData, TonEthTransactionView>(state)
         });
 
-    let queued_transactions_ton_to_eth = warp::path!("ton-to-eth" / "queued" / u64)
+    let queued_transactions_ton_to_eth = warp::path!("ton-to-eth" / "queued" / u32)
         .and(warp::get())
         .and(state.clone())
         .and_then(|configuration_id, (state, _)| status::ton_queue(state, configuration_id));
@@ -172,40 +172,19 @@ pub async fn update_bridge_configuration(
         log::info!("Got request for updating bridge contract");
 
         let bridge_conf = BridgeConfiguration {
-            event_configuration_required_confirmations: data
-                .event_configuration_required_confirmations,
-            event_configuration_required_rejections: data.event_configuration_required_rejections,
-            bridge_configuration_update_required_confirmations: data
-                .bridge_configuration_update_required_confirmations,
-            bridge_configuration_update_required_rejections: data
-                .bridge_configuration_update_required_rejections,
-            bridge_relay_update_required_confirmations: data
-                .bridge_relay_update_required_confirmations,
-            bridge_relay_update_required_rejections: data.bridge_relay_update_required_rejections,
+            nonce: data.nonce,
+            bridge_update_required_confirmations: data.bridge_update_required_confirmations,
+            bridge_update_required_rejects: data.bridge_update_required_rejections,
             active: data.active,
         };
 
         let tokens = [
-            Token::Uint(Uint::from(
-                bridge_conf.event_configuration_required_confirmations,
-            )),
-            Token::Uint(Uint::from(
-                bridge_conf.event_configuration_required_rejections,
-            )),
-            Token::Uint(Uint::from(
-                bridge_conf.bridge_configuration_update_required_confirmations,
-            )),
-            Token::Uint(Uint::from(
-                bridge_conf.bridge_configuration_update_required_rejections,
-            )),
-            Token::Uint(Uint::from(
-                bridge_conf.bridge_relay_update_required_confirmations,
-            )),
-            Token::Uint(Uint::from(
-                bridge_conf.bridge_relay_update_required_rejections,
-            )),
+            Token::Uint(Uint::from(bridge_conf.nonce)),
+            Token::Uint(Uint::from(bridge_conf.bridge_update_required_confirmations)),
+            Token::Uint(Uint::from(bridge_conf.bridge_update_required_rejects)),
             Token::Bool(bridge_conf.active),
         ];
+
         //todo check packing and correctness
         let mut eth_bytes = ethabi::encode(&tokens);
         let mut signature = a.sign_with_eth_key(&*eth_bytes);

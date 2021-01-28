@@ -86,7 +86,7 @@ pub async fn eth_queue(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallib
 
 pub async fn ton_queue(
     state: Arc<RwLock<State>>,
-    configuration_id: u64,
+    configuration_id: u32,
 ) -> Result<impl Reply, Infallible> {
     let state = state.read().await;
     let provider =

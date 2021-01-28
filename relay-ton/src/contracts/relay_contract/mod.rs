@@ -55,13 +55,13 @@ impl RelayContract {
 
     pub async fn initialize_event_configuration_creation(
         &self,
-        id: u64,
+        id: u32,
         event_configuration: &MsgAddressInt,
         event_type: EventType,
     ) -> ContractResult<()> {
         self.send(
             self.message("initializeEventConfigurationCreation")?
-                .arg(BigUint256(id.into()))
+                .arg(id)
                 .arg(event_configuration)
                 .arg(event_type),
         )
@@ -70,12 +70,12 @@ impl RelayContract {
 
     pub async fn vote_for_event_configuration_creation(
         &self,
-        id: u64,
+        id: u32,
         voting: Voting,
     ) -> ContractResult<()> {
         self.send(
             self.message("voteForEventConfigurationCreation")?
-                .arg(BigUint256(id.into()))
+                .arg(id)
                 .arg(voting),
         )
         .await
@@ -94,7 +94,7 @@ impl RelayContract {
         self.send(
             self.message("confirmEthereumEvent")?
                 .arg(vote)
-                .arg(BigUint256(configuration_id.into())),
+                .arg(configuration_id),
         )
         .await
     }
@@ -112,7 +112,7 @@ impl RelayContract {
         self.send(
             self.message("rejectEthereumEvent")?
                 .arg(vote)
-                .arg(BigUint256(configuration_id.into())),
+                .arg(configuration_id),
         )
         .await
     }
@@ -135,7 +135,7 @@ impl RelayContract {
             self.message("confirmTonEvent")?
                 .arg(vote)
                 .arg(event_data_signature)
-                .arg(BigUint256(configuration_id.into())),
+                .arg(configuration_id),
         )
         .await
     }
@@ -153,7 +153,7 @@ impl RelayContract {
         self.send(
             self.message("rejectTonEvent")?
                 .arg(vote)
-                .arg(BigUint256(configuration_id.into())),
+                .arg(configuration_id),
         )
         .await
     }

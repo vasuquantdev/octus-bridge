@@ -2,7 +2,7 @@ use anyhow::Error;
 use semver::Version;
 use sled::{Db, IVec, Tree};
 
-use super::{constants::SYSTEM_DATA, stats_db, verification_queue, votes_queues};
+use super::{constants::SYSTEM_DATA, stats_db};
 
 const VERSION_FIELD: &str = "version";
 

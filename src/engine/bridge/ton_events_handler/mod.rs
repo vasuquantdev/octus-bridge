@@ -20,7 +20,7 @@ struct State {
     eth_signer: EthSigner,
     verification_queue: TonVerificationQueue,
 
-    configuration_id: u64,
+    configuration_id: u32,
     details: TonEventConfiguration,
     config_contract: Arc<TonEventConfigurationContract>,
     swapback_contract: Arc<TonSwapBackContract>,
@@ -32,7 +32,7 @@ impl TonEventsHandler {
         transport: Arc<TonEventTransport>,
         eth_signer: EthSigner,
         verification_queue: TonVerificationQueue,
-        configuration_id: u64,
+        configuration_id: u32,
         address: MsgAddressInt,
         ton_config: &crate::config::TonSettings,
     ) -> Result<Arc<Self>, Error> {
@@ -413,6 +413,7 @@ impl EventsVerifier<TonEventReceivedVote> for State {
                 self.calculate_signature(&SwapBackEvent {
                     event_transaction: init_data.event_transaction.clone(),
                     event_transaction_lt: init_data.event_transaction_lt,
+                    event_timestamp: init_data.event_timestamp,
                     event_index: init_data.event_index,
                     tokens,
                 })
@@ -453,6 +454,7 @@ impl SwapBackEventExt for SwapBackEvent {
                 configuration_id: state.configuration_id,
                 event_transaction: self.event_transaction,
                 event_transaction_lt: self.event_transaction_lt,
+                event_timestamp: self.event_timestamp,
                 event_index: self.event_index,
                 event_data,
             },

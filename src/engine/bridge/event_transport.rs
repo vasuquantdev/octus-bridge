@@ -364,7 +364,7 @@ where
     }
 
     /// Add new configuration contract
-    pub async fn add_configuration_contract(&self, configuration_id: u64, contract: Arc<C>) {
+    pub async fn add_configuration_contract(&self, configuration_id: u32, contract: Arc<C>) {
         self.config_contracts
             .write()
             .await
@@ -372,7 +372,7 @@ where
     }
 
     /// Find configuration contract by its id
-    pub async fn get_configuration_contract(&self, configuration_id: u64) -> Option<Arc<C>> {
+    pub async fn get_configuration_contract(&self, configuration_id: u32) -> Option<Arc<C>> {
         self.config_contracts
             .read()
             .await
@@ -467,7 +467,7 @@ impl<'a, T> DisplayReceivedVote<'a, T> {
     }
 }
 
-type ConfigContractsMap<T> = HashMap<u64, Arc<T>>;
+type ConfigContractsMap<T> = HashMap<u32, Arc<T>>;
 
 #[async_trait]
 pub trait EventsVerifier<T: ReceivedVote>: Sized + Send + Sync {
@@ -519,7 +519,7 @@ pub trait EventContract: Send + Sync {
 pub trait EventTransactionExt: std::fmt::Display + Clone + Send + Sync {
     type VoteData: Clone;
 
-    fn configuration_id(&self) -> u64;
+    fn configuration_id(&self) -> u32;
     fn kind(&self) -> Voting;
     fn vote_data(&self) -> Self::VoteData;
     async fn send(&self, bridge: Arc<RelayContract>) -> ContractResult<()>;
@@ -650,7 +650,7 @@ impl EventTransactionExt for EthEventTransaction {
     type VoteData = <EthEventContract as EventContract>::VoteData;
 
     #[inline]
-    fn configuration_id(&self) -> u64 {
+    fn configuration_id(&self) -> u32 {
         match self {
             Self::Confirm(data) => data.configuration_id,
             Self::Reject(data) => data.configuration_id,
@@ -696,7 +696,7 @@ impl EventTransactionExt for TonEventTransaction {
     type VoteData = <TonEventContract as EventContract>::VoteData;
 
     #[inline]
-    fn configuration_id(&self) -> u64 {
+    fn configuration_id(&self) -> u32 {
         match self {
             Self::Confirm(signed) => signed.data.configuration_id,
             Self::Reject(data) => data.configuration_id,
