@@ -162,7 +162,7 @@ impl EthListener {
             },
             bridge_address,
         };
-        dbg!(listener.get_actual_keys().await?); //todo use it
+        // dbg!(listener.get_actual_keys().await?); //todo use it
         Ok(listener)
     }
 
