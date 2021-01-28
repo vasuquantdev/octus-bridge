@@ -314,9 +314,24 @@ impl Bridge {
         self.eth_signer.pubkey()
     }
 
+    pub fn sign_with_eth_key(&self, data: &[u8]) -> Vec<u8> {
+        self.eth_signer.sign(data)
+    }
+
+    pub async fn update_bridge_configuration(
+        &self,
+        configuration: BridgeConfiguration,
+        vote: VoteData,
+    ) -> Result<(), Error> {
+        self.relay_contract
+            .update_bridge_configuration(configuration, vote)
+            .await?;
+        Ok(())
+    }
+
     pub async fn get_event_configurations(
         &self,
-    ) -> Result<Vec<(u64, EthEventConfiguration)>, anyhow::Error> {
+    ) -> Result<Vec<(u64, EthEventConfiguration)>, Error> {
         let state = self.configs_state.read().await;
         Ok(state.eth_configs_map.values().cloned().collect())
     }

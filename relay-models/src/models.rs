@@ -35,6 +35,37 @@ pub enum EventConfigurationType {
     Ton,
 }
 
+#[derive(Debug, Clone)]
+pub struct VoteDataView {
+    pub signature: Vec<u8>,
+}
+
+impl VoteDataView {
+    pub fn reject() -> Self {
+        Self {
+            signature: Vec::new(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.signature.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize, OpgModel)]
+pub struct BridgeConfigurationView {
+    pub event_configuration_required_confirmations: u16,
+    pub event_configuration_required_rejections: u16,
+
+    pub bridge_configuration_update_required_confirmations: u16,
+    pub bridge_configuration_update_required_rejections: u16,
+
+    pub bridge_relay_update_required_confirmations: u16,
+    pub bridge_relay_update_required_rejections: u16,
+
+    pub active: bool,
+}
+
 #[derive(Deserialize, Serialize, OpgModel)]
 pub struct EventConfiguration {
     pub configuration_id: String,

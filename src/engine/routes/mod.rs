@@ -5,7 +5,7 @@ use warp::http::StatusCode;
 use warp::{reply, Filter, Reply};
 
 use relay_models::models::*;
-use relay_ton::contracts::{EthEventVoteData, TonEventVoteData};
+use relay_ton::contracts::{BridgeConfiguration, EthEventVoteData, TonEventVoteData, VoteData};
 use relay_ton::transport::Transport;
 
 use crate::config::{RelayConfig, TonTransportConfig};
@@ -130,6 +130,12 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
         .and(state.clone())
         .and_then(|(state, _)| status::ton_relay_stats(state));
 
+    let update_bridge_configuration = warp::path!("update_bridge_configuration")
+        .and(warp::post())
+        .and(state.clone())
+        .and(json_data::<BridgeConfigurationView>())
+        .and_then(|(state, _), data| update_bridge_configuration(state, data));
+
     let routes = swagger
         .or(init)
         .or(unlock)
@@ -146,13 +152,82 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
         .or(pending_transactions_ton_to_eth)
         .or(failed_transactions_ton_to_eth)
         .or(queued_transactions_ton_to_eth)
-        .or(ton_relay_stats);
+        .or(ton_relay_stats)
+        .or(update_bridge_configuration);
 
     let server = warp::serve(routes);
     let (_, server) = server.bind_with_graceful_shutdown(serve_address, async {
         signal_handler.await.ok();
     });
     server.await;
+}
+
+pub async fn update_bridge_configuration(
+    state: Arc<RwLock<State>>,
+    data: BridgeConfigurationView,
+) -> Result<impl Reply, Infallible> {
+    use ethabi::{Token, Uint};
+    let state = state.read().await;
+    if let BridgeState::Running(a) = &state.bridge_state {
+        log::info!("Got request for updating bridge contract");
+
+        let bridge_conf = BridgeConfiguration {
+            event_configuration_required_confirmations: data
+                .event_configuration_required_confirmations,
+            event_configuration_required_rejections: data.event_configuration_required_rejections,
+            bridge_configuration_update_required_confirmations: data
+                .bridge_configuration_update_required_confirmations,
+            bridge_configuration_update_required_rejections: data
+                .bridge_configuration_update_required_rejections,
+            bridge_relay_update_required_confirmations: data
+                .bridge_relay_update_required_confirmations,
+            bridge_relay_update_required_rejections: data.bridge_relay_update_required_rejections,
+            active: data.active,
+        };
+
+        let tokens = [
+            Token::Uint(Uint::from(
+                bridge_conf.event_configuration_required_confirmations,
+            )),
+            Token::Uint(Uint::from(
+                bridge_conf.event_configuration_required_rejections,
+            )),
+            Token::Uint(Uint::from(
+                bridge_conf.bridge_configuration_update_required_confirmations,
+            )),
+            Token::Uint(Uint::from(
+                bridge_conf.bridge_configuration_update_required_rejections,
+            )),
+            Token::Uint(Uint::from(
+                bridge_conf.bridge_relay_update_required_confirmations,
+            )),
+            Token::Uint(Uint::from(
+                bridge_conf.bridge_relay_update_required_rejections,
+            )),
+            Token::Bool(bridge_conf.active),
+        ];
+        //todo check packing and correctness
+        let mut eth_bytes = ethabi::encode(&tokens);
+        let mut signature = a.sign_with_eth_key(&*eth_bytes);
+        eth_bytes.append(&mut signature);
+        let vote_data = VoteData {
+            signature: eth_bytes,
+        };
+        if let Err(e) = a.update_bridge_configuration(bridge_conf, vote_data).await {
+            let message = format!("Failed updating bridge configuration: {}", e);
+            log::error!("{}", &message);
+            return Ok(reply::with_status(
+                message,
+                StatusCode::INTERNAL_SERVER_ERROR,
+            ));
+        }
+        return Ok(reply::with_status("ok".to_string(), StatusCode::OK));
+    } else {
+        return Ok(reply::with_status(
+            "Bridge is not running".to_string(),
+            StatusCode::METHOD_NOT_ALLOWED,
+        ));
+    }
 }
 
 async fn vote_for_ethereum_event_configuration(
