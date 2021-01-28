@@ -489,23 +489,6 @@ fn spawn_blocks_scanner(
                 tokio::time::delay_for(timeouts.eth_poll_interval).await;
                 continue;
             }
-            // polling if we are near head and sleeping
-            else if (ethereum_actual_height - loaded_height) <= 2 {
-                let block_number = BlockNumber::from(loaded_height);
-                process_block(
-                    &w3,
-                    topics.as_ref(),
-                    block_number,
-                    block_number,
-                    &events_tx,
-                    &connection_pool,
-                    timeouts.eth_poll_attempts,
-                    timeouts.eth_poll_interval,
-                )
-                .await;
-                loaded_height += 1;
-                tokio::time::delay_for(timeouts.eth_poll_interval).await;
-            }
             // batch processing all blocks from `loaded_height` to `ethereum_actual_height`
             else {
                 log::debug!(
@@ -525,7 +508,7 @@ fn spawn_blocks_scanner(
                     timeouts.eth_poll_interval,
                 )
                 .await;
-                loaded_height = ethereum_actual_height - 1;
+                loaded_height = ethereum_actual_height;
             }
 
             if let Err(e) = update_eth_state(&db, loaded_height, ETH_LAST_MET_HEIGHT) {
@@ -533,7 +516,9 @@ fn spawn_blocks_scanner(
             };
 
             scanned_height.store(loaded_height, Ordering::SeqCst);
-            log::trace!("Scanned height: {}", scanned_height.load(Ordering::SeqCst))
+            log::trace!("Scanned height: {}", scanned_height.load(Ordering::SeqCst));
+
+            tokio::time::delay_for(timeouts.eth_poll_interval).await;
         }
     });
 
