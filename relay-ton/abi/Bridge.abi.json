@@ -48,7 +48,7 @@
       "inputs": [
       ],
       "outputs": [
-        {"name":"ids","type":"uint256[]"},
+        {"name":"ids","type":"uint32[]"},
         {"name":"addrs","type":"address[]"},
         {"name":"_types","type":"uint8[]"}
       ]
