@@ -228,7 +228,7 @@ impl PrepareEvent for FullEventInfo {
         event_index: u32,
     ) -> Self {
         Self {
-            event_transaction: event_transaction.clone(),
+            event_transaction: *event_transaction,
             event_transaction_lt,
             event_timestamp,
             event_index,

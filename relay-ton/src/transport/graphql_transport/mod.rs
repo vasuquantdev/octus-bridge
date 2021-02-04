@@ -419,7 +419,7 @@ where
         let (tx, rx) = oneshot::channel();
         {
             let mut pending_messages = self.pending_messages.write().await;
-            match pending_messages.entry(hash.clone()) {
+            match pending_messages.entry(hash) {
                 hash_map::Entry::Vacant(entry) => {
                     self.client.send_message_raw(&hash, &serialized).await?;
 
@@ -729,7 +729,7 @@ impl PrepareEventExt for FullEventInfo {
             });
 
         MessageAction::Emit(result.map(|event_data| FullEventInfo {
-            event_transaction: message.transaction_hash.clone(),
+            event_transaction: message.transaction_hash,
             event_transaction_lt: message.transaction_lt,
             event_timestamp: message.event_timestamp,
             event_index: message.event_index,

@@ -16,10 +16,10 @@ pub struct Config {
     #[serde(with = "relay_utils::serde_time")]
     pub subscription_polling_interval: Duration,
 
-    #[serde(default, with = "relay_utils::serde_time")]
+    #[serde(default, with = "relay_utils::optional_serde_time")]
     pub max_initial_rescan_gap: Option<Duration>,
 
-    #[serde(default, with = "relay_utils::serde_time")]
+    #[serde(default, with = "relay_utils::optional_serde_time")]
     pub max_rescan_gap: Option<Duration>,
 }
 

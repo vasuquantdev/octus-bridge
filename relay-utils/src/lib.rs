@@ -1,6 +1,37 @@
 use std::str::FromStr;
 use std::time::Duration;
 
+pub mod optional_serde_time {
+    use super::*;
+
+    use serde::{Deserialize, Serialize};
+
+    pub fn serialize<S>(data: &Option<Duration>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        #[derive(Serialize)]
+        #[serde(transparent)]
+        struct Wrapper<'a>(#[serde(with = "serde_time")] &'a Duration);
+
+        match data {
+            Some(duration) => serializer.serialize_some(&Wrapper(duration)),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Duration>, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(transparent)]
+        struct Wrapper(#[serde(with = "serde_time")] Duration);
+
+        Option::<Wrapper>::deserialize(deserializer).map(|wrapper| wrapper.map(|data| data.0))
+    }
+}
+
 pub mod serde_time {
     use super::*;
 
@@ -69,5 +100,32 @@ mod tests {
         let string = r#"interval: 123"#;
         let object: TestStruct = serde_yaml::from_str(&string).unwrap();
         assert_eq!(object.interval.as_secs(), 123);
+    }
+
+    #[derive(Deserialize)]
+    struct OptionalTestStruct {
+        test: u32,
+        #[serde(default, with = "optional_serde_time")]
+        interval: Option<Duration>,
+    }
+
+    #[test]
+    fn test_deserialize_optional() {
+        let string = r#"---
+test: 123"#;
+        let object: OptionalTestStruct = serde_yaml::from_str(&string).unwrap();
+        assert!(object.interval.is_none());
+
+        let string = r#"---
+test: 123 
+interval:"#;
+        let object: OptionalTestStruct = serde_yaml::from_str(&string).unwrap();
+        assert!(object.interval.is_none());
+
+        let string = r#"---
+test: 123
+interval: 1m 30s"#;
+        let object: OptionalTestStruct = serde_yaml::from_str(&string).unwrap();
+        assert_eq!(object.interval, Some(Duration::from_secs(90)));
     }
 }

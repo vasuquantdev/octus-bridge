@@ -439,7 +439,7 @@ impl NodeClient {
                                 });
                             Some(OutboundMessageFull {
                                 data,
-                                transaction_hash: transaction_hash.clone(),
+                                transaction_hash,
                                 transaction_lt,
                                 event_timestamp: timestamp,
                                 event_index: i as u32,

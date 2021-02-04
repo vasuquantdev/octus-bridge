@@ -134,6 +134,8 @@ pub struct TonSettings {
 
     /// TON events verification queue logical time offset
     pub ton_events_verification_queue_lt_offset: u64,
+    /// TON events allowed timestamp difference
+    pub ton_events_allowed_time_diff: u32,
 
     /// Amount of attempts to create events handler
     pub events_handler_retry_count: u64,
@@ -158,6 +160,7 @@ impl Default for TonSettings {
             parallel_spawned_contracts_limit: 10,
             ton_events_verification_interval: Duration::from_secs(1),
             ton_events_verification_queue_lt_offset: 10,
+            ton_events_allowed_time_diff: 10,
             events_handler_retry_count: 50,
             events_handler_interval: Duration::from_secs(10),
         }

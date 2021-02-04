@@ -23,14 +23,13 @@ use crate::prelude::*;
 pub struct TonlibTransport {
     client: Arc<TonlibClient>,
     subscription_polling_interval: Duration,
-    max_initial_rescan_gap: Option<u32>,
-    max_rescan_gap: Option<u32>,
+    max_initial_rescan_gap: Option<Duration>,
+    max_rescan_gap: Option<Duration>,
 }
 
 impl TonlibTransport {
     pub async fn new(config: Config) -> TransportResult<Self> {
-        let subscription_polling_interval =
-            Duration::from_secs(config.subscription_polling_interval);
+        let subscription_polling_interval = config.subscription_polling_interval;
 
         let max_initial_rescan_gap = config.max_initial_rescan_gap;
         let max_rescan_gap = config.max_rescan_gap;
@@ -77,6 +76,7 @@ impl RunLocal for TonlibTransport {
             MessageProcessingParams {
                 event_transaction: &Default::default(),
                 event_transaction_lt: 0,
+                event_timestamp: 0,
                 abi_function: Some(abi),
                 events_tx: None,
             },
@@ -167,8 +167,8 @@ where
     async fn new(
         client: &Arc<tonlib::TonlibClient>,
         polling_interval: &Duration,
-        max_initial_rescan_gap: Option<u32>,
-        max_rescan_gap: Option<u32>,
+        max_initial_rescan_gap: Option<Duration>,
+        max_rescan_gap: Option<Duration>,
         account: MsgAddressInt,
         events_tx: Option<EventsTx<T>>,
     ) -> TransportResult<Arc<Self>> {
@@ -204,8 +204,8 @@ where
         events_tx: Option<EventsTx<T>>,
         mut last_trans_lt: u64,
         interval: Duration,
-        mut max_initial_rescan_gap: Option<u32>,
-        max_rescan_gap: Option<u32>,
+        mut max_initial_rescan_gap: Option<Duration>,
+        max_rescan_gap: Option<Duration>,
     ) {
         let subscription = Arc::downgrade(self);
         tokio::spawn(async move {
@@ -239,7 +239,7 @@ where
 
                 let gen_utime = stats.gen_utime;
                 let mut current_trans_lt = new_trans_lt;
-                let mut current_trans_hash = stats.last_trans_hash.clone();
+                let mut current_trans_hash = stats.last_trans_hash;
 
                 {
                     let mut known_state = subscription.known_state.write().await;
@@ -256,7 +256,7 @@ where
                             &subscription.account,
                             16,
                             current_trans_lt,
-                            current_trans_hash.clone(),
+                            current_trans_hash,
                         )
                         .await
                     {
@@ -294,6 +294,7 @@ where
                                     MessageProcessingParams {
                                         event_transaction: &current_trans_hash,
                                         event_transaction_lt: current_trans_lt,
+                                        event_timestamp: transaction.now,
                                         abi_function: Some(pending_message.abi()),
                                         events_tx: events_tx.as_ref(),
                                     },
@@ -304,6 +305,7 @@ where
                                 MessageProcessingParams {
                                     event_transaction: &current_trans_hash,
                                     event_transaction_lt: current_trans_lt,
+                                    event_timestamp: transaction.now,
                                     abi_function: None,
                                     events_tx: events_tx.as_ref(),
                                 },
@@ -314,7 +316,7 @@ where
                         }
 
                         match max_initial_rescan_gap.or(max_rescan_gap) {
-                            Some(gap) if gen_utime - transaction.now >= gap => {
+                            Some(gap) if (gen_utime - transaction.now) as u64 >= gap.as_secs() => {
                                 max_initial_rescan_gap = None;
                                 break 'process_transactions;
                             }
@@ -360,6 +362,7 @@ where
             MessageProcessingParams {
                 event_transaction: &Default::default(),
                 event_transaction_lt: 0,
+                event_timestamp: 0,
                 abi_function: Some(abi),
                 events_tx: None,
             },
@@ -554,7 +557,7 @@ where
         let client = self.client.clone();
         let account = self.account.as_ref().clone();
         let latest_lt = self.latest_lt;
-        let latest_hash = self.latest_hash.clone();
+        let latest_hash = self.latest_hash;
 
         async move {
             client
@@ -579,13 +582,19 @@ where
                     if self.current_message < messages.len() =>
                 {
                     let (latest_hash, transaction) = &transactions[self.current_transaction];
-                    let index = self.current_message as u64;
+                    let index = self.current_message as u32;
                     let message = &messages[self.current_message];
                     // Increase message idx on each invocation
                     self.current_message += 1;
 
                     // Handle message
-                    match T::handle_item(transaction.lt, latest_hash, index, message) {
+                    match T::handle_item(
+                        transaction.lt,
+                        latest_hash,
+                        transaction.now,
+                        index,
+                        message,
+                    ) {
                         // Skip internal messages
                         MessageAction::Skip => continue 'outer,
                         // Return message
@@ -602,7 +611,7 @@ where
                 (Some(transactions), _, _, _) if self.current_transaction < transactions.len() => {
                     let (_, transaction) = &transactions[self.current_transaction];
                     self.latest_lt = transaction.prev_trans_lt;
-                    self.latest_hash = transaction.prev_trans_hash.clone();
+                    self.latest_hash = transaction.prev_trans_hash;
 
                     // Check lt range
                     match (self.since_lt, self.until_lt) {
@@ -708,7 +717,8 @@ trait PrepareEventExt: PrepareEvent + Unpin {
     fn handle_item(
         latest_lt: u64,
         latest_hash: &UInt256,
-        index: u64,
+        timestamp: u32,
+        index: u32,
         message: &Message,
     ) -> MessageAction<TransportResult<Self>>;
 }
@@ -717,7 +727,8 @@ impl PrepareEventExt for SliceData {
     fn handle_item(
         _latest_lt: u64,
         _latest_hash: &UInt256,
-        _index: u64,
+        _timestamp: u32,
+        _index: u32,
         message: &Message,
     ) -> MessageAction<TransportResult<Self>> {
         match message.header() {
@@ -738,7 +749,8 @@ impl PrepareEventExt for FullEventInfo {
     fn handle_item(
         latest_lt: u64,
         latest_hash: &UInt256,
-        index: u64,
+        timestamp: u32,
+        index: u32,
         message: &Message,
     ) -> MessageAction<TransportResult<Self>> {
         match message.header() {
@@ -749,8 +761,9 @@ impl PrepareEventExt for FullEventInfo {
                         reason: "event message has no body".to_owned(),
                     });
                 MessageAction::Emit(result.map(|event_data| FullEventInfo {
-                    event_transaction: latest_hash.clone(),
+                    event_transaction: *latest_hash,
                     event_transaction_lt: latest_lt,
+                    event_timestamp: timestamp,
                     event_index: index,
                     event_data,
                 }))

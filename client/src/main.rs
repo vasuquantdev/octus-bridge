@@ -412,12 +412,13 @@ fn update_bridge_configuration() -> Result<BridgeConfigurationView, Error> {
         .interact_text()?;
 
     let bridge_update_required_confirmations: u16 = Input::with_theme(&ColorfulTheme::default())
-        .with_prompt("Enter nonce")
+        .with_prompt("Enter required confirmation count")
         .interact_text()?;
 
     let bridge_update_required_rejections: u16 = Input::with_theme(&ColorfulTheme::default())
-        .with_prompt("Enter nonce")
+        .with_prompt("Enter required rejection count")
         .interact_text()?;
+
     Ok(BridgeConfigurationView {
         nonce,
         bridge_update_required_confirmations,

@@ -5,6 +5,6 @@ authors = ["Vladimir Petrzhikovskiy <v.petrzhikovskiy@dexpa.io>"]
 edition = "2018"
 
 [dependencies]
-opg = "0.0.31"
+opg = "0.0"
 serde = { version = "1", features = ["derive"] }
 chrono = "0.4.19"

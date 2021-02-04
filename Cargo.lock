@@ -830,9 +830,9 @@ checksum = "a357d28ed41a50f9c765dbfe56cbc04a64e53e5fc58ba79fbc34c10ef3df831f"
 
 [[package]]
 name = "encoding_rs"
-version = "0.8.27"
+version = "0.8.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4dc76421b40af2cd5c644c55206e78a4961c693c8facdde2ae34c3bb8428efa"
+checksum = "80df024fbc5ac80f87dfef0d9f5209a252f2a497f7f42944cff24d8253cac065"
 dependencies = [
  "cfg-if 1.0.0",
 ]
@@ -2123,18 +2123,6 @@ dependencies = [
 
 [[package]]
 name = "opg"
-version = "0.0.31"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff2148435a3bc4678ec737f2134c717d3c50a87c77ff332c9b21e5b7f32f7ed7"
-dependencies = [
- "either",
- "http",
- "opg_derive 0.0.31",
- "serde 1.0.123",
-]
-
-[[package]]
-name = "opg"
 version = "0.0.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4116c2813465f3dbf41e410f51252e90bab173bc31690ebfb3677770c236d2ad"
@@ -2142,20 +2130,8 @@ dependencies = [
  "chrono",
  "either",
  "http",
- "opg_derive 0.0.32",
+ "opg_derive",
  "serde 1.0.123",
-]
-
-[[package]]
-name = "opg_derive"
-version = "0.0.31"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44c8a9efb461bd152129f496768fece03c38242bd994d64ad55a1e449b2f0f36"
-dependencies = [
- "either",
- "proc-macro2 1.0.24",
- "quote 1.0.8",
- "syn 1.0.60",
 ]
 
 [[package]]
@@ -2739,7 +2715,7 @@ dependencies = [
  "log4rs",
  "num-bigint",
  "num-traits 0.2.14",
- "opg 0.0.32",
+ "opg",
  "pretty_assertions 0.6.1",
  "rand 0.6.5",
  "relay-eth",
@@ -2789,7 +2765,7 @@ name = "relay-models"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "opg 0.0.31",
+ "opg",
  "serde 1.0.123",
 ]
 
@@ -2834,6 +2810,7 @@ version = "0.1.0"
 dependencies = [
  "humantime",
  "serde 1.0.123",
+ "serde_yaml",
 ]
 
 [[package]]
@@ -3705,7 +3682,7 @@ dependencies = [
 [[package]]
 name = "ton_block"
 version = "1.0.0"
-source = "git+https://github.com/tonlabs/ton-labs-block.git#5b53162a4e123b2648b0c3f0bcb6e126fbc36ca3"
+source = "git+https://github.com/tonlabs/ton-labs-block.git#b8ae2790c8fe6082e264a258acf16a5c697c7968"
 dependencies = [
  "base64 0.10.1",
  "clear_on_drop",
@@ -3751,7 +3728,7 @@ dependencies = [
 [[package]]
 name = "ton_types"
 version = "1.0.0"
-source = "git+https://github.com/tonlabs/ton-labs-types.git#1a4a81180310debd9e4a6d7cf18bb9ec1c3ed9db"
+source = "git+https://github.com/tonlabs/ton-labs-types.git#e24d1cc1bd44ecb0342450355e5f9f5271938300"
 dependencies = [
  "base64 0.11.0",
  "crc",

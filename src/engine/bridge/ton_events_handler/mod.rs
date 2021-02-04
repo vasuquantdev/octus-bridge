@@ -1,5 +1,6 @@
 use relay_ton::contracts::*;
 
+use crate::config::TonSettings;
 use crate::crypto::key_managment::*;
 use crate::db::TonVerificationQueue;
 use crate::models::*;
@@ -25,6 +26,7 @@ struct State {
     config_contract: Arc<TonEventConfigurationContract>,
     swapback_contract: Arc<TonSwapBackContract>,
     is_scanning: RwLock<bool>,
+    settings: TonSettings,
 }
 
 impl TonEventsHandler {
@@ -34,7 +36,7 @@ impl TonEventsHandler {
         verification_queue: TonVerificationQueue,
         configuration_id: u32,
         address: MsgAddressInt,
-        ton_config: &crate::config::TonSettings,
+        ton_config: &TonSettings,
     ) -> Result<Arc<Self>, Error> {
         use futures::FutureExt;
 
@@ -118,6 +120,7 @@ impl TonEventsHandler {
                 config_contract: config_contract.clone(),
                 swapback_contract: swapback_contract.clone(),
                 is_scanning: RwLock::new(true),
+                settings: ton_config.clone(),
             }),
         });
 
@@ -403,6 +406,19 @@ impl EventsVerifier<TonEventReceivedVote> for State {
             }
         }
 
+        let now = chrono::Utc::now().timestamp();
+        let allowed_timestamp = now + self.settings.ton_events_allowed_time_diff as i64;
+        let event_timestamp = event.data().init_data.event_timestamp as i64;
+        if event_timestamp > allowed_timestamp {
+            log::error!(
+                "Got event from future. Now {}, Event: {}, Diff: {:?}",
+                now,
+                event_timestamp,
+                event_timestamp.checked_sub(now)
+            );
+            return reject(event).await;
+        }
+
         let abi: &Arc<AbiEvent> = event.info().additional();
         let init_data = &event.data().init_data;
 
@@ -411,7 +427,7 @@ impl EventsVerifier<TonEventReceivedVote> for State {
             .map_err(|e| anyhow!("failed decoding TON event data: {:?}", e))
             .and_then(|tokens| {
                 self.calculate_signature(&SwapBackEvent {
-                    event_transaction: init_data.event_transaction.clone(),
+                    event_transaction: init_data.event_transaction,
                     event_transaction_lt: init_data.event_transaction_lt,
                     event_timestamp: init_data.event_timestamp,
                     event_index: init_data.event_index,
