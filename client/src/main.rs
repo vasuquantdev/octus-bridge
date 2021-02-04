@@ -13,9 +13,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use relay_models::models::{
-    EthEventVoteDataView, EthTonTransactionView, EthTxStatView, EventConfiguration,
-    EventConfigurationType, InitData, NewEventConfiguration, Password as PasswordData,
-    RescanEthData, Status, TonEthTransactionView, TonEventVoteDataView, TonTxStatView, Voting,
+    BridgeConfigurationView, EthEventVoteDataView, EthTonTransactionView, EthTxStatView,
+    EventConfiguration, EventConfigurationType, InitData, NewEventConfiguration,
+    Password as PasswordData, RescanEthData, Status, TonEthTransactionView, TonEventVoteDataView,
+    TonTxStatView, Voting,
 };
 
 #[derive(Clap)]
@@ -75,6 +76,10 @@ fn main() -> Result<(), Error> {
         .item(
             "Get all confirmed transactions from TON",
             Client::get_ton_stats,
+        )
+        .item(
+            "Update bridge configuration",
+            Client::update_bridge_configuration,
         )
         .execute()
 }
@@ -296,6 +301,12 @@ impl Client {
         Ok(())
     }
 
+    pub fn update_bridge_configuration(&self) -> Result<(), Error> {
+        let bridge_configuration_view = update_bridge_configuration()?;
+        self.post_json("update-bridge-configuration", &bridge_configuration_view)?;
+        Ok(())
+    }
+
     pub fn get_event_configurations(&self) -> Result<(), Error> {
         let theme = ColorfulTheme::default();
 
@@ -393,6 +404,26 @@ impl ResponseExt for reqwest::blocking::Response {
             ))
         }
     }
+}
+
+fn update_bridge_configuration() -> Result<BridgeConfigurationView, Error> {
+    let nonce: u16 = Input::with_theme(&ColorfulTheme::default())
+        .with_prompt("Enter nonce")
+        .interact_text()?;
+
+    let bridge_update_required_confirmations: u16 = Input::with_theme(&ColorfulTheme::default())
+        .with_prompt("Enter nonce")
+        .interact_text()?;
+
+    let bridge_update_required_rejections: u16 = Input::with_theme(&ColorfulTheme::default())
+        .with_prompt("Enter nonce")
+        .interact_text()?;
+    Ok(BridgeConfigurationView {
+        nonce,
+        bridge_update_required_confirmations,
+        bridge_update_required_rejections,
+        active: true,
+    })
 }
 
 fn provide_language() -> Result<String, Error> {

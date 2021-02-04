@@ -130,7 +130,7 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
         .and(state.clone())
         .and_then(|(state, _)| status::ton_relay_stats(state));
 
-    let update_bridge_configuration = warp::path!("update_bridge_configuration")
+    let update_bridge_configuration = warp::path!("update-bridge-configuration")
         .and(warp::post())
         .and(state.clone())
         .and(json_data::<BridgeConfigurationView>())

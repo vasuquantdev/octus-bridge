@@ -544,7 +544,10 @@ async fn process_block(
             state.1.iter().cloned().collect(),
         )
     };
-
+    if addresses.is_empty() && topics.is_empty() {
+        log::warn!("Addresses and topics are empty. Cowardly refusing to process all ethereum transactions");
+        return;
+    }
     let filter = FilterBuilder::default()
         .address(addresses)
         .topics(Some(topics), None, None, None)
