@@ -10,6 +10,7 @@ use ton_block::{
 
 use crate::prelude::*;
 use crate::transport::errors::*;
+use crate::transport::TransportError::ApiFailure;
 
 #[derive(Clone)]
 pub struct NodeClient {
@@ -48,17 +49,25 @@ impl NodeClient {
             .send()
             .await
             .map_err(api_failure)?;
-        let response = response
-            .json::<Response<T::ResponseData>>()
-            .await
-            .map_err(api_failure)?;
+        let response_data = response.text().await.map_err(|e| ApiFailure {
+            reason: e.to_string(),
+        })?;
         drop(permit);
 
-        if let Some(errors) = response.errors {
-            log::error!("api errors: {:?}", errors);
-        }
-
-        response.data.ok_or_else(invalid_response)
+        let parsed_response: T::ResponseData = match serde_json::from_str(&response_data) {
+            Ok(a) => a,
+            Err(e) => {
+                log::error!(
+                    "Failed parsing api response: {}. Response data: {}",
+                    e,
+                    response_data
+                );
+                return Err(ApiFailure {
+                    reason: e.to_string(),
+                });
+            }
+        };
+        Ok(parsed_response)
     }
 
     async fn fetch_blocking<T>(
@@ -78,16 +87,24 @@ impl NodeClient {
             .send()
             .await
             .map_err(api_failure)?;
-        let response = response
-            .json::<Response<T::ResponseData>>()
-            .await
-            .map_err(api_failure)?;
+        let response_data = response.text().await.map_err(|e| ApiFailure {
+            reason: e.to_string(),
+        })?;
+        let parsed_response: T::ResponseData = match serde_json::from_str(&response_data) {
+            Ok(a) => a,
+            Err(e) => {
+                log::error!(
+                    "Failed parsing api response: {}. Response data: {}",
+                    e,
+                    response_data
+                );
+                return Err(ApiFailure {
+                    reason: e.to_string(),
+                });
+            }
+        };
 
-        if let Some(errors) = response.errors {
-            log::error!("api errors: {:?}", errors);
-        }
-
-        response.data.ok_or_else(invalid_response)
+        Ok(parsed_response)
     }
 
     pub async fn get_account_state(&self, addr: &MsgAddressInt) -> TransportResult<AccountStuff> {
