@@ -175,6 +175,12 @@ impl EthSigner {
     pub fn pubkey(&self) -> PublicKey {
         self.pubkey
     }
+
+    ///getting address according to https://github.com/ethereumbook/ethereumbook/blob/develop/04keys-addresses.asciidoc#public-keys
+    pub fn address(&self) -> ethereum_types::Address {
+        let pub_key = &self.pubkey.serialize_uncompressed()[1..];
+        Address::from_slice(&sha3::Keccak256::digest(&pub_key).as_slice()[32 - 20..])
+    }
 }
 
 impl TonSigner {
@@ -322,8 +328,11 @@ impl KeyData {
 
 #[cfg(test)]
 mod test {
+    use std::str::FromStr;
+
+    use bip39::Language;
     use pretty_assertions::assert_eq;
-    use secp256k1::SecretKey;
+    use secp256k1::{PublicKey, SecretKey};
     use secstr::SecStr;
 
     use crate::crypto::key_managment::{EthSigner, KeyData};
@@ -367,6 +376,27 @@ mod test {
     }
 
     #[test]
+    fn test_signing_bytes() {
+        let tokens = [ethabi::Token::String("lol".into())];
+        let data = ethabi::encode(&tokens);
+        use secp256k1::PublicKey;
+
+        let private_key = crate::crypto::recovery::derive_from_words_eth(
+            Language::English,
+            "uniform noble fix song endless broccoli occur access witness void unfold sleep",
+            None,
+        )
+        .unwrap();
+        let curve = secp256k1::Secp256k1::new();
+        let signer = EthSigner {
+            pubkey: PublicKey::from_secret_key(&curve, &private_key),
+            private_key,
+        };
+        let res = signer.sign(&*data);
+        println!("{}\n{}", hex::encode(&data), hex::encode(&res));
+    }
+
+    #[test]
     fn test_init() {
         let password = SecStr::new("123".into());
         let path = "./test/test_init.key";
@@ -398,5 +428,19 @@ mod test {
             sodiumoxide::crypto::secretbox::xsalsa20poly1305::KEYBYTES,
             ring::digest::SHA256_OUTPUT_LEN
         );
+    }
+
+    #[test]
+    fn address_from_pubkey() {
+        let (key, _) = default_keys();
+        let curve = secp256k1::Secp256k1::new();
+        let signer = EthSigner {
+            pubkey: PublicKey::from_secret_key(&curve, &key),
+            private_key: key,
+        };
+        let address = signer.address();
+        let expected =
+            ethereum_types::Address::from_str("9c5a095ae311cad1b09bc36ac8635f4ed4765dcf").unwrap();
+        assert_eq!(address, expected);
     }
 }

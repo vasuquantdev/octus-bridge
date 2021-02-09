@@ -10,6 +10,7 @@ use crate::prelude::*;
 
 impl State {
     pub async fn finalize(&mut self, config: RelayConfig, key_data: KeyData) -> Result<(), Error> {
+        log::info!("ETH address: 0x{}", hex::encode(&key_data.eth.address()));
         let bridge = make_bridge(self.state_manager.clone(), config, key_data).await?;
 
         log::info!("Successfully initialized");

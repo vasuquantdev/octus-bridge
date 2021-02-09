@@ -420,6 +420,7 @@ impl EthListener {
                                 "Ethereum node is far behind network head: {} blocks to sync",
                                 network_height - current_synced_block
                             );
+                            log::warn!("{:?}", a);
                         }
                         return Ok(SyncedHeight::NotSynced(current_synced_block));
                     }
