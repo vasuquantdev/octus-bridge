@@ -32,7 +32,7 @@
       "inputs": [
       ],
       "outputs": [
-        {"components":[{"name":"eventABI","type":"bytes"},{"name":"eventRequiredConfirmations","type":"uint16"},{"name":"eventRequiredRejects","type":"uint16"},{"name":"eventCode","type":"cell"},{"name":"bridgeAddress","type":"address"},{"name":"eventInitialBalance","type":"uint128"}],"name":"_basicInitData","type":"tuple"},
+        {"components":[{"name":"eventABI","type":"bytes"},{"name":"eventRequiredConfirmations","type":"uint16"},{"name":"eventRequiredRejects","type":"uint16"},{"name":"eventCode","type":"cell"},{"name":"bridgeAddress","type":"address"},{"name":"eventInitialBalance","type":"uint128"},{"name":"meta","type":"cell"}],"name":"_basicInitData","type":"tuple"},
         {"components":[{"name":"eventAddress","type":"uint160"},{"name":"eventBlocksToConfirm","type":"uint16"},{"name":"proxyAddress","type":"address"}],"name":"_initData","type":"tuple"}
       ]
     },
@@ -47,31 +47,15 @@
     {
       "name": "updateInitData",
       "inputs": [
-        {"components":[{"name":"eventABI","type":"bytes"},{"name":"eventRequiredConfirmations","type":"uint16"},{"name":"eventRequiredRejects","type":"uint16"},{"name":"eventCode","type":"cell"},{"name":"bridgeAddress","type":"address"},{"name":"eventInitialBalance","type":"uint128"}],"name":"_basicInitData","type":"tuple"},
+        {"components":[{"name":"eventABI","type":"bytes"},{"name":"eventRequiredConfirmations","type":"uint16"},{"name":"eventRequiredRejects","type":"uint16"},{"name":"eventCode","type":"cell"},{"name":"bridgeAddress","type":"address"},{"name":"eventInitialBalance","type":"uint128"},{"name":"meta","type":"cell"}],"name":"_basicInitData","type":"tuple"},
         {"components":[{"name":"eventAddress","type":"uint160"},{"name":"eventBlocksToConfirm","type":"uint16"},{"name":"proxyAddress","type":"address"}],"name":"_initData","type":"tuple"}
-      ],
-      "outputs": [
-      ]
-    },
-    {
-      "name": "transferAll",
-      "inputs": [
-        {"name":"receiver","type":"address"}
-      ],
-      "outputs": [
-      ]
-    },
-    {
-      "name": "transfer",
-      "inputs": [
-        {"name":"receiver","type":"address"}
       ],
       "outputs": [
       ]
     }
   ],
   "data": [
-    {"components":[{"name":"eventABI","type":"bytes"},{"name":"eventRequiredConfirmations","type":"uint16"},{"name":"eventRequiredRejects","type":"uint16"},{"name":"eventCode","type":"cell"},{"name":"bridgeAddress","type":"address"},{"name":"eventInitialBalance","type":"uint128"}],"key":1,"name":"basicInitData","type":"tuple"},
+    {"components":[{"name":"eventABI","type":"bytes"},{"name":"eventRequiredConfirmations","type":"uint16"},{"name":"eventRequiredRejects","type":"uint16"},{"name":"eventCode","type":"cell"},{"name":"bridgeAddress","type":"address"},{"name":"eventInitialBalance","type":"uint128"},{"name":"meta","type":"cell"}],"key":1,"name":"basicInitData","type":"tuple"},
     {"components":[{"name":"eventAddress","type":"uint160"},{"name":"eventBlocksToConfirm","type":"uint16"},{"name":"proxyAddress","type":"address"}],"key":2,"name":"initData","type":"tuple"}
   ],
   "events": [

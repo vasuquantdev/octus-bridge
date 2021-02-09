@@ -124,7 +124,7 @@
         {"name":"id","type":"uint32"},
         {"name":"targetID","type":"uint32"},
         {"name":"addr","type":"address"},
-        {"components":[{"name":"eventABI","type":"bytes"},{"name":"eventRequiredConfirmations","type":"uint16"},{"name":"eventRequiredRejects","type":"uint16"},{"name":"eventCode","type":"cell"},{"name":"bridgeAddress","type":"address"},{"name":"eventInitialBalance","type":"uint128"}],"name":"basicInitData","type":"tuple"},
+        {"components":[{"name":"eventABI","type":"bytes"},{"name":"eventRequiredConfirmations","type":"uint16"},{"name":"eventRequiredRejects","type":"uint16"},{"name":"eventCode","type":"cell"},{"name":"bridgeAddress","type":"address"},{"name":"eventInitialBalance","type":"uint128"},{"name":"meta","type":"cell"}],"name":"basicInitData","type":"tuple"},
         {"components":[{"name":"eventAddress","type":"uint160"},{"name":"eventBlocksToConfirm","type":"uint16"},{"name":"proxyAddress","type":"address"}],"name":"ethereumInitData","type":"tuple"},
         {"components":[{"name":"eventAddress","type":"address"},{"name":"proxyAddress","type":"uint160"}],"name":"tonInitData","type":"tuple"}
       ],
@@ -150,7 +150,7 @@
         {"name":"rejectRelays","type":"address[]"},
         {"name":"targetID","type":"uint256"},
         {"name":"addr","type":"address"},
-        {"components":[{"name":"eventABI","type":"bytes"},{"name":"eventRequiredConfirmations","type":"uint16"},{"name":"eventRequiredRejects","type":"uint16"},{"name":"eventCode","type":"cell"},{"name":"bridgeAddress","type":"address"},{"name":"eventInitialBalance","type":"uint128"}],"name":"basicInitData","type":"tuple"},
+        {"components":[{"name":"eventABI","type":"bytes"},{"name":"eventRequiredConfirmations","type":"uint16"},{"name":"eventRequiredRejects","type":"uint16"},{"name":"eventCode","type":"cell"},{"name":"bridgeAddress","type":"address"},{"name":"eventInitialBalance","type":"uint128"},{"name":"meta","type":"cell"}],"name":"basicInitData","type":"tuple"},
         {"components":[{"name":"eventAddress","type":"uint160"},{"name":"eventBlocksToConfirm","type":"uint16"},{"name":"proxyAddress","type":"address"}],"name":"ethereumInitData","type":"tuple"},
         {"components":[{"name":"eventAddress","type":"address"},{"name":"proxyAddress","type":"uint160"}],"name":"tonInitData","type":"tuple"}
       ]
@@ -180,22 +180,6 @@
       ],
       "outputs": [
         {"components":[{"name":"nonce","type":"uint16"},{"name":"bridgeUpdateRequiredConfirmations","type":"uint16"},{"name":"bridgeUpdateRequiredRejects","type":"uint16"},{"name":"active","type":"bool"}],"name":"_bridgeConfiguration","type":"tuple"}
-      ]
-    },
-    {
-      "name": "transferAll",
-      "inputs": [
-        {"name":"receiver","type":"address"}
-      ],
-      "outputs": [
-      ]
-    },
-    {
-      "name": "transfer",
-      "inputs": [
-        {"name":"receiver","type":"address"}
-      ],
-      "outputs": [
       ]
     },
     {

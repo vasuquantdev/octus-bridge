@@ -142,7 +142,7 @@ crate::define_event!(
 );
 
 impl TryFrom<(TonEventConfigurationContractEventKind, Vec<Token>)>
-for TonEventConfigurationContractEvent
+    for TonEventConfigurationContractEvent
 {
     type Error = ContractError;
 
@@ -184,7 +184,7 @@ crate::define_event!(
 );
 
 impl TryFrom<(EthEventConfigurationContractEventKind, Vec<Token>)>
-for EthEventConfigurationContractEvent
+    for EthEventConfigurationContractEvent
 {
     type Error = ContractError;
 
@@ -236,8 +236,12 @@ impl FunctionArg for BridgeConfiguration {
     fn token_value(self) -> TokenValue {
         TokenValue::Tuple(vec![
             self.nonce.token_value().named("nonce"),
-            self.bridge_update_required_confirmations.token_value().named("bridgeUpdateRequiredConfirmations"),
-            self.bridge_update_required_rejects.token_value().named("bridgeUpdateRequiredRejects"),
+            self.bridge_update_required_confirmations
+                .token_value()
+                .named("bridgeUpdateRequiredConfirmations"),
+            self.bridge_update_required_rejects
+                .token_value()
+                .named("bridgeUpdateRequiredRejects"),
             self.active.token_value().named("active"),
         ])
     }
@@ -403,6 +407,8 @@ pub struct CommonEventConfigurationParams {
     pub bridge_address: MsgAddressInt,
 
     pub event_initial_balance: BigUint,
+
+    pub meta: Cell,
 }
 
 impl ParseToken<CommonEventConfigurationParams> for TokenValue {
@@ -419,6 +425,7 @@ impl ParseToken<CommonEventConfigurationParams> for TokenValue {
             event_code: tuple.next().try_parse()?,
             bridge_address: tuple.next().try_parse()?,
             event_initial_balance: tuple.next().try_parse()?,
+            meta: tuple.next().try_parse()?,
         })
     }
 }
@@ -513,6 +520,8 @@ pub struct TonEventInitData {
     pub ton_event_configuration: MsgAddressInt,
     pub required_confirmations: u16,
     pub required_rejections: u16,
+
+    pub configuration_meta: Cell,
 }
 
 impl ParseToken<TonEventInitData> for TokenValue {
@@ -531,6 +540,7 @@ impl ParseToken<TonEventInitData> for TokenValue {
             ton_event_configuration: tuple.next().try_parse()?,
             required_confirmations: tuple.next().try_parse()?,
             required_rejections: tuple.next().try_parse()?,
+            configuration_meta: tuple.next().try_parse()?,
         })
     }
 }
@@ -556,9 +566,7 @@ impl FunctionArg for TonEventVoteData {
             self.event_transaction_lt
                 .token_value()
                 .named("eventTransactionLt"),
-            self.event_timestamp
-                .token_value()
-                .named("eventTimestamp"),
+            self.event_timestamp.token_value().named("eventTimestamp"),
             self.event_index.token_value().named("eventIndex"),
             self.event_data.token_value().named("eventData"),
         ])
@@ -590,7 +598,7 @@ impl BorshSerialize for TonEventVoteData {
             event_index: self.event_index,
             event_data,
         }
-            .serialize(writer)
+        .serialize(writer)
     }
 }
 
@@ -650,6 +658,8 @@ pub struct EthEventInitData {
     pub required_rejections: u16,
 
     pub proxy_address: MsgAddressInt,
+
+    pub configuration_meta: Cell,
 }
 
 impl ParseToken<EthEventInitData> for TokenValue {
@@ -669,6 +679,7 @@ impl ParseToken<EthEventInitData> for TokenValue {
             required_confirmations: tuples.next().try_parse()?,
             required_rejections: tuples.next().try_parse()?,
             proxy_address: tuples.next().try_parse()?,
+            configuration_meta: tuples.next().try_parse()?,
         })
     }
 }
@@ -726,7 +737,7 @@ impl BorshSerialize for EthEventVoteData {
             event_block_number: self.event_block_number,
             event_block: self.event_block.as_bytes().to_vec(),
         }
-            .serialize(writer)
+        .serialize(writer)
     }
 }
 
