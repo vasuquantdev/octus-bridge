@@ -9,6 +9,7 @@ RUN apt-get update \
 
 # Switch back to dialog for any ad-hoc use of apt-get
 ENV DEBIAN_FRONTEND=dialog
+RUN rustup component add rustfmt
 RUN mkdir relay
 WORKDIR relay
 RUN cargo install cargo-deb
@@ -26,4 +27,4 @@ COPY client ./client
 COPY relay-utils ./relay-utils
 COPY LICENSE ./LICENSE
 RUN ls -lah
-RUN cargo deb
+RUN cargo deb -- --features="tonlib-transport,graphql-transport,paranoid"
