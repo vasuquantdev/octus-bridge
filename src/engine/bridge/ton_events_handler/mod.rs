@@ -20,6 +20,7 @@ struct State {
     transport: Arc<TonEventTransport>,
     eth_signer: EthSigner,
     verification_queue: TonVerificationQueue,
+    address: MsgAddressInt,
 
     configuration_id: u32,
     details: TonEventConfiguration,
@@ -115,6 +116,7 @@ impl TonEventsHandler {
                 transport: transport.clone(),
                 eth_signer,
                 verification_queue,
+                address,
                 configuration_id,
                 details,
                 config_contract: config_contract.clone(),
@@ -193,6 +195,10 @@ impl TonEventsHandler {
         *handler.state.is_scanning.write().await = false;
 
         Ok(handler)
+    }
+
+    pub fn get_details(&self) -> (&TonEventConfiguration, &MsgAddressInt) {
+        (&self.state.details, &self.state.address)
     }
 
     fn start_listening_vote_events(

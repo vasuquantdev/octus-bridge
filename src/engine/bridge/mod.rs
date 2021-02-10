@@ -1,7 +1,11 @@
 use std::collections::hash_map::Entry;
 use std::ops::Deref;
 
+use tokio::stream::StreamExt;
+use ton_block::Serializable;
+
 use relay_eth::ws::{EthListener, SyncedHeight};
+use relay_models::models::{CommonEventConfigurationParamsView, TonEventConfigurationView};
 use relay_ton::contracts::*;
 
 use crate::config::RelayConfig;
@@ -329,7 +333,49 @@ impl Bridge {
         Ok(())
     }
 
-    pub async fn get_event_configurations(
+    pub async fn get_ton_event_configurations(&self) -> Vec<TonEventConfigurationView> {
+        self
+            .ton_event_handlers
+            .read()
+            .await
+            .iter()
+            .map(|(_,x)| x.get_details())
+            .map(|(x, addr)| -> Result<TonEventConfigurationView,Error> {
+                Ok(TonEventConfigurationView {
+                    event_address: x.event_address.to_string(),
+                    proxy_address: hex::encode(x.proxy_address.0),
+                    common: CommonEventConfigurationParamsView {
+                        event_abi: x.common.event_abi.clone(),
+                        event_required_confirmations: x.common.event_required_confirmations,
+                        event_required_rejects: x.common.event_required_rejects,
+                        event_code: base64::encode(x.common.event_code.write_to_bytes().map_err(|e|Error::msg(e.to_string()))?),
+                        bridge_address: x.common.bridge_address.to_string(),
+                        event_initial_balance: x.common.event_initial_balance.to_u64().ok_or_else(
+                            || {
+                                anyhow!(
+                                "initial balance higher than u64: {}",
+                                &x.common.event_initial_balance
+                            )
+                            },
+                        )?,
+                        meta: base64::encode(&x.common.meta.write_to_bytes().map_err(|e|Error::msg(e.to_string()))?),
+                        address: addr.to_string()
+                    },
+                }
+            )})
+            .filter_map(|x|
+            match x {
+                Ok(a)=>Some(a),
+                Err(e) =>{
+                    log::error!("Failed converting TonEventConfiguration to TonEventConfigurationView: {:?}",e);
+                    None
+                }
+            }
+            )
+            .collect()
+    }
+
+    pub async fn get_eth_event_configurations(
         &self,
     ) -> Result<Vec<(u32, EthEventConfiguration)>, Error> {
         let state = self.configs_state.read().await;

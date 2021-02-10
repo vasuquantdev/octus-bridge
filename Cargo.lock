@@ -2788,8 +2788,6 @@ dependencies = [
  "num-bigint",
  "num-traits 0.2.14",
  "once_cell",
- "parking_lot",
- "pin-project 1.0.5",
  "relay-utils",
  "reqwest",
  "serde 1.0.123",

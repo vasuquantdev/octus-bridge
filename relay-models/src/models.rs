@@ -176,3 +176,22 @@ pub enum EventVote {
     Confirm,
     Reject,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommonEventConfigurationParamsView {
+    pub event_abi: String,
+    pub event_required_confirmations: u16,
+    pub event_required_rejects: u16,
+    pub event_code: String,
+    pub bridge_address: String,
+    pub event_initial_balance: u64,
+    pub meta: String,
+    pub address: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TonEventConfigurationView {
+    pub common: CommonEventConfigurationParamsView,
+    pub event_address: String,
+    pub proxy_address: String,
+}

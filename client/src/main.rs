@@ -15,8 +15,8 @@ use serde_json::json;
 use relay_models::models::{
     BridgeConfigurationView, EthEventVoteDataView, EthTonTransactionView, EthTxStatView,
     EventConfiguration, EventConfigurationType, InitData, NewEventConfiguration,
-    Password as PasswordData, RescanEthData, Status, TonEthTransactionView, TonEventVoteDataView,
-    TonTxStatView, Voting,
+    Password as PasswordData, RescanEthData, Status, TonEthTransactionView,
+    TonEventConfigurationView, TonEventVoteDataView, TonTxStatView, Voting,
 };
 
 #[derive(Clap)]
@@ -44,7 +44,14 @@ fn main() -> Result<(), Error> {
             "Vote for event configuration",
             Client::vote_for_event_configuration,
         )
-        .item("Get event configurations", Client::get_event_configurations)
+        .item(
+            "Get eth event configurations",
+            Client::get_event_configurations,
+        )
+        .item(
+            "Get ton event configurations",
+            Client::get_ton_event_configurations,
+        )
         .item(
             "Get pending transactions ETH->TON",
             Client::get_pending_transactions_eth_to_ton,
@@ -153,6 +160,18 @@ impl Client {
     pub fn retry_failed_votes(&self) -> Result<(), Error> {
         self.post_raw("retry-failed", &())?;
         println!("Success!");
+        Ok(())
+    }
+
+    pub fn get_ton_event_configurations(&self) -> Result<(), Error> {
+        let response: Vec<TonEventConfigurationView> = self.get("ton-event-configurations")?;
+        let mut output = Pager::new().set_prompt("Ton event configurations");
+        writeln!(
+            output.lines,
+            "{}",
+            serde_json::to_string_pretty(&response)?.to_colored_json(ColorMode::On)?
+        )?;
+        minus::page_all(output)?;
         Ok(())
     }
 

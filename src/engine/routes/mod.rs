@@ -61,10 +61,10 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
         .and(state.clone())
         .and_then(|(state, _)| status::get_status(state));
 
-    let get_all_event_configurations = warp::path!("event-configurations")
+    let get_eth_event_configurations = warp::path!("event-configurations")
         .and(warp::get())
         .and(state.clone())
-        .and_then(|(state, _)| get_event_configurations(state));
+        .and_then(|(state, _)| get_eth_event_configurations(state));
 
     // TODO: add request for getting event configuration by id
 
@@ -73,6 +73,11 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
         .and(json_data::<NewEventConfiguration>())
         .and(state.clone())
         .and_then(|data, (state, _)| create_event_configuration(state, data));
+
+    let ton_event_configurations = warp::path!("ton-event-configurations")
+        .and(warp::get())
+        .and(state.clone())
+        .and_then(|(state, _)| get_ton_event_configuration(state));
 
     let vote_for_ethereum_event_configuration = warp::path!("event-configurations" / "vote")
         .and(warp::post())
@@ -142,7 +147,7 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
         .or(retry_failed)
         .or(rescan_eth)
         .or(status)
-        .or(get_all_event_configurations)
+        .or(get_eth_event_configurations)
         .or(create_event_configuration)
         .or(vote_for_ethereum_event_configuration)
         .or(pending_transactions_eth_to_ton)
@@ -153,7 +158,8 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
         .or(failed_transactions_ton_to_eth)
         .or(queued_transactions_ton_to_eth)
         .or(ton_relay_stats)
-        .or(update_bridge_configuration);
+        .or(update_bridge_configuration)
+        .or(ton_event_configurations);
 
     let server = warp::serve(routes);
     let (_, server) = server.bind_with_graceful_shutdown(serve_address, async {
@@ -162,13 +168,30 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
     server.await;
 }
 
+pub async fn get_ton_event_configuration(
+    state: Arc<RwLock<State>>,
+) -> Result<impl Reply, Infallible> {
+    let state = state.read().await;
+    return if let BridgeState::Running(a) = &state.bridge_state {
+        Ok(reply::with_status(
+            serde_json::to_string(&a.get_ton_event_configurations().await).expect("Shouldn't fail"),
+            StatusCode::OK,
+        ))
+    } else {
+        Ok(reply::with_status(
+            "Relay not running".to_string(),
+            StatusCode::METHOD_NOT_ALLOWED,
+        ))
+    };
+}
+
 pub async fn update_bridge_configuration(
     state: Arc<RwLock<State>>,
     data: BridgeConfigurationView,
 ) -> Result<impl Reply, Infallible> {
     use ethabi::{Token, Uint};
     let state = state.read().await;
-    if let BridgeState::Running(a) = &state.bridge_state {
+    return if let BridgeState::Running(a) = &state.bridge_state {
         log::info!("Got request for updating bridge contract");
 
         let bridge_conf = BridgeConfiguration {
@@ -200,13 +223,13 @@ pub async fn update_bridge_configuration(
                 StatusCode::INTERNAL_SERVER_ERROR,
             ));
         }
-        return Ok(reply::with_status("ok".to_string(), StatusCode::OK));
+        Ok(reply::with_status("ok".to_string(), StatusCode::OK))
     } else {
-        return Ok(reply::with_status(
+        Ok(reply::with_status(
             "Bridge is not running".to_string(),
             StatusCode::METHOD_NOT_ALLOWED,
-        ));
-    }
+        ))
+    };
 }
 
 async fn vote_for_ethereum_event_configuration(
@@ -246,7 +269,7 @@ async fn vote_for_ethereum_event_configuration(
     )
 }
 
-async fn get_event_configurations(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {
+async fn get_eth_event_configurations(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {
     let state = state.read().await;
     let bridge = match &state.bridge_state {
         BridgeState::Running(bridge) => bridge,
@@ -259,7 +282,7 @@ async fn get_event_configurations(state: Arc<RwLock<State>>) -> Result<impl Repl
 
     Ok(
         match bridge
-            .get_event_configurations()
+            .get_eth_event_configurations()
             .await
             .map(|configurations| {
                 configurations
