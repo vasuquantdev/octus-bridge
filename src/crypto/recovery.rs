@@ -60,7 +60,7 @@ mod test {
         assert_eq!(
             key.unwrap(),
             SecretKey::from_slice(
-                &hex::decode("416ddb82736d0ddf80cc50eda0639a2dd9f104aef121fb9c8af647ad8944a8b1")
+                &hex::decode("e3c08a91583ecf88e361436878bcc58324f42695546cd00c92d301887775fb26")
                     .unwrap(),
             )
             .unwrap(),
