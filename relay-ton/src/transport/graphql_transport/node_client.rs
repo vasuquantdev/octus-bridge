@@ -53,8 +53,8 @@ impl NodeClient {
             reason: e.to_string(),
         })?;
         drop(permit);
-
-        let parsed_response: T::ResponseData = match serde_json::from_str(&response_data) {
+        let parsed_response: Response<T::ResponseData> = match serde_json::from_str(&response_data)
+        {
             Ok(a) => a,
             Err(e) => {
                 log::error!(
@@ -67,7 +67,7 @@ impl NodeClient {
                 });
             }
         };
-        Ok(parsed_response)
+        parsed_response.data.ok_or_else(invalid_response)
     }
 
     async fn fetch_blocking<T>(
@@ -90,7 +90,8 @@ impl NodeClient {
         let response_data = response.text().await.map_err(|e| ApiFailure {
             reason: e.to_string(),
         })?;
-        let parsed_response: T::ResponseData = match serde_json::from_str(&response_data) {
+        let parsed_response: Response<T::ResponseData> = match serde_json::from_str(&response_data)
+        {
             Ok(a) => a,
             Err(e) => {
                 log::error!(
@@ -103,8 +104,7 @@ impl NodeClient {
                 });
             }
         };
-
-        Ok(parsed_response)
+        parsed_response.data.ok_or_else(invalid_response)
     }
 
     pub async fn get_account_state(&self, addr: &MsgAddressInt) -> TransportResult<AccountStuff> {
