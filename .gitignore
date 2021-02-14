@@ -13,3 +13,5 @@ config*.yaml
 log/
 scripts/relay*
 docker-compose.yaml
+
+artifacts/

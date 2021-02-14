@@ -4,7 +4,7 @@ use std::ops::Deref;
 use tokio::stream::StreamExt;
 use ton_block::Serializable;
 
-use relay_eth::ws::{EthListener, SyncedHeight};
+use relay_eth::ws::{EthListener, Event, SyncedHeight};
 use relay_models::models::{CommonEventConfigurationParamsView, TonEventConfigurationView};
 use relay_ton::contracts::*;
 
@@ -406,21 +406,24 @@ impl Bridge {
     }
 
     async fn check_suspicious_event(self: Arc<Self>, event: EthEventVoteData) {
+        ///`event_from_ethereum` - fresh event from eth
+        ///`event` data in our db
         async fn check_event(
             configs: &ConfigsState,
-            result_to_check: Result<(Address, Vec<u8>), Error>,
+            event_from_ethereum: Result<Event, Error>,
             event: &EthEventVoteData,
-        ) -> Result<(), Error> {
-            let (address, data) = result_to_check?;
-            let (_, eth_abi, ton_abi) = if let Some(abi) = configs.address_topic_map.get(&address) {
-                abi
-            } else {
-                return Err(anyhow!(
-                    "We have no info about {} to get abi. Rejecting transaction",
-                    address
-                ));
-            };
-            let expected_tokens = ethabi::decode(eth_abi, &data).map_err(|e| {
+        ) -> Result<Option<Event>, Error> {
+            let proofed_event = event_from_ethereum?;
+            let (_, eth_abi, ton_abi) =
+                if let Some(abi) = configs.address_topic_map.get(&proofed_event.address) {
+                    abi
+                } else {
+                    return Err(anyhow!(
+                        "We have no info about {} to get abi. Rejecting transaction",
+                        proofed_event.address
+                    ));
+                };
+            let expected_tokens = ethabi::decode(eth_abi, &proofed_event.data).map_err(|e| {
                 Error::from(e)
                     .context("Can not verify data, that other relay sent. Assuming it's fake.")
             })?;
@@ -429,15 +432,26 @@ impl Bridge {
                 utils::parse_eth_event_data(&eth_abi, &ton_abi, event.event_data.clone())
                     .map_err(|e| e.context("Failed decoding other relay data as eth types"))?;
 
-            if got_tokens == expected_tokens {
-                Ok(())
-            } else {
-                Err(anyhow!(
+            if got_tokens != expected_tokens {
+                return Err(anyhow!(
                     "Decoded tokens are not equal with that other relay sent"
-                ))
+                ));
+            }
+
+            //Ok, data is equal, lets compare other fields
+            #[allow(clippy::suspicious_operation_groupings)]
+            if event.event_transaction != proofed_event.tx_hash
+                || event.event_index != proofed_event.event_index
+                || event.event_block_number != proofed_event.block_number as u32
+                || event.event_block != proofed_event.block_hash
+            {
+                Ok(Some(proofed_event))
+            } else {
+                Ok(None)
             }
         }
-        let check_result = self
+
+        let result_of_check = self
             .eth_listener
             .check_transaction(event.event_transaction, event.event_index)
             .await;
@@ -445,17 +459,27 @@ impl Bridge {
         if let Err(e) = {
             match check_event(
                 self.configs_state.read().await.deref(),
-                check_result,
+                result_of_check,
                 &event,
             )
             .await
             {
-                Ok(_) => {
-                    log::info!("Confirming transaction. Hash: {}", event.event_transaction);
-                    self.eth
-                        .enqueue_vote(EventTransaction::Confirm(event))
-                        .await
-                }
+                Ok(data) => match data {
+                    None => {
+                        log::info!("Confirming transaction. Hash: {}", event.event_transaction);
+                        self.eth
+                            .enqueue_vote(EventTransaction::Confirm(event))
+                            .await
+                    }
+                    Some(a) => {
+                        log::error!("Found data for transaction {}. Transaction fields differs with actual eth data. Maybe blockchain was forked. Rejecting suspicious transaction and adding good to the queue.",
+                                    event.event_transaction);
+                        log::warn!("Rejecting: {}", hex::encode(&event.event_transaction.0));
+                        log::info!("Enqueuing again");
+                        tokio::spawn(self.clone().process_eth_event(a));
+                        Ok(())
+                    }
+                },
                 Err(e) => {
                     log::warn!("Rejection: {:?}", e);
                     self.eth.enqueue_vote(EventTransaction::Reject(event)).await

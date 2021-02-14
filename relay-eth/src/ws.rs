@@ -196,15 +196,10 @@ impl EthListener {
         })
     }
 
-    pub async fn check_transaction(
-        &self,
-        hash: H256,
-        event_index: u32,
-    ) -> Result<(Address, Vec<u8>), Error> {
+    pub async fn check_transaction(&self, hash: H256, event_index: u32) -> Result<Event, Error> {
         loop {
             // Trying to get data. Retrying in case of error
             let _permission = self.connections_pool.acquire().await;
-            let mut attempts = self.timeouts.get_eth_data_attempts;
             match self.web3.eth().transaction_receipt(hash).await {
                 Ok(a) => {
                     return match a {
@@ -244,7 +239,7 @@ impl EthListener {
                                 .into_iter()
                                 .find(|x| x.tx_hash == hash && x.event_index == event_index);
                             match event {
-                                Some(a) => Ok((a.address, a.data)),
+                                Some(a) => Ok(a),
                                 None => Err(anyhow!(
                                     "No events for tx. Assuming confirmation is fake.: {}"
                                 )),
@@ -253,14 +248,7 @@ impl EthListener {
                     };
                 }
                 Err(e) => {
-                    if attempts == 0 {
-                        return Err(Error::from(e));
-                    }
-                    attempts -= 1;
-                    log::error!(
-                        "Failed fetching info from eth node. Attempts left: {}",
-                        attempts
-                    );
+                    log::error!("Failed fetching info from eth node: {}", e);
                     tokio::time::delay_for(self.timeouts.get_eth_data_timeout).await;
                 }
             }
