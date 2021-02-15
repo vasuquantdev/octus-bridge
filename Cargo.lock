@@ -389,12 +389,6 @@ checksum = "0e4cec68f03f32e44924783795810fa50a7035d8c8ebe78580ad7e6c703fba38"
 
 [[package]]
 name = "bytes"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0dcbc35f504eb6fc275a6d20e4ebcda18cf50d40ba6fabff8c711fa16cb3b16"
-
-[[package]]
-name = "bytes"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b700ce4376041dcd0a327fd0097c41095743c4c8af8887265942faf1100bd040"
@@ -2218,7 +2212,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "instant",
  "libc",
- "redox_syscall 0.2.4",
+ "redox_syscall 0.2.5",
  "smallvec",
  "winapi 0.3.9",
 ]
@@ -2668,9 +2662,9 @@ checksum = "41cc0f7e4d5d4544e8861606a285bb08d3e70712ccc7d2b84d7c0ccfaf4b05ce"
 
 [[package]]
 name = "redox_syscall"
-version = "0.2.4"
+version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05ec8ca9416c5ea37062b502703cd7fcb207736bc294f6e0cf367ac6fc234570"
+checksum = "94341e4e44e24f6b591b59e47a8a027df12e008d73fd5672dbea9cc22f4507d9"
 dependencies = [
  "bitflags",
 ]
@@ -3370,7 +3364,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "libc",
  "rand 0.8.3",
- "redox_syscall 0.2.4",
+ "redox_syscall 0.2.5",
  "remove_dir_all",
  "winapi 0.3.9",
 ]
@@ -3612,16 +3606,16 @@ dependencies = [
 
 [[package]]
 name = "tokio-util"
-version = "0.5.1"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3137de2b078e95274b696cc522e87f22c9a753fe3ef3344116ffb94f104f10a3"
+checksum = "24793699f4665ba0416ed287dc794fe6b11a4aa5e4e95b58624f45f6c46b97d4"
 dependencies = [
- "bytes 0.6.0",
+ "bytes 0.5.6",
  "futures-core",
  "futures-io",
  "futures-sink",
  "log",
- "pin-project-lite 0.2.4",
+ "pin-project-lite 0.1.11",
  "tokio 0.3.7",
 ]
 
@@ -3700,7 +3694,7 @@ dependencies = [
 [[package]]
 name = "ton_labs_assembler"
 version = "1.0.0"
-source = "git+https://github.com/tonlabs/ton-labs-assembler.git#f66d880f46a313b5ae581753b1fc0ee25a721e02"
+source = "git+https://github.com/tonlabs/ton-labs-assembler.git#8dea5c6ad9afd1f47d4f597330d06e604780ea49"
 dependencies = [
  "failure",
  "hex 0.4.2",
@@ -4165,8 +4159,7 @@ dependencies = [
 [[package]]
 name = "web3"
 version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3c736dcabf7a4d4b9e724ff6696914e205cb37f111a54903b17f76c20d59f7e6"
+source = "git+https://github.com/tomusdrw/rust-web3?rev=2c33873488cbf9a27bf38d665138b227521bf51a#2c33873488cbf9a27bf38d665138b227521bf51a"
 dependencies = [
  "arrayvec",
  "async-native-tls",
@@ -4176,7 +4169,6 @@ dependencies = [
  "ethereum-types 0.9.2",
  "futures 0.3.12",
  "futures-timer",
- "hex 0.4.2",
  "hyper",
  "hyper-proxy",
  "hyper-tls",
@@ -4184,15 +4176,15 @@ dependencies = [
  "log",
  "native-tls",
  "parking_lot",
- "pin-project 1.0.5",
  "rlp 0.4.6",
+ "rustc-hex",
  "secp256k1",
  "serde 1.0.123",
  "serde_json",
  "soketto",
  "tiny-keccak 2.0.2",
  "tokio 0.2.25",
- "tokio-util 0.5.1",
+ "tokio-util 0.4.0",
  "typed-headers",
  "url",
 ]
