@@ -231,7 +231,7 @@ where
 
                 let new_trans_lt = stats.last_trans_lt;
                 if last_trans_lt >= new_trans_lt {
-                    log::debug!("no changes found. skipping");
+                    log::trace!("no changes found. skipping");
                     continue;
                 }
 
