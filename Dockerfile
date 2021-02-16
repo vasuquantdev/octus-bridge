@@ -25,7 +25,7 @@ COPY relay-utils ./relay-utils
 COPY LICENSE ./LICENSE
 RUN ls -lah
 RUN rustup component add rustfmt
-RUN cargo build  --features="tonlib-transport,graphql-transport"
+RUN cargo build --release --features="tonlib-transport,graphql-transport,paranoid"
 
 FROM debian:buster-slim
 
@@ -36,7 +36,7 @@ RUN apt-get update &&  apt-get install -y --no-install-recommends   libsnappy1v5
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder relay/target/debug/relay /relay
+COPY --from=builder relay/target/release/relay /relay
 # Entrypoint
 COPY scripts/entrypoint.sh /entrypoint.sh
 RUN mkdir cfg
