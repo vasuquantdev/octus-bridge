@@ -178,6 +178,12 @@ pub struct VerificationQueueLockEntry<'a, T> {
 }
 
 impl<'a, T> VerificationQueueLockEntry<'a, T> {
+    pub fn key(&self) -> u64 {
+        let mut key = [0; 8];
+        key.copy_from_slice(&self.key[0..8]);
+        u64::from_be_bytes(key)
+    }
+
     pub fn remove(self) -> Result<(), Error> {
         self.queue.db.remove(self.key)?;
         #[cfg(feature = "paranoid")]

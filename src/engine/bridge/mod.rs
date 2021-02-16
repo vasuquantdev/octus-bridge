@@ -439,9 +439,7 @@ impl Bridge {
             }
 
             //Ok, data is equal, lets compare other fields
-            #[allow(clippy::suspicious_operation_groupings)]
-            if event.event_transaction != proofed_event.tx_hash
-                || event.event_index != proofed_event.event_index
+            if event.event_index != proofed_event.event_index
                 || event.event_block_number != proofed_event.block_number as u32
                 || event.event_block != proofed_event.block_hash
             {
@@ -522,10 +520,13 @@ impl Bridge {
             if let SyncedHeight::Synced(a) = synced_block {
                 let bad_blocks = self.eth_verification_queue.range_after(a).await;
                 for (entry, event) in bad_blocks {
-                    let block_number = event.event_block_number;
+                    if entry.key() > a {
+                        continue;
+                    }
+
                     log::debug!(
                         "Found suspicious data in block {}: {}",
-                        block_number,
+                        event.event_block_number,
                         hex::encode(&event.event_transaction)
                     );
                     tokio::spawn(self.clone().check_suspicious_event(event));
@@ -599,10 +600,7 @@ impl Bridge {
 
             (
                 *configuration_id,
-                event_config
-                    .event_blocks_to_confirm
-                    .to_u64()
-                    .unwrap_or_else(u64::max_value),
+                event_config.event_blocks_to_confirm,
                 ton_data,
             )
         };
@@ -626,7 +624,7 @@ impl Bridge {
             event_block: event.block_hash,
         };
 
-        let target_block_number = event.block_number + ethereum_event_blocks_to_confirm;
+        let target_block_number = event.block_number + ethereum_event_blocks_to_confirm as u64;
 
         log::info!(
             "Inserting transaction for block {} with queue number: {}",

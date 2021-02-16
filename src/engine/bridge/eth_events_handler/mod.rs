@@ -225,13 +225,8 @@ impl EventsVerifier<EthEventReceivedVote> for State {
     async fn enqueue(&self, event: <EthEventReceivedVote as ReceivedVote>::VoteWithData) {
         let info = event.info();
 
-        let target_block_number = event
-            .data()
-            .init_data
-            .event_block_number
-            .to_u64()
-            .unwrap_or_else(u64::max_value)
-            + *info.additional() as u64;
+        let target_block_number =
+            event.data().init_data.event_block_number as u64 + *info.additional() as u64;
 
         if let Err(e) = self
             .verification_queue

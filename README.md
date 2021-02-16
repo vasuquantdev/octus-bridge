@@ -167,6 +167,7 @@ eth_settings:
   get_eth_data_attempts: 50
   eth_poll_interval: 10s
   eth_poll_attempts: 8640
+  suspicious_blocks_offset: 100
   bridge_address: ""
 ton_settings:
   bridge_contract_address: ""
@@ -209,6 +210,7 @@ ton_settings:
 - `get_eth_data_attempts` - number of attempts for previous field
 - `eth_poll_interval` - poll interval between fetching new blocks
 - `eth_poll_attempts`  - number of attempts to get logs in the block
+- `suspicious_blocks_offset` - offset in blocks for checking suspicious transactions
 - `bridge_address` - address of bridge contract in ethereum
 #### ton_settings
 

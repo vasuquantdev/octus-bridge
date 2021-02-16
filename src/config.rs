@@ -66,16 +66,24 @@ pub struct EthSettings {
 
     /// Number of concurrent tcp connection to ethereum node
     pub tcp_connection_count: usize,
+
     /// Timeout and delay between retries for getting non-critical data, like current eth sync status
     #[serde(with = "relay_utils::serde_time")]
     pub get_eth_data_timeout: Duration,
+
     /// Number of attempts  for getting non-critical data, like current eth sync status
     pub get_eth_data_attempts: u64,
+
     /// Poll interval between fetching new blocks
     #[serde(with = "relay_utils::serde_time")]
     pub eth_poll_interval: Duration,
+
     /// Number of attempts to get logs in the block
     pub eth_poll_attempts: u64,
+
+    /// Offset in blocks for checking suspicious transactions
+    pub suspicious_blocks_offset: u64,
+
     /// Bridge address in ethereum
     pub bridge_address: Address,
 }
@@ -89,6 +97,7 @@ impl Default for EthSettings {
             get_eth_data_attempts: 50,
             eth_poll_interval: Duration::from_secs(10),
             eth_poll_attempts: 86400 / 10,
+            suspicious_blocks_offset: 10,
             bridge_address: Default::default(),
         }
     }
