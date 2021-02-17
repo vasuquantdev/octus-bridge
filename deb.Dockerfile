@@ -27,4 +27,4 @@ COPY client ./client
 COPY relay-utils ./relay-utils
 COPY LICENSE ./LICENSE
 RUN ls -lah
-RUN cargo deb -- --features="tonlib-transport,graphql-transport,paranoid"
+RUN cargo deb
