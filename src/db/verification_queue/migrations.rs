@@ -19,10 +19,12 @@ impl Migration for EthVerificationQueue {
 
                 for item in queue.db.iter() {
                     let (key, _) = item?;
+
                     let mut new_key = Vec::with_capacity(key.len() + 1);
-                    new_key[0..8].copy_from_slice(&key[0..8]);
-                    new_key[9] = 1; // mark all known transactions in queue as external on migration
-                    new_key[9..].copy_from_slice(&key[8..]);
+                    new_key.extend(&key[0..8]);
+                    new_key.push(1); // mark all known transactions in queue as external on migration
+                    new_key.extend(&key[8..]);
+
                     batch.remove(key);
                     batch.insert(new_key, &[]);
                 }
@@ -51,10 +53,12 @@ impl Migration for TonVerificationQueue {
 
                 for item in tree.iter() {
                     let (key, _) = item?;
+
                     let mut new_key = Vec::with_capacity(key.len() + 1);
-                    new_key[0..12].copy_from_slice(&key[0..12]);
-                    new_key[13] = 1; // mark all known transactions in queue as external on migration
-                    new_key[13..].copy_from_slice(&key[12..]);
+                    new_key.extend(&key[0..12]);
+                    new_key.push(1); // mark all known transactions in queue as external on migration
+                    new_key.extend(&key[12..]);
+
                     batch.remove(key);
                     batch.insert(new_key, &[]);
                 }
