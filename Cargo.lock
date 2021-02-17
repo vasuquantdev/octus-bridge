@@ -2689,12 +2689,12 @@ checksum = "b5eb417147ba9860a96cfe72a0b93bf88fee1744b5636ec99ab20c1aa9376581"
 
 [[package]]
 name = "relay"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "anyhow",
  "async-trait",
  "backtrace",
- "base64 0.10.1",
+ "base64 0.13.0",
  "borsh",
  "chrono",
  "clap",
@@ -2800,9 +2800,13 @@ dependencies = [
 name = "relay-utils"
 version = "0.1.0"
 dependencies = [
+ "futures 0.3.12",
  "humantime",
+ "hyper",
+ "log",
  "serde 1.0.123",
  "serde_yaml",
+ "tokio 0.2.25",
 ]
 
 [[package]]

@@ -160,6 +160,9 @@ logger_settings:
       appenders:
         - stdout
       additive: false
+metrics_settings:
+  listen_address: "127.0.0.1:10000"
+  collection_interval: 10s
 eth_settings:
   node_address: "http://localhost:8545"
   tcp_connection_count: 100
@@ -199,6 +202,10 @@ ton_settings:
   IS PROHIBITED**, because anyone, having access to it can control relay.
 - `number_of_ethereum_tcp_connections` maximum number of parallel tcp
   connections to ethereum node
+
+#### metrics_settings
+- `listen_address` - address to bind metrics server
+- `collection_interval` - metrics poll interval. Requests between collections will return cached data
 
 #### eth_settings
 
