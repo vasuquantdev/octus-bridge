@@ -450,6 +450,7 @@ impl EventsVerifier<TonEventReceivedVote> for State {
         self.verification_queue
             .insert(
                 event_lt,
+                true,
                 &SignedTonEventVoteData {
                     data: event.into_vote(),
                     signature,

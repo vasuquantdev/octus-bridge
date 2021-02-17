@@ -230,7 +230,7 @@ impl EventsVerifier<EthEventReceivedVote> for State {
 
         if let Err(e) = self
             .verification_queue
-            .insert(target_block_number, &event.into_vote())
+            .insert(target_block_number, true, &event.into_vote())
             .await
         {
             log::error!("Failed to insert event confirmation. {:?}", e);

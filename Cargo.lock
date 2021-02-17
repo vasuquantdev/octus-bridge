@@ -2689,12 +2689,12 @@ checksum = "b5eb417147ba9860a96cfe72a0b93bf88fee1744b5636ec99ab20c1aa9376581"
 
 [[package]]
 name = "relay"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "async-trait",
  "backtrace",
- "base64 0.13.0",
+ "base64 0.10.1",
  "borsh",
  "chrono",
  "clap",

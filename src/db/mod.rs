@@ -7,6 +7,7 @@ pub mod migrate;
 
 use std::collections::HashMap;
 
+pub use self::migrate::*;
 pub use self::stats_db::*;
 pub use self::verification_queue::*;
 pub use self::votes_queues::*;

@@ -1,7 +1,9 @@
+mod migrations;
+
 use relay_ton::contracts::EthEventVoteData;
 
 use super::constants::*;
-use super::Table;
+use crate::db::Table;
 use crate::models::*;
 use crate::prelude::*;
 
@@ -58,7 +60,7 @@ where
             .keys()
             .filter_map(|key| {
                 let key = key.ok()?;
-                let value: T = BorshDeserialize::deserialize(&mut &key[8..]).ok()?;
+                let value: T = BorshDeserialize::deserialize(&mut &key[9..]).ok()?;
                 Some((key, value))
             });
 
@@ -76,7 +78,7 @@ where
         let guard = self.guard.lock().await;
         let results = self.db.range(key.to_be_bytes()..).keys().filter_map(|key| {
             let key = key.ok()?;
-            let value: T = BorshDeserialize::deserialize(&mut &key[8..]).ok()?;
+            let value: T = BorshDeserialize::deserialize(&mut &key[9..]).ok()?;
             Some((key, value))
         });
 
@@ -87,9 +89,9 @@ where
         }
     }
 
-    pub async fn insert(&self, target_key: u64, value: &T) -> Result<(), Error> {
+    pub async fn insert(&self, target_key: u64, external: bool, value: &T) -> Result<(), Error> {
         let _guard = self.guard.lock().await;
-        self.db.insert(make_key(target_key, value), &[])?;
+        self.db.insert(make_key(target_key, external, value), &[])?;
         #[cfg(feature = "paranoid")]
         self.db.flush()?;
         Ok(())
@@ -97,13 +99,14 @@ where
 }
 
 #[inline]
-fn make_key<T>(target_key: u64, value: &T) -> Vec<u8>
+fn make_key<T>(target_key: u64, external: bool, value: &T) -> Vec<u8>
 where
     T: BorshSerialize,
 {
     let value = value.try_to_vec().expect("Shouldn't fail");
 
     let mut key = target_key.to_be_bytes().to_vec();
+    key.push(external as u8);
     key.extend_from_slice(&value);
 
     key
@@ -113,7 +116,7 @@ impl<T> Table for VerificationQueue<T>
 where
     T: BorshDeserialize + IntoView,
 {
-    type Key = u64;
+    type Key = (u64, bool);
     type Value = Vec<T::View>;
 
     fn dump_elements(&self) -> HashMap<Self::Key, Self::Value> {
@@ -129,12 +132,13 @@ where
             .fold(HashMap::new(), |mut result, (k, _)| {
                 let mut block_number = [0; 8];
                 block_number.copy_from_slice(&k[0..8]);
+                let external = k[9] != 0;
                 let block_number = u64::from_be_bytes(block_number);
 
-                let value: T = BorshDeserialize::deserialize(&mut &k[8..]).expect("Shouldn't fail");
+                let value: T = BorshDeserialize::deserialize(&mut &k[9..]).expect("Shouldn't fail");
 
                 result
-                    .entry(block_number)
+                    .entry((block_number, external))
                     .or_insert_with(Vec::new)
                     .push(value.into_view());
                 result
@@ -182,6 +186,10 @@ impl<'a, T> VerificationQueueLockEntry<'a, T> {
         let mut key = [0; 8];
         key.copy_from_slice(&self.key[0..8]);
         u64::from_be_bytes(key)
+    }
+
+    pub fn external(&self) -> bool {
+        self.key[9] != 0
     }
 
     pub fn remove(self) -> Result<(), Error> {

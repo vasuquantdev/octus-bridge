@@ -348,7 +348,7 @@ impl Bridge {
                         event_abi: x.common.event_abi.clone(),
                         event_required_confirmations: x.common.event_required_confirmations,
                         event_required_rejects: x.common.event_required_rejects,
-                        event_code: base64::encode(x.common.event_code.write_to_bytes().map_err(|e|Error::msg(e.to_string()))?),
+                        event_code: base64::encode(&x.common.event_code.write_to_bytes().map_err(|e|Error::msg(e.to_string()))?),
                         bridge_address: x.common.bridge_address.to_string(),
                         event_initial_balance: x.common.event_initial_balance.to_u64().ok_or_else(
                             || {
@@ -405,7 +405,7 @@ impl Bridge {
         Ok(())
     }
 
-    async fn check_suspicious_event(self: Arc<Self>, event: EthEventVoteData) {
+    async fn check_suspicious_event(self: Arc<Self>, event: EthEventVoteData, external: bool) {
         ///`event_from_ethereum` - fresh event from eth
         ///`event` data in our db
         async fn check_event(
@@ -478,9 +478,13 @@ impl Bridge {
                         Ok(())
                     }
                 },
-                Err(e) => {
+                Err(e) if external => {
                     log::warn!("Rejection: {:?}", e);
                     self.eth.enqueue_vote(EventTransaction::Reject(event)).await
+                }
+                Err(e) => {
+                    log::warn!("Rejection: {:?}. Ignoring", e);
+                    Ok(())
                 }
             }
         } {
@@ -513,7 +517,7 @@ impl Bridge {
                     block_number,
                     hex::encode(&event.event_transaction)
                 );
-                tokio::spawn(self.clone().check_suspicious_event(event));
+                tokio::spawn(self.clone().check_suspicious_event(event, entry.external()));
                 entry.remove().expect("Fatal db error");
             }
 
@@ -529,7 +533,7 @@ impl Bridge {
                         event.event_block_number,
                         hex::encode(&event.event_transaction)
                     );
-                    tokio::spawn(self.clone().check_suspicious_event(event));
+                    tokio::spawn(self.clone().check_suspicious_event(event, entry.external()));
                     entry.remove().expect("Fatal db error");
                 }
             }
@@ -632,7 +636,7 @@ impl Bridge {
             target_block_number
         );
         self.eth_verification_queue
-            .insert(target_block_number, &prepared_data)
+            .insert(target_block_number, false, &prepared_data)
             .await
             .expect("Fatal db error");
     }

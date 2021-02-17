@@ -1,9 +1,6 @@
-use semver::Version;
-
 use relay_models::models::{EthTxStatView, EventVote, TonTxStatView};
 use relay_ton::contracts::Voting;
 
-use crate::db::migrate::{Migration, VersionIterator};
 use crate::models::*;
 use crate::prelude::*;
 
@@ -44,22 +41,6 @@ impl ScanningState {
 }
 
 pub type TonVotingStats = VotingStats<TonEventReceivedVoteWithData>;
-
-impl Migration for TonVotingStats {
-    fn get_breaking_versions() -> VersionIterator {
-        VersionIterator::new(&[]).unwrap()
-    }
-
-    fn update(&self, version1: &Version, version2: &Version) -> Result<(), Error> {
-        match (version1.major, version2.major) {
-            (1, 2) => {
-                log::info!("Migrating from 1 to 2");
-            }
-            (_, _) => (),
-        }
-        Ok(())
-    }
-}
 
 impl TonVotingStats {
     pub fn new(db: &Db) -> Result<Self, Error> {
