@@ -132,7 +132,7 @@ where
             .fold(HashMap::new(), |mut result, (k, _)| {
                 let mut block_number = [0; 8];
                 block_number.copy_from_slice(&k[0..8]);
-                let external = k[9] != 0;
+                let external = k[8] != 0;
                 let block_number = u64::from_be_bytes(block_number);
 
                 let value: T = BorshDeserialize::deserialize(&mut &k[9..]).expect("Shouldn't fail");
@@ -189,7 +189,7 @@ impl<'a, T> VerificationQueueLockEntry<'a, T> {
     }
 
     pub fn external(&self) -> bool {
-        self.key[9] != 0
+        self.key[8] != 0
     }
 
     pub fn remove(self) -> Result<(), Error> {
