@@ -162,6 +162,7 @@ logger_settings:
       additive: false
 metrics_settings:
   listen_address: "127.0.0.1:10000"
+  metrics_path: "/"
   collection_interval: 10s
 eth_settings:
   node_address: "http://localhost:8545"
@@ -205,6 +206,7 @@ ton_settings:
 
 #### metrics_settings
 - `listen_address` - address to bind metrics server
+- `metrics_path` - the HTTP resource path on which to fetch metrics from targets.
 - `collection_interval` - metrics poll interval. Requests between collections will return cached data
 
 #### eth_settings

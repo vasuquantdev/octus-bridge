@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use futures::future::Either;
+use http::uri::PathAndQuery;
 use tokio::sync::oneshot::Receiver;
 use tokio::sync::{RwLock, RwLockWriteGuard};
 
@@ -46,15 +47,16 @@ impl MetricsExporter {
             .clone()
     }
 
-    pub async fn listen(self: Arc<Self>, shutdown_signal: Receiver<()>) {
+    pub async fn listen(self: Arc<Self>, path: PathAndQuery, shutdown_signal: Receiver<()>) {
         let server = hyper::Server::bind(&self.addr);
 
         let make_service = hyper::service::make_service_fn(move |_| {
             let exporter = self.clone();
+            let path = path.clone();
 
             async {
                 Ok::<_, Infallible>(hyper::service::service_fn(move |req| {
-                    if req.method() != hyper::Method::GET || req.uri() != "/" {
+                    if req.method() != hyper::Method::GET || req.uri() != path.as_str() {
                         return Either::Left(futures::future::ready(
                             hyper::Response::builder()
                                 .status(hyper::StatusCode::NOT_FOUND)

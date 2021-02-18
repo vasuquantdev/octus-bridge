@@ -20,6 +20,7 @@ pub async fn serve(
     log::info!("Starting exporter");
 
     let exporter = MetricsExporter::new(settings.listen_address);
+    let collection_interval = settings.collection_interval;
 
     let (stop_tx, mut stop_rx) = oneshot::channel();
     tokio::spawn({
@@ -55,12 +56,14 @@ pub async fn serve(
 
                 exporter.acquire_buffer().await.write(metrics);
 
-                tokio::time::delay_for(settings.collection_interval).await;
+                tokio::time::delay_for(collection_interval).await;
             }
         }
     });
 
-    exporter.listen(shutdown_signal).await;
+    exporter
+        .listen(settings.metrics_path, shutdown_signal)
+        .await;
     stop_tx.send(()).expect("Failed to stop metrics exporter");
 }
 

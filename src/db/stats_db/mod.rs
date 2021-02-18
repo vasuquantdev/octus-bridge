@@ -112,7 +112,7 @@ where
             .keys()
             .filter_map(|key| {
                 let key = key.ok()?;
-                if relay_key == key[32..] {
+                if relay_key == key[32..64] {
                     Some(())
                 } else {
                     None

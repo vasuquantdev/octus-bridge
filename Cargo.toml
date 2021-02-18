@@ -34,6 +34,7 @@ config = { version = "*", features = ["yaml"] }
 either = "1.6"
 futures = "0.3.1"
 hex = "0.4.2"
+http = "0.2"
 log = "*"
 log4rs = "1.0.0"
 num-bigint = "0.2.6"

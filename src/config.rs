@@ -5,6 +5,7 @@ use std::time::Duration;
 use anyhow::Error;
 use clap::Clap;
 use config::{Config, File, FileFormat};
+use http::uri::PathAndQuery;
 use sha3::Digest;
 
 use relay_eth::ws::{Address as EthAddr, H256};
@@ -52,6 +53,7 @@ pub struct RelayConfig {
     pub storage_path: PathBuf,
 
     /// Logger settings
+    #[serde(default = "default_logger_settings")]
     pub logger_settings: serde_yaml::Value,
 
     /// Metrics settings
@@ -69,6 +71,10 @@ pub struct RelayConfig {
 pub struct MetricsSettings {
     /// Listen address of metrics. Used by the client to gather prometheus metrics
     pub listen_address: SocketAddr,
+
+    /// Listen address of metrics. Used by the client to gather prometheus metrics
+    #[serde(default = "default_metrics_path", with = "relay_utils::serde_url")]
+    pub metrics_path: PathAndQuery,
 
     /// Metrics poll interval
     #[serde(with = "relay_utils::serde_time")]
@@ -201,6 +207,7 @@ impl Default for RelayConfig {
             logger_settings: default_logger_settings(),
             metrics_settings: Some(MetricsSettings {
                 listen_address: "127.0.0.1:10000".parse().unwrap(),
+                metrics_path: default_metrics_path(),
                 collection_interval: Duration::from_secs(10),
             }),
             eth_settings: EthSettings::default(),
@@ -238,6 +245,10 @@ fn default_logger_settings() -> serde_yaml::Value {
         additive: false
     "##;
     serde_yaml::from_str(DEFAULT_LOG4RS_SETTINGS).unwrap()
+}
+
+fn default_metrics_path() -> PathAndQuery {
+    PathAndQuery::from_static("/")
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
