@@ -12,14 +12,13 @@ use crate::config::{RelayConfig, TonTransportConfig};
 use crate::crypto::key_managment::KeyData;
 use crate::crypto::recovery::*;
 use crate::engine::models::*;
-use crate::engine::routes::api::get_api;
 use crate::models::SignedTonEventVoteData;
 use crate::prelude::*;
 
-mod api;
+mod docs;
 mod status;
 
-pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handler: Receiver<()>) {
+pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, shutdown_signal: Receiver<()>) {
     log::info!("Starting server");
     let serve_address = config.listen_address;
     fn json_data<T>() -> impl Filter<Extract = (T,), Error = warp::Rejection> + Clone
@@ -31,7 +30,9 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
 
     let state = warp::any().map(move || (Arc::clone(&state), config.clone()));
 
-    let swagger = warp::path!("swagger.yaml").and(warp::get()).map(get_api);
+    let swagger = warp::path!("swagger.yaml")
+        .and(warp::get())
+        .map(docs::swagger);
 
     let init = warp::path!("init")
         .and(warp::post())
@@ -163,7 +164,7 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, signal_handle
 
     let server = warp::serve(routes);
     let (_, server) = server.bind_with_graceful_shutdown(serve_address, async {
-        signal_handler.await.ok();
+        shutdown_signal.await.ok();
     });
     server.await;
 }

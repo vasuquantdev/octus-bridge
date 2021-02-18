@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use futures::future::Either;
+use tokio::sync::oneshot::Receiver;
 use tokio::sync::{RwLock, RwLockWriteGuard};
 
 const BUFFER_COUNT: usize = 2;
@@ -45,7 +46,7 @@ impl MetricsExporter {
             .clone()
     }
 
-    pub async fn listen(self: Arc<Self>) {
+    pub async fn listen(self: Arc<Self>, shutdown_signal: Receiver<()>) {
         let server = hyper::Server::bind(&self.addr);
 
         let make_service = hyper::service::make_service_fn(move |_| {
@@ -74,7 +75,11 @@ impl MetricsExporter {
             }
         });
 
-        if let Err(e) = server.serve(make_service).await {
+        let server = server.serve(make_service).with_graceful_shutdown(async {
+            shutdown_signal.await.ok();
+        });
+
+        if let Err(e) = server.await {
             log::error!("{:?}", e);
         }
     }

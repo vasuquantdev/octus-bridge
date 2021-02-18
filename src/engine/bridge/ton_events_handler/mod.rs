@@ -365,6 +365,19 @@ impl TonEventsHandler {
             );
         }
     }
+
+    pub fn get_metrics(&self) -> TonEventsHandlerMetrics {
+        let voting_queue = self.state.transport.get_voting_queue_metrics();
+        let successful_vote_count = self.state.transport.get_successful_vote_count();
+
+        TonEventsHandlerMetrics {
+            configuration_id: self.state.configuration_id,
+            verification_queue_size: self.state.verification_queue.len(),
+            pending_vote_count: voting_queue.pending_vote_count,
+            failed_vote_count: voting_queue.failed_vote_count,
+            successful_vote_count,
+        }
+    }
 }
 
 impl State {

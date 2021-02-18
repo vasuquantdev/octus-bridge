@@ -325,6 +325,19 @@ where
         &self.settings
     }
 
+    /// Returns queues size
+    pub fn get_voting_queue_metrics(&self) -> VotingQueueMetrics {
+        VotingQueueMetrics {
+            pending_vote_count: self.votes_queue.pending_len(),
+            failed_vote_count: self.votes_queue.failed_len(),
+        }
+    }
+
+    /// Returns successful vote count
+    pub fn get_successful_vote_count(&self) -> usize {
+        self.voting_stats.count_votes(&self.relay)
+    }
+
     /// Compute event address based on its data
     async fn get_event_contract_address(
         &self,
@@ -457,6 +470,12 @@ where
             };
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct VotingQueueMetrics {
+    pub pending_vote_count: usize,
+    pub failed_vote_count: usize,
 }
 
 pub struct DisplayReceivedVote<'a, T>(&'a T);

@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Error};
-use sled::{Db, IVec, Tree};
+use sled::{Db, Tree};
 
 use super::{constants::SYSTEM_DATA, verification_queue};
 

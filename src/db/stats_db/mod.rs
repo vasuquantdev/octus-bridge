@@ -104,6 +104,22 @@ where
         key.extend_from_slice(&relay_key.address.get_bytestring(0));
         Ok(self.tree.scan_prefix(&key).keys().next().is_some())
     }
+
+    pub fn count_votes(&self, relay_key: &MsgAddrStd) -> usize {
+        let relay_key = relay_key.address.get_bytestring(0);
+        self.tree
+            .iter()
+            .keys()
+            .filter_map(|key| {
+                let key = key.ok()?;
+                if relay_key == key[32..] {
+                    Some(())
+                } else {
+                    None
+                }
+            })
+            .count()
+    }
 }
 
 impl<T> Table for VotingStats<T>

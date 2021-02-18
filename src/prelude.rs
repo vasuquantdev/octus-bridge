@@ -1,6 +1,7 @@
 pub use std::collections::{HashMap, HashSet};
 pub use std::convert::{Infallible, TryFrom, TryInto};
 pub use std::io::Write;
+pub use std::net::SocketAddr;
 pub use std::str::FromStr;
 pub use std::sync::Arc;
 pub use std::time::Duration;

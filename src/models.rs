@@ -6,6 +6,7 @@ use relay_models::models::{
 };
 use relay_ton::contracts::*;
 use relay_ton::prelude::*;
+use relay_utils::exporter::*;
 
 use super::prelude::*;
 
@@ -298,5 +299,76 @@ impl IntoVote for TonEventReceivedVoteWithData {
             event_index: self.data.init_data.event_index,
             event_data: self.data.init_data.event_data,
         }
+    }
+}
+
+const LABEL_CONFIGURATION_ID: &str = "configuration_id";
+
+#[derive(Debug, Clone)]
+pub struct EthEventsHandlerMetrics {
+    pub configuration_id: u32,
+    pub pending_vote_count: usize,
+    pub failed_vote_count: usize,
+    pub successful_vote_count: usize,
+}
+
+impl std::fmt::Display for EthEventsHandlerMetrics {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.begin_metric("eth_pending_vote_count")
+            .label(LABEL_CONFIGURATION_ID, self.configuration_id)
+            .value(self.pending_vote_count)?;
+        f.begin_metric("eth_failed_vote_count")
+            .label(LABEL_CONFIGURATION_ID, self.configuration_id)
+            .value(self.failed_vote_count)?;
+        f.begin_metric("eth_successful_vote_count")
+            .label(LABEL_CONFIGURATION_ID, self.configuration_id)
+            .value(self.successful_vote_count)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TonEventsHandlerMetrics {
+    pub configuration_id: u32,
+    pub verification_queue_size: usize,
+    pub pending_vote_count: usize,
+    pub failed_vote_count: usize,
+    pub successful_vote_count: usize,
+}
+
+impl std::fmt::Display for TonEventsHandlerMetrics {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.begin_metric("ton_verification_queue_size")
+            .label(LABEL_CONFIGURATION_ID, self.configuration_id)
+            .value(self.verification_queue_size)?;
+        f.begin_metric("ton_pending_vote_count")
+            .label(LABEL_CONFIGURATION_ID, self.configuration_id)
+            .value(self.pending_vote_count)?;
+        f.begin_metric("ton_failed_vote_count")
+            .label(LABEL_CONFIGURATION_ID, self.configuration_id)
+            .value(self.failed_vote_count)?;
+        f.begin_metric("ton_successful_vote_count")
+            .label(LABEL_CONFIGURATION_ID, self.configuration_id)
+            .value(self.successful_vote_count)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct BridgeMetrics {
+    pub eth_verification_queue_size: usize,
+    pub eth_event_handlers_metrics: Vec<EthEventsHandlerMetrics>,
+    pub ton_event_handlers_metrics: Vec<TonEventsHandlerMetrics>,
+}
+
+impl std::fmt::Display for BridgeMetrics {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.begin_metric("eth_verification_queue_size")
+            .value(self.eth_verification_queue_size)?;
+        for item in self.eth_event_handlers_metrics.iter() {
+            item.fmt(f)?;
+        }
+        for item in self.ton_event_handlers_metrics.iter() {
+            item.fmt(f)?;
+        }
+        Ok(())
     }
 }

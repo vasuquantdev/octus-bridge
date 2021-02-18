@@ -47,16 +47,32 @@ pub struct RelayConfig {
 
     /// Path to json, where ton and eth private keys will be stored in encrypted way.
     pub keys_path: PathBuf,
+
     /// Path to Sled database.
     pub storage_path: PathBuf,
+
     /// Logger settings
     pub logger_settings: serde_yaml::Value,
+
+    /// Metrics settings
+    #[serde(default)]
+    pub metrics_settings: Option<MetricsSettings>,
 
     /// ETH specific settings
     pub eth_settings: EthSettings,
 
     /// TON specific settings
     pub ton_settings: TonSettings,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct MetricsSettings {
+    /// Listen address of metrics. Used by the client to gather prometheus metrics
+    pub listen_address: SocketAddr,
+
+    /// Metrics poll interval
+    #[serde(with = "relay_utils::serde_time")]
+    pub collection_interval: Duration,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -183,6 +199,10 @@ impl Default for RelayConfig {
             listen_address: "127.0.0.1:12345".parse().unwrap(),
             storage_path: PathBuf::from("/var/lib/relay/persistent_storage"),
             logger_settings: default_logger_settings(),
+            metrics_settings: Some(MetricsSettings {
+                listen_address: "127.0.0.1:10000".parse().unwrap(),
+                collection_interval: Duration::from_secs(10),
+            }),
             eth_settings: EthSettings::default(),
             ton_settings: TonSettings::default(),
         }

@@ -4,7 +4,7 @@ use relay_models::models::*;
 
 use super::*;
 
-pub fn get_api() -> String {
+pub fn swagger() -> String {
     let api = describe_api! {
         info: {
             title: "Relay API",

@@ -1,30 +1,35 @@
+use anyhow::Context;
 use tokio::signal::ctrl_c;
+use tokio::sync::oneshot;
 
 use models::*;
 
+use super::db::migrate::Migrator;
 use crate::config::RelayConfig;
 use crate::engine::handle_panic::setup_panic_handler;
 use crate::prelude::*;
 
+mod api;
 pub mod bridge;
+mod exporter;
 mod handle_panic;
 pub mod models;
-mod routes;
 
 pub async fn run(config: RelayConfig) -> Result<(), Error> {
-    let state_manager = sled::open(&config.storage_path).map_err(|e| {
+    let db = sled::open(&config.storage_path).map_err(|e| {
         let context = format!(
             "Failed opening db. Db path: {}",
             &config.storage_path.to_string_lossy()
         );
         Error::new(e).context(context)
     })?;
-    let migrator = super::db::migrate::Migrator::init(&state_manager)
-        .map_err(|e| e.context("Failed initializing migrator"))?;
-    migrator
+
+    Migrator::init(&db)
+        .context("Failed initializing migrator")?
         .run_migrations()
-        .map_err(|e| e.context("Failed running migrations"))?;
-    setup_panic_handler(state_manager.clone());
+        .context("Failed running migrations")?;
+
+    setup_panic_handler(db.clone());
     let crypto_data_metadata = std::fs::File::open(&config.keys_path);
 
     let file_size = match crypto_data_metadata {
@@ -46,33 +51,65 @@ pub async fn run(config: RelayConfig) -> Result<(), Error> {
         }
     };
 
-    let (tx, rx) = tokio::sync::oneshot::channel();
+    let mut shutdown_notifier = ShutdownNotifier::new();
+    let api_shutdown_signal = shutdown_notifier.subscribe();
+    let exporter_shutdown_signal = shutdown_notifier.subscribe();
+
     {
-        let db = state_manager.clone();
+        let db = db.clone();
         tokio::spawn(async move {
             ctrl_c().await.expect("Failed subscribing on unix signals");
+
             log::info!("Received ctrl-c event.");
-            tx.send(()).expect("Failed sending notification");
+            shutdown_notifier.notify();
+
             log::info!("Flushing db...");
             match db.flush() {
                 Ok(a) => log::info!("Flushed db before stop... Bytes written: {:?}", a),
                 Err(e) => log::error!("Failed flushing db before panic: {}", e),
             }
+
             log::info!("Waiting for graceful shutdown...");
             tokio::time::delay_for(tokio::time::Duration::from_secs(2)).await;
             std::process::exit(0);
         })
     };
 
-    routes::serve(
-        config,
-        Arc::new(RwLock::new(State {
-            state_manager: state_manager.clone(),
-            bridge_state,
-        })),
-        rx,
-    )
-    .await;
+    let state = Arc::new(RwLock::new(State {
+        state_manager: db.clone(),
+        bridge_state,
+    }));
 
-    Ok(())
+    tokio::spawn(api::serve(
+        config.clone(),
+        state.clone(),
+        api_shutdown_signal,
+    ));
+    tokio::spawn(exporter::serve(config, state, exporter_shutdown_signal));
+
+    future::pending().await
+}
+
+struct ShutdownNotifier {
+    tx: Vec<oneshot::Sender<()>>,
+}
+
+impl ShutdownNotifier {
+    pub fn new() -> Self {
+        Self {
+            tx: Default::default(),
+        }
+    }
+
+    pub fn subscribe(&mut self) -> oneshot::Receiver<()> {
+        let (tx, rx) = oneshot::channel();
+        self.tx.push(tx);
+        rx
+    }
+
+    pub fn notify(self) {
+        for tx in self.tx {
+            tx.send(()).expect("Failed sending notification");
+        }
+    }
 }

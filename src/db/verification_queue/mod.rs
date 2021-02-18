@@ -96,6 +96,14 @@ where
         self.db.flush()?;
         Ok(())
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.db.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.db.len()
+    }
 }
 
 #[inline]

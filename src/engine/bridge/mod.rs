@@ -405,6 +405,31 @@ impl Bridge {
         Ok(())
     }
 
+    /// Get bridge metrics
+    pub async fn get_metrics(&self) -> BridgeMetrics {
+        let eth_event_handlers_metrics = self
+            .eth_event_handlers
+            .read()
+            .await
+            .iter()
+            .map(|(_, configuration)| configuration.get_metrics())
+            .collect();
+
+        let ton_event_handlers_metrics = self
+            .ton_event_handlers
+            .read()
+            .await
+            .iter()
+            .map(|(_, configuration)| configuration.get_metrics())
+            .collect();
+
+        BridgeMetrics {
+            eth_verification_queue_size: self.eth_verification_queue.len(),
+            eth_event_handlers_metrics,
+            ton_event_handlers_metrics,
+        }
+    }
+
     async fn check_suspicious_event(self: Arc<Self>, event: EthEventVoteData, external: bool) {
         ///`event_from_ethereum` - fresh event from eth
         ///`event` data in our db

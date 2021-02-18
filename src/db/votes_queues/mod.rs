@@ -145,6 +145,14 @@ where
                 )
             })
     }
+
+    pub fn pending_len(&self) -> usize {
+        self.pending.len()
+    }
+
+    pub fn failed_len(&self) -> usize {
+        self.failed.len()
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
