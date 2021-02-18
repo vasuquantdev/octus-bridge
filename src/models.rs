@@ -302,7 +302,23 @@ impl IntoVote for TonEventReceivedVoteWithData {
     }
 }
 
-const LABEL_CONFIGURATION_ID: &str = "configuration_id";
+pub const LABEL_ADDRESS: &str = "address";
+pub const LABEL_CONFIGURATION_ID: &str = "configuration_id";
+
+pub struct RelayMetrics<'a, T> {
+    pub address: &'a str,
+    pub metrics: T,
+}
+
+impl<T> RelayMetrics<'_, T> {
+    fn begin_metric<'a, 'b>(
+        &'a self,
+        f: &'a mut std::fmt::Formatter<'b>,
+        name: &str,
+    ) -> PrometheusFormatter<'a, 'b> {
+        f.begin_metric(name).label(LABEL_ADDRESS, self.address)
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct EthEventsHandlerMetrics {
@@ -312,17 +328,18 @@ pub struct EthEventsHandlerMetrics {
     pub successful_vote_count: usize,
 }
 
-impl std::fmt::Display for EthEventsHandlerMetrics {
+impl std::fmt::Display for RelayMetrics<'_, &'_ EthEventsHandlerMetrics> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.begin_metric("eth_pending_vote_count")
-            .label(LABEL_CONFIGURATION_ID, self.configuration_id)
-            .value(self.pending_vote_count)?;
-        f.begin_metric("eth_failed_vote_count")
-            .label(LABEL_CONFIGURATION_ID, self.configuration_id)
-            .value(self.failed_vote_count)?;
-        f.begin_metric("eth_successful_vote_count")
-            .label(LABEL_CONFIGURATION_ID, self.configuration_id)
-            .value(self.successful_vote_count)
+        let configuration_id = self.metrics.configuration_id;
+        self.begin_metric(f, "eth_pending_vote_count")
+            .label(LABEL_CONFIGURATION_ID, configuration_id)
+            .value(self.metrics.pending_vote_count)?;
+        self.begin_metric(f, "eth_failed_vote_count")
+            .label(LABEL_CONFIGURATION_ID, configuration_id)
+            .value(self.metrics.failed_vote_count)?;
+        self.begin_metric(f, "eth_successful_vote_count")
+            .label(LABEL_CONFIGURATION_ID, configuration_id)
+            .value(self.metrics.successful_vote_count)
     }
 }
 
@@ -335,20 +352,21 @@ pub struct TonEventsHandlerMetrics {
     pub successful_vote_count: usize,
 }
 
-impl std::fmt::Display for TonEventsHandlerMetrics {
+impl std::fmt::Display for RelayMetrics<'_, &'_ TonEventsHandlerMetrics> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.begin_metric("ton_verification_queue_size")
-            .label(LABEL_CONFIGURATION_ID, self.configuration_id)
-            .value(self.verification_queue_size)?;
-        f.begin_metric("ton_pending_vote_count")
-            .label(LABEL_CONFIGURATION_ID, self.configuration_id)
-            .value(self.pending_vote_count)?;
-        f.begin_metric("ton_failed_vote_count")
-            .label(LABEL_CONFIGURATION_ID, self.configuration_id)
-            .value(self.failed_vote_count)?;
-        f.begin_metric("ton_successful_vote_count")
-            .label(LABEL_CONFIGURATION_ID, self.configuration_id)
-            .value(self.successful_vote_count)
+        let configuration_id = self.metrics.configuration_id;
+        self.begin_metric(f, "ton_verification_queue_size")
+            .label(LABEL_CONFIGURATION_ID, configuration_id)
+            .value(self.metrics.verification_queue_size)?;
+        self.begin_metric(f, "ton_pending_vote_count")
+            .label(LABEL_CONFIGURATION_ID, configuration_id)
+            .value(self.metrics.pending_vote_count)?;
+        self.begin_metric(f, "ton_failed_vote_count")
+            .label(LABEL_CONFIGURATION_ID, configuration_id)
+            .value(self.metrics.failed_vote_count)?;
+        self.begin_metric(f, "ton_successful_vote_count")
+            .label(LABEL_CONFIGURATION_ID, configuration_id)
+            .value(self.metrics.successful_vote_count)
     }
 }
 
@@ -359,16 +377,31 @@ pub struct BridgeMetrics {
     pub ton_event_handlers_metrics: Vec<TonEventsHandlerMetrics>,
 }
 
-impl std::fmt::Display for BridgeMetrics {
+impl std::fmt::Display for RelayMetrics<'_, &'_ BridgeMetrics> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.begin_metric("eth_verification_queue_size")
-            .value(self.eth_verification_queue_size)?;
-        for item in self.eth_event_handlers_metrics.iter() {
-            item.fmt(f)?;
+        self.begin_metric(f, "eth_verification_queue_size")
+            .value(self.metrics.eth_verification_queue_size)?;
+
+        for metrics in self.metrics.eth_event_handlers_metrics.iter() {
+            std::fmt::Display::fmt(
+                &RelayMetrics {
+                    address: self.address,
+                    metrics,
+                },
+                f,
+            )?;
         }
-        for item in self.ton_event_handlers_metrics.iter() {
-            item.fmt(f)?;
+
+        for metrics in self.metrics.ton_event_handlers_metrics.iter() {
+            std::fmt::Display::fmt(
+                &RelayMetrics {
+                    address: self.address,
+                    metrics,
+                },
+                f,
+            )?;
         }
+
         Ok(())
     }
 }

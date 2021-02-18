@@ -3,7 +3,7 @@ use tokio::sync::oneshot;
 
 use crate::config::RelayConfig;
 use crate::engine::models::*;
-use crate::models::BridgeMetrics;
+use crate::models::{BridgeMetrics, RelayMetrics, LABEL_ADDRESS};
 use crate::prelude::*;
 
 pub async fn serve(
@@ -11,6 +11,7 @@ pub async fn serve(
     state: Arc<RwLock<State>>,
     shutdown_signal: oneshot::Receiver<()>,
 ) {
+    let relay_contract_address = config.ton_settings.relay_contract_address.0;
     let settings = match config.metrics_settings {
         Some(address) => address,
         None => return,
@@ -41,11 +42,14 @@ pub async fn serve(
 
                     let state = state.read().await;
                     match &state.bridge_state {
-                        BridgeState::Uninitialized => MetricsState::Uninitialized,
-                        BridgeState::Locked => MetricsState::Locked,
-                        BridgeState::Running(bridge) => {
-                            MetricsState::Running(bridge.get_metrics().await)
+                        BridgeState::Uninitialized => {
+                            MetricsState::Uninitialized(&relay_contract_address)
                         }
+                        BridgeState::Locked => MetricsState::Locked(&relay_contract_address),
+                        BridgeState::Running(bridge) => MetricsState::Running(
+                            &relay_contract_address,
+                            bridge.get_metrics().await,
+                        ),
                     }
                 };
 
@@ -60,21 +64,23 @@ pub async fn serve(
     stop_tx.send(()).expect("Failed to stop metrics exporter");
 }
 
-enum MetricsState {
-    Uninitialized,
-    Locked,
-    Running(BridgeMetrics),
+enum MetricsState<'a> {
+    Uninitialized(&'a str),
+    Locked(&'a str),
+    Running(&'a str, BridgeMetrics),
 }
 
-impl std::fmt::Display for MetricsState {
+impl std::fmt::Display for MetricsState<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let state_metric = f.begin_metric("state");
         match self {
-            MetricsState::Uninitialized => state_metric.value(0),
-            MetricsState::Locked => state_metric.value(1),
-            MetricsState::Running(metrics) => {
-                state_metric.value(2)?;
-                metrics.fmt(f)
+            MetricsState::Uninitialized(address) => {
+                state_metric.label(LABEL_ADDRESS, address).value(0)
+            }
+            MetricsState::Locked(address) => state_metric.label(LABEL_ADDRESS, address).value(1),
+            MetricsState::Running(address, metrics) => {
+                state_metric.label(LABEL_ADDRESS, address).value(2)?;
+                std::fmt::Display::fmt(&RelayMetrics { address, metrics }, f)
             }
         }
     }
