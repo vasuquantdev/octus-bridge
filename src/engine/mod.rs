@@ -109,7 +109,7 @@ impl ShutdownNotifier {
 
     pub fn notify(self) {
         for tx in self.tx {
-            tx.send(()).expect("Failed sending notification");
+            let _ = tx.send(());
         }
     }
 }
