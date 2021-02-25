@@ -1,4 +1,4 @@
-# ETH ↔️ TON relay
+# ETH-to-TON relay
 
 ## Security
 
