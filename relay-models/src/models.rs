@@ -1,6 +1,8 @@
 use opg::OpgModel;
 use serde::{Deserialize, Serialize};
-
+use std::cmp::Ordering;
+use std::fmt;
+use std::fmt::{Display, Formatter};
 #[derive(Deserialize, Serialize, Debug, OpgModel)]
 pub struct InitData {
     pub ton_seed: String,
@@ -60,7 +62,7 @@ pub struct BridgeConfigurationView {
     pub active: bool,
 }
 
-#[derive(Deserialize, Serialize, OpgModel)]
+#[derive(Deserialize, Serialize, OpgModel, Clone)]
 pub struct EventConfiguration {
     pub configuration_id: u32,
     pub ethereum_event_abi: String,
@@ -72,6 +74,34 @@ pub struct EventConfiguration {
     pub event_initial_balance: u64,
     pub bridge_address: String,
     pub event_code: String,
+}
+
+impl PartialEq for EventConfiguration {
+    fn eq(&self, other: &Self) -> bool {
+        self.configuration_id.eq(&other.configuration_id)
+    }
+}
+impl PartialOrd for EventConfiguration {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.configuration_id.partial_cmp(&other.configuration_id)
+    }
+}
+impl Eq for EventConfiguration {}
+
+impl Ord for EventConfiguration {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.configuration_id.cmp(&other.configuration_id)
+    }
+}
+
+impl Display for EventConfiguration {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "id: {}: ETH: 0x{}",
+            self.configuration_id, self.ethereum_event_address
+        )
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, OpgModel)]

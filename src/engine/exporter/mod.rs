@@ -33,7 +33,7 @@ pub async fn serve(
                     return;
                 }
 
-                log::debug!("Collecting metrics");
+                log::trace!("Collecting metrics");
 
                 let metrics = {
                     let state = match state.upgrade() {

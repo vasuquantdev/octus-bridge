@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 url = "2.1.1"
-web3 = { git = "https://github.com/tomusdrw/rust-web3", features = ["http-tls"], rev = "2c33873488cbf9a27bf38d665138b227521bf51a" }
+web3 = { git = "https://github.com/tomusdrw/rust-web3", features = ["http-tls"], rev = "2bcd2db8633612a21ff84e4174bd1b6a5105b539" }
 log = "0.4.11"
 tokio = { version = "0.2", features = ["full"] }
 anyhow = "1.0.33"

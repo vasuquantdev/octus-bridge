@@ -379,7 +379,10 @@ impl Bridge {
         &self,
     ) -> Result<Vec<(u32, EthEventConfiguration)>, Error> {
         let state = self.configs_state.read().await;
-        Ok(state.eth_configs_map.values().cloned().collect())
+        let mut configs: Vec<(u32, EthEventConfiguration)> =
+            state.eth_configs_map.values().cloned().collect();
+        configs.sort_by(|a, b| a.0.cmp(&b.0));
+        Ok(configs)
     }
 
     pub async fn create_event_configuration(

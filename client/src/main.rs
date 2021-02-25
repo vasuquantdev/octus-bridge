@@ -334,7 +334,6 @@ impl Client {
             println!("There are no active configs");
             return Ok(());
         }
-
         let mut selection = Select::with_theme(&theme);
         selection.with_prompt("Select config to vote").default(0);
 
@@ -352,14 +351,34 @@ impl Client {
     }
 
     pub fn vote_for_event_configuration(&self) -> Result<(), Error> {
-        let theme = ColorfulTheme::default();
+        fn simplify(std: &str) -> String {
+            let first: String = std.chars().take(5).collect();
+            let last: String = std.chars().rev().take(5).collect();
+            let last: String = last.chars().rev().collect();
+            format!("{}...{}", first, last)
+        }
 
-        let configuration_id: u32 = Input::with_theme(&theme)
-            .with_prompt("Enter configuration id:")
+        let theme = ColorfulTheme::default();
+        let configurations: Vec<EventConfiguration> = self.get("event-configurations")?;
+        let selected_event = Select::with_theme(&theme)
+            .with_prompt("Select event to vote")
+            .items(&configurations)
             .interact()?;
 
+        let configuration: EventConfiguration = configurations[selected_event].clone();
+        let configuration_display = EventConfiguration {
+            event_code: simplify(&configuration.event_code),
+            ..configuration.clone()
+        };
+        let configuration_id = configuration.configuration_id;
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&configuration_display)?
+                .to_colored_json_auto()?
+                .replace('\\', "")
+        );
         let selected_vote = Select::with_theme(&theme)
-            .with_prompt("Select vote")
+            .with_prompt("Confirm or reject?")
             .item("Confirm")
             .item("Reject")
             .interact_opt()?
