@@ -1,8 +1,10 @@
-use opg::OpgModel;
-use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt;
 use std::fmt::{Display, Formatter};
+
+use opg::OpgModel;
+use serde::{Deserialize, Serialize};
+
 #[derive(Deserialize, Serialize, Debug, OpgModel)]
 pub struct InitData {
     pub ton_seed: String,
@@ -64,15 +66,25 @@ pub struct BridgeConfigurationView {
 
 #[derive(Deserialize, Serialize, OpgModel, Clone)]
 pub struct EventConfiguration {
+    #[serde(rename = "Configuration id")]
     pub configuration_id: u32,
+    #[serde(rename = "Ethereum Event ABI")]
     pub ethereum_event_abi: String,
+    #[serde(rename = "Ethereum Event Configuration")]
     pub ethereum_event_address: String,
+    #[serde(rename = "Token Event Proxy")]
     pub event_proxy_address: String,
+    #[serde(rename = "Number of ethereum blocks for confirmation")]
     pub ethereum_event_blocks_to_confirm: u16,
+    #[serde(rename = "Required confirmations from relays")]
     pub event_required_confirmations: u16,
+    #[serde(rename = "Required rejections from relays")]
     pub event_required_rejects: u16,
+    #[serde(rename = "Initial balance of event contract")]
     pub event_initial_balance: u64,
+    #[serde(rename = "Bridge address")]
     pub bridge_address: String,
+    #[serde(rename = "Event contract code")]
     pub event_code: String,
 }
 

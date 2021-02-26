@@ -11,9 +11,9 @@ dependencies = [
 
 [[package]]
 name = "adler"
-version = "1.0.1"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bedc89c5c7b5550ffb9372eb5c5ffc7f9f705cc3f4a128bd4669b9745f555093"
+checksum = "f26201604c87b1e01bd3d98f8d5d9a8fcbb815e8cedb41ffccbeb4bf593a35fe"
 
 [[package]]
 name = "adnl"
@@ -2172,9 +2172,9 @@ checksum = "30fceb411f9a12ff9222c5f824026be368ff15dc2f13468d850c7d3f502205d6"
 
 [[package]]
 name = "parity-scale-codec"
-version = "1.3.6"
+version = "1.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "79602888a81ace83e3d1d4b2873286c1f5f906c84db667594e8db8da3506c383"
+checksum = "a4b26b16c7687c3075982af47719e481815df30bc544f7a6690763a25ca16e9d"
 dependencies = [
  "arrayvec",
  "bitvec",
@@ -2969,9 +2969,9 @@ dependencies = [
 
 [[package]]
 name = "security-framework"
-version = "2.1.0"
+version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6af1b6204f89cf0069736daf8b852573e3bc34898eee600e95d3dd855c12e81"
+checksum = "2dfd318104249865096c8da1dfabf09ddbb6d0330ea176812a62ec75e40c4166"
 dependencies = [
  "bitflags",
  "core-foundation",
@@ -2982,9 +2982,9 @@ dependencies = [
 
 [[package]]
 name = "security-framework-sys"
-version = "2.1.0"
+version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31531d257baab426203cf81c5ce1b0b55159dda7ed602ac81b582ccd62265741"
+checksum = "dee48cdde5ed250b0d3252818f646e174ab414036edb884dde62d80a3ac6082d"
 dependencies = [
  "core-foundation-sys",
  "libc",
@@ -3059,9 +3059,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.62"
+version = "1.0.63"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea1c6153794552ea7cf7cf63b1231a25de00ec90db326ba6264440fa08e31486"
+checksum = "43535db9747a4ba938c0ce0a98cc631a46ebf943c9e1d604e091df6007620bf6"
 dependencies = [
  "itoa",
  "ryu",

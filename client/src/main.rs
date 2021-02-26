@@ -21,16 +21,17 @@ use relay_models::models::{
 
 #[derive(Clap)]
 struct Arguments {
-    #[clap(short, long, parse(try_from_str = parse_url))]
+    #[clap(short, long, parse(try_from_str = parse_url), default_value ="http://127.0.0.1:12345")]
     server_addr: Url,
+    #[clap(short, long)]
+    full_models: bool,
 }
 
 fn main() -> Result<(), Error> {
-    let args = Arguments::parse();
-
+    let args: Arguments = Arguments::parse();
     let theme = ColorfulTheme::default();
 
-    Prompt::new(&theme, "Select action", args.server_addr)
+    Prompt::new(&theme, "Select action", args.server_addr, args.full_models)
         .item("Get status", Client::get_status)
         .item("Init", Client::init_bridge)
         .item("Provide password", Client::unlock_bridge)
@@ -94,12 +95,17 @@ fn main() -> Result<(), Error> {
 struct Client {
     url: Url,
     client: reqwest::blocking::Client,
+    full_models: bool,
 }
 
 impl Client {
-    pub fn new(url: Url) -> Self {
+    pub fn new(url: Url, full_models: bool) -> Self {
         let client = reqwest::blocking::Client::new();
-        Self { url, client }
+        Self {
+            url,
+            client,
+            full_models,
+        }
     }
 
     pub fn get_status(&self) -> Result<(), Error> {
@@ -351,11 +357,41 @@ impl Client {
     }
 
     pub fn vote_for_event_configuration(&self) -> Result<(), Error> {
-        fn simplify(std: &str) -> String {
-            let first: String = std.chars().take(5).collect();
-            let last: String = std.chars().rev().take(5).collect();
-            let last: String = last.chars().rev().collect();
-            format!("{}...{}", first, last)
+        #[derive(Deserialize, Serialize, Clone)]
+        struct SimplifiedEventConfiguration {
+            #[serde(rename = "Configuration id")]
+            pub configuration_id: u32,
+            #[serde(rename = "Ethereum Event ABI")]
+            pub ethereum_event_abi: String,
+            #[serde(rename = "Ethereum Event Configuration")]
+            pub ethereum_event_address: String,
+            #[serde(rename = "Token Event Proxy")]
+            pub event_proxy_address: String,
+            #[serde(rename = "Number of ethereum blocks for confirmation")]
+            pub ethereum_event_blocks_to_confirm: u16,
+            #[serde(rename = "Required confirmations from relays")]
+            pub event_required_confirmations: u16,
+            #[serde(rename = "Required rejections from relays")]
+            pub event_required_rejects: u16,
+            #[serde(rename = "Initial balance of event contract")]
+            pub event_initial_balance: u64,
+            #[serde(rename = "Bridge address")]
+            pub bridge_address: String,
+        }
+        impl From<EventConfiguration> for SimplifiedEventConfiguration {
+            fn from(a: EventConfiguration) -> Self {
+                Self {
+                    configuration_id: a.configuration_id,
+                    ethereum_event_abi: a.ethereum_event_abi,
+                    ethereum_event_address: a.ethereum_event_address,
+                    event_proxy_address: a.event_proxy_address,
+                    ethereum_event_blocks_to_confirm: a.ethereum_event_blocks_to_confirm,
+                    event_required_confirmations: a.event_required_confirmations,
+                    event_required_rejects: a.event_required_rejects,
+                    event_initial_balance: a.event_initial_balance,
+                    bridge_address: a.bridge_address,
+                }
+            }
         }
 
         let theme = ColorfulTheme::default();
@@ -366,17 +402,18 @@ impl Client {
             .interact()?;
 
         let configuration: EventConfiguration = configurations[selected_event].clone();
-        let configuration_display = EventConfiguration {
-            event_code: simplify(&configuration.event_code),
-            ..configuration.clone()
+        let config = match self.full_models {
+            false => serde_json::to_string_pretty(&SimplifiedEventConfiguration::from(
+                configuration.clone(),
+            ))?
+            .to_colored_json_auto()?
+            .replace('\\', ""),
+            true => serde_json::to_string_pretty(&configuration)?
+                .to_colored_json_auto()?
+                .replace('\\', ""),
         };
         let configuration_id = configuration.configuration_id;
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&configuration_display)?
-                .to_colored_json_auto()?
-                .replace('\\', "")
-        );
+        println!("{}", config);
         let selected_vote = Select::with_theme(&theme)
             .with_prompt("Confirm or reject?")
             .item("Confirm")
@@ -563,8 +600,8 @@ struct Prompt<'a> {
 }
 
 impl<'a> Prompt<'a> {
-    pub fn new(theme: &'a dyn Theme, title: &str, url: Url) -> Self {
-        let client = Client::new(url);
+    pub fn new(theme: &'a dyn Theme, title: &str, url: Url, full_models: bool) -> Self {
+        let client = Client::new(url, full_models);
         let mut select = Select::with_theme(theme);
         select.with_prompt(title).default(0);
 
