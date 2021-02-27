@@ -18,7 +18,7 @@ checksum = "f26201604c87b1e01bd3d98f8d5d9a8fcbb815e8cedb41ffccbeb4bf593a35fe"
 [[package]]
 name = "adnl"
 version = "0.0.5"
-source = "git+https://github.com/broxus/ton-labs-adnl.git#2db25b266b79efe0122b1a6ee8f1f71c4acff01c"
+source = "git+https://github.com/broxus/ton-labs-adnl.git#6e45cab0824876d92302d90ed4a36bf9369e07a5"
 dependencies = [
  "aes-ctr",
  "arrayref",
@@ -29,7 +29,6 @@ dependencies = [
  "ed25519-dalek",
  "failure",
  "futures 0.3.13",
- "lockfree",
  "log",
  "rand 0.7.3",
  "serde 1.0.123",
@@ -839,28 +838,12 @@ version = "12.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "052a565e3de82944527d6d10a465697e6bb92476b772ca7141080c901f6a63c6"
 dependencies = [
- "ethereum-types 0.9.2",
+ "ethereum-types",
  "rustc-hex",
  "serde 1.0.123",
  "serde_json",
  "tiny-keccak 1.5.0",
- "uint 0.8.5",
-]
-
-[[package]]
-name = "ethabi"
-version = "13.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "53d4e679d6864bc26210feb5cf044e245741cd9d7701b35c00440a6e84d61399"
-dependencies = [
- "anyhow",
- "ethereum-types 0.10.0",
- "hex 0.4.2",
- "serde 1.0.123",
- "serde_json",
- "sha3",
- "thiserror",
- "uint 0.9.0",
+ "uint",
 ]
 
 [[package]]
@@ -870,21 +853,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "71a6567e6fd35589fea0c63b94b4cf2e55573e413901bdbe60ab15cf0e25e5df"
 dependencies = [
  "crunchy",
- "fixed-hash 0.6.1",
- "impl-rlp 0.2.1",
- "impl-serde",
- "tiny-keccak 2.0.2",
-]
-
-[[package]]
-name = "ethbloom"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22a621dcebea74f2a6f2002d0a885c81ccf6cbdf86760183316a7722b5707ca4"
-dependencies = [
- "crunchy",
- "fixed-hash 0.7.0",
- "impl-rlp 0.3.0",
+ "fixed-hash",
+ "impl-rlp",
  "impl-serde",
  "tiny-keccak 2.0.2",
 ]
@@ -895,26 +865,12 @@ version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "473aecff686bd8e7b9db0165cbbb53562376b39bf35b427f0c60446a9e1634b0"
 dependencies = [
- "ethbloom 0.9.2",
- "fixed-hash 0.6.1",
- "impl-rlp 0.2.1",
+ "ethbloom",
+ "fixed-hash",
+ "impl-rlp",
  "impl-serde",
- "primitive-types 0.7.3",
- "uint 0.8.5",
-]
-
-[[package]]
-name = "ethereum-types"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05dc5f0df4915fa6dff7f975a8366ecfaaa8959c74235469495153e7bb1b280e"
-dependencies = [
- "ethbloom 0.10.0",
- "fixed-hash 0.7.0",
- "impl-rlp 0.3.0",
- "impl-serde",
- "primitive-types 0.8.0",
- "uint 0.9.0",
+ "primitive-types",
+ "uint",
 ]
 
 [[package]]
@@ -959,18 +915,6 @@ checksum = "11498d382790b7a8f2fd211780bec78619bba81cdad3a283997c0c41f836759c"
 dependencies = [
  "byteorder",
  "rand 0.7.3",
- "rustc-hex",
- "static_assertions",
-]
-
-[[package]]
-name = "fixed-hash"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cfcf0ed7fe52a17a03854ec54a9f76d6d84508d1c0e66bc1793301c73fc8493c"
-dependencies = [
- "byteorder",
- "rand 0.8.3",
  "rustc-hex",
  "static_assertions",
 ]
@@ -1494,16 +1438,7 @@ version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f7a72f11830b52333f36e3b09a288333888bf54380fd0ac0790a3c31ab0f3c5"
 dependencies = [
- "rlp 0.4.6",
-]
-
-[[package]]
-name = "impl-rlp"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f28220f89297a075ddc7245cd538076ee98b01f2a9c23a53a4f1105d5a322808"
-dependencies = [
- "rlp 0.5.0",
+ "rlp",
 ]
 
 [[package]]
@@ -1566,9 +1501,9 @@ checksum = "dd25036021b0de88a0aff6b850051563c6516d0bf53f8638938edbb9de732736"
 
 [[package]]
 name = "js-sys"
-version = "0.3.47"
+version = "0.3.48"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5cfb73131c35423a367daf8cbd24100af0d077668c8c2943f0e7dd775fef0f65"
+checksum = "dc9f84f9b115ce7843d60706df1422a916680bfdfcbdb0447c5614ff9d7e4d78"
 dependencies = [
  "wasm-bindgen",
 ]
@@ -2335,24 +2270,11 @@ version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7dd39dcacf71411ba488570da7bbc89b717225e46478b30ba99b92db6b149809"
 dependencies = [
- "fixed-hash 0.6.1",
+ "fixed-hash",
  "impl-codec",
- "impl-rlp 0.2.1",
+ "impl-rlp",
  "impl-serde",
- "uint 0.8.5",
-]
-
-[[package]]
-name = "primitive-types"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3824ae2c5e27160113b9e029a10ec9e3f0237bad8029f69c7724393c9fdefd8"
-dependencies = [
- "fixed-hash 0.7.0",
- "impl-codec",
- "impl-rlp 0.3.0",
- "impl-serde",
- "uint 0.9.0",
+ "uint",
 ]
 
 [[package]]
@@ -2679,7 +2601,7 @@ checksum = "b5eb417147ba9860a96cfe72a0b93bf88fee1744b5636ec99ab20c1aa9376581"
 
 [[package]]
 name = "relay"
-version = "1.0.4"
+version = "1.0.5"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2691,8 +2613,8 @@ dependencies = [
  "config",
  "ed25519-dalek",
  "either",
- "ethabi 12.0.0",
- "ethereum-types 0.9.2",
+ "ethabi",
+ "ethereum-types",
  "futures 0.3.13",
  "hex 0.4.2",
  "http",
@@ -2733,7 +2655,7 @@ name = "relay-eth"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "ethabi 13.0.0",
+ "ethabi",
  "futures 0.3.13",
  "log",
  "serde 1.0.123",
@@ -2764,7 +2686,7 @@ dependencies = [
  "borsh",
  "chrono",
  "ed25519-dalek",
- "ethereum-types 0.9.2",
+ "ethereum-types",
  "failure",
  "futures 0.3.13",
  "graphql_client",
@@ -2867,16 +2789,6 @@ version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1190dcc8c3a512f1eef5d09bb8c84c7f39e1054e174d1795482e18f5272f2e73"
 dependencies = [
- "rustc-hex",
-]
-
-[[package]]
-name = "rlp"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e54369147e3e7796c9b885c7304db87ca3d09a0a98f72843d532868675bbfba8"
-dependencies = [
- "bytes 1.0.1",
  "rustc-hex",
 ]
 
@@ -3626,7 +3538,7 @@ dependencies = [
 [[package]]
 name = "ton_api"
 version = "0.0.1"
-source = "git+https://github.com/broxus/ton-labs-tl.git?branch=original#7dd55106edaf0537fe0eb28d54a942716aa559ed"
+source = "git+https://github.com/broxus/ton-labs-tl.git?branch=original#fcb184ed287288cfbaee2bedae4cba541e8e3849"
 dependencies = [
  "byteorder",
  "erased-serde",
@@ -3679,7 +3591,7 @@ dependencies = [
 [[package]]
 name = "ton_tl_codegen"
 version = "0.0.1"
-source = "git+https://github.com/broxus/ton-labs-tl.git?branch=original#7dd55106edaf0537fe0eb28d54a942716aa559ed"
+source = "git+https://github.com/broxus/ton-labs-tl.git?branch=original#fcb184ed287288cfbaee2bedae4cba541e8e3849"
 dependencies = [
  "crc",
  "failure",
@@ -3728,7 +3640,7 @@ dependencies = [
 [[package]]
 name = "tonlib"
 version = "0.1.0"
-source = "git+https://github.com/broxus/tonlib-rs.git#9d414ba449d832de4370bc2b43de2f224bdf07d4"
+source = "git+https://github.com/broxus/tonlib-rs.git#2e71e63f6aee556c689254d1e6540c27fa0a3b22"
 dependencies = [
  "adnl",
  "base64 0.13.0",
@@ -3862,18 +3774,6 @@ dependencies = [
  "byteorder",
  "crunchy",
  "rustc-hex",
- "static_assertions",
-]
-
-[[package]]
-name = "uint"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e11fe9a9348741cf134085ad57c249508345fe16411b3d7fb4ff2da2f1d6382e"
-dependencies = [
- "byteorder",
- "crunchy",
- "hex 0.4.2",
  "static_assertions",
 ]
 
@@ -4052,9 +3952,9 @@ checksum = "1a143597ca7c7793eff794def352d41792a93c481eb1042423ff7ff72ba2c31f"
 
 [[package]]
 name = "wasm-bindgen"
-version = "0.2.70"
+version = "0.2.71"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "55c0f7123de74f0dab9b7d00fd614e7b19349cd1e2f5252bbe9b1754b59433be"
+checksum = "7ee1280240b7c461d6a0071313e08f34a60b0365f14260362e5a2b17d1d31aa7"
 dependencies = [
  "cfg-if 1.0.0",
  "serde 1.0.123",
@@ -4064,9 +3964,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-backend"
-version = "0.2.70"
+version = "0.2.71"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7bc45447f0d4573f3d65720f636bbcc3dd6ce920ed704670118650bcd47764c7"
+checksum = "5b7d8b6942b8bb3a9b0e73fc79b98095a27de6fa247615e59d096754a3bc2aa8"
 dependencies = [
  "bumpalo",
  "lazy_static",
@@ -4079,9 +3979,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-futures"
-version = "0.4.20"
+version = "0.4.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3de431a2910c86679c34283a33f66f4e4abd7e0aec27b6669060148872aadf94"
+checksum = "8e67a5806118af01f0d9045915676b22aaebecf4178ae7021bc171dab0b897ab"
 dependencies = [
  "cfg-if 1.0.0",
  "js-sys",
@@ -4091,9 +3991,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro"
-version = "0.2.70"
+version = "0.2.71"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b8853882eef39593ad4174dd26fc9865a64e84026d223f63bb2c42affcbba2c"
+checksum = "e5ac38da8ef716661f0f36c0d8320b89028efe10c7c0afde65baffb496ce0d3b"
 dependencies = [
  "quote 1.0.9",
  "wasm-bindgen-macro-support",
@@ -4101,9 +4001,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro-support"
-version = "0.2.70"
+version = "0.2.71"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4133b5e7f2a531fa413b3a1695e925038a05a71cf67e87dafa295cb645a01385"
+checksum = "cc053ec74d454df287b9374ee8abb36ffd5acb95ba87da3ba5b7d3fe20eb401e"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.9",
@@ -4114,15 +4014,15 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-shared"
-version = "0.2.70"
+version = "0.2.71"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd4945e4943ae02d15c13962b38a5b1e81eadd4b71214eee75af64a4d6a4fd64"
+checksum = "7d6f8ec44822dd71f5f221a5847fb34acd9060535c1211b70a05844c0f6383b1"
 
 [[package]]
 name = "web-sys"
-version = "0.3.47"
+version = "0.3.48"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c40dc691fc48003eba817c38da7113c15698142da971298003cac3ef175680b3"
+checksum = "ec600b26223b2948cedfde2a0aa6756dcf1fef616f43d7b3097aaf53a6c4d92b"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
@@ -4137,8 +4037,8 @@ dependencies = [
  "async-native-tls",
  "base64 0.13.0",
  "derive_more",
- "ethabi 12.0.0",
- "ethereum-types 0.9.2",
+ "ethabi",
+ "ethereum-types",
  "futures 0.3.13",
  "futures-timer",
  "hyper",
@@ -4148,7 +4048,7 @@ dependencies = [
  "log",
  "native-tls",
  "parking_lot",
- "rlp 0.4.6",
+ "rlp",
  "rustc-hex",
  "secp256k1",
  "serde 1.0.123",

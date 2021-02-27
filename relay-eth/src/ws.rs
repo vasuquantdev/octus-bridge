@@ -283,7 +283,7 @@ impl EthListener {
                                     log::error!("No addresses in data");
                                     None
                                 } else {
-                                    Some(a[0].clone().into_address().map(|x| H160::from(x.0)))
+                                    Some(a[0].clone().to_address().map(|x| H160::from(x.0)))
                                 }
                             }
                             Err(e) => {
