@@ -348,7 +348,7 @@ pub fn prepare_ton_event_payload(
         map_ton_to_eth(UInt256::from(address.address().get_bytestring(0)).token_value())?, // tonEventConfigurationAddress
         map_ton_to_eth(details.common.event_required_confirmations.token_value())?, // requiredConfirmations
         map_ton_to_eth(details.common.event_required_rejects.token_value())?, //requiredRejects
-        map_ton_to_eth(details.proxy_address.token_value())?,
+        EthTokenValue::Address(details.proxy_address),
     ]);
 
     Ok(ethabi::encode(&[tuple]).to_vec())
