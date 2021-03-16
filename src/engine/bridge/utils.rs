@@ -333,6 +333,7 @@ pub fn prepare_ton_event_payload(
     //     uint tonEventConfigurationAddress;
     //     uint16 requiredConfirmations;
     //     uint16 requiredRejects;
+    //     address proxyAddress;
     // }
 
     let event_data = ton_tokens_to_ethereum_bytes(event.tokens.clone());
@@ -347,6 +348,7 @@ pub fn prepare_ton_event_payload(
         map_ton_to_eth(UInt256::from(address.address().get_bytestring(0)).token_value())?, // tonEventConfigurationAddress
         map_ton_to_eth(details.common.event_required_confirmations.token_value())?, // requiredConfirmations
         map_ton_to_eth(details.common.event_required_rejects.token_value())?, //requiredRejects
+        map_ton_to_eth(details.proxy_address.token_value())?,
     ]);
 
     Ok(ethabi::encode(&[tuple]).to_vec())
