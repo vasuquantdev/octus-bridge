@@ -619,10 +619,10 @@ pub enum SimplifiedEventConfigurationData {
     Eth {
         #[serde(rename = "6. Event contract address in ETH")]
         event_address: String,
-        #[serde(rename = "7. Blocks to wait")]
-        blocks_to_confirm: u16,
-        #[serde(rename = "8. Proxy address")]
+        #[serde(rename = "7. Proxy contract address in TON")]
         proxy_address: String,
+        #[serde(rename = "8. Blocks to wait")]
+        blocks_to_confirm: u16,
         #[serde(rename = "9. Start block number")]
         start_block_number: u32,
     },
@@ -630,7 +630,7 @@ pub enum SimplifiedEventConfigurationData {
     Ton {
         #[serde(rename = "6. Event contract address in TON")]
         event_address: String,
-        #[serde(rename = "7. Proxy address")]
+        #[serde(rename = "7. Proxy contract address in ETH")]
         proxy_address: String,
         #[serde(rename = "8. Start timestamp")]
         start_timestamp: u32,
@@ -661,7 +661,7 @@ impl From<EventConfigurationView> for SimplifiedEventConfiguration {
                 bridge_address: data.common.bridge_address,
                 data: SimplifiedEventConfigurationData::Ton {
                     event_address: data.event_address,
-                    proxy_address: data.proxy_address,
+                    proxy_address: format!("0x{}", data.proxy_address),
                     start_timestamp: data.start_timestamp,
                 },
             },
