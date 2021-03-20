@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 use opg::OpgModel;
 use serde::{Deserialize, Serialize};
 
@@ -213,6 +211,19 @@ impl EventConfigurationView {
         match self {
             Self::Eth { id, .. } => *id,
             Self::Ton { id, .. } => *id,
+        }
+    }
+}
+
+impl std::fmt::Display for EventConfigurationView {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EventConfigurationView::Eth { id, address, .. } => {
+                write!(f, "id: {}, ETH, {}", id, address)
+            }
+            EventConfigurationView::Ton { id, address, .. } => {
+                write!(f, "id: {}, TON, {}", id, address)
+            }
         }
     }
 }
