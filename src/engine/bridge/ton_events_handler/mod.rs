@@ -285,7 +285,14 @@ impl TonEventsHandler {
             let state = self.state.clone();
 
             async move {
-                if let Err(e) = confirm(state, event).await {
+                if event.event_timestamp < state.details.start_timestamp {
+                    log::warn!(
+                        "Skipping TON event with a timestamp less than the start ({} < {}): {}",
+                        event.event_timestamp,
+                        state.details.start_timestamp,
+                        hex::encode(event.event_transaction.as_slice())
+                    );
+                } else if let Err(e) = confirm(state, event).await {
                     log::error!("Failed to enqueue swapback event confirmation: {:?}", e);
                 }
                 semaphore.try_notify().await;

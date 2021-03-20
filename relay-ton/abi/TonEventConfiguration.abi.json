@@ -34,7 +34,7 @@
       ],
       "outputs": [
         {"components":[{"name":"eventABI","type":"bytes"},{"name":"eventRequiredConfirmations","type":"uint16"},{"name":"eventRequiredRejects","type":"uint16"},{"name":"eventCode","type":"cell"},{"name":"bridgeAddress","type":"address"},{"name":"eventInitialBalance","type":"uint128"},{"name":"meta","type":"cell"}],"name":"_basicInitData","type":"tuple"},
-        {"components":[{"name":"eventAddress","type":"address"},{"name":"proxyAddress","type":"uint160"}],"name":"_initData","type":"tuple"}
+        {"components":[{"name":"eventAddress","type":"address"},{"name":"proxyAddress","type":"uint160"},{"name":"startTimestamp","type":"uint32"}],"name":"_initData","type":"tuple"}
       ]
     },
     {
@@ -49,7 +49,7 @@
       "name": "updateInitData",
       "inputs": [
         {"components":[{"name":"eventABI","type":"bytes"},{"name":"eventRequiredConfirmations","type":"uint16"},{"name":"eventRequiredRejects","type":"uint16"},{"name":"eventCode","type":"cell"},{"name":"bridgeAddress","type":"address"},{"name":"eventInitialBalance","type":"uint128"},{"name":"meta","type":"cell"}],"name":"_basicInitData","type":"tuple"},
-        {"components":[{"name":"eventAddress","type":"address"},{"name":"proxyAddress","type":"uint160"}],"name":"_initData","type":"tuple"}
+        {"components":[{"name":"eventAddress","type":"address"},{"name":"proxyAddress","type":"uint160"},{"name":"startTimestamp","type":"uint32"}],"name":"_initData","type":"tuple"}
       ],
       "outputs": [
       ]
@@ -57,7 +57,7 @@
   ],
   "data": [
     {"components":[{"name":"eventABI","type":"bytes"},{"name":"eventRequiredConfirmations","type":"uint16"},{"name":"eventRequiredRejects","type":"uint16"},{"name":"eventCode","type":"cell"},{"name":"bridgeAddress","type":"address"},{"name":"eventInitialBalance","type":"uint128"},{"name":"meta","type":"cell"}],"key":1,"name":"basicInitData","type":"tuple"},
-    {"components":[{"name":"eventAddress","type":"address"},{"name":"proxyAddress","type":"uint160"}],"key":2,"name":"initData","type":"tuple"}
+    {"components":[{"name":"eventAddress","type":"address"},{"name":"proxyAddress","type":"uint160"},{"name":"startTimestamp","type":"uint32"}],"key":2,"name":"initData","type":"tuple"}
   ],
   "events": [
     {

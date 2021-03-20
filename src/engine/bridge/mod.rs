@@ -591,6 +591,17 @@ impl Bridge {
                 }
             };
 
+            // Check block number
+            if (event.block_number as u32) < event_config.start_block_number {
+                log::warn!(
+                    "Skipping ETH event with a block number less than the start ({} < {}): {}",
+                    event.block_number,
+                    event_config.start_block_number,
+                    hex::encode(event.tx_hash.as_bytes())
+                );
+                return;
+            }
+
             // Decode event data
             let decoded_data: Option<Result<(&[ethabi::ParamType], Vec<ethabi::Token>), _>> = event
                 .topics
