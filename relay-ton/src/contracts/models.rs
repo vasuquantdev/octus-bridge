@@ -436,6 +436,7 @@ pub struct EthEventConfiguration {
     pub event_address: ethereum_types::Address,
     pub event_blocks_to_confirm: u16,
     pub proxy_address: MsgAddressInt,
+    pub start_block_number: u32,
 }
 
 impl TryFrom<ContractOutput> for EthEventConfiguration {
@@ -455,6 +456,7 @@ impl TryFrom<ContractOutput> for EthEventConfiguration {
             event_address: tuple.next().try_parse()?,
             event_blocks_to_confirm: tuple.next().try_parse()?,
             proxy_address: tuple.next().try_parse()?,
+            start_block_number: tuple.next().try_parse()?,
         })
     }
 }
@@ -464,6 +466,7 @@ pub struct TonEventConfiguration {
     pub common: CommonEventConfigurationParams,
     pub event_address: MsgAddressInt,
     pub proxy_address: ethereum_types::H160,
+    pub start_timestamp: u32,
 }
 
 impl TryFrom<ContractOutput> for TonEventConfiguration {
@@ -482,6 +485,7 @@ impl TryFrom<ContractOutput> for TonEventConfiguration {
             common,
             event_address: tuple.next().try_parse()?,
             proxy_address: tuple.next().try_parse()?,
+            start_timestamp: tuple.next().try_parse()?,
         })
     }
 }
