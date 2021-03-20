@@ -27,6 +27,7 @@ pub struct EthEventsHandler {
 struct State {
     transport: Arc<EthEventTransport>,
     verification_queue: EthVerificationQueue,
+    address: MsgAddressInt,
 
     configuration_id: u32,
     details: EthEventConfiguration,
@@ -95,6 +96,7 @@ impl EthEventsHandler {
         let state = Arc::new(State {
             transport,
             verification_queue,
+            address,
 
             configuration_id,
             details,
@@ -145,6 +147,10 @@ impl EthEventsHandler {
                 }
             }
         });
+    }
+
+    pub fn address(&self) -> &MsgAddressInt {
+        &self.state.address
     }
 
     pub fn details(&self) -> &EthEventConfiguration {

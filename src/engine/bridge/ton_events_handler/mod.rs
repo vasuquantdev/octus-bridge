@@ -197,8 +197,12 @@ impl TonEventsHandler {
         Ok(handler)
     }
 
-    pub fn get_details(&self) -> (&TonEventConfiguration, &MsgAddressInt) {
-        (&self.state.details, &self.state.address)
+    pub fn address(&self) -> &MsgAddressInt {
+        &self.state.address
+    }
+
+    pub fn details(&self) -> &TonEventConfiguration {
+        &self.state.details
     }
 
     fn start_listening_vote_events(
