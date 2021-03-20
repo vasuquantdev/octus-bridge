@@ -1,6 +1,6 @@
 [package]
 name = "relay"
-version = "1.0.6"
+version = "1.0.7"
 edition = "2018"
 authors = ["Broxus team"]
 publish = false
