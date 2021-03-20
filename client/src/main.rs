@@ -598,40 +598,41 @@ impl<'a> std::fmt::Display for EventConfigurationWrapper<'a> {
 
 #[derive(Debug, Serialize)]
 pub struct SimplifiedEventConfiguration {
-    #[serde(rename = "Configuration ID")]
+    #[serde(rename = "1. Configuration ID")]
     pub id: u32,
-    #[serde(rename = "Configuration address")]
+    #[serde(rename = "2. Configuration address")]
     pub address: String,
-    #[serde(rename = "Required confirmations")]
+    #[serde(rename = "3. Required confirmations")]
     pub required_confirmations: u16,
-    #[serde(rename = "Required rejections")]
+    #[serde(rename = "4. Required rejections")]
     pub required_rejections: u16,
-    #[serde(rename = "Bridge address")]
+    #[serde(rename = "5. Bridge address")]
     pub bridge_address: String,
     #[serde(flatten)]
     pub data: SimplifiedEventConfigurationData,
 }
 
 #[derive(Debug, Serialize)]
-#[serde(tag = "Type")]
+#[serde(tag = "0. Type")]
 pub enum SimplifiedEventConfigurationData {
     #[serde(rename = "ETH event configuration")]
     Eth {
-        #[serde(rename = "Event contract address in ETH")]
+        #[serde(rename = "6. Event contract address in ETH")]
         event_address: String,
-        #[serde(rename = "Blocks to confirm")]
+        #[serde(rename = "7. Blocks to wait")]
         blocks_to_confirm: u16,
-        #[serde(rename = "Proxy address")]
+        #[serde(rename = "8. Proxy address")]
         proxy_address: String,
+        #[serde(rename = "9. Start block number")]
         start_block_number: u32,
     },
     #[serde(rename = "TON event configuration")]
     Ton {
-        #[serde(rename = "Event contract address in TON")]
+        #[serde(rename = "6. Event contract address in TON")]
         event_address: String,
-        #[serde(rename = "Proxy address")]
+        #[serde(rename = "7. Proxy address")]
         proxy_address: String,
-        #[serde(rename = "Start timestamp")]
+        #[serde(rename = "8. Start timestamp")]
         start_timestamp: u32,
     },
 }
@@ -646,7 +647,7 @@ impl From<EventConfigurationView> for SimplifiedEventConfiguration {
                 required_rejections: data.common.event_required_rejects,
                 bridge_address: data.common.bridge_address,
                 data: SimplifiedEventConfigurationData::Eth {
-                    event_address: data.event_address,
+                    event_address: format!("0x{}", data.event_address),
                     blocks_to_confirm: data.event_blocks_to_confirm,
                     proxy_address: data.proxy_address,
                     start_block_number: data.start_block_number,
