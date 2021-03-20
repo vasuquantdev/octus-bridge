@@ -62,10 +62,10 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, shutdown_sign
         .and(state.clone())
         .and_then(|(state, _)| status::get_status(state));
 
-    let get_eth_event_configurations = warp::path!("event-configurations")
+    let get_event_configurations = warp::path!("event-configurations")
         .and(warp::get())
         .and(state.clone())
-        .and_then(|(state, _)| get_eth_event_configurations(state));
+        .and_then(|(state, _)| get_event_configurations(state));
 
     // TODO: add request for getting event configuration by id
 
@@ -75,16 +75,11 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, shutdown_sign
         .and(state.clone())
         .and_then(|data, (state, _)| create_event_configuration(state, data));
 
-    let ton_event_configurations = warp::path!("ton-event-configurations")
-        .and(warp::get())
-        .and(state.clone())
-        .and_then(|(state, _)| get_ton_event_configuration(state));
-
-    let vote_for_ethereum_event_configuration = warp::path!("event-configurations" / "vote")
+    let vote_for_event_configuration = warp::path!("event-configurations" / "vote")
         .and(warp::post())
         .and(json_data::<Voting>())
         .and(state.clone())
-        .and_then(|data, (state, _)| vote_for_ethereum_event_configuration(state, data));
+        .and_then(|data, (state, _)| vote_for_event_configuration(state, data));
 
     let pending_transactions_eth_to_ton = warp::path!("eth-to-ton" / "pending")
         .and(warp::get())
@@ -148,9 +143,9 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, shutdown_sign
         .or(retry_failed)
         .or(rescan_eth)
         .or(status)
-        .or(get_eth_event_configurations)
+        .or(get_event_configurations)
         .or(create_event_configuration)
-        .or(vote_for_ethereum_event_configuration)
+        .or(vote_for_event_configuration)
         .or(pending_transactions_eth_to_ton)
         .or(failed_transactions_eth_to_ton)
         .or(queued_transactions_eth_to_ton)
@@ -159,31 +154,13 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, shutdown_sign
         .or(failed_transactions_ton_to_eth)
         .or(queued_transactions_ton_to_eth)
         .or(ton_relay_stats)
-        .or(update_bridge_configuration)
-        .or(ton_event_configurations);
+        .or(update_bridge_configuration);
 
     let server = warp::serve(routes);
     let (_, server) = server.bind_with_graceful_shutdown(serve_address, async {
         shutdown_signal.await.ok();
     });
     server.await;
-}
-
-pub async fn get_ton_event_configuration(
-    state: Arc<RwLock<State>>,
-) -> Result<impl Reply, Infallible> {
-    let state = state.read().await;
-    return if let BridgeState::Running(a) = &state.bridge_state {
-        Ok(reply::with_status(
-            serde_json::to_string(&a.get_ton_event_configurations().await).expect("Shouldn't fail"),
-            StatusCode::OK,
-        ))
-    } else {
-        Ok(reply::with_status(
-            "Relay not running".to_string(),
-            StatusCode::METHOD_NOT_ALLOWED,
-        ))
-    };
 }
 
 pub async fn update_bridge_configuration(
@@ -233,7 +210,7 @@ pub async fn update_bridge_configuration(
     };
 }
 
-async fn vote_for_ethereum_event_configuration(
+async fn vote_for_event_configuration(
     state: Arc<RwLock<State>>,
     voting: Voting,
 ) -> Result<impl Reply, Infallible> {
@@ -257,7 +234,7 @@ async fn vote_for_ethereum_event_configuration(
 
     Ok(
         match bridge
-            .vote_for_ethereum_event_configuration(configuration_id, voting)
+            .vote_for_event_configuration(configuration_id, voting)
             .await
         {
             Ok(_) => reply::with_status(String::new(), StatusCode::OK),
@@ -270,7 +247,7 @@ async fn vote_for_ethereum_event_configuration(
     )
 }
 
-async fn get_eth_event_configurations(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {
+async fn get_event_configurations(state: Arc<RwLock<State>>) -> Result<impl Reply, Infallible> {
     let state = state.read().await;
     let bridge = match &state.bridge_state {
         BridgeState::Running(bridge) => bridge,
@@ -281,27 +258,12 @@ async fn get_eth_event_configurations(state: Arc<RwLock<State>>) -> Result<impl 
         }
     };
 
-    Ok(
-        match bridge
-            .get_eth_event_configurations()
-            .await
-            .map(|configurations| {
-                configurations
-                    .into_iter()
-                    .map(<EventConfiguration as FromContractModels<_>>::from)
-                    .collect::<Vec<_>>()
-            }) {
-            Ok(event_configurations) => reply::with_status(
-                serde_json::to_string(&event_configurations).expect("shouldn't fail"),
-                StatusCode::OK,
-            ),
-            Err(err) => {
-                let err = format!("Failed getting configuration events: {}", err);
-                log::error!("{}", err);
-                reply::with_status(err, StatusCode::INTERNAL_SERVER_ERROR)
-            }
-        },
-    )
+    let configurations = bridge.get_event_configurations().await;
+
+    Ok(reply::with_status(
+        serde_json::to_string(&configurations).expect("shouldn't fail"),
+        StatusCode::OK,
+    ))
 }
 
 async fn create_event_configuration(

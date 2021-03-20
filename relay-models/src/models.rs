@@ -1,7 +1,3 @@
-use std::cmp::Ordering;
-use std::fmt;
-use std::fmt::{Display, Formatter};
-
 use opg::OpgModel;
 use serde::{Deserialize, Serialize};
 
@@ -62,58 +58,6 @@ pub struct BridgeConfigurationView {
     pub bridge_update_required_confirmations: u16,
     pub bridge_update_required_rejections: u16,
     pub active: bool,
-}
-
-#[derive(Deserialize, Serialize, OpgModel, Clone)]
-pub struct EventConfiguration {
-    #[serde(rename = "Configuration id")]
-    pub configuration_id: u32,
-    #[serde(rename = "Ethereum Event ABI")]
-    pub ethereum_event_abi: String,
-    #[serde(rename = "Ethereum Event Configuration")]
-    pub ethereum_event_address: String,
-    #[serde(rename = "Token Event Proxy")]
-    pub event_proxy_address: String,
-    #[serde(rename = "Number of ethereum blocks for confirmation")]
-    pub ethereum_event_blocks_to_confirm: u16,
-    #[serde(rename = "Required confirmations from relays")]
-    pub event_required_confirmations: u16,
-    #[serde(rename = "Required rejections from relays")]
-    pub event_required_rejects: u16,
-    #[serde(rename = "Initial balance of event contract")]
-    pub event_initial_balance: u64,
-    #[serde(rename = "Bridge address")]
-    pub bridge_address: String,
-    #[serde(rename = "Event contract code")]
-    pub event_code: String,
-}
-
-impl PartialEq for EventConfiguration {
-    fn eq(&self, other: &Self) -> bool {
-        self.configuration_id.eq(&other.configuration_id)
-    }
-}
-impl PartialOrd for EventConfiguration {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.configuration_id.partial_cmp(&other.configuration_id)
-    }
-}
-impl Eq for EventConfiguration {}
-
-impl Ord for EventConfiguration {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.configuration_id.cmp(&other.configuration_id)
-    }
-}
-
-impl Display for EventConfiguration {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "id: {}: ETH: 0x{}",
-            self.configuration_id, self.ethereum_event_address
-        )
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, OpgModel)]
@@ -219,7 +163,7 @@ pub enum EventVote {
     Reject,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, OpgModel)]
 pub struct CommonEventConfigurationParamsView {
     pub event_abi: String,
     pub event_required_confirmations: u16,
@@ -228,12 +172,58 @@ pub struct CommonEventConfigurationParamsView {
     pub bridge_address: String,
     pub event_initial_balance: u64,
     pub meta: String,
-    pub address: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, OpgModel)]
+pub struct EthEventConfigurationView {
+    pub common: CommonEventConfigurationParamsView,
+    pub event_address: String,
+    pub event_blocks_to_confirm: u16,
+    pub proxy_address: String,
+    pub start_block_number: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, OpgModel)]
 pub struct TonEventConfigurationView {
     pub common: CommonEventConfigurationParamsView,
     pub event_address: String,
     pub proxy_address: String,
+    pub start_timestamp: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, OpgModel)]
+#[serde(rename_all = "lowercase", tag = "type")]
+pub enum EventConfigurationView {
+    Eth {
+        id: u32,
+        address: String,
+        data: EthEventConfigurationView,
+    },
+    Ton {
+        id: u32,
+        address: String,
+        data: TonEventConfigurationView,
+    },
+}
+
+impl EventConfigurationView {
+    pub fn id(&self) -> u32 {
+        match self {
+            Self::Eth { id, .. } => *id,
+            Self::Ton { id, .. } => *id,
+        }
+    }
+}
+
+impl std::fmt::Display for EventConfigurationView {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EventConfigurationView::Eth { id, address, .. } => {
+                write!(f, "id: {}, ETH, {}", id, address)
+            }
+            EventConfigurationView::Ton { id, address, .. } => {
+                write!(f, "id: {}, TON, {}", id, address)
+            }
+        }
+    }
 }

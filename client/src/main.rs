@@ -14,9 +14,9 @@ use serde_json::json;
 
 use relay_models::models::{
     BridgeConfigurationView, EthEventVoteDataView, EthTonTransactionView, EthTxStatView,
-    EventConfiguration, EventConfigurationType, InitData, NewEventConfiguration,
-    Password as PasswordData, RescanEthData, Status, TonEthTransactionView,
-    TonEventConfigurationView, TonEventVoteDataView, TonTxStatView, Voting,
+    EventConfigurationType, EventConfigurationView, InitData, NewEventConfiguration,
+    Password as PasswordData, RescanEthData, Status, TonEthTransactionView, TonEventVoteDataView,
+    TonTxStatView, Voting,
 };
 
 #[derive(Clap)]
@@ -45,14 +45,7 @@ fn main() -> Result<(), Error> {
             "Vote for event configuration",
             Client::vote_for_event_configuration,
         )
-        .item(
-            "Get eth event configurations",
-            Client::get_event_configurations,
-        )
-        .item(
-            "Get ton event configurations",
-            Client::get_ton_event_configurations,
-        )
+        .item("Get event configurations", Client::get_event_configurations)
         .item(
             "Get pending transactions ETH->TON",
             Client::get_pending_transactions_eth_to_ton,
@@ -143,7 +136,7 @@ impl Client {
 
     pub fn unlock_bridge(&self) -> Result<(), Error> {
         let password = Password::with_theme(&ColorfulTheme::default())
-            .with_prompt("Password:")
+            .with_prompt("Password")
             .interact()?;
 
         let _ = self.post_raw("unlock", &PasswordData { password })?;
@@ -154,7 +147,7 @@ impl Client {
 
     pub fn set_eth_block(&self) -> Result<(), Error> {
         let block: u64 = Input::with_theme(&ColorfulTheme::default())
-            .with_prompt("Give block number")
+            .with_prompt("Enter block number")
             .interact_text()?;
 
         let _ = self.post_raw("rescan-eth", &RescanEthData { block })?;
@@ -169,15 +162,101 @@ impl Client {
         Ok(())
     }
 
-    pub fn get_ton_event_configurations(&self) -> Result<(), Error> {
-        let response: Vec<TonEventConfigurationView> = self.get("ton-event-configurations")?;
-        let mut output = Pager::new().set_prompt("Ton event configurations");
-        writeln!(
-            output.lines,
-            "{}",
-            serde_json::to_string_pretty(&response)?.to_colored_json(ColorMode::On)?
+    pub fn add_new_event_configuration(&self) -> Result<(), Error> {
+        let theme = ColorfulTheme::default();
+
+        let configuration_id: u32 = Input::with_theme(&theme)
+            .with_prompt("Enter configuration id:")
+            .interact()?;
+
+        let address: String = Input::with_theme(&theme)
+            .with_prompt("Enter contract address:")
+            .interact()?;
+
+        let types = [EventConfigurationType::Eth, EventConfigurationType::Ton];
+        let contract_type = Select::with_theme(&theme)
+            .with_prompt("Select configuration type:")
+            .item("ETH event configuration")
+            .item("TON event configuration")
+            .default(0)
+            .interact()?;
+
+        let _ = self.post_raw(
+            "event-configurations",
+            &NewEventConfiguration {
+                configuration_id,
+                address,
+                configuration_type: types[contract_type],
+            },
         )?;
-        minus::page_all(output)?;
+
+        println!("Success!");
+        Ok(())
+    }
+
+    pub fn vote_for_event_configuration(&self) -> Result<(), Error> {
+        let theme = ColorfulTheme::default();
+        let configurations: Vec<EventConfigurationView> = self.get("event-configurations")?;
+        if configurations.is_empty() {
+            println!("There are no active configurations");
+            return Ok(());
+        }
+
+        let selected = Select::with_theme(&theme)
+            .with_prompt("Select configuration to vote for")
+            .items(&configurations)
+            .interact()?;
+        let configuration = &configurations[selected];
+        let configuration_id = configuration.id();
+
+        println!(
+            "{}",
+            EventConfigurationWrapper {
+                configuration,
+                full_models: self.full_models
+            }
+        );
+
+        let selected_vote = Select::with_theme(&theme)
+            .with_prompt("Confirm or reject?")
+            .item("Confirm")
+            .item("Reject")
+            .interact_opt()?
+            .ok_or_else(|| anyhow!("You must confirm or reject selection"))?;
+
+        let voting = match selected_vote {
+            0 => Voting::Confirm(configuration_id),
+            1 => Voting::Reject(configuration_id),
+            _ => unreachable!(),
+        };
+
+        let _ = self.post_raw("event-configurations/vote", &voting)?;
+
+        println!("Success!");
+        Ok(())
+    }
+
+    pub fn get_event_configurations(&self) -> Result<(), Error> {
+        let theme = ColorfulTheme::default();
+        let configurations: Vec<EventConfigurationView> = self.get("event-configurations")?;
+        if configurations.is_empty() {
+            println!("There are no active configurations");
+            return Ok(());
+        }
+
+        let selected = Select::with_theme(&theme)
+            .with_prompt("Select configuration")
+            .items(&configurations)
+            .interact()?;
+
+        println!(
+            "{}",
+            EventConfigurationWrapper {
+                configuration: &configurations[selected],
+                full_models: self.full_models
+            }
+        );
+
         Ok(())
     }
 
@@ -294,142 +373,9 @@ impl Client {
         Ok(())
     }
 
-    pub fn add_new_event_configuration(&self) -> Result<(), Error> {
-        let theme = ColorfulTheme::default();
-
-        let configuration_id: u32 = Input::with_theme(&theme)
-            .with_prompt("Enter configuration id:")
-            .interact()?;
-
-        let address: String = Input::with_theme(&theme)
-            .with_prompt("Enter contract address:")
-            .interact()?;
-
-        let types = [EventConfigurationType::Eth, EventConfigurationType::Ton];
-        let contract_type = Select::with_theme(&theme)
-            .with_prompt("Select configuration type:")
-            .item("ETH event configuration")
-            .item("TON event configuration")
-            .default(0)
-            .interact()?;
-
-        let _ = self.post_raw(
-            "event-configurations",
-            &NewEventConfiguration {
-                configuration_id,
-                address,
-                configuration_type: types[contract_type],
-            },
-        )?;
-
-        println!("Success!");
-        Ok(())
-    }
-
     pub fn update_bridge_configuration(&self) -> Result<(), Error> {
         let bridge_configuration_view = update_bridge_configuration()?;
         self.post_json("update-bridge-configuration", &bridge_configuration_view)?;
-        Ok(())
-    }
-
-    pub fn get_event_configurations(&self) -> Result<(), Error> {
-        let theme = ColorfulTheme::default();
-
-        let known_configs: Vec<EventConfiguration> = self.get("event-configurations")?;
-        if known_configs.is_empty() {
-            println!("There are no active configs");
-            return Ok(());
-        }
-        let mut selection = Select::with_theme(&theme);
-        selection.with_prompt("Select config to vote").default(0);
-
-        for config in known_configs.iter() {
-            selection.item(format!("Config {}", EventConfigurationWrapper(&config)));
-        }
-
-        let selected_config = &known_configs[selection.interact()?];
-
-        println!(
-            "Config:\n{}\n",
-            serde_json::to_string_pretty(&selected_config)?.to_colored_json_auto()?
-        );
-        Ok(())
-    }
-
-    pub fn vote_for_event_configuration(&self) -> Result<(), Error> {
-        #[derive(Deserialize, Serialize, Clone)]
-        struct SimplifiedEventConfiguration {
-            #[serde(rename = "Configuration id")]
-            pub configuration_id: u32,
-            #[serde(rename = "Ethereum Event ABI")]
-            pub ethereum_event_abi: String,
-            #[serde(rename = "Ethereum Event Configuration")]
-            pub ethereum_event_address: String,
-            #[serde(rename = "Token Event Proxy")]
-            pub event_proxy_address: String,
-            #[serde(rename = "Number of ethereum blocks for confirmation")]
-            pub ethereum_event_blocks_to_confirm: u16,
-            #[serde(rename = "Required confirmations from relays")]
-            pub event_required_confirmations: u16,
-            #[serde(rename = "Required rejections from relays")]
-            pub event_required_rejects: u16,
-            #[serde(rename = "Initial balance of event contract")]
-            pub event_initial_balance: u64,
-            #[serde(rename = "Bridge address")]
-            pub bridge_address: String,
-        }
-        impl From<EventConfiguration> for SimplifiedEventConfiguration {
-            fn from(a: EventConfiguration) -> Self {
-                Self {
-                    configuration_id: a.configuration_id,
-                    ethereum_event_abi: a.ethereum_event_abi,
-                    ethereum_event_address: a.ethereum_event_address,
-                    event_proxy_address: a.event_proxy_address,
-                    ethereum_event_blocks_to_confirm: a.ethereum_event_blocks_to_confirm,
-                    event_required_confirmations: a.event_required_confirmations,
-                    event_required_rejects: a.event_required_rejects,
-                    event_initial_balance: a.event_initial_balance,
-                    bridge_address: a.bridge_address,
-                }
-            }
-        }
-
-        let theme = ColorfulTheme::default();
-        let configurations: Vec<EventConfiguration> = self.get("event-configurations")?;
-        let selected_event = Select::with_theme(&theme)
-            .with_prompt("Select event to vote")
-            .items(&configurations)
-            .interact()?;
-
-        let configuration: EventConfiguration = configurations[selected_event].clone();
-        let config = match self.full_models {
-            false => serde_json::to_string_pretty(&SimplifiedEventConfiguration::from(
-                configuration.clone(),
-            ))?
-            .to_colored_json_auto()?
-            .replace('\\', ""),
-            true => serde_json::to_string_pretty(&configuration)?
-                .to_colored_json_auto()?
-                .replace('\\', ""),
-        };
-        let configuration_id = configuration.configuration_id;
-        println!("{}", config);
-        let selected_vote = Select::with_theme(&theme)
-            .with_prompt("Confirm or reject?")
-            .item("Confirm")
-            .item("Reject")
-            .interact_opt()?
-            .ok_or_else(|| anyhow!("You must confirm or reject selection"))?;
-
-        let voting = match selected_vote {
-            0 => Voting::Confirm(configuration_id),
-            1 => Voting::Reject(configuration_id),
-            _ => unreachable!(),
-        };
-
-        let _ = self.post_raw("event-configurations/vote", &voting)?;
-
-        println!("Success!");
         Ok(())
     }
 
@@ -570,23 +516,6 @@ pub struct VotingAddress {
     pub address: String,
 }
 
-struct EventConfigurationWrapper<'a>(&'a EventConfiguration);
-
-impl<'a> std::fmt::Display for EventConfigurationWrapper<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let config = self.0;
-
-        let eth_addr_len = config.ethereum_event_address.len();
-
-        f.write_fmt(format_args!(
-            "{}: ETH 0x{}...{} -> TON",
-            &config.configuration_id,
-            &config.ethereum_event_address[0..4],
-            &config.ethereum_event_address[eth_addr_len - 4..eth_addr_len]
-        ))
-    }
-}
-
 fn parse_url(url: &str) -> Result<Url, Error> {
     Ok(Url::parse(url)?)
 }
@@ -637,5 +566,105 @@ where
 {
     fn prepare(self) -> Result<(Url, serde_json::Value), Error> {
         self.map(|(url, value)| (url, json!(value)))
+    }
+}
+
+pub struct EventConfigurationWrapper<'a> {
+    configuration: &'a EventConfigurationView,
+    full_models: bool,
+}
+
+impl<'a> std::fmt::Display for EventConfigurationWrapper<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn handle_error<T>(_: T) -> std::fmt::Error {
+            std::fmt::Error
+        }
+
+        let config = if self.full_models {
+            serde_json::to_string_pretty(self.configuration)
+        } else {
+            serde_json::to_string_pretty(&SimplifiedEventConfiguration::from(
+                self.configuration.clone(),
+            ))
+        }
+        .map_err(handle_error)?
+        .to_colored_json_auto()
+        .map_err(handle_error)?
+        .replace('\\', "");
+
+        f.write_str(&config)
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct SimplifiedEventConfiguration {
+    #[serde(rename = "1. Configuration ID")]
+    pub id: u32,
+    #[serde(rename = "2. Configuration address")]
+    pub address: String,
+    #[serde(rename = "3. Required confirmations")]
+    pub required_confirmations: u16,
+    #[serde(rename = "4. Required rejections")]
+    pub required_rejections: u16,
+    #[serde(rename = "5. Bridge address")]
+    pub bridge_address: String,
+    #[serde(flatten)]
+    pub data: SimplifiedEventConfigurationData,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "0. Type")]
+pub enum SimplifiedEventConfigurationData {
+    #[serde(rename = "ETH event configuration")]
+    Eth {
+        #[serde(rename = "6. Event contract address in ETH")]
+        event_address: String,
+        #[serde(rename = "7. Blocks to wait")]
+        blocks_to_confirm: u16,
+        #[serde(rename = "8. Proxy address")]
+        proxy_address: String,
+        #[serde(rename = "9. Start block number")]
+        start_block_number: u32,
+    },
+    #[serde(rename = "TON event configuration")]
+    Ton {
+        #[serde(rename = "6. Event contract address in TON")]
+        event_address: String,
+        #[serde(rename = "7. Proxy address")]
+        proxy_address: String,
+        #[serde(rename = "8. Start timestamp")]
+        start_timestamp: u32,
+    },
+}
+
+impl From<EventConfigurationView> for SimplifiedEventConfiguration {
+    fn from(v: EventConfigurationView) -> Self {
+        match v {
+            EventConfigurationView::Eth { id, address, data } => SimplifiedEventConfiguration {
+                id,
+                address,
+                required_confirmations: data.common.event_required_confirmations,
+                required_rejections: data.common.event_required_rejects,
+                bridge_address: data.common.bridge_address,
+                data: SimplifiedEventConfigurationData::Eth {
+                    event_address: format!("0x{}", data.event_address),
+                    blocks_to_confirm: data.event_blocks_to_confirm,
+                    proxy_address: data.proxy_address,
+                    start_block_number: data.start_block_number,
+                },
+            },
+            EventConfigurationView::Ton { id, address, data } => SimplifiedEventConfiguration {
+                id,
+                address,
+                required_confirmations: data.common.event_required_confirmations,
+                required_rejections: data.common.event_required_rejects,
+                bridge_address: data.common.bridge_address,
+                data: SimplifiedEventConfigurationData::Ton {
+                    event_address: data.event_address,
+                    proxy_address: data.proxy_address,
+                    start_timestamp: data.start_timestamp,
+                },
+            },
+        }
     }
 }

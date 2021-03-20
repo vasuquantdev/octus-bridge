@@ -60,7 +60,7 @@ pub fn swagger() -> String {
                 GET: {
                     tags: { event_configuration },
                     summary: "Get known event configurations",
-                    200: String, // todo: change to models
+                    200: Vec<EventConfigurationView>,
                 },
                 POST: {
                     tags: { event_configuration },
@@ -81,7 +81,7 @@ pub fn swagger() -> String {
                 GET: {
                     tags: { event_configuration },
                     summary: "Get event configuration by id",
-                    200: EventConfiguration,
+                    200: EventConfigurationView,
                     400: (),
                 }
             },
