@@ -196,29 +196,13 @@ impl Client {
 
     pub fn vote_for_event_configuration(&self) -> Result<(), Error> {
         let theme = ColorfulTheme::default();
-        let configurations: Vec<EventConfigurationView> = self.get("event-configurations")?;
-        if configurations.is_empty() {
-            println!("There are no active configurations");
-            return Ok(());
-        }
 
-        let selected = Select::with_theme(&theme)
-            .with_prompt("Select configuration to vote for")
-            .items(&configurations)
+        let configuration_id: u32 = Input::with_theme(&theme)
+            .with_prompt("Enter configuration id:")
             .interact()?;
-        let configuration = &configurations[selected];
-        let configuration_id = configuration.id();
-
-        println!(
-            "{}",
-            EventConfigurationWrapper {
-                configuration,
-                full_models: self.full_models
-            }
-        );
 
         let selected_vote = Select::with_theme(&theme)
-            .with_prompt("Confirm or reject?")
+            .with_prompt("Select vote")
             .item("Confirm")
             .item("Reject")
             .interact_opt()?
