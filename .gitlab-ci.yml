@@ -1,0 +1,16 @@
+include:
+  - project: 'common/gitlab-ci'
+    ref: master
+    file: '/templates/cloudbuild-common.gitlab-ci.yaml'
+
+stages:
+  - cloudbuild
+
+cloudbuild:common-master:
+  extends: .cloudbuild:common
+  only:
+    - master
+  except:
+    - tags
+  script:
+    - gcloud builds submit --machine-type=n1-highcpu-8 --config=cloudbuild.yaml .
