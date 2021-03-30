@@ -6,9 +6,7 @@ use anyhow::Error;
 use clap::Clap;
 use config::{Config, File, FileFormat};
 use http::uri::PathAndQuery;
-use sha3::Digest;
 
-use relay_eth::ws::{Address as EthAddr, H256};
 #[cfg(feature = "graphql-transport")]
 use relay_ton::transport::graphql_transport::Config as TonGraphQLConfig;
 #[cfg(feature = "tonlib-transport")]
@@ -17,29 +15,7 @@ use relay_ton::transport::tonlib_transport::Config as TonTonlibConfig;
 use crate::prelude::*;
 
 #[derive(Deserialize, Serialize, Clone, Debug, Default, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct EthAddress(String);
-
-#[derive(Deserialize, Serialize, Clone, Debug, Default, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct TonAddress(pub String);
-
-impl EthAddress {
-    pub fn to_eth_addr(&self) -> Result<EthAddr, Error> {
-        let bytes = hex::decode(&self.0)?;
-        let hash = sha3::Keccak256::digest(&*bytes);
-        Ok(EthAddr::from_slice(&*hash))
-    }
-}
-
-#[derive(Deserialize, Serialize, Clone, Debug, Default, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct Method(String);
-
-impl Method {
-    pub fn to_topic_hash(&self) -> Result<H256, Error> {
-        let bytes = hex::decode(&self.0)?;
-        let hash = sha3::Keccak256::digest(&*bytes);
-        Ok(H256::from_slice(&*hash))
-    }
-}
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct RelayConfig {
@@ -274,6 +250,8 @@ impl Default for TonTransportConfig {
 pub fn read_config(path: PathBuf) -> Result<RelayConfig, Error> {
     let mut config = Config::new();
     config.merge(File::from(path).format(FileFormat::Yaml))?;
+    config.merge(config::Environment::new())?;
+
     let config: RelayConfig = config.try_into()?;
     Ok(config)
 }
