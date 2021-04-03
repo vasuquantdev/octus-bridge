@@ -220,7 +220,16 @@ impl ParseToken<BigInt> for TokenValue {
 impl ParseToken<UInt256> for TokenValue {
     fn try_parse(self) -> ContractResult<UInt256> {
         match self {
-            TokenValue::Uint(data) => Ok(data.number.to_bytes_be().into()),
+            TokenValue::Uint(data) => {
+                let mut result = [0; 32];
+                let data = data.number.to_bytes_be();
+
+                let len = std::cmp::min(data.len(), 32);
+                let offset = 32 - len;
+                (0..len).for_each(|i| result[i + offset] = data[i]);
+
+                Ok(result.into())
+            }
             _ => Err(ContractError::InvalidAbi),
         }
     }

@@ -130,7 +130,8 @@ impl From<&[u8]> for UInt128 {
     fn from(value: &[u8]) -> Self {
         let mut data = [0; 16];
         let len = std::cmp::min(value.len(), 16);
-        (0..len).for_each(|i| data[i] = value[i]);
+        let offset = 16 - len;
+        (0..len).for_each(|i| data[i + offset] = value[i]);
         Self(data)
     }
 }
