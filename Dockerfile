@@ -1,5 +1,5 @@
 
-FROM rust:1.49.0 as builder
+FROM rust:1.51.0 as builder
 
 # Avoid warnings by switching to noninteractive
 ENV DEBIAN_FRONTEND=noninteractive
@@ -25,7 +25,7 @@ COPY relay-utils ./relay-utils
 COPY LICENSE ./LICENSE
 RUN ls -lah
 RUN rustup component add rustfmt
-RUN cargo build --release --features="tonlib-transport,graphql-transport,paranoid"
+RUN cargo build --release --features="tonlib-transport,graphql-transport,paranoid,dockered"
 
 FROM debian:buster-slim
 

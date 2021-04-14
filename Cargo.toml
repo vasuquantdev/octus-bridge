@@ -70,6 +70,7 @@ secstr = "0.4.0"
 tiny-hderive = "0.3.0"
 tiny-bip39 = "0.8.0"
 
+
 [dev-dependencies]
 pretty_assertions = "0.6.1"
 
@@ -78,7 +79,7 @@ default = ["graphql-transport"]
 tonlib-transport = ["relay-ton/tonlib-transport"]
 graphql-transport = ["relay-ton/graphql-transport"]
 paranoid = []
-
+dockered = []
 [package.metadata.deb]
 depends = "$auto"
 section = "utility"

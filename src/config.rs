@@ -256,6 +256,13 @@ pub fn read_config(path: PathBuf) -> Result<RelayConfig, Error> {
     Ok(config)
 }
 
+pub fn read_env() -> Result<RelayConfig, Error> {
+    let config_string = std::env::var("config_string")
+        .map_err(|e| anyhow::Error::new(e).context("config_string not set"))?;
+    let config = serde_json::from_str(&config_string)?;
+    Ok(config)
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug, Clap)]
 pub struct Arguments {
     /// Path to config
