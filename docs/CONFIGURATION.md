@@ -57,6 +57,7 @@ ton_settings:
     next_block_timeout: 60s
     parallel_connections: 100
     fetch_timeout: 10s
+    retry_delay: 500ms
   event_configuration_details_retry_interval: 5s
   event_configuration_details_retry_count: 100
   event_details_retry_interval: 5s

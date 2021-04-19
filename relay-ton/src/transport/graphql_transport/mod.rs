@@ -85,6 +85,7 @@ impl Transport for GraphQLTransport {
         let subscription = GraphQLAccountSubscription::<SliceData>::new(
             self.client.clone(),
             self.config.next_block_timeout,
+            self.config.retry_delay,
             account,
             None,
         )
@@ -102,6 +103,7 @@ impl Transport for GraphQLTransport {
         let subscription = GraphQLAccountSubscription::new(
             self.client.clone(),
             self.config.next_block_timeout,
+            self.config.retry_delay,
             account,
             Some(events_tx),
         )
@@ -119,6 +121,7 @@ impl Transport for GraphQLTransport {
         let subscription = GraphQLAccountSubscription::new(
             self.client.clone(),
             self.config.next_block_timeout,
+            self.config.retry_delay,
             account,
             Some(events_tx),
         )
@@ -164,6 +167,7 @@ where
     async fn new(
         client: NodeClient,
         next_block_timeout: Duration,
+        retry_delay: Duration,
         addr: MsgAddressInt,
         events_tx: Option<EventsTx<T>>,
     ) -> TransportResult<Arc<Self>> {
@@ -186,7 +190,7 @@ where
             current_time: RwLock::new((last_block.end_lt, last_block.timestamp)),
             _marker: Default::default(),
         });
-        subscription.start_loop(events_tx, last_block.id, next_block_timeout);
+        subscription.start_loop(events_tx, last_block.id, next_block_timeout, retry_delay);
 
         Ok(subscription)
     }
@@ -196,6 +200,7 @@ where
         events_tx: Option<EventsTx<T>>,
         mut last_block_id: String,
         next_block_timeout: Duration,
+        retry_delay: Duration,
     ) {
         let account = self.account.clone();
         let subscription = Arc::downgrade(self);
@@ -203,6 +208,8 @@ where
         log::debug!("started polling account {}", self.account);
 
         tokio::spawn(async move {
+            let mut api_error_occurred = false;
+
             'subscription_loop: loop {
                 let subscription = match subscription.upgrade() {
                     Some(s) => s,
@@ -212,6 +219,11 @@ where
                     }
                 };
 
+                if api_error_occurred {
+                    tokio::time::delay_for(retry_delay).await;
+                    api_error_occurred = false;
+                }
+
                 let next_block_id = match subscription
                     .client
                     .wait_for_next_block(&last_block_id, &account, next_block_timeout)
@@ -220,6 +232,7 @@ where
                     Ok(id) => id,
                     Err(e) => {
                         log::error!("failed to get next block id. {:?}", e);
+                        api_error_occurred = true;
                         continue 'subscription_loop;
                     }
                 };
@@ -241,6 +254,7 @@ where
                     Ok(block) => block,
                     Err(e) => {
                         log::error!("failed to get next block data. {:?}", e);
+                        api_error_occurred = true;
                         continue 'subscription_loop;
                     }
                 };
