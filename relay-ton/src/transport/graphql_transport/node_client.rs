@@ -14,7 +14,7 @@ use crate::transport::TransportError::ApiFailure;
 
 #[derive(Clone)]
 pub struct NodeClient {
-    client: Client,
+    client: Box<dyn Fn() -> Client>,
     endpoint: String,
     concurrency_limiter: Arc<Semaphore>,
     fetch_timeout: Duration,
@@ -22,7 +22,7 @@ pub struct NodeClient {
 
 impl NodeClient {
     pub fn new(
-        client: Client,
+        client: Box<dyn Fn() -> Client>,
         endpoint: String,
         parallel_connections: usize,
         timeout: Duration,
@@ -42,7 +42,7 @@ impl NodeClient {
         let request_body = T::build_query(params);
         let permit = self.concurrency_limiter.acquire().await;
         let response = self
-            .client
+            .client()
             .post(&self.endpoint)
             .json(&request_body)
             .timeout(self.fetch_timeout)
@@ -80,7 +80,7 @@ impl NodeClient {
     {
         let request_body = T::build_query(params);
         let response = self
-            .client
+            .client()
             .post(&self.endpoint)
             .timeout(timeout)
             .json(&request_body)

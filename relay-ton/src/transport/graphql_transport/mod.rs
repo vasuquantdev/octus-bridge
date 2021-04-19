@@ -33,19 +33,19 @@ pub struct GraphQLTransport {
 
 impl GraphQLTransport {
     pub async fn new(config: Config) -> TransportResult<Self> {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            header::CONTENT_TYPE,
-            HeaderValue::from_str("application/json").unwrap(),
-        );
-
-        let client_builder = ClientBuilder::new().default_headers(headers);
-        let client = client_builder
-            .build()
-            .expect("failed to create graphql client");
-
         let client = NodeClient::new(
-            client,
+            Box::new(move || {
+                let mut headers = HeaderMap::new();
+                headers.insert(
+                    header::CONTENT_TYPE,
+                    HeaderValue::from_str("application/json").unwrap(),
+                );
+
+                let client_builder = ClientBuilder::new().default_headers(headers);
+                client_builder
+                    .build()
+                    .expect("failed to create graphql client")
+            }),
             config.address.clone(),
             config.parallel_connections,
             config.fetch_timeout,
