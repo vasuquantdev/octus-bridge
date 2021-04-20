@@ -507,7 +507,7 @@ impl NodeClient {
             .fetch::<QueryOutboundMessages>(query_outbound_messages::Variables {
                 address: addr.to_string(),
                 start_lt: start_lt.unwrap_or(0).to_string(),
-                end_lt: end_lt.unwrap_or_else(u64::max_value).to_string(),
+                end_lt: end_lt.unwrap_or(u64::MAX).to_string(),
                 limit: limit as i64,
             })
             .await?
@@ -551,7 +551,7 @@ impl NodeClient {
             .fetch::<QueryOutboundMessagesFull>(query_outbound_messages_full::Variables {
                 address: addr.to_string(),
                 start_lt: start_lt.unwrap_or(0).to_string(),
-                end_lt: end_lt.unwrap_or_else(u64::MAX).to_string(),
+                end_lt: end_lt.unwrap_or(u64::MAX).to_string(),
                 limit: limit as i64,
             })
             .await?
