@@ -429,7 +429,7 @@ impl Bridge {
             .map(|(_, configuration)| configuration.get_metrics())
             .collect();
 
-        let ton_transport_metrics = self.eth.get_voting_queue_metrics();
+        let ton_transport_metrics = self.ton.get_voting_queue_metrics();
 
         let ton_event_handlers_metrics = self
             .ton_event_handlers
