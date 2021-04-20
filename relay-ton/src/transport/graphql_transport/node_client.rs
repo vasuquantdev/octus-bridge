@@ -1,7 +1,8 @@
 use std::time::Duration;
 
 use graphql_client::*;
-use reqwest::Client;
+use reqwest::header::{self, HeaderMap, HeaderValue};
+use reqwest::{Client, ClientBuilder};
 use tokio::sync::Semaphore;
 use ton_block::{
     Account, AccountIdPrefixFull, AccountStuff, Block, Deserializable, Message, Serializable,
@@ -12,7 +13,6 @@ use crate::prelude::*;
 use crate::transport::errors::*;
 use crate::transport::TransportError::ApiFailure;
 
-#[derive(Clone)]
 pub struct NodeClient {
     client: Client,
     endpoint: String,
@@ -21,12 +21,20 @@ pub struct NodeClient {
 }
 
 impl NodeClient {
-    pub fn new(
-        client: Client,
-        endpoint: String,
-        parallel_connections: usize,
-        timeout: Duration,
-    ) -> Self {
+    pub fn new(endpoint: String, parallel_connections: usize, timeout: Duration) -> Self {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_str("application/json").unwrap(),
+        );
+
+        let client_builder = ClientBuilder::new().default_headers(headers);
+        let client = client_builder
+            .pool_idle_timeout(Some(std::time::Duration::from_secs(20)))
+            .pool_max_idle_per_host(0)
+            .build()
+            .expect("failed to create graphql client");
+
         Self {
             client,
             endpoint,

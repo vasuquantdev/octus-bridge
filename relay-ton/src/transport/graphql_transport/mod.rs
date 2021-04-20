@@ -27,31 +27,17 @@ pub mod config;
 mod node_client;
 
 pub struct GraphQlTransport {
-    client: NodeClient,
+    client: Arc<NodeClient>,
     config: Config,
 }
 
 impl GraphQlTransport {
     pub async fn new(config: Config) -> TransportResult<Self> {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            header::CONTENT_TYPE,
-            HeaderValue::from_str("application/json").unwrap(),
-        );
-
-        let client_builder = ClientBuilder::new().default_headers(headers);
-        let client = client_builder
-            .pool_idle_timeout(Some(std::time::Duration::from_secs(20)))
-            .pool_max_idle_per_host(0)
-            .build()
-            .expect("failed to create graphql client");
-
-        let client = NodeClient::new(
-            client,
+        let client = Arc::new(NodeClient::new(
             config.address.clone(),
             config.parallel_connections,
             config.fetch_timeout,
-        );
+        ));
 
         Ok(Self { client, config })
     }
@@ -140,7 +126,7 @@ impl Transport for GraphQlTransport {
     ) -> BoxStream<TransportResult<SliceData>> {
         EventsScanner {
             account,
-            client: &self.client,
+            client: self.client.clone(),
             since_lt,
             until_lt,
             request_fut: None,
@@ -154,7 +140,7 @@ impl Transport for GraphQlTransport {
 
 struct GraphQlAccountSubscription<T> {
     since_lt: u64,
-    client: NodeClient,
+    client: Arc<NodeClient>,
     account: MsgAddressInt,
     account_id: UInt256,
     pending_messages: RwLock<HashMap<UInt256, PendingMessage<u32>>>,
@@ -167,7 +153,7 @@ where
     T: PrepareEvent,
 {
     async fn new(
-        client: NodeClient,
+        client: Arc<NodeClient>,
         next_block_timeout: Duration,
         retry_delay: Duration,
         addr: MsgAddressInt,
@@ -463,7 +449,7 @@ where
     ) -> BoxStream<TransportResult<SliceData>> {
         EventsScanner::<SliceData> {
             account: self.account.clone(),
-            client: &self.client,
+            client: self.client.clone(),
             since_lt,
             until_lt,
             request_fut: None,
@@ -484,7 +470,7 @@ impl AccountSubscriptionFull for GraphQlAccountSubscription<FullEventInfo> {
     ) -> BoxStream<'_, TransportResult<FullEventInfo>> {
         EventsScanner::<FullEventInfo> {
             account: self.account.clone(),
-            client: &self.client,
+            client: self.client.clone(),
             since_lt,
             until_lt,
             request_fut: None,
@@ -504,9 +490,9 @@ impl PendingMessage<u32> {
 
 const MESSAGES_PER_SCAN_ITER: u32 = 50;
 
-struct EventsScanner<'a, T: PrepareEventExt> {
+struct EventsScanner<T: PrepareEventExt> {
     account: MsgAddressInt,
-    client: &'a NodeClient,
+    client: Arc<NodeClient>,
     since_lt: Option<u64>,
     until_lt: Option<u64>,
     request_fut: Option<BoxFuture<'static, TransportResult<MessagesResponse<T>>>>,
@@ -517,7 +503,7 @@ struct EventsScanner<'a, T: PrepareEventExt> {
 
 type MessagesResponse<T> = Vec<<T as PrepareEventExt>::ResponseItem>;
 
-impl<'a, T> EventsScanner<'a, T>
+impl<T> EventsScanner<T>
 where
     Self: Stream<Item = TransportResult<T>>,
     T: PrepareEventExt,
@@ -592,7 +578,7 @@ where
     }
 }
 
-impl<'a, T> Stream for EventsScanner<'a, T>
+impl<T> Stream for EventsScanner<T>
 where
     T: PrepareEventExt,
 {
@@ -633,7 +619,7 @@ trait PrepareEventExt: PrepareEvent + Unpin {
     type ResponseItem: std::fmt::Debug + Unpin;
 
     async fn get_outbound_messages(
-        node: NodeClient,
+        client: Arc<NodeClient>,
         addr: MsgAddressInt,
         start_lt: Option<u64>,
         end_lt: Option<u64>,
@@ -654,13 +640,14 @@ impl PrepareEventExt for SliceData {
     type ResponseItem = OutboundMessage;
 
     async fn get_outbound_messages(
-        node: NodeClient,
+        client: Arc<NodeClient>,
         addr: MsgAddressInt,
         start_lt: Option<u64>,
         end_lt: Option<u64>,
         limit: u32,
     ) -> TransportResult<Vec<Self::ResponseItem>> {
-        node.get_outbound_messages(addr, start_lt, end_lt, limit)
+        client
+            .get_outbound_messages(addr, start_lt, end_lt, limit)
             .await
     }
 
@@ -707,13 +694,14 @@ impl PrepareEventExt for FullEventInfo {
     type ResponseItem = OutboundMessageFull;
 
     async fn get_outbound_messages(
-        node: NodeClient,
+        client: Arc<NodeClient>,
         addr: MsgAddressInt,
         start_lt: Option<u64>,
         end_lt: Option<u64>,
         limit: u32,
     ) -> TransportResult<Vec<Self::ResponseItem>> {
-        node.get_outbound_messages_full(addr, start_lt, end_lt, limit)
+        client
+            .get_outbound_messages_full(addr, start_lt, end_lt, limit)
             .await
     }
 
