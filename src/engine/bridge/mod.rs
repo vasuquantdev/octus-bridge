@@ -575,7 +575,7 @@ impl Bridge {
                 }
             }
 
-            tokio::time::delay_for(Duration::from_secs(10)).await;
+            tokio::time::delay_for(self.configs.eth_settings.eth_poll_interval).await;
         }
     }
 
