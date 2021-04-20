@@ -419,6 +419,8 @@ impl Bridge {
 
     /// Get bridge metrics
     pub async fn get_metrics(&self) -> BridgeMetrics {
+        let eth_transport_metrics = self.eth.get_voting_queue_metrics();
+
         let eth_event_handlers_metrics = self
             .eth_event_handlers
             .read()
@@ -426,6 +428,8 @@ impl Bridge {
             .iter()
             .map(|(_, configuration)| configuration.get_metrics())
             .collect();
+
+        let ton_transport_metrics = self.eth.get_voting_queue_metrics();
 
         let ton_event_handlers_metrics = self
             .ton_event_handlers
@@ -437,7 +441,11 @@ impl Bridge {
 
         BridgeMetrics {
             eth_verification_queue_size: self.eth_verification_queue.len(),
+            eth_pending_vote_count: eth_transport_metrics.pending_vote_count,
+            eth_failed_vote_count: eth_transport_metrics.failed_vote_count,
             eth_event_handlers_metrics,
+            ton_pending_vote_count: ton_transport_metrics.pending_vote_count,
+            ton_failed_vote_count: ton_transport_metrics.failed_vote_count,
             ton_event_handlers_metrics,
         }
     }

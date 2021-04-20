@@ -862,15 +862,22 @@ mod tests {
     async fn get_latest_and_next_masterchain_block() {
         let client = make_client();
 
-        let block = client.get_latest_masterchain_block().await.unwrap();
+        let mut block = client.get_latest_masterchain_block().await.unwrap();
         println!("Masterchain block: {:?}", block);
         println!("Shard count: {}", block.shards.len());
 
-        let next_block = client
-            .wait_for_next_masterchain_block(&block.id, std::time::Duration::from_secs(60))
-            .await
-            .unwrap();
-        println!("Next masterchain block: {:?}", next_block);
-        println!("Next shard count: {}", next_block.shards.len());
+        loop {
+            block = client
+                .wait_for_next_masterchain_block(&block.id, std::time::Duration::from_secs(60))
+                .await
+                .unwrap();
+
+            println!("Masterchain block id: {}", block.id);
+            let shards: std::collections::BTreeMap<u64, _> = block.shards.into_iter().collect();
+            for (shard, block) in shards {
+                println!("    {:0<16x}: {}, {}", shard, block.id, block.end_lt);
+            }
+            println!("\n");
+        }
     }
 }

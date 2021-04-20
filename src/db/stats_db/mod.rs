@@ -97,26 +97,29 @@ where
     pub fn has_already_voted(
         &self,
         event_addr: &MsgAddrStd,
-        relay_key: &MsgAddrStd,
+        relay_addr: &MsgAddrStd,
     ) -> Result<bool, Error> {
         let mut key = Vec::with_capacity(64);
         key.extend_from_slice(&event_addr.address.get_bytestring(0));
-        key.extend_from_slice(&relay_key.address.get_bytestring(0));
+        key.extend_from_slice(&relay_addr.address.get_bytestring(0));
         Ok(self.tree.scan_prefix(&key).keys().next().is_some())
     }
 
-    pub fn count_votes(&self, relay_key: &MsgAddrStd) -> usize {
-        let relay_key = relay_key.address.get_bytestring(0);
+    pub fn count_votes(&self, configuration_id: u32, relay_addr: &MsgAddrStd) -> usize {
+        let relay_addr = relay_addr.address.get_bytestring(0);
         self.tree
             .iter()
-            .keys()
-            .filter_map(|key| {
-                let key = key.ok()?;
-                if relay_key == key[32..64] {
-                    Some(())
-                } else {
-                    None
-                }
+            .filter_map(|item| {
+                let (key, value) = item.ok()?;
+                if relay_addr != key[32..64] {
+                    return None;
+                };
+
+                let stored =
+                    <<T as GetStoredData>::Stored as BorshDeserialize>::try_from_slice(&value)
+                        .ok()?;
+
+                ((&stored as &dyn StoredStat).configuration_id() == configuration_id).then(|| ())
             })
             .count()
     }
@@ -172,8 +175,12 @@ where
     }
 }
 
+pub trait StoredStat {
+    fn configuration_id(&self) -> u32;
+}
+
 pub trait GetStoredData {
-    type Stored: BorshSerialize + BorshDeserialize;
+    type Stored: StoredStat + BorshSerialize + BorshDeserialize;
     type View: Serialize;
 
     fn get_stored_data(&self) -> Self::Stored;
@@ -188,6 +195,7 @@ impl GetStoredData for EthEventReceivedVoteWithData {
     #[inline]
     fn get_stored_data(&self) -> Self::Stored {
         EthStoredTxStat {
+            configuration_id: self.info().configuration_id(),
             tx_hash: self.data().init_data.event_transaction.as_bytes().to_vec(),
             met: chrono::Utc::now().timestamp(),
         }
@@ -196,6 +204,7 @@ impl GetStoredData for EthEventReceivedVoteWithData {
     #[inline]
     fn create_view(event_addr: &MsgAddrStd, vote: Voting, stored: Self::Stored) -> Self::View {
         EthTxStatView {
+            configuration_id: stored.configuration_id(),
             tx_hash: hex::encode(stored.tx_hash),
             met: stored.met.to_string(),
             event_addr: event_addr.to_string(),
@@ -211,6 +220,7 @@ impl GetStoredData for TonEventReceivedVoteWithData {
     #[inline]
     fn get_stored_data(&self) -> Self::Stored {
         TonStoredTxStat {
+            configuration_id: self.info().configuration_id(),
             tx_hash: self.data().init_data.event_transaction.as_slice().to_vec(),
             tx_lt: self.data().init_data.event_transaction_lt,
             met: chrono::Utc::now().timestamp(),
@@ -220,6 +230,7 @@ impl GetStoredData for TonEventReceivedVoteWithData {
     #[inline]
     fn create_view(event_addr: &MsgAddrStd, vote: Voting, stored: Self::Stored) -> Self::View {
         TonTxStatView {
+            configuration_id: stored.configuration_id(),
             tx_hash: hex::encode(stored.tx_hash.as_slice()),
             tx_lt: stored.tx_lt.to_string(),
             met: stored.met.to_string(),
@@ -231,15 +242,29 @@ impl GetStoredData for TonEventReceivedVoteWithData {
 
 #[derive(BorshSerialize, BorshDeserialize)]
 pub struct EthStoredTxStat {
+    pub configuration_id: u32,
     pub tx_hash: Vec<u8>,
     pub met: i64,
 }
 
+impl StoredStat for EthStoredTxStat {
+    fn configuration_id(&self) -> u32 {
+        self.configuration_id
+    }
+}
+
 #[derive(BorshSerialize, BorshDeserialize)]
 pub struct TonStoredTxStat {
+    pub configuration_id: u32,
     pub tx_hash: Vec<u8>,
     pub tx_lt: u64,
     pub met: i64,
+}
+
+impl StoredStat for TonStoredTxStat {
+    fn configuration_id(&self) -> u32 {
+        self.configuration_id
+    }
 }
 
 impl IntoView for Voting {

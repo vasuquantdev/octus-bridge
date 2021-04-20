@@ -551,7 +551,7 @@ impl ParseToken<TonEventInitData> for TokenValue {
 
 #[derive(Debug, Clone)]
 pub struct TonEventVoteData {
-    /// Not serializable!
+    /// Not an argument for FunctionArg!
     pub configuration_id: u32,
 
     pub event_transaction: UInt256,

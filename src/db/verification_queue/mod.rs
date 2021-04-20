@@ -124,7 +124,7 @@ impl<T> Table for VerificationQueue<T>
 where
     T: BorshDeserialize + IntoView,
 {
-    type Key = (u64, bool);
+    type Key = String;
     type Value = Vec<T::View>;
 
     fn dump_elements(&self) -> HashMap<Self::Key, Self::Value> {
@@ -146,7 +146,7 @@ where
                 let value: T = BorshDeserialize::deserialize(&mut &k[9..]).expect("Shouldn't fail");
 
                 result
-                    .entry((block_number, external))
+                    .entry(format!("{},{}", block_number, external))
                     .or_insert_with(Vec::new)
                     .push(value.into_view());
                 result
