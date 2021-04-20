@@ -26,12 +26,12 @@ use self::node_client::*;
 pub mod config;
 mod node_client;
 
-pub struct GraphQLTransport {
+pub struct GraphQlTransport {
     client: NodeClient,
     config: Config,
 }
 
-impl GraphQLTransport {
+impl GraphQlTransport {
     pub async fn new(config: Config) -> TransportResult<Self> {
         let mut headers = HeaderMap::new();
         headers.insert(
@@ -58,7 +58,7 @@ impl GraphQLTransport {
 }
 
 #[async_trait]
-impl RunLocal for GraphQLTransport {
+impl RunLocal for GraphQlTransport {
     async fn run_local(
         &self,
         abi: &Function,
@@ -79,12 +79,12 @@ impl RunLocal for GraphQLTransport {
 }
 
 #[async_trait]
-impl Transport for GraphQLTransport {
+impl Transport for GraphQlTransport {
     async fn subscribe_without_events(
         &self,
         account: MsgAddressInt,
     ) -> TransportResult<Arc<dyn AccountSubscription>> {
-        let subscription = GraphQLAccountSubscription::<SliceData>::new(
+        let subscription = GraphQlAccountSubscription::<SliceData>::new(
             self.client.clone(),
             self.config.next_block_timeout,
             self.config.retry_delay,
@@ -102,7 +102,7 @@ impl Transport for GraphQLTransport {
     ) -> TransportResult<(Arc<dyn AccountSubscription>, RawEventsRx)> {
         let (events_tx, events_rx) = mpsc::unbounded_channel();
 
-        let subscription = GraphQLAccountSubscription::new(
+        let subscription = GraphQlAccountSubscription::new(
             self.client.clone(),
             self.config.next_block_timeout,
             self.config.retry_delay,
@@ -120,7 +120,7 @@ impl Transport for GraphQLTransport {
     ) -> TransportResult<(Arc<dyn AccountSubscriptionFull>, FullEventsRx)> {
         let (events_tx, events_rx) = mpsc::unbounded_channel();
 
-        let subscription = GraphQLAccountSubscription::new(
+        let subscription = GraphQlAccountSubscription::new(
             self.client.clone(),
             self.config.next_block_timeout,
             self.config.retry_delay,
@@ -152,7 +152,7 @@ impl Transport for GraphQLTransport {
     }
 }
 
-struct GraphQLAccountSubscription<T> {
+struct GraphQlAccountSubscription<T> {
     since_lt: u64,
     client: NodeClient,
     account: MsgAddressInt,
@@ -162,7 +162,7 @@ struct GraphQLAccountSubscription<T> {
     _marker: std::marker::PhantomData<T>,
 }
 
-impl<T> GraphQLAccountSubscription<T>
+impl<T> GraphQlAccountSubscription<T>
 where
     T: PrepareEvent,
 {
@@ -371,7 +371,7 @@ where
 }
 
 #[async_trait]
-impl<T> RunLocal for GraphQLAccountSubscription<T>
+impl<T> RunLocal for GraphQlAccountSubscription<T>
 where
     T: PrepareEvent,
 {
@@ -395,7 +395,7 @@ where
 }
 
 #[async_trait]
-impl<T> AccountSubscription for GraphQLAccountSubscription<T>
+impl<T> AccountSubscription for GraphQlAccountSubscription<T>
 where
     T: PrepareEvent,
 {
@@ -476,7 +476,7 @@ where
 }
 
 #[async_trait]
-impl AccountSubscriptionFull for GraphQLAccountSubscription<FullEventInfo> {
+impl AccountSubscriptionFull for GraphQlAccountSubscription<FullEventInfo> {
     fn rescan_events_full(
         &self,
         since_lt: Option<u64>,
@@ -760,71 +760,6 @@ impl PrepareEventExt for FullEventInfo {
             transaction_lt: 0,
             event_timestamp: 0,
             event_index: 0,
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use futures::StreamExt;
-
-    use super::*;
-
-    async fn make_transport() -> GraphQLTransport {
-        std::env::set_var("RUST_LOG", "relay_ton::transport::graphql_transport=debug");
-        util::setup();
-        let db = sled::Config::new().temporary(true).open().unwrap();
-
-        GraphQLTransport::new(
-            Config {
-                address: "https://main.ton.dev/graphql".to_string(),
-                next_block_timeout: 60,
-            },
-            db,
-        )
-        .await
-        .unwrap()
-    }
-
-    fn elector_addr() -> MsgAddressInt {
-        MsgAddressInt::from_str(
-            "-1:3333333333333333333333333333333333333333333333333333333333333333",
-        )
-        .unwrap()
-    }
-
-    fn my_addr() -> MsgAddressInt {
-        MsgAddressInt::from_str(
-            "-1:17519bc2a04b6ecf7afa25ba30601a4e16c9402979c236db13e1c6f3c4674e8c",
-        )
-        .unwrap()
-    }
-
-    #[tokio::test]
-    async fn create_transport() {
-        let _transport = make_transport().await;
-    }
-
-    #[tokio::test]
-    async fn account_subscription() {
-        let transport = make_transport().await;
-
-        let _subscription = transport.subscribe(elector_addr()).await.unwrap();
-
-        tokio::time::delay_for(tokio::time::Duration::from_secs(10)).await;
-    }
-
-    #[tokio::test]
-    async fn rescan_lt() {
-        let transport = make_transport().await;
-
-        let mut scanner = transport.rescan_events(my_addr(), None, None);
-
-        let mut i = 0;
-        while let Some(item) = scanner.next().await {
-            println!("Data: {:?}", item);
-            println!("Event: {}", i);
-            i += 1;
         }
     }
 }

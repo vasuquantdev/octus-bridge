@@ -3,7 +3,7 @@ use std::ops::Deref;
 
 use tokio::stream::StreamExt;
 
-use relay_eth::ws::{EthListener, Event, SyncedHeight};
+use relay_eth::{EthListener, Event, SyncedHeight};
 use relay_models::models::EventConfigurationView;
 use relay_ton::contracts::*;
 
@@ -276,7 +276,7 @@ impl Bridge {
 
         // Enqueue new events from ETH
         while let Some(event) = eth_events_rx.next().await {
-            let event: relay_eth::ws::Event = match event {
+            let event: relay_eth::Event = match event {
                 Ok(event) => event,
                 Err(e) => {
                     log::error!("Failed parsing data from ethereum stream: {:?}", e);
@@ -580,7 +580,7 @@ impl Bridge {
     }
 
     // Validate event from ETH and vote for it
-    async fn process_eth_event(self: Arc<Self>, event: relay_eth::ws::Event) {
+    async fn process_eth_event(self: Arc<Self>, event: relay_eth::Event) {
         log::info!(
             "Received event from address: {}. Tx hash: {}.",
             &event.address,

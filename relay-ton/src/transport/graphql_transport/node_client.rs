@@ -149,14 +149,14 @@ impl NodeClient {
             schema_path = "src/transport/graphql_transport/schema.graphql",
             query_path = "src/transport/graphql_transport/query_node_se_conditions.graphql"
         )]
-        struct QueryNodeSEConditions;
+        struct QueryNodeSeConditions;
 
         #[derive(GraphQLQuery)]
         #[graphql(
             schema_path = "src/transport/graphql_transport/schema.graphql",
             query_path = "src/transport/graphql_transport/query_node_se_latest_block.graphql"
         )]
-        struct QueryNodeSELatestBlock;
+        struct QueryNodeSeLatestBlock;
 
         let workchain_id = addr.get_workchain_id();
 
@@ -214,7 +214,7 @@ impl NodeClient {
             // Check Node SE case (without masterchain and sharding)
             None => {
                 let block = self
-                    .fetch::<QueryNodeSEConditions>(query_node_se_conditions::Variables {
+                    .fetch::<QueryNodeSeConditions>(query_node_se_conditions::Variables {
                         workchain: workchain_id as i64,
                     })
                     .await?
@@ -229,7 +229,7 @@ impl NodeClient {
                     _ => return Err(no_blocks_found()),
                 }
 
-                self.fetch::<QueryNodeSELatestBlock>(query_node_se_latest_block::Variables {
+                self.fetch::<QueryNodeSeLatestBlock>(query_node_se_latest_block::Variables {
                     workchain: workchain_id as i64,
                 })
                 .await?
@@ -581,6 +581,8 @@ mod tests {
         NodeClient {
             client,
             endpoint: "https://main.ton.dev/graphql".to_owned(),
+            concurrency_limiter: Arc::new(Semaphore::new(10)),
+            fetch_timeout: std::time::Duration::from_secs(10),
         }
     }
 
@@ -628,7 +630,11 @@ mod tests {
 
         let latest_block = client.get_latest_block(&elector_addr()).await.unwrap();
         let next_block = client
-            .wait_for_next_block(&latest_block, &elector_addr(), 60)
+            .wait_for_next_block(
+                &latest_block.id,
+                &elector_addr(),
+                std::time::Duration::from_secs(60),
+            )
             .await
             .unwrap();
         println!("Next block masterchain: {:?}", next_block);
@@ -640,7 +646,11 @@ mod tests {
 
         let latest_block = client.get_latest_block(&test_addr()).await.unwrap();
         let next_block = client
-            .wait_for_next_block(&latest_block, &test_addr(), 60)
+            .wait_for_next_block(
+                &latest_block.id,
+                &test_addr(),
+                std::time::Duration::from_secs(60),
+            )
             .await
             .unwrap();
         println!("Next block basechain: {:?}", next_block);

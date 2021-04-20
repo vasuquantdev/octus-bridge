@@ -1,4 +1,5 @@
 use anyhow::Error;
+#[cfg(not(feature = "dockered"))]
 use clap::IntoApp;
 
 use anyhow::Result;

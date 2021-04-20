@@ -789,6 +789,7 @@ impl TryFrom<ContractOutput> for EthEventDetails {
     }
 }
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize, Serialize)]
 pub enum EventType {
     ETH,

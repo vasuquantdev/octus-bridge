@@ -409,8 +409,7 @@ mod test {
     use sha3::Keccak256;
     use ton_abi::TokenValue as TonTokenValue;
 
-    use relay_eth::ws::H256;
-    use relay_ton::prelude::serialize_toc;
+    use relay_eth::H256;
 
     use crate::engine::bridge::utils::{
         eth_param_from_str, map_eth_to_ton_with_abi, map_ton_to_eth_with_abi, pack_token_values,
@@ -625,10 +624,7 @@ mod test {
             map_eth_to_ton_with_abi(eth, &ethabi::ParamType::Int(256)).unwrap(),
             ton_expected
         );
-        println!(
-            "{}",
-            base64::encode(serialize_toc(&pack_token_values(vec![ton_expected]).unwrap()).unwrap())
-        );
+        assert!(pack_token_values(vec![ton_expected]).is_ok());
     }
 
     #[test]
@@ -663,10 +659,7 @@ mod test {
             .unwrap(),
             ton_expected
         );
-        println!(
-            "{}",
-            base64::encode(serialize_toc(&pack_token_values(vec![ton_expected]).unwrap()).unwrap())
-        );
+        assert!(pack_token_values(vec![ton_expected]).is_ok());
     }
 
     #[test]

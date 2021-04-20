@@ -233,7 +233,7 @@ pub enum TonTransportConfig {
     #[cfg(feature = "tonlib-transport")]
     Tonlib(TonTonlibConfig),
     #[cfg(feature = "graphql-transport")]
-    GraphQL(TonGraphQLConfig),
+    GraphQl(TonGraphQLConfig),
 }
 
 #[cfg(any(feature = "tonlib-transport", feature = "graphql-transport"))]
@@ -243,7 +243,7 @@ impl Default for TonTransportConfig {
         return Self::Tonlib(TonTonlibConfig::default());
 
         #[cfg(all(feature = "graphql-transport", not(feature = "tonlib-transport")))]
-        Self::GraphQL(TonGraphQLConfig::default())
+        Self::GraphQl(TonGraphQLConfig::default())
     }
 }
 

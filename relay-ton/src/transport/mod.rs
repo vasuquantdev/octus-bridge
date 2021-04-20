@@ -8,7 +8,7 @@ pub mod graphql_transport;
 pub mod tonlib_transport;
 
 #[cfg(feature = "graphql-transport")]
-pub use graphql_transport::GraphQLTransport;
+pub use graphql_transport::GraphQlTransport;
 #[cfg(feature = "tonlib-transport")]
 pub use tonlib_transport::TonlibTransport;
 
