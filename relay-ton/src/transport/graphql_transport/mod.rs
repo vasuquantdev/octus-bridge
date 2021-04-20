@@ -4,8 +4,6 @@ use std::time::Duration;
 
 use futures::task::{Context, Poll};
 use futures::{Future, FutureExt};
-use reqwest::header::{self, HeaderMap, HeaderValue};
-use reqwest::ClientBuilder;
 use ton_abi::Function;
 use ton_block::{
     CommonMsgInfo, Deserializable, HashmapAugType, Message, Serializable, Transaction,
@@ -24,6 +22,7 @@ pub use self::config::*;
 use self::node_client::*;
 
 pub mod config;
+mod indexer;
 mod node_client;
 
 pub struct GraphQlTransport {
