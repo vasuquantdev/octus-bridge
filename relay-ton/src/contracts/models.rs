@@ -615,7 +615,7 @@ impl BorshDeserialize for TonEventVoteData {
 
         Ok(Self {
             configuration_id: stored.configuration_id,
-            event_transaction: stored.event_data.into(),
+            event_transaction: UInt256::from_be_bytes(&stored.event_transaction),
             event_transaction_lt: stored.event_transaction_lt,
             event_timestamp: stored.event_timestamp,
             event_index: stored.event_index,
