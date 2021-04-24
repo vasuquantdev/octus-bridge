@@ -157,32 +157,36 @@ impl Bridge {
                         BridgeContractEvent::EventConfigurationCreationEnd {
                             id,
                             address,
-                            active: true,
-                            event_type: EventType::ETH,
+                            active,
+                            event_type,
                         } => {
                             let bridge = bridge.clone();
                             tokio::spawn(async move {
-                                bridge
-                                    .subscribe_to_eth_events_configuration(id, address, None)
-                                    .await
-                            });
-                        }
-                        BridgeContractEvent::EventConfigurationCreationEnd {
-                            id,
-                            address,
-                            active: true,
-                            event_type: EventType::TON,
-                        } => {
-                            let bridge = bridge.clone();
-                            tokio::spawn(async move {
-                                bridge
-                                    .subscribe_to_ton_events_configuration(id, address)
-                                    .await
+                                match (event_type, active) {
+                                    (EventType::ETH, true) => {
+                                        bridge
+                                            .subscribe_to_eth_events_configuration(
+                                                id, address, None,
+                                            )
+                                            .await
+                                    }
+                                    (EventType::TON, true) => {
+                                        bridge
+                                            .subscribe_to_ton_events_configuration(id, address)
+                                            .await
+                                    }
+                                    (EventType::ETH, false) => {
+                                        bridge.unsubscribe_from_eth_events_configuration(id).await
+                                    }
+                                    (EventType::TON, false) => {
+                                        bridge.unsubscribe_from_ton_events_configuration(id).await
+                                    }
+                                }
                             });
                         }
                         BridgeContractEvent::EventConfigurationUpdateEnd {
                             id,
-                            active,
+                            active: true, // despite the fact that it is called `active`, it is responsible for voting result
                             address,
                             event_type,
                         } => {
@@ -191,32 +195,23 @@ impl Bridge {
                                 match event_type {
                                     EventType::ETH => {
                                         bridge.unsubscribe_from_eth_events_configuration(id).await;
+                                        bridge
+                                            .subscribe_to_eth_events_configuration(
+                                                id, address, None,
+                                            )
+                                            .await
                                     }
                                     EventType::TON => {
                                         bridge.unsubscribe_from_ton_events_configuration(id).await;
+                                        bridge
+                                            .subscribe_to_ton_events_configuration(id, address)
+                                            .await
                                     }
                                 };
-
-                                if active {
-                                    match event_type {
-                                        EventType::ETH => {
-                                            bridge
-                                                .subscribe_to_eth_events_configuration(
-                                                    id, address, None,
-                                                )
-                                                .await
-                                        }
-                                        EventType::TON => {
-                                            bridge
-                                                .subscribe_to_ton_events_configuration(id, address)
-                                                .await
-                                        }
-                                    }
-                                }
                             });
                         }
                         _ => {
-                            // TODO: handle other events
+                            // do nothing on other events
                         }
                     }
                 }
