@@ -139,6 +139,7 @@ pub struct EthEventVoteDataView {
 #[derive(Deserialize, Serialize, opg::OpgModel)]
 #[serde(rename_all = "lowercase")]
 pub struct EthTxStatView {
+    pub configuration_id: u32,
     pub tx_hash: String,
     #[opg("Timestamp in seconds")]
     pub met: String,
@@ -148,6 +149,7 @@ pub struct EthTxStatView {
 
 #[derive(Deserialize, Serialize, opg::OpgModel)]
 pub struct TonTxStatView {
+    pub configuration_id: u32,
     pub tx_hash: String,
     pub tx_lt: String,
     #[opg("Timestamp in seconds")]

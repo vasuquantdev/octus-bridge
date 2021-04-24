@@ -1,7 +1,8 @@
 use std::time::Duration;
 
 use graphql_client::*;
-use reqwest::Client;
+use reqwest::header::{self, HeaderMap, HeaderValue};
+use reqwest::{Client, ClientBuilder};
 use tokio::sync::Semaphore;
 use ton_block::{
     Account, AccountIdPrefixFull, AccountStuff, Block, Deserializable, Message, Serializable,
@@ -12,7 +13,6 @@ use crate::prelude::*;
 use crate::transport::errors::*;
 use crate::transport::TransportError::ApiFailure;
 
-#[derive(Clone)]
 pub struct NodeClient {
     client: Client,
     endpoint: String,
@@ -21,12 +21,20 @@ pub struct NodeClient {
 }
 
 impl NodeClient {
-    pub fn new(
-        client: Client,
-        endpoint: String,
-        parallel_connections: usize,
-        timeout: Duration,
-    ) -> Self {
+    pub fn new(endpoint: String, parallel_connections: usize, timeout: Duration) -> Self {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_str("application/json").unwrap(),
+        );
+
+        let client_builder = ClientBuilder::new().default_headers(headers);
+        let client = client_builder
+            .pool_idle_timeout(Some(std::time::Duration::from_secs(20)))
+            .pool_max_idle_per_host(0)
+            .build()
+            .expect("failed to create graphql client");
+
         Self {
             client,
             endpoint,
@@ -136,28 +144,87 @@ impl NodeClient {
         }
     }
 
+    pub async fn get_latest_masterchain_block(&self) -> TransportResult<MasterchainBlock> {
+        let blocks = self
+            .fetch::<QueryLatestMasterchainBlock>(query_latest_masterchain_block::Variables)
+            .await?
+            .blocks
+            .ok_or_else(no_blocks_found)?;
+
+        match blocks.into_iter().flatten().next() {
+            // Common case
+            Some(block) => match (
+                block.id,
+                block.end_lt,
+                block.gen_utime,
+                block.master.and_then(|master| master.shard_hashes),
+            ) {
+                // Ugly and repeated conversion logic due to optional fields in schema
+                // and different generated types
+                (Some(id), Some(end_lt), Some(gen_utime), Some(shard_hashes)) => {
+                    Ok(MasterchainBlock {
+                        id,
+                        end_lt: u64::from_str(&end_lt).unwrap_or_default(),
+                        timestamp: gen_utime as u32,
+                        shards: shard_hashes
+                            .into_iter()
+                            .map(|item| {
+                                let item = item.ok_or_else(invalid_response)?;
+
+                                match (item.shard, item.descr) {
+                                    (Some(shard), Some(descr)) => parse_shard_block(
+                                        shard,
+                                        descr.root_hash,
+                                        descr.gen_utime,
+                                        descr.end_lt,
+                                    ),
+                                    _ => Err(invalid_response()),
+                                }
+                            })
+                            .collect::<TransportResult<HashMap<_, _>>>()?,
+                    })
+                }
+                _ => Err(invalid_response()),
+            },
+            // Check Node SE case (without masterchain and sharding)
+            None => {
+                let block = self
+                    .fetch::<QueryNodeSeConditions>(query_node_se_conditions::Variables {
+                        workchain: 0,
+                    })
+                    .await?
+                    .blocks
+                    .and_then(|blocks| blocks.into_iter().flatten().next())
+                    .ok_or_else(no_blocks_found)?;
+
+                match (block.after_merge, &block.shard) {
+                    (Some(after_merge), Some(shard))
+                        if !after_merge && shard == "8000000000000000" => {}
+                    // If workchain is sharded then it is not Node SE and missing masterchain blocks is error
+                    _ => return Err(no_blocks_found()),
+                }
+
+                self.fetch::<QueryNodeSeLatestBlock>(query_node_se_latest_block::Variables {
+                    workchain: 0,
+                })
+                .await?
+                .blocks
+                .and_then(|blocks| {
+                    blocks.into_iter().flatten().next().and_then(|block| {
+                        Some(MasterchainBlock {
+                            id: block.id?,
+                            end_lt: u64::from_str(&block.end_lt?).unwrap_or_default(),
+                            timestamp: block.gen_utime? as u32,
+                            shards: HashMap::new(),
+                        })
+                    })
+                })
+                .ok_or_else(no_blocks_found)
+            }
+        }
+    }
+
     pub async fn get_latest_block(&self, addr: &MsgAddressInt) -> TransportResult<LatestBlock> {
-        #[derive(GraphQLQuery)]
-        #[graphql(
-            schema_path = "src/transport/graphql_transport/schema.graphql",
-            query_path = "src/transport/graphql_transport/query_latest_masterchain_block.graphql"
-        )]
-        struct QueryLatestMasterchainBlock;
-
-        #[derive(GraphQLQuery)]
-        #[graphql(
-            schema_path = "src/transport/graphql_transport/schema.graphql",
-            query_path = "src/transport/graphql_transport/query_node_se_conditions.graphql"
-        )]
-        struct QueryNodeSEConditions;
-
-        #[derive(GraphQLQuery)]
-        #[graphql(
-            schema_path = "src/transport/graphql_transport/schema.graphql",
-            query_path = "src/transport/graphql_transport/query_node_se_latest_block.graphql"
-        )]
-        struct QueryNodeSELatestBlock;
-
         let workchain_id = addr.get_workchain_id();
 
         let blocks = self
@@ -214,7 +281,7 @@ impl NodeClient {
             // Check Node SE case (without masterchain and sharding)
             None => {
                 let block = self
-                    .fetch::<QueryNodeSEConditions>(query_node_se_conditions::Variables {
+                    .fetch::<QueryNodeSeConditions>(query_node_se_conditions::Variables {
                         workchain: workchain_id as i64,
                     })
                     .await?
@@ -229,7 +296,7 @@ impl NodeClient {
                     _ => return Err(no_blocks_found()),
                 }
 
-                self.fetch::<QueryNodeSELatestBlock>(query_node_se_latest_block::Variables {
+                self.fetch::<QueryNodeSeLatestBlock>(query_node_se_latest_block::Variables {
                     workchain: workchain_id as i64,
                 })
                 .await?
@@ -279,19 +346,75 @@ impl NodeClient {
         .collect::<Result<Vec<_>, _>>()
     }
 
+    pub async fn wait_for_next_masterchain_block(
+        &self,
+        current: &str,
+        timeout: Duration,
+    ) -> TransportResult<MasterchainBlock> {
+        #[derive(GraphQLQuery)]
+        #[graphql(
+            schema_path = "src/transport/graphql_transport/schema.graphql",
+            query_path = "src/transport/graphql_transport/query_next_masterchain_block.graphql"
+        )]
+        struct QueryNextMasterchainBlock;
+
+        let timeout_ms = timeout.as_secs_f64() * 1000.0;
+        let fetch_timeout = timeout * 2;
+
+        let block = self
+            .fetch_blocking::<QueryNextMasterchainBlock>(
+                query_next_masterchain_block::Variables {
+                    id: current.to_owned(),
+                    timeout: timeout_ms,
+                },
+                fetch_timeout,
+            )
+            .await?
+            .blocks
+            .and_then(|blocks| blocks.into_iter().flatten().next())
+            .ok_or_else(no_blocks_found)?;
+
+        return match (
+            block.id,
+            block.end_lt,
+            block.gen_utime,
+            block.master.and_then(|master| master.shard_hashes),
+        ) {
+            (Some(id), Some(end_lt), Some(gen_utime), Some(shard_hashes)) => Ok(MasterchainBlock {
+                id,
+                end_lt: u64::from_str(&end_lt).unwrap_or_default(),
+                timestamp: gen_utime as u32,
+                shards: shard_hashes
+                    .into_iter()
+                    .filter_map(|item| {
+                        let item = match item {
+                            Some(item) => item,
+                            None => return Some(Err(invalid_response())),
+                        };
+
+                        match (item.workchain_id, item.shard, item.descr) {
+                            (Some(0), Some(shard), Some(descr)) => Some(parse_shard_block(
+                                shard,
+                                descr.root_hash,
+                                descr.gen_utime,
+                                descr.end_lt,
+                            )),
+                            (Some(_), _, _) => None,
+                            _ => Some(Err(invalid_response())),
+                        }
+                    })
+                    .collect::<TransportResult<HashMap<_, _>>>()?,
+            }),
+            _ => Err(invalid_response()),
+        };
+    }
+
     pub async fn wait_for_next_block(
         &self,
         current: &str,
         addr: &MsgAddressInt,
         timeout: Duration,
     ) -> TransportResult<String> {
-        #[derive(GraphQLQuery)]
-        #[graphql(
-            schema_path = "src/transport/graphql_transport/schema.graphql",
-            query_path = "src/transport/graphql_transport/query_next_block.graphql"
-        )]
-        struct QueryNextBlock;
-
         let timeout_ms = timeout.as_secs_f64() * 1000.0;
         let fetch_timeout = timeout * 2;
 
@@ -384,7 +507,7 @@ impl NodeClient {
             .fetch::<QueryOutboundMessages>(query_outbound_messages::Variables {
                 address: addr.to_string(),
                 start_lt: start_lt.unwrap_or(0).to_string(),
-                end_lt: end_lt.unwrap_or_else(u64::max_value).to_string(),
+                end_lt: end_lt.unwrap_or(u64::MAX).to_string(),
                 limit: limit as i64,
             })
             .await?
@@ -428,7 +551,7 @@ impl NodeClient {
             .fetch::<QueryOutboundMessagesFull>(query_outbound_messages_full::Variables {
                 address: addr.to_string(),
                 start_lt: start_lt.unwrap_or(0).to_string(),
-                end_lt: end_lt.unwrap_or_else(u64::max_value).to_string(),
+                end_lt: end_lt.unwrap_or(u64::MAX).to_string(),
                 limit: limit as i64,
             })
             .await?
@@ -522,6 +645,42 @@ pub struct LatestBlock {
     pub timestamp: u32,
 }
 
+#[derive(Debug, Clone)]
+pub struct MasterchainBlock {
+    pub id: String,
+    pub end_lt: u64,
+    pub timestamp: u32,
+    pub shards: HashMap<u64, LatestBlock>,
+}
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/transport/graphql_transport/schema.graphql",
+    query_path = "src/transport/graphql_transport/query_next_block.graphql"
+)]
+struct QueryNextBlock;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/transport/graphql_transport/schema.graphql",
+    query_path = "src/transport/graphql_transport/query_latest_masterchain_block.graphql"
+)]
+struct QueryLatestMasterchainBlock;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/transport/graphql_transport/schema.graphql",
+    query_path = "src/transport/graphql_transport/query_node_se_conditions.graphql"
+)]
+struct QueryNodeSeConditions;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/transport/graphql_transport/schema.graphql",
+    query_path = "src/transport/graphql_transport/query_node_se_latest_block.graphql"
+)]
+struct QueryNodeSeLatestBlock;
+
 #[derive(GraphQLQuery)]
 #[graphql(
     schema_path = "src/transport/graphql_transport/schema.graphql",
@@ -539,6 +698,30 @@ fn check_shard_match(
     let ident = ShardIdent::with_tagged_prefix(workchain_id as i32, shard).map_err(api_failure)?;
 
     Ok(ident.contains_full_prefix(&AccountIdPrefixFull::prefix(addr).map_err(api_failure)?))
+}
+
+fn parse_shard_block(
+    shard: String,
+    root_hash: Option<String>,
+    gen_utime: Option<f64>,
+    end_lt: Option<String>,
+) -> TransportResult<(u64, LatestBlock)> {
+    let shard = u64::from_str_radix(&shard, 16).map_err(|_| TransportError::NoBlocksFound)?;
+
+    match (root_hash, gen_utime, end_lt) {
+        (Some(root_hash), Some(gen_utime), Some(end_lt)) => {
+            let end_lt = u64::from_str(&end_lt).map_err(|_| TransportError::NoBlocksFound)?;
+            Ok((
+                shard,
+                LatestBlock {
+                    id: root_hash,
+                    end_lt,
+                    timestamp: gen_utime as u32,
+                },
+            ))
+        }
+        _ => Err(invalid_response()),
+    }
 }
 
 fn api_failure<T>(e: T) -> TransportError
@@ -581,6 +764,8 @@ mod tests {
         NodeClient {
             client,
             endpoint: "https://main.ton.dev/graphql".to_owned(),
+            concurrency_limiter: Arc::new(Semaphore::new(10)),
+            fetch_timeout: std::time::Duration::from_secs(10),
         }
     }
 
@@ -628,7 +813,11 @@ mod tests {
 
         let latest_block = client.get_latest_block(&elector_addr()).await.unwrap();
         let next_block = client
-            .wait_for_next_block(&latest_block, &elector_addr(), 60)
+            .wait_for_next_block(
+                &latest_block.id,
+                &elector_addr(),
+                std::time::Duration::from_secs(60),
+            )
             .await
             .unwrap();
         println!("Next block masterchain: {:?}", next_block);
@@ -640,7 +829,11 @@ mod tests {
 
         let latest_block = client.get_latest_block(&test_addr()).await.unwrap();
         let next_block = client
-            .wait_for_next_block(&latest_block, &test_addr(), 60)
+            .wait_for_next_block(
+                &latest_block.id,
+                &test_addr(),
+                std::time::Duration::from_secs(60),
+            )
             .await
             .unwrap();
         println!("Next block basechain: {:?}", next_block);
@@ -663,5 +856,28 @@ mod tests {
         let msg = ton_block::Message::with_ext_in_header(message_header);
 
         make_client().send_message(&msg).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn get_latest_and_next_masterchain_block() {
+        let client = make_client();
+
+        let mut block = client.get_latest_masterchain_block().await.unwrap();
+        println!("Masterchain block: {:?}", block);
+        println!("Shard count: {}", block.shards.len());
+
+        loop {
+            block = client
+                .wait_for_next_masterchain_block(&block.id, std::time::Duration::from_secs(60))
+                .await
+                .unwrap();
+
+            println!("Masterchain block id: {}", block.id);
+            let shards: std::collections::BTreeMap<u64, _> = block.shards.into_iter().collect();
+            for (shard, block) in shards {
+                println!("    {:0<16x}: {}, {}", shard, block.id, block.end_lt);
+            }
+            println!("\n");
+        }
     }
 }

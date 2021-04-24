@@ -2646,7 +2646,7 @@ checksum = "24d5f089152e60f62d28b835fbff2cd2e8dc0baf1ac13343bef92ab7eed84548"
 
 [[package]]
 name = "relay"
-version = "1.0.11"
+version = "1.0.16"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3583,7 +3583,7 @@ dependencies = [
 [[package]]
 name = "ton_block"
 version = "1.0.0"
-source = "git+https://github.com/tonlabs/ton-labs-block.git#4f5bc11f0bf2c48f867fb1ea7b1f9f33134aff51"
+source = "git+https://github.com/tonlabs/ton-labs-block.git#df78632a68a723e91e0f8c15a2c9c747f055d0c6"
 dependencies = [
  "base64 0.10.1",
  "clear_on_drop",
@@ -3631,7 +3631,7 @@ dependencies = [
 [[package]]
 name = "ton_types"
 version = "1.0.0"
-source = "git+https://github.com/tonlabs/ton-labs-types.git#d53f656aed980f7a90234b20c2f297a9633a1142"
+source = "git+https://github.com/tonlabs/ton-labs-types.git#da45b4f5f655ecce23cc5c9c29b7bc19f6bba501"
 dependencies = [
  "base64 0.11.0",
  "crc",
@@ -3642,7 +3642,7 @@ dependencies = [
  "num",
  "num-derive",
  "num-traits 0.2.14",
- "rand 0.7.3",
+ "rand 0.8.3",
  "sha2 0.8.2",
 ]
 
@@ -3667,12 +3667,13 @@ dependencies = [
 [[package]]
 name = "tonlib"
 version = "0.1.0"
-source = "git+https://github.com/broxus/tonlib-rs.git#2e71e63f6aee556c689254d1e6540c27fa0a3b22"
+source = "git+https://github.com/broxus/tonlib-rs.git#31614ec686382182f9e6d0ac1052017b2e1945af"
 dependencies = [
  "adnl",
  "base64 0.13.0",
  "failure",
  "futures 0.3.13",
+ "log",
  "serde 1.0.125",
  "serde_json",
  "tokio",

@@ -470,8 +470,8 @@ impl TonTransportConfig {
                 Arc::new(relay_ton::transport::TonlibTransport::new(config.clone()).await?)
             }
             #[cfg(feature = "graphql-transport")]
-            TonTransportConfig::GraphQL(config) => {
-                Arc::new(relay_ton::transport::GraphQLTransport::new(config.clone()).await?)
+            TonTransportConfig::GraphQl(config) => {
+                Arc::new(relay_ton::transport::GraphQlTransport::new(config.clone()).await?)
             }
         })
     }

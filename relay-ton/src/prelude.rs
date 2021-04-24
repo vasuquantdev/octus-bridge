@@ -204,21 +204,3 @@ pub mod serde_cells {
         ton_types::Cell::construct_from_bytes(&data).map_err(|e| D::Error::custom(e.to_string()))
     }
 }
-
-pub mod serde_uint256 {
-    use super::*;
-
-    pub fn serialize<S>(data: &ton_types::UInt256, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_bytes(data.as_ref())
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<ton_types::UInt256, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        Vec::<u8>::deserialize(deserializer).map(ton_types::UInt256::from)
-    }
-}

@@ -551,7 +551,7 @@ impl ParseToken<TonEventInitData> for TokenValue {
 
 #[derive(Debug, Clone)]
 pub struct TonEventVoteData {
-    /// Not serializable!
+    /// Not an argument for FunctionArg!
     pub configuration_id: u32,
 
     pub event_transaction: UInt256,
@@ -615,7 +615,7 @@ impl BorshDeserialize for TonEventVoteData {
 
         Ok(Self {
             configuration_id: stored.configuration_id,
-            event_transaction: stored.event_data.into(),
+            event_transaction: UInt256::from_be_bytes(&stored.event_transaction),
             event_transaction_lt: stored.event_transaction_lt,
             event_timestamp: stored.event_timestamp,
             event_index: stored.event_index,
@@ -789,6 +789,7 @@ impl TryFrom<ContractOutput> for EthEventDetails {
     }
 }
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize, Serialize)]
 pub enum EventType {
     ETH,

@@ -97,11 +97,11 @@ impl From<TonEventTransaction> for TonEthTransactionView {
 
 #[derive(Debug, Clone)]
 pub struct CommonReceivedVote<T, A> {
-    configuration_id: u32,
-    event_addr: MsgAddrStd,
-    relay: MsgAddrStd,
-    kind: Voting,
-    additional_data: T,
+    pub configuration_id: u32,
+    pub event_addr: MsgAddrStd,
+    pub relay: MsgAddrStd,
+    pub kind: Voting,
+    pub additional_data: T,
     _data: std::marker::PhantomData<A>,
 }
 
@@ -110,8 +110,8 @@ pub struct CommonReceivedVoteWithData<T, D>
 where
     D: ReceivedVoteEventData,
 {
-    info: CommonReceivedVote<T, D>,
-    data: D,
+    pub info: CommonReceivedVote<T, D>,
+    pub data: D,
 }
 
 pub type EthEventReceivedVote = CommonReceivedVote<u16, EthEventDetails>;
@@ -323,20 +323,13 @@ impl<T> RelayMetrics<'_, T> {
 #[derive(Debug, Clone)]
 pub struct EthEventsHandlerMetrics {
     pub configuration_id: u32,
-    pub pending_vote_count: usize,
-    pub failed_vote_count: usize,
     pub successful_vote_count: usize,
 }
 
 impl std::fmt::Display for RelayMetrics<'_, &'_ EthEventsHandlerMetrics> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let configuration_id = self.metrics.configuration_id;
-        self.begin_metric(f, "eth_pending_vote_count")
-            .label(LABEL_CONFIGURATION_ID, configuration_id)
-            .value(self.metrics.pending_vote_count)?;
-        self.begin_metric(f, "eth_failed_vote_count")
-            .label(LABEL_CONFIGURATION_ID, configuration_id)
-            .value(self.metrics.failed_vote_count)?;
+
         self.begin_metric(f, "eth_successful_vote_count")
             .label(LABEL_CONFIGURATION_ID, configuration_id)
             .value(self.metrics.successful_vote_count)
@@ -347,23 +340,17 @@ impl std::fmt::Display for RelayMetrics<'_, &'_ EthEventsHandlerMetrics> {
 pub struct TonEventsHandlerMetrics {
     pub configuration_id: u32,
     pub verification_queue_size: usize,
-    pub pending_vote_count: usize,
-    pub failed_vote_count: usize,
     pub successful_vote_count: usize,
 }
 
 impl std::fmt::Display for RelayMetrics<'_, &'_ TonEventsHandlerMetrics> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let configuration_id = self.metrics.configuration_id;
+
         self.begin_metric(f, "ton_verification_queue_size")
             .label(LABEL_CONFIGURATION_ID, configuration_id)
             .value(self.metrics.verification_queue_size)?;
-        self.begin_metric(f, "ton_pending_vote_count")
-            .label(LABEL_CONFIGURATION_ID, configuration_id)
-            .value(self.metrics.pending_vote_count)?;
-        self.begin_metric(f, "ton_failed_vote_count")
-            .label(LABEL_CONFIGURATION_ID, configuration_id)
-            .value(self.metrics.failed_vote_count)?;
+
         self.begin_metric(f, "ton_successful_vote_count")
             .label(LABEL_CONFIGURATION_ID, configuration_id)
             .value(self.metrics.successful_vote_count)
@@ -373,7 +360,12 @@ impl std::fmt::Display for RelayMetrics<'_, &'_ TonEventsHandlerMetrics> {
 #[derive(Debug, Clone)]
 pub struct BridgeMetrics {
     pub eth_verification_queue_size: usize,
+    pub eth_pending_vote_count: usize,
+    pub eth_failed_vote_count: usize,
     pub eth_event_handlers_metrics: Vec<EthEventsHandlerMetrics>,
+
+    pub ton_pending_vote_count: usize,
+    pub ton_failed_vote_count: usize,
     pub ton_event_handlers_metrics: Vec<TonEventsHandlerMetrics>,
 }
 
@@ -381,6 +373,12 @@ impl std::fmt::Display for RelayMetrics<'_, &'_ BridgeMetrics> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.begin_metric(f, "eth_verification_queue_size")
             .value(self.metrics.eth_verification_queue_size)?;
+
+        self.begin_metric(f, "eth_pending_vote_count")
+            .value(self.metrics.eth_pending_vote_count)?;
+
+        self.begin_metric(f, "eth_failed_vote_count")
+            .value(self.metrics.eth_failed_vote_count)?;
 
         for metrics in self.metrics.eth_event_handlers_metrics.iter() {
             std::fmt::Display::fmt(
@@ -391,6 +389,12 @@ impl std::fmt::Display for RelayMetrics<'_, &'_ BridgeMetrics> {
                 f,
             )?;
         }
+
+        self.begin_metric(f, "ton_pending_vote_count")
+            .value(self.metrics.ton_pending_vote_count)?;
+
+        self.begin_metric(f, "ton_failed_vote_count")
+            .value(self.metrics.ton_failed_vote_count)?;
 
         for metrics in self.metrics.ton_event_handlers_metrics.iter() {
             std::fmt::Display::fmt(

@@ -334,8 +334,8 @@ where
     }
 
     /// Returns successful vote count
-    pub fn get_successful_vote_count(&self) -> usize {
-        self.voting_stats.count_votes(&self.relay)
+    pub fn get_successful_vote_count(&self, configuration_id: u32) -> usize {
+        self.voting_stats.count_votes(configuration_id, &self.relay)
     }
 
     /// Compute event address based on its data

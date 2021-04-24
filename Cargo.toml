@@ -1,6 +1,6 @@
 [package]
 name = "relay"
-version = "1.0.11"
+version = "1.0.16"
 edition = "2018"
 authors = ["Broxus team"]
 publish = false
@@ -89,6 +89,7 @@ assets = [
 ]
 conf-files = ["/etc/relay.conf"]
 maintainer-scripts = "debian/"
+features = [ "graphql-transport", "tonlib-transport" ]
 
 [package.metadata.deb.systemd-units]
 unit-scripts = "debian/"

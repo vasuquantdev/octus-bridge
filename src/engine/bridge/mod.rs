@@ -3,7 +3,7 @@ use std::ops::Deref;
 
 use tokio::stream::StreamExt;
 
-use relay_eth::ws::{EthListener, Event, SyncedHeight};
+use relay_eth::{EthListener, Event, SyncedHeight};
 use relay_models::models::EventConfigurationView;
 use relay_ton::contracts::*;
 
@@ -157,32 +157,36 @@ impl Bridge {
                         BridgeContractEvent::EventConfigurationCreationEnd {
                             id,
                             address,
-                            active: true,
-                            event_type: EventType::ETH,
+                            active,
+                            event_type,
                         } => {
                             let bridge = bridge.clone();
                             tokio::spawn(async move {
-                                bridge
-                                    .subscribe_to_eth_events_configuration(id, address, None)
-                                    .await
-                            });
-                        }
-                        BridgeContractEvent::EventConfigurationCreationEnd {
-                            id,
-                            address,
-                            active: true,
-                            event_type: EventType::TON,
-                        } => {
-                            let bridge = bridge.clone();
-                            tokio::spawn(async move {
-                                bridge
-                                    .subscribe_to_ton_events_configuration(id, address)
-                                    .await
+                                match (event_type, active) {
+                                    (EventType::ETH, true) => {
+                                        bridge
+                                            .subscribe_to_eth_events_configuration(
+                                                id, address, None,
+                                            )
+                                            .await
+                                    }
+                                    (EventType::TON, true) => {
+                                        bridge
+                                            .subscribe_to_ton_events_configuration(id, address)
+                                            .await
+                                    }
+                                    (EventType::ETH, false) => {
+                                        bridge.unsubscribe_from_eth_events_configuration(id).await
+                                    }
+                                    (EventType::TON, false) => {
+                                        bridge.unsubscribe_from_ton_events_configuration(id).await
+                                    }
+                                }
                             });
                         }
                         BridgeContractEvent::EventConfigurationUpdateEnd {
                             id,
-                            active,
+                            active: true, // despite the fact that it is called `active`, it is responsible for voting result
                             address,
                             event_type,
                         } => {
@@ -191,32 +195,23 @@ impl Bridge {
                                 match event_type {
                                     EventType::ETH => {
                                         bridge.unsubscribe_from_eth_events_configuration(id).await;
+                                        bridge
+                                            .subscribe_to_eth_events_configuration(
+                                                id, address, None,
+                                            )
+                                            .await
                                     }
                                     EventType::TON => {
                                         bridge.unsubscribe_from_ton_events_configuration(id).await;
+                                        bridge
+                                            .subscribe_to_ton_events_configuration(id, address)
+                                            .await
                                     }
                                 };
-
-                                if active {
-                                    match event_type {
-                                        EventType::ETH => {
-                                            bridge
-                                                .subscribe_to_eth_events_configuration(
-                                                    id, address, None,
-                                                )
-                                                .await
-                                        }
-                                        EventType::TON => {
-                                            bridge
-                                                .subscribe_to_ton_events_configuration(id, address)
-                                                .await
-                                        }
-                                    }
-                                }
                             });
                         }
                         _ => {
-                            // TODO: handle other events
+                            // do nothing on other events
                         }
                     }
                 }
@@ -276,7 +271,7 @@ impl Bridge {
 
         // Enqueue new events from ETH
         while let Some(event) = eth_events_rx.next().await {
-            let event: relay_eth::ws::Event = match event {
+            let event: relay_eth::Event = match event {
                 Ok(event) => event,
                 Err(e) => {
                     log::error!("Failed parsing data from ethereum stream: {:?}", e);
@@ -419,6 +414,8 @@ impl Bridge {
 
     /// Get bridge metrics
     pub async fn get_metrics(&self) -> BridgeMetrics {
+        let eth_transport_metrics = self.eth.get_voting_queue_metrics();
+
         let eth_event_handlers_metrics = self
             .eth_event_handlers
             .read()
@@ -426,6 +423,8 @@ impl Bridge {
             .iter()
             .map(|(_, configuration)| configuration.get_metrics())
             .collect();
+
+        let ton_transport_metrics = self.ton.get_voting_queue_metrics();
 
         let ton_event_handlers_metrics = self
             .ton_event_handlers
@@ -437,7 +436,11 @@ impl Bridge {
 
         BridgeMetrics {
             eth_verification_queue_size: self.eth_verification_queue.len(),
+            eth_pending_vote_count: eth_transport_metrics.pending_vote_count,
+            eth_failed_vote_count: eth_transport_metrics.failed_vote_count,
             eth_event_handlers_metrics,
+            ton_pending_vote_count: ton_transport_metrics.pending_vote_count,
+            ton_failed_vote_count: ton_transport_metrics.failed_vote_count,
             ton_event_handlers_metrics,
         }
     }
@@ -575,12 +578,12 @@ impl Bridge {
                 }
             }
 
-            tokio::time::delay_for(Duration::from_secs(10)).await;
+            tokio::time::delay_for(self.configs.eth_settings.eth_poll_interval).await;
         }
     }
 
     // Validate event from ETH and vote for it
-    async fn process_eth_event(self: Arc<Self>, event: relay_eth::ws::Event) {
+    async fn process_eth_event(self: Arc<Self>, event: relay_eth::Event) {
         log::info!(
             "Received event from address: {}. Tx hash: {}.",
             &event.address,
