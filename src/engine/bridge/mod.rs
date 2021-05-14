@@ -1,8 +1,6 @@
 use std::collections::hash_map::Entry;
 use std::ops::Deref;
 
-use futures::StreamExt;
-
 use relay_eth::{EthListener, Event, SyncedHeight};
 use relay_models::models::EventConfigurationView;
 use relay_ton::contracts::*;

@@ -69,6 +69,7 @@ sodiumoxide = "0.2.6"
 secstr = "0.4.0"
 tiny-hderive = "0.3.0"
 tiny-bip39 = "0.8.0"
+tokio-stream = "0.1.5"
 
 [dev-dependencies]
 pretty_assertions = "0.6.1"
