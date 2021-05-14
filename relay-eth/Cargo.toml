@@ -6,13 +6,14 @@ edition = "2018"
 
 [dependencies]
 url = "2.1.1"
-web3 = { git = "https://github.com/tomusdrw/rust-web3", features = ["http-tls"], rev = "2bcd2db8633612a21ff84e4174bd1b6a5105b539" }
+web3 = { git = "https://github.com/tomusdrw/rust-web3", features = ["http-tls"] }
 log = "0.4.11"
-tokio = { version = "0.2", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1.5"
 anyhow = "1.0.33"
 futures = "0.3.6"
 serde = { version = "1.0.117", features = ["derive"] }
 serde_json = "1.0.59"
 sled = "0.34.5"
 sha3 = "0.9.1"
-ethabi = "12.0.0"
+ethabi = "14.0.0"

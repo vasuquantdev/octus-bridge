@@ -207,7 +207,7 @@ where
                 };
 
                 if api_error_occurred {
-                    tokio::time::delay_for(retry_delay).await;
+                    tokio::time::sleep(retry_delay).await;
                     api_error_occurred = false;
                 }
 

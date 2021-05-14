@@ -1,7 +1,7 @@
 use std::collections::hash_map::Entry;
 use std::ops::Deref;
 
-use tokio::stream::StreamExt;
+use futures::StreamExt;
 
 use relay_eth::{EthListener, Event, SyncedHeight};
 use relay_models::models::EventConfigurationView;
@@ -578,7 +578,7 @@ impl Bridge {
                 }
             }
 
-            tokio::time::delay_for(self.configs.eth_settings.eth_poll_interval).await;
+            tokio::time::sleep(self.configs.eth_settings.eth_poll_interval).await;
         }
     }
 

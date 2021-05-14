@@ -70,7 +70,7 @@ pub async fn run(config: RelayConfig) -> Result<(), Error> {
             }
 
             log::info!("Waiting for graceful shutdown...");
-            tokio::time::delay_for(tokio::time::Duration::from_secs(2)).await;
+            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
             std::process::exit(0);
         })
     };

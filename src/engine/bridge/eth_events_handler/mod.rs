@@ -64,7 +64,7 @@ impl EthEventsHandler {
                         e,
                         attempts_count
                     );
-                    tokio::time::delay_for(ton_config.events_handler_interval).await;
+                    tokio::time::sleep(ton_config.events_handler_interval).await;
                     if attempts_count == 0 {
                         log::error!("Failed creating eth config contract. Giving up.")
                     }

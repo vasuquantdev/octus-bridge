@@ -64,7 +64,7 @@ impl TonEventsHandler {
                         e,
                         attempts_count
                     );
-                    tokio::time::delay_for(ton_config.events_handler_interval).await;
+                    tokio::time::sleep(ton_config.events_handler_interval).await;
                     if attempts_count == 0 {
                         log::error!("Failed creating ton config contract. Giving up.")
                     }
@@ -339,7 +339,7 @@ impl TonEventsHandler {
                 }
             }
 
-            tokio::time::delay_for(interval).await;
+            tokio::time::sleep(interval).await;
         });
     }
 
@@ -359,7 +359,7 @@ impl TonEventsHandler {
                         return;
                     }
                     log::error!("Failed to compute address for restored event: {:?}. Retrying. {} attempts left", e, counter);
-                    tokio::time::delay_for(Duration::from_secs(10)).await;
+                    tokio::time::sleep(Duration::from_secs(10)).await;
                     counter -= 1;
                 }
             }

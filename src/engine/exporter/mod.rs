@@ -29,7 +29,10 @@ pub async fn serve(
 
         async move {
             loop {
-                if matches!(stop_rx.try_recv(), Ok(_) | Err(oneshot::error::TryRecvError::Closed)) {
+                if matches!(
+                    stop_rx.try_recv(),
+                    Ok(_) | Err(oneshot::error::TryRecvError::Closed)
+                ) {
                     return;
                 }
 
@@ -56,7 +59,7 @@ pub async fn serve(
 
                 exporter.acquire_buffer().await.write(metrics);
 
-                tokio::time::delay_for(collection_interval).await;
+                tokio::time::sleep(collection_interval).await;
             }
         }
     });
