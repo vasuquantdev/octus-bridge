@@ -214,7 +214,9 @@ impl TonEventsHandler {
         let handler = Arc::downgrade(&self);
 
         tokio::spawn(async move {
-            while let Some(event) = config_contract_events.next().await {
+            let mut stream =
+                tokio_stream::wrappers::UnboundedReceiverStream::new(config_contract_events);
+            while let Some(event) = stream.next().await {
                 match handler.upgrade() {
                     // Handle event if handler is still alive
                     Some(handler) => handler.handle_vote(event, None),

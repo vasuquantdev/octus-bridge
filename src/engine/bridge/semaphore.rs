@@ -55,7 +55,7 @@ impl Semaphore {
 
         let guard = self.guard.read().await;
         if *counter >= guard.target && guard.allow_notify {
-            self.done.notify();
+            self.done.notify_one(); //todo behaviour looks same like in tokio 0.2, but check is needed
         }
     }
 }
