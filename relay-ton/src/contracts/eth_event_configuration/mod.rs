@@ -72,7 +72,8 @@ impl EthEventConfigurationContract {
         since_lt: Option<u64>,
         until_lt: u64,
     ) -> BoxStream<'_, EthEventConfigurationContractEvent> {
-        self.subscription
+        let stream = self
+            .subscription
             .rescan_events(since_lt, Some(until_lt + 1))
             .filter_map(move |event_body| async move {
                 match event_body
@@ -85,8 +86,8 @@ impl EthEventConfigurationContract {
                         None
                     }
                 }
-            })
-            .boxed()
+            });
+        stream.boxed()
     }
 
     pub async fn compute_event_address(

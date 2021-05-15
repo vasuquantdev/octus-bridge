@@ -5,13 +5,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, Error};
-use futures::Stream;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
 use sled::{Db, Tree};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::sync::RwLock;
 use tokio::sync::Semaphore;
+use tokio_stream::Stream;
 use url::Url;
 use web3::transports::http::Http;
 pub use web3::types::SyncState;

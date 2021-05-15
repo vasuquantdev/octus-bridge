@@ -13,12 +13,12 @@ pub(crate) use async_trait::async_trait;
 pub(crate) use chrono::Utc;
 pub(crate) use ed25519_dalek::Keypair;
 pub(crate) use futures::future::{BoxFuture, Future, FutureExt};
+pub(crate) use futures::{Stream, StreamExt};
 pub(crate) use num_bigint::{BigInt, BigUint};
 pub(crate) use once_cell::sync::OnceCell;
 pub(crate) use serde::{Deserialize, Serialize};
 pub(crate) use sled::Db;
 pub(crate) use tokio::sync::{mpsc, oneshot, RwLock};
-pub(crate) use tokio_stream::{Stream, StreamExt};
 pub use ton_abi::{Contract as AbiContract, Event as AbiEvent, Function as AbiFunction};
 pub use ton_block::{MsgAddrStd, MsgAddressInt};
 pub use ton_types::{serialize_toc, BuilderData, Cell, SliceData, UInt256};
@@ -206,13 +206,3 @@ pub mod serde_cells {
 }
 
 pub type BoxStream<'a, T> = Pin<Box<dyn Stream<Item = T> + 'a + Send>>;
-
-/// adds boxing for tokio streams
-pub trait TokioBoxed: Stream {
-    fn boxed<'a>(self) -> BoxStream<'a, <Self as Stream>::Item>
-    where
-        Self: Sized + Send + 'a,
-    {
-        Box::pin(self)
-    }
-}
