@@ -35,23 +35,6 @@ pub enum EventConfigurationType {
     Ton,
 }
 
-#[derive(Debug, Clone)]
-pub struct VoteDataView {
-    pub signature: Vec<u8>,
-}
-
-impl VoteDataView {
-    pub fn reject() -> Self {
-        Self {
-            signature: Vec::new(),
-        }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.signature.is_empty()
-    }
-}
-
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize, OpgModel)]
 pub struct BridgeConfigurationView {
     pub nonce: u16,

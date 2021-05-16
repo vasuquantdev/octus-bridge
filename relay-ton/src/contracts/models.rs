@@ -364,12 +364,6 @@ pub struct VoteData {
 }
 
 impl VoteData {
-    pub fn reject() -> Self {
-        Self {
-            signature: Vec::new(),
-        }
-    }
-
     pub fn is_empty(&self) -> bool {
         self.signature.is_empty()
     }
