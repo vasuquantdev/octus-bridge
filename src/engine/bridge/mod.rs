@@ -623,7 +623,7 @@ impl Bridge {
                 .topics
                 .iter()
                 .map(|topic_id| state.topic_abi_map.get(topic_id))
-                .filter_map(|x| x)
+                .flatten()
                 .map(|x| ethabi::decode(x, &event.data).map(|values| (x.as_slice(), values)))
                 // Taking first element, cause topics and abi shouldn't overlap more than once
                 .next();

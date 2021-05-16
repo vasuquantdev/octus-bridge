@@ -196,6 +196,8 @@ where
                 // Wait for prepared delay on failure
                 delay.await;
             } else if let Some(rx_fut) = rx.take() {
+                tokio::pin!(delay);
+
                 // Handle future results
                 match future::select(rx_fut, delay).await {
                     // Got cancellation notification

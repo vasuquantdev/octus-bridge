@@ -207,7 +207,7 @@ impl TonEventsHandler {
 
     fn start_listening_vote_events(
         self: &Arc<Self>,
-        mut config_contract_events: EventsRx<
+        config_contract_events: EventsRx<
             <TonEventConfigurationContract as ContractWithEvents>::Event,
         >,
     ) {

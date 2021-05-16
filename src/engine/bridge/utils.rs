@@ -650,8 +650,8 @@ mod test {
             map_eth_to_ton_with_abi(
                 eth,
                 &ethabi::ParamType::Tuple(vec![
-                    Box::new(ethabi::ParamType::Uint(256)),
-                    Box::new(ethabi::ParamType::Bytes)
+                    ethabi::ParamType::Uint(256),
+                    ethabi::ParamType::Bytes
                 ]),
             )
             .unwrap(),

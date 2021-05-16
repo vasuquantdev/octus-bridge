@@ -300,7 +300,7 @@ impl EthListener {
                         None
                     }
                 })
-                .filter_map(|x| x)
+                .flatten()
                 .collect())
         }
         let ok_topic = self.relay_keys_function_to_topic_map["OwnershipGranted"];
