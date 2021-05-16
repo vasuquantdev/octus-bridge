@@ -153,7 +153,7 @@ pub fn map_eth_abi_param(param: &EthParamType) -> Result<TonParamType, Error> {
                 .map(|item| {
                     Ok(ton_abi::Param {
                         name: String::new(),
-                        kind: map_eth_abi_param(item.as_ref())?,
+                        kind: map_eth_abi_param(&item)?,
                     })
                 })
                 .collect::<Result<Vec<ton_abi::Param>, Error>>()?,
@@ -266,9 +266,7 @@ pub fn map_ton_to_eth_with_abi(
                 tokens
                     .into_iter()
                     .zip(params.into_iter())
-                    .map(|(ton, eth_param_type)| {
-                        map_ton_to_eth_with_abi(ton.value, *eth_param_type)
-                    })
+                    .map(|(ton, eth_param_type)| map_ton_to_eth_with_abi(ton.value, eth_param_type))
                     .collect::<Result<_, _>>()?,
             )
         }

@@ -109,7 +109,13 @@ pub async fn make_bridge(
 
     tokio::spawn({
         let bridge = bridge.clone();
-        async move { bridge.run(bridge_contract_events).await }
+        async move {
+            bridge
+                .run(tokio_stream::wrappers::UnboundedReceiverStream::new(
+                    bridge_contract_events,
+                ))
+                .await
+        }
     });
 
     Ok(bridge)
