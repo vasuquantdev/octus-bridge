@@ -256,9 +256,9 @@ checksum = "8d696c370c750c948ada61c69a0ee2cbbb9c50b1019ddb86d9317157a99c2cae"
 
 [[package]]
 name = "borsh"
-version = "0.8.2"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09a7111f797cc721407885a323fb071636aee57f750b1a4ddc27397eba168a74"
+checksum = "4fcabb02816fdadf90866dc9a7824491ccb63d69f55375a266dc03509ac68d36"
 dependencies = [
  "borsh-derive",
  "hashbrown",
@@ -266,9 +266,9 @@ dependencies = [
 
 [[package]]
 name = "borsh-derive"
-version = "0.8.2"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "307f3740906bac2c118a8122fe22681232b244f1369273e45f1156b45c43d2dd"
+checksum = "4bd16f0729b89f0a212b0e2e1d19cc6593df63f771161a11863967780e2d033d"
 dependencies = [
  "borsh-derive-internal",
  "borsh-schema-derive-internal",
@@ -279,9 +279,9 @@ dependencies = [
 
 [[package]]
 name = "borsh-derive-internal"
-version = "0.8.2"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2104c73179359431cc98e016998f2f23bc7a05bc53e79741bcba705f30047bc"
+checksum = "1e321a130a3ac4b88eb59a6d670bde11eec9721a397b77e0f2079060e2a1b785"
 dependencies = [
  "proc-macro2 1.0.26",
  "quote 1.0.9",
@@ -290,9 +290,9 @@ dependencies = [
 
 [[package]]
 name = "borsh-schema-derive-internal"
-version = "0.8.2"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae29eb8418fcd46f723f8691a2ac06857d31179d33d2f2d91eb13967de97c728"
+checksum = "15151a485164b319cc7a5160fe4316dc469a27993f71b73d7617dc9032ff0fd7"
 dependencies = [
  "proc-macro2 1.0.26",
  "quote 1.0.9",
@@ -693,6 +693,12 @@ dependencies = [
  "tempfile",
  "zeroize",
 ]
+
+[[package]]
+name = "diff"
+version = "0.1.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e25ea47919b1560c4e3b7fe0aaab9becf5b84a10325ddf7db0f0ba5e1026499"
 
 [[package]]
 name = "difference"
@@ -2072,13 +2078,13 @@ dependencies = [
 
 [[package]]
 name = "pretty_assertions"
-version = "0.6.1"
+version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f81e1644e1b54f5a68959a29aa86cde704219254669da328ecfdf6a1f09d427"
+checksum = "1cab0e7c02cf376875e9335e0ba1da535775beb5450d21e1dffca068818ed98b"
 dependencies = [
- "ansi_term 0.11.0",
+ "ansi_term 0.12.1",
  "ctor",
- "difference",
+ "diff",
  "output_vt100",
 ]
 
@@ -2418,7 +2424,7 @@ checksum = "f497285884f3fcff424ffc933e56d7cbca511def0c9831a7f9b5f6153e3cc89b"
 
 [[package]]
 name = "relay"
-version = "1.0.16"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2439,7 +2445,7 @@ dependencies = [
  "num-bigint",
  "num-traits 0.2.14",
  "opg",
- "pretty_assertions 0.6.1",
+ "pretty_assertions 0.7.2",
  "rand 0.6.5",
  "relay-eth",
  "relay-models",
@@ -2671,9 +2677,9 @@ checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
 
 [[package]]
 name = "secp256k1"
-version = "0.19.0"
+version = "0.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6179428c22c73ac0fbb7b5579a56353ce78ba29759b3b8575183336ea74cdfb"
+checksum = "ee5070fdc6f26ca5be6dcfc3d07c76fdb974a63a8b246b459854274145f5a258"
 dependencies = [
  "rand 0.6.5",
  "secp256k1-sys",
@@ -2681,9 +2687,9 @@ dependencies = [
 
 [[package]]
 name = "secp256k1-sys"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11553d210db090930f4432bea123b31f70bbf693ace14504ea2a35e796c28dd2"
+checksum = "67e4b6455ee49f5901c8985b88f98fb0a0e1d90a6661f5a03f4888bd987dad29"
 dependencies = [
  "cc",
 ]
