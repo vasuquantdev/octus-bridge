@@ -30,7 +30,7 @@ impl MetricsExporter {
     where
         's: 'a,
     {
-        let next_buffer = (self.current_buffer.load(Ordering::Relaxed) + 1) % BUFFER_COUNT;
+        let next_buffer = (self.current_buffer.load(Ordering::Acquire) + 1) % BUFFER_COUNT;
         let mut buffer_guard = self.buffers[next_buffer].write().await;
         buffer_guard.clear();
         MetricsBuffer {
@@ -41,7 +41,7 @@ impl MetricsExporter {
     }
 
     pub async fn get_metrics(&self) -> String {
-        self.buffers[self.current_buffer.load(Ordering::Relaxed)]
+        self.buffers[self.current_buffer.load(Ordering::Acquire)]
             .read()
             .await
             .clone()
@@ -105,7 +105,7 @@ impl<'a> MetricsBuffer<'a> {
 impl<'a> Drop for MetricsBuffer<'a> {
     fn drop(&mut self) {
         self.current_buffer
-            .store(self.next_buffer, Ordering::Relaxed);
+            .store(self.next_buffer, Ordering::Release);
     }
 }
 

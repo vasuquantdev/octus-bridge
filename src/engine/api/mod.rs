@@ -32,40 +32,47 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, shutdown_sign
 
     let swagger = warp::path!("swagger.yaml")
         .and(warp::get())
-        .map(docs::swagger);
+        .map(docs::swagger)
+        .boxed();
 
     let init = warp::path!("init")
         .and(warp::post())
         .and(json_data::<InitData>())
         .and(state.clone())
-        .and_then(|data, (state, config)| wait_for_init(data, config, state));
+        .and_then(|data, (state, config)| wait_for_init(data, config, state))
+        .boxed();
 
     let unlock = warp::path!("unlock")
         .and(warp::post())
         .and(json_data::<Password>())
         .and(state.clone())
-        .and_then(|data, (state, config)| wait_for_password(data, config, state));
+        .and_then(|data, (state, config)| wait_for_password(data, config, state))
+        .boxed();
 
     let retry_failed = warp::path!("retry-failed")
         .and(warp::post())
         .and(state.clone())
-        .and_then(|(state, _)| status::retry_failed(state));
+        .and_then(|(state, _)| status::retry_failed(state))
+        .boxed();
 
     let rescan_eth = warp::path!("rescan-eth")
         .and(warp::post())
         .and(json_data::<RescanEthData>())
         .and(state.clone())
-        .and_then(|data, (state, _)| set_eth_block_height(state, data));
+        .and_then(|data, (state, _)| set_eth_block_height(state, data))
+        .boxed();
 
     let status = warp::path!("status")
         .and(warp::get())
         .and(state.clone())
-        .and_then(|(state, _)| status::get_status(state));
+        .and_then(|(state, _)| status::get_status(state))
+        .boxed();
 
     let get_event_configurations = warp::path!("event-configurations")
         .and(warp::get())
         .and(state.clone())
-        .and_then(|(state, _)| get_event_configurations(state));
+        .and_then(|(state, _)| get_event_configurations(state))
+        .boxed();
 
     // TODO: add request for getting event configuration by id
 
@@ -73,37 +80,43 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, shutdown_sign
         .and(warp::post())
         .and(json_data::<NewEventConfiguration>())
         .and(state.clone())
-        .and_then(|data, (state, _)| create_event_configuration(state, data));
+        .and_then(|data, (state, _)| create_event_configuration(state, data))
+        .boxed();
 
     let vote_for_event_configuration = warp::path!("event-configurations" / "vote")
         .and(warp::post())
         .and(json_data::<Voting>())
         .and(state.clone())
-        .and_then(|data, (state, _)| vote_for_event_configuration(state, data));
+        .and_then(|data, (state, _)| vote_for_event_configuration(state, data))
+        .boxed();
 
     let pending_transactions_eth_to_ton = warp::path!("eth-to-ton" / "pending")
         .and(warp::get())
         .and(state.clone())
         .and_then(|(state, _)| {
             status::pending::<EthEventVoteData, EthEventVoteData, EthTonTransactionView>(state)
-        });
+        })
+        .boxed();
 
     let failed_transactions_eth_to_ton = warp::path!("eth-to-ton" / "failed")
         .and(warp::get())
         .and(state.clone())
         .and_then(|(state, _)| {
             status::failed::<EthEventVoteData, EthEventVoteData, EthTonTransactionView>(state)
-        });
+        })
+        .boxed();
 
     let queued_transactions_eth_to_ton = warp::path!("eth-to-ton" / "queued")
         .and(warp::get())
         .and(state.clone())
-        .and_then(|(state, _)| status::eth_queue(state));
+        .and_then(|(state, _)| status::eth_queue(state))
+        .boxed();
 
     let eth_relay_stats = warp::path!("eth-to-ton" / "stats")
         .and(warp::get())
         .and(state.clone())
-        .and_then(|(state, _)| status::eth_relay_stats(state));
+        .and_then(|(state, _)| status::eth_relay_stats(state))
+        .boxed();
 
     let pending_transactions_ton_to_eth = warp::path!("ton-to-eth" / "pending")
         .and(warp::get())
@@ -112,30 +125,35 @@ pub async fn serve(config: RelayConfig, state: Arc<RwLock<State>>, shutdown_sign
             status::pending::<SignedTonEventVoteData, TonEventVoteData, TonEthTransactionView>(
                 state,
             )
-        });
+        })
+        .boxed();
 
     let failed_transactions_ton_to_eth = warp::path!("ton-to-eth" / "failed")
         .and(warp::get())
         .and(state.clone())
         .and_then(|(state, _)| {
             status::failed::<SignedTonEventVoteData, TonEventVoteData, TonEthTransactionView>(state)
-        });
+        })
+        .boxed();
 
     let queued_transactions_ton_to_eth = warp::path!("ton-to-eth" / "queued" / u32)
         .and(warp::get())
         .and(state.clone())
-        .and_then(|configuration_id, (state, _)| status::ton_queue(state, configuration_id));
+        .and_then(|configuration_id, (state, _)| status::ton_queue(state, configuration_id))
+        .boxed();
 
     let ton_relay_stats = warp::path!("ton-to-eth" / "stats")
         .and(warp::get())
         .and(state.clone())
-        .and_then(|(state, _)| status::ton_relay_stats(state));
+        .and_then(|(state, _)| status::ton_relay_stats(state))
+        .boxed();
 
     let update_bridge_configuration = warp::path!("update-bridge-configuration")
         .and(warp::post())
         .and(state.clone())
         .and(json_data::<BridgeConfigurationView>())
-        .and_then(|(state, _), data| update_bridge_configuration(state, data));
+        .and_then(|(state, _), data| update_bridge_configuration(state, data))
+        .boxed();
 
     let routes = swagger
         .or(init)
