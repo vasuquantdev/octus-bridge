@@ -175,7 +175,7 @@ where
         // Send a message with several retries on failure
         let result = loop {
             // Prepare delay future
-            let delay = tokio::time::delay_for(retries_interval);
+            let delay = tokio::time::sleep(retries_interval);
             retries_interval = std::time::Duration::from_secs_f64(
                 retries_interval.as_secs_f64() * self.settings.message_retry_interval_multiplier,
             );
@@ -196,6 +196,8 @@ where
                 // Wait for prepared delay on failure
                 delay.await;
             } else if let Some(rx_fut) = rx.take() {
+                tokio::pin!(delay);
+
                 // Handle future results
                 match future::select(rx_fut, delay).await {
                     // Got cancellation notification
@@ -430,7 +432,7 @@ where
                         config_contract.address(),
                         retry_count
                     );
-                    tokio::time::delay_for(retry_interval).await;
+                    tokio::time::sleep(retry_interval).await;
                 }
                 Err(e) => {
                     break Err(anyhow!(
@@ -464,7 +466,7 @@ where
                         address,
                         retry_count
                     );
-                    tokio::time::delay_for(retry_interval).await;
+                    tokio::time::sleep(retry_interval).await;
                 }
                 Err(e) => break Err(e),
             };

@@ -55,7 +55,7 @@ impl Semaphore {
 
         let guard = self.guard.read().await;
         if *counter >= guard.target && guard.allow_notify {
-            self.done.notify();
+            self.done.notify_one(); //todo behaviour looks same like in tokio 0.2, but check is needed
         }
     }
 }
@@ -95,7 +95,7 @@ mod tests {
                 let semaphore = semaphore.clone();
                 async move {
                     println!("Task {} started", i);
-                    time::delay_for(Duration::from_secs(i)).await;
+                    time::sleep(Duration::from_secs(i)).await;
                     println!("Task {} complete", i);
                     semaphore.notify().await;
                 }
@@ -110,7 +110,7 @@ mod tests {
         let semaphore = Semaphore::new_empty();
         let target_count = spawn_tasks(semaphore.clone());
 
-        time::delay_for(Duration::from_secs(7)).await;
+        time::sleep(Duration::from_secs(7)).await;
         println!("Waiting...");
         semaphore.wait_count(target_count).await;
         println!("Done");
@@ -121,7 +121,7 @@ mod tests {
         let semaphore = Semaphore::new_empty();
         let target_count = spawn_tasks(semaphore.clone());
 
-        time::delay_for(Duration::from_secs(11)).await;
+        time::sleep(Duration::from_secs(11)).await;
         println!("Waiting...");
         semaphore.wait_count(target_count).await;
         println!("Done");

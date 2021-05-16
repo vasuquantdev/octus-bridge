@@ -215,7 +215,7 @@ where
                     None => return,
                 };
 
-                tokio::time::delay_for(interval).await;
+                tokio::time::sleep(interval).await;
 
                 let (stats, account_state) = match subscription
                     .client

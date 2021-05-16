@@ -153,7 +153,7 @@ pub fn map_eth_abi_param(param: &EthParamType) -> Result<TonParamType, Error> {
                 .map(|item| {
                     Ok(ton_abi::Param {
                         name: String::new(),
-                        kind: map_eth_abi_param(item.as_ref())?,
+                        kind: map_eth_abi_param(&item)?,
                     })
                 })
                 .collect::<Result<Vec<ton_abi::Param>, Error>>()?,
@@ -234,7 +234,7 @@ pub fn map_ton_to_eth_with_abi(
             EthTokenValue::Int(ethabi::Int::from_little_endian(&bytes))
         }
         (TonTokenValue::Bytes(a), EthParamType::Address) if a.len() == 20 => {
-            EthTokenValue::Address(ethereum_types::Address::from_slice(&a))
+            EthTokenValue::Address(relay_eth::Address::from_slice(&a))
         }
         (TonTokenValue::Bytes(a), EthParamType::String) => {
             EthTokenValue::String(String::from_utf8(a)?)
@@ -266,9 +266,7 @@ pub fn map_ton_to_eth_with_abi(
                 tokens
                     .into_iter()
                     .zip(params.into_iter())
-                    .map(|(ton, eth_param_type)| {
-                        map_ton_to_eth_with_abi(ton.value, *eth_param_type)
-                    })
+                    .map(|(ton, eth_param_type)| map_ton_to_eth_with_abi(ton.value, eth_param_type))
                     .collect::<Result<_, _>>()?,
             )
         }
@@ -652,8 +650,8 @@ mod test {
             map_eth_to_ton_with_abi(
                 eth,
                 &ethabi::ParamType::Tuple(vec![
-                    Box::new(ethabi::ParamType::Uint(256)),
-                    Box::new(ethabi::ParamType::Bytes)
+                    ethabi::ParamType::Uint(256),
+                    ethabi::ParamType::Bytes
                 ]),
             )
             .unwrap(),

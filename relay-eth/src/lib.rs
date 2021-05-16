@@ -5,20 +5,19 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, Error};
-use futures::stream::Stream;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
 use sled::{Db, Tree};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::sync::RwLock;
 use tokio::sync::Semaphore;
+use tokio_stream::Stream;
 use url::Url;
 use web3::transports::http::Http;
 pub use web3::types::SyncState;
 pub use web3::types::{Address, BlockNumber, H256};
-use web3::types::{FilterBuilder, Log, H160};
+pub use web3::types::{FilterBuilder, Log, H160};
 use web3::{Transport, Web3};
-
 const ETH_TREE_NAME: &str = "ethereum_data";
 const ETH_LAST_MET_HEIGHT: &str = "last_met_height";
 
@@ -249,7 +248,7 @@ impl EthListener {
                 }
                 Err(e) => {
                     log::error!("Failed fetching info from eth node: {}", e);
-                    tokio::time::delay_for(self.timeouts.get_eth_data_timeout).await;
+                    tokio::time::sleep(self.timeouts.get_eth_data_timeout).await;
                 }
             }
         }
@@ -283,7 +282,7 @@ impl EthListener {
                                     log::error!("No addresses in data");
                                     None
                                 } else {
-                                    Some(a[0].clone().to_address().map(|x| H160::from(x.0)))
+                                    Some(a[0].clone().into_address().map(|x| H160::from(x.0)))
                                 }
                             }
                             Err(e) => {
@@ -301,7 +300,7 @@ impl EthListener {
                         None
                     }
                 })
-                .filter_map(|x| x)
+                .flatten()
                 .collect())
         }
         let ok_topic = self.relay_keys_function_to_topic_map["OwnershipGranted"];
@@ -422,7 +421,7 @@ impl EthListener {
                         {
                             Some(a) => return Ok(SyncedHeight::Synced(a)),
                             None => {
-                                tokio::time::delay_for(self.timeouts.eth_poll_interval).await;
+                                tokio::time::sleep(self.timeouts.eth_poll_interval).await;
                                 continue;
                             }
                         }
@@ -434,7 +433,7 @@ impl EthListener {
                         return Err(Error::new(e).context("Failed getting eth syncing status"));
                     }
                     counter -= 1;
-                    tokio::time::delay_for(self.timeouts.get_eth_data_timeout).await;
+                    tokio::time::sleep(self.timeouts.get_eth_data_timeout).await;
                 }
             }
         }
@@ -465,7 +464,7 @@ fn spawn_blocks_scanner(
                 {
                     Some(a) => break a,
                     None => {
-                        tokio::time::delay_for(timeouts.eth_poll_interval).await;
+                        tokio::time::sleep(timeouts.eth_poll_interval).await;
                         log::debug!("Failed getting actual ethereum height. Retrying");
                         continue;
                     }
@@ -475,7 +474,7 @@ fn spawn_blocks_scanner(
             let mut loaded_height = scanned_height.load(Ordering::SeqCst);
             // sleeping in case of synchronization with eth
             if loaded_height >= ethereum_actual_height {
-                tokio::time::delay_for(timeouts.eth_poll_interval).await;
+                tokio::time::sleep(timeouts.eth_poll_interval).await;
                 continue;
             }
             // batch processing all blocks from `loaded_height` to `ethereum_actual_height`
@@ -507,11 +506,10 @@ fn spawn_blocks_scanner(
             scanned_height.store(loaded_height, Ordering::SeqCst);
             log::trace!("Scanned height: {}", scanned_height.load(Ordering::SeqCst));
 
-            tokio::time::delay_for(timeouts.eth_poll_interval).await;
+            tokio::time::sleep(timeouts.eth_poll_interval).await;
         }
     });
-
-    events_rx
+    tokio_stream::wrappers::UnboundedReceiverStream::new(events_rx)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -582,7 +580,7 @@ async fn process_block(
                     from,
                     attempts_number
                 );
-                tokio::time::delay_for(sleep_time).await;
+                tokio::time::sleep(sleep_time).await;
             }
         };
     }

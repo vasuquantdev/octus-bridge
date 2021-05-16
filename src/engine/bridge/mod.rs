@@ -1,8 +1,6 @@
 use std::collections::hash_map::Entry;
 use std::ops::Deref;
 
-use tokio::stream::StreamExt;
-
 use relay_eth::{EthListener, Event, SyncedHeight};
 use relay_models::models::EventConfigurationView;
 use relay_ton::contracts::*;
@@ -111,7 +109,13 @@ pub async fn make_bridge(
 
     tokio::spawn({
         let bridge = bridge.clone();
-        async move { bridge.run(bridge_contract_events).await }
+        async move {
+            bridge
+                .run(tokio_stream::wrappers::UnboundedReceiverStream::new(
+                    bridge_contract_events,
+                ))
+                .await
+        }
     });
 
     Ok(bridge)
@@ -578,7 +582,7 @@ impl Bridge {
                 }
             }
 
-            tokio::time::delay_for(self.configs.eth_settings.eth_poll_interval).await;
+            tokio::time::sleep(self.configs.eth_settings.eth_poll_interval).await;
         }
     }
 
@@ -619,7 +623,7 @@ impl Bridge {
                 .topics
                 .iter()
                 .map(|topic_id| state.topic_abi_map.get(topic_id))
-                .filter_map(|x| x)
+                .flatten()
                 .map(|x| ethabi::decode(x, &event.data).map(|values| (x.as_slice(), values)))
                 // Taking first element, cause topics and abi shouldn't overlap more than once
                 .next();

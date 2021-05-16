@@ -82,10 +82,7 @@ impl BridgeContract {
         self.message("getDetails")?.run_local().await?.parse_first()
     }
 
-    pub async fn get_ethereum_account(
-        &self,
-        relay: MsgAddressInt,
-    ) -> ContractResult<ethereum_types::Address> {
+    pub async fn get_ethereum_account(&self, relay: MsgAddressInt) -> ContractResult<EthAddress> {
         self.message("getEthereumAccount")?
             .arg(relay)
             .run_local()

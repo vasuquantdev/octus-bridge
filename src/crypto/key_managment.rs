@@ -177,7 +177,7 @@ impl EthSigner {
     }
 
     ///getting address according to https://github.com/ethereumbook/ethereumbook/blob/develop/04keys-addresses.asciidoc#public-keys
-    pub fn address(&self) -> ethereum_types::Address {
+    pub fn address(&self) -> Address {
         let pub_key = &self.pubkey.serialize_uncompressed()[1..];
         Address::from_slice(&sha3::Keccak256::digest(&pub_key).as_slice()[32 - 20..])
     }
@@ -336,6 +336,7 @@ mod test {
     use secstr::SecStr;
 
     use crate::crypto::key_managment::{EthSigner, KeyData};
+    use crate::prelude::*;
 
     fn default_keys() -> (SecretKey, ed25519_dalek::Keypair) {
         let eth_private_key = SecretKey::from_slice(
@@ -439,8 +440,7 @@ mod test {
             private_key: key,
         };
         let address = signer.address();
-        let expected =
-            ethereum_types::Address::from_str("9c5a095ae311cad1b09bc36ac8635f4ed4765dcf").unwrap();
+        let expected = EthAddress::from_str("9c5a095ae311cad1b09bc36ac8635f4ed4765dcf").unwrap();
         assert_eq!(address, expected);
     }
 }

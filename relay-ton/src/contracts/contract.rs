@@ -37,10 +37,7 @@ pub trait ContractWithEvents: Contract + Sized {
     }
 }
 
-pub fn start_processing_events<T>(
-    contract: &Arc<T>,
-    mut events_rx: RawEventsRx,
-) -> EventsRx<T::Event>
+pub fn start_processing_events<T>(contract: &Arc<T>, events_rx: RawEventsRx) -> EventsRx<T::Event>
 where
     T: ContractWithEvents,
 {
@@ -49,7 +46,8 @@ where
     let this = Arc::downgrade(contract);
     let (tx, rx) = mpsc::unbounded_channel();
     tokio::spawn(async move {
-        while let Some(body) = events_rx.next().await {
+        let mut stream = tokio_stream::wrappers::UnboundedReceiverStream::new(events_rx);
+        while let Some(body) = stream.next().await {
             let _this = match this.upgrade() {
                 Some(this) => this,
                 _ => return,

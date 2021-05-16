@@ -12,8 +12,8 @@ relay-models = { path = "../relay-models" }
 anyhow = "1.0"
 chrono = "0.4"
 clap = "3.0.0-beta.2"
-dialoguer = "0.7"
-reqwest = { version = "0.10", features = ["blocking", "json"] }
+dialoguer = "0.8.0"
+reqwest = { version = "0.11", features = ["blocking", "json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
 colored_json = "2"

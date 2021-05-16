@@ -11,15 +11,14 @@ pub(crate) use std::sync::Arc;
 
 pub(crate) use async_trait::async_trait;
 pub(crate) use chrono::Utc;
+pub(crate) use ed25519_dalek::Keypair;
 pub(crate) use futures::future::{BoxFuture, Future, FutureExt};
-pub(crate) use futures::stream::{BoxStream, Stream, StreamExt};
+pub(crate) use futures::{Stream, StreamExt};
 pub(crate) use num_bigint::{BigInt, BigUint};
 pub(crate) use once_cell::sync::OnceCell;
 pub(crate) use serde::{Deserialize, Serialize};
 pub(crate) use sled::Db;
 pub(crate) use tokio::sync::{mpsc, oneshot, RwLock};
-
-pub use ed25519_dalek::Keypair;
 pub use ton_abi::{Contract as AbiContract, Event as AbiEvent, Function as AbiFunction};
 pub use ton_block::{MsgAddrStd, MsgAddressInt};
 pub use ton_types::{serialize_toc, BuilderData, Cell, SliceData, UInt256};
@@ -179,8 +178,9 @@ impl std::convert::AsRef<[u8]> for &UInt128 {
 }
 
 pub mod serde_cells {
-    use super::*;
     use ton_block::{Deserializable, Serializable};
+
+    use super::*;
 
     pub fn serialize<S>(cell: &ton_types::Cell, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -204,3 +204,6 @@ pub mod serde_cells {
         ton_types::Cell::construct_from_bytes(&data).map_err(|e| D::Error::custom(e.to_string()))
     }
 }
+
+pub type BoxStream<'a, T> = Pin<Box<dyn Stream<Item = T> + 'a + Send>>;
+pub type EthAddress = primitive_types::H160;

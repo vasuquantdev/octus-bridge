@@ -64,7 +64,7 @@ impl EthEventsHandler {
                         e,
                         attempts_count
                     );
-                    tokio::time::delay_for(ton_config.events_handler_interval).await;
+                    tokio::time::sleep(ton_config.events_handler_interval).await;
                     if attempts_count == 0 {
                         log::error!("Failed creating eth config contract. Giving up.")
                     }
@@ -186,7 +186,7 @@ impl UnInitEventsHandler for UnInitEthEventsHandler {
     async fn start(self) -> Arc<Self::Handler> {
         let UnInitEthEventsHandler {
             state,
-            mut config_contract_events,
+            config_contract_events,
         } = self;
 
         let handler = Arc::new(EthEventsHandler { state });
@@ -195,7 +195,9 @@ impl UnInitEventsHandler for UnInitEthEventsHandler {
         tokio::spawn({
             let handler = Arc::downgrade(&handler);
             async move {
-                while let Some(event) = config_contract_events.next().await {
+                let mut stream =
+                    tokio_stream::wrappers::UnboundedReceiverStream::new(config_contract_events);
+                while let Some(event) = stream.next().await {
                     match handler.upgrade() {
                         // Handle event if handler is still alive
                         Some(handler) => handler.handle_vote(event, None),

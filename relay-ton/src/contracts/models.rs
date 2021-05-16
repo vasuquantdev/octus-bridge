@@ -9,7 +9,7 @@ use crate::contracts::errors::*;
 use crate::contracts::prelude::*;
 use crate::models::*;
 use crate::prelude::*;
-use ethereum_types::H256;
+use primitive_types::H256;
 
 // Events
 
@@ -292,7 +292,7 @@ impl TryFrom<ContractOutput> for Vec<ActiveEventConfiguration> {
 pub struct RelayUpdate {
     pub nonce: u16,
     pub ton_account: MsgAddrStd,
-    pub eth_account: ethereum_types::Address,
+    pub eth_account: EthAddress,
     pub action: RelayUpdateAction,
 }
 
@@ -433,7 +433,7 @@ impl ParseToken<CommonEventConfigurationParams> for TokenValue {
 #[derive(Debug, Clone)]
 pub struct EthEventConfiguration {
     pub common: CommonEventConfigurationParams,
-    pub event_address: ethereum_types::Address,
+    pub event_address: EthAddress,
     pub event_blocks_to_confirm: u16,
     pub proxy_address: MsgAddressInt,
     pub start_block_number: u32,
@@ -465,7 +465,7 @@ impl TryFrom<ContractOutput> for EthEventConfiguration {
 pub struct TonEventConfiguration {
     pub common: CommonEventConfigurationParams,
     pub event_address: MsgAddressInt,
-    pub proxy_address: ethereum_types::H160,
+    pub proxy_address: primitive_types::H160,
     pub start_timestamp: u32,
 }
 
@@ -651,11 +651,11 @@ impl TryFrom<ContractOutput> for TonEventDetails {
 
 #[derive(Debug, Clone)]
 pub struct EthEventInitData {
-    pub event_transaction: ethereum_types::H256,
+    pub event_transaction: primitive_types::H256,
     pub event_index: u32,
     pub event_data: Cell,
     pub event_block_number: u32,
-    pub event_block: ethereum_types::H256,
+    pub event_block: primitive_types::H256,
 
     pub eth_event_configuration: MsgAddressInt,
     pub required_confirmations: u16,
@@ -693,11 +693,11 @@ pub struct EthEventVoteData {
     /// Not serializable!
     pub configuration_id: u32,
 
-    pub event_transaction: ethereum_types::H256,
+    pub event_transaction: primitive_types::H256,
     pub event_index: u32,
     pub event_data: Cell,
     pub event_block_number: u32,
-    pub event_block: ethereum_types::H256,
+    pub event_block: primitive_types::H256,
 }
 
 impl FunctionArg for EthEventVoteData {
@@ -871,5 +871,5 @@ impl TryFrom<ContractOutput> for Vec<BridgeKey> {
 #[derive(Debug, Clone)]
 pub struct BridgeKey {
     pub ton: MsgAddrStd,
-    pub eth: ethereum_types::Address,
+    pub eth: EthAddress,
 }

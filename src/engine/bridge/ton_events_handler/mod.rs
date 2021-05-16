@@ -64,7 +64,7 @@ impl TonEventsHandler {
                         e,
                         attempts_count
                     );
-                    tokio::time::delay_for(ton_config.events_handler_interval).await;
+                    tokio::time::sleep(ton_config.events_handler_interval).await;
                     if attempts_count == 0 {
                         log::error!("Failed creating ton config contract. Giving up.")
                     }
@@ -207,14 +207,16 @@ impl TonEventsHandler {
 
     fn start_listening_vote_events(
         self: &Arc<Self>,
-        mut config_contract_events: EventsRx<
+        config_contract_events: EventsRx<
             <TonEventConfigurationContract as ContractWithEvents>::Event,
         >,
     ) {
         let handler = Arc::downgrade(&self);
 
         tokio::spawn(async move {
-            while let Some(event) = config_contract_events.next().await {
+            let mut stream =
+                tokio_stream::wrappers::UnboundedReceiverStream::new(config_contract_events);
+            while let Some(event) = stream.next().await {
                 match handler.upgrade() {
                     // Handle event if handler is still alive
                     Some(handler) => handler.handle_vote(event, None),
@@ -339,7 +341,7 @@ impl TonEventsHandler {
                 }
             }
 
-            tokio::time::delay_for(interval).await;
+            tokio::time::sleep(interval).await;
         });
     }
 
@@ -359,7 +361,7 @@ impl TonEventsHandler {
                         return;
                     }
                     log::error!("Failed to compute address for restored event: {:?}. Retrying. {} attempts left", e, counter);
-                    tokio::time::delay_for(Duration::from_secs(10)).await;
+                    tokio::time::sleep(Duration::from_secs(10)).await;
                     counter -= 1;
                 }
             }
