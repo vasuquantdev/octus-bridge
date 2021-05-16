@@ -1,5 +1,5 @@
 use anyhow::Context;
-use tokio::signal::ctrl_c;
+use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::oneshot;
 
 use models::*;
@@ -58,9 +58,15 @@ pub async fn run(config: RelayConfig) -> Result<(), Error> {
     {
         let db = db.clone();
         tokio::spawn(async move {
-            ctrl_c().await.expect("Failed subscribing on unix signals");
+            let signal = wait_signals(&[
+                SignalKind::interrupt(),
+                SignalKind::terminate(),
+                SignalKind::quit(),
+                SignalKind::from_raw(6), // SIGABRT/SIGIOT
+            ])
+            .await;
 
-            log::info!("Received ctrl-c event.");
+            log::info!("Received {:?}", signal);
             shutdown_notifier.notify();
 
             log::info!("Flushing db...");
@@ -88,6 +94,23 @@ pub async fn run(config: RelayConfig) -> Result<(), Error> {
     tokio::spawn(exporter::serve(config, state, exporter_shutdown_signal));
 
     future::pending().await
+}
+
+async fn wait_signals(signals: &[SignalKind]) -> SignalKind {
+    use future::FutureExt;
+
+    futures::future::select_all(signals.iter().map(|&sig| {
+        async move {
+            signal(sig)
+                .expect("Failed subscribing on unix signals")
+                .recv()
+                .await;
+            sig
+        }
+        .boxed()
+    }))
+    .await
+    .0
 }
 
 struct ShutdownNotifier {
