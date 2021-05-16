@@ -133,11 +133,11 @@ impl ParseToken<Cell> for TokenValue {
     }
 }
 
-impl ParseToken<ethereum_types::Address> for TokenValue {
-    fn try_parse(self) -> ContractResult<ethereum_types::Address> {
+impl ParseToken<EthAddress> for TokenValue {
+    fn try_parse(self) -> ContractResult<EthAddress> {
         match self {
             TokenValue::Uint(value) => {
-                let mut address = ethereum_types::Address::default();
+                let mut address = EthAddress::default();
                 let bytes = value.number.to_bytes_be();
 
                 const ADDRESS_SIZE: usize = 20;
@@ -156,11 +156,11 @@ impl ParseToken<ethereum_types::Address> for TokenValue {
     }
 }
 
-impl ParseToken<ethereum_types::H256> for TokenValue {
-    fn try_parse(self) -> ContractResult<ethereum_types::H256> {
+impl ParseToken<primitive_types::H256> for TokenValue {
+    fn try_parse(self) -> ContractResult<primitive_types::H256> {
         match self {
             TokenValue::Uint(value) => {
-                let mut hash = ethereum_types::H256::default();
+                let mut hash = primitive_types::H256::default();
                 let bytes = value.number.to_bytes_be();
 
                 const HASH_SIZE: usize = 32;
@@ -352,8 +352,8 @@ where
 pub trait StandaloneToken {}
 impl StandaloneToken for MsgAddressInt {}
 impl StandaloneToken for MsgAddrStd {}
-impl StandaloneToken for ethereum_types::Address {}
-impl StandaloneToken for ethereum_types::H256 {}
+impl StandaloneToken for EthAddress {}
+impl StandaloneToken for primitive_types::H256 {}
 impl StandaloneToken for AccountId {}
 impl StandaloneToken for UInt256 {}
 impl StandaloneToken for UInt128 {}

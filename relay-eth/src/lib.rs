@@ -16,7 +16,7 @@ use url::Url;
 use web3::transports::http::Http;
 pub use web3::types::SyncState;
 pub use web3::types::{Address, BlockNumber, H256};
-use web3::types::{FilterBuilder, Log, H160};
+pub use web3::types::{FilterBuilder, Log, H160};
 use web3::{Transport, Web3};
 const ETH_TREE_NAME: &str = "ethereum_data";
 const ETH_LAST_MET_HEIGHT: &str = "last_met_height";

@@ -1,5 +1,5 @@
-use ethereum_types::H160;
 use num_bigint::BigInt;
+use primitive_types::H160;
 use ton_abi::Token;
 use ton_block::{MsgAddrStd, MsgAddressInt};
 use ton_types::{SliceData, UInt256};

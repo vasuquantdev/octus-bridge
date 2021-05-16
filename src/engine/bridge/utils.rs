@@ -234,7 +234,7 @@ pub fn map_ton_to_eth_with_abi(
             EthTokenValue::Int(ethabi::Int::from_little_endian(&bytes))
         }
         (TonTokenValue::Bytes(a), EthParamType::Address) if a.len() == 20 => {
-            EthTokenValue::Address(ethereum_types::Address::from_slice(&a))
+            EthTokenValue::Address(relay_eth::Address::from_slice(&a))
         }
         (TonTokenValue::Bytes(a), EthParamType::String) => {
             EthTokenValue::String(String::from_utf8(a)?)

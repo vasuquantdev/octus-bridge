@@ -285,7 +285,7 @@ impl FunctionArg for MsgAddressInt {
     }
 }
 
-impl FunctionArg for ethereum_types::Address {
+impl FunctionArg for EthAddress {
     fn token_value(self) -> TokenValue {
         TokenValue::Uint(ton_abi::Uint {
             number: num_bigint::BigUint::from_bytes_be(self.as_bytes()),
@@ -294,7 +294,7 @@ impl FunctionArg for ethereum_types::Address {
     }
 }
 
-impl FunctionArg for ethereum_types::H256 {
+impl FunctionArg for primitive_types::H256 {
     fn token_value(self) -> TokenValue {
         BigUint256(num_bigint::BigUint::from_bytes_be(self.as_bytes())).token_value()
     }

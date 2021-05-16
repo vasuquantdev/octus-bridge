@@ -206,3 +206,4 @@ pub mod serde_cells {
 }
 
 pub type BoxStream<'a, T> = Pin<Box<dyn Stream<Item = T> + 'a + Send>>;
+pub type EthAddress = primitive_types::H160;

@@ -54,7 +54,6 @@ warp = "0.3"
 semver = "0.11.0"
 
 # ETH specific dependencies
-ethereum-types = "0.11.0"
 ethabi = "14.0.0"
 
 # TON specific dependencies
