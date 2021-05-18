@@ -142,7 +142,7 @@ impl RelayContract {
 
     pub async fn reject_ton_event(&self, vote: TonEventVoteData) -> ContractResult<()> {
         log::info!(
-            "CONFIRMING TON EVENT: {}, {}, {}",
+            "REJECTING TON EVENT: {}, {}, {}",
             hex::encode(&vote.event_transaction),
             vote.event_transaction_lt,
             vote.event_index,
