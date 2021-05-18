@@ -25,7 +25,7 @@ COPY relay-utils ./relay-utils
 COPY LICENSE ./LICENSE
 RUN ls -lah
 RUN rustup component add rustfmt
-RUN cargo build --release --features="tonlib-transport,graphql-transport,paranoid,dockered"
+RUN cargo build --release --features="tonlib-transport,graphql-transport,paranoid"
 
 FROM debian:buster-slim
 
