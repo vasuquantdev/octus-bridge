@@ -499,8 +499,8 @@ impl PendingMessage<(u32, u64)> {
 
 const MESSAGES_PER_SCAN_ITER: u8 = 16;
 
-type AccountStateResponse = Result<(AccountStats, AccountStuff), failure::Error>;
-type TransactionsResponse = Result<Vec<(UInt256, Transaction)>, failure::Error>;
+type AccountStateResponse = anyhow::Result<(AccountStats, AccountStuff)>;
+type TransactionsResponse = anyhow::Result<Vec<(UInt256, Transaction)>>;
 
 struct EventsScanner<'a, T> {
     account: Cow<'a, MsgAddressInt>,
@@ -773,7 +773,10 @@ impl PrepareEventExt for FullEventInfo {
     }
 }
 
-fn to_api_error(e: failure::Error) -> TransportError {
+fn to_api_error<E>(e: E) -> TransportError
+where
+    E: ToString,
+{
     TransportError::ApiFailure {
         reason: e.to_string(),
     }
