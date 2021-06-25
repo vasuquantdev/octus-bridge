@@ -2421,7 +2421,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "backtrace",
- "base64 0.10.1",
+ "base64 0.13.0",
  "borsh",
  "chrono",
  "clap",
@@ -3421,7 +3421,7 @@ dependencies = [
 [[package]]
 name = "tonlib"
 version = "0.1.0"
-source = "git+https://github.com/broxus/tonlib-rs.git#834736ae46d98d4add8b97314e1b402c4379edda"
+source = "git+https://github.com/broxus/tonlib-rs.git#84dafb46a7bbc5f0f6cc4e60e5e71aa619488287"
 dependencies = [
  "anyhow",
  "async-trait",
