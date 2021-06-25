@@ -1,6 +1,6 @@
 [package]
 name = "relay-eth"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Vladimir Petrzhikovskiy <v.petrzhikovskiy@dexpa.io>"]
 edition = "2018"
 

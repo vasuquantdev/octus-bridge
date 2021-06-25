@@ -2416,12 +2416,12 @@ checksum = "f497285884f3fcff424ffc933e56d7cbca511def0c9831a7f9b5f6153e3cc89b"
 
 [[package]]
 name = "relay"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "anyhow",
  "async-trait",
  "backtrace",
- "base64 0.13.0",
+ "base64 0.10.1",
  "borsh",
  "chrono",
  "clap",
@@ -2467,7 +2467,7 @@ dependencies = [
 
 [[package]]
 name = "relay-eth"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "ethabi",
@@ -2485,7 +2485,7 @@ dependencies = [
 
 [[package]]
 name = "relay-models"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "opg",
@@ -2494,7 +2494,7 @@ dependencies = [
 
 [[package]]
 name = "relay-ton"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2528,7 +2528,7 @@ dependencies = [
 
 [[package]]
 name = "relay-utils"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "futures",
  "http",
