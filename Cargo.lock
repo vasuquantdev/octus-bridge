@@ -2416,12 +2416,12 @@ checksum = "f497285884f3fcff424ffc933e56d7cbca511def0c9831a7f9b5f6153e3cc89b"
 
 [[package]]
 name = "relay"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "anyhow",
  "async-trait",
  "backtrace",
- "base64 0.13.0",
+ "base64 0.10.1",
  "borsh",
  "chrono",
  "clap",
@@ -2467,7 +2467,7 @@ dependencies = [
 
 [[package]]
 name = "relay-eth"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "ethabi",
@@ -2485,7 +2485,7 @@ dependencies = [
 
 [[package]]
 name = "relay-models"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "chrono",
  "opg",
@@ -2494,7 +2494,7 @@ dependencies = [
 
 [[package]]
 name = "relay-ton"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2528,7 +2528,7 @@ dependencies = [
 
 [[package]]
 name = "relay-utils"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "futures",
  "http",
@@ -3336,8 +3336,8 @@ dependencies = [
 
 [[package]]
 name = "ton_block"
-version = "1.1.28"
-source = "git+https://github.com/tonlabs/ton-labs-block.git#9a29b4bf06f59570305c42dc15a03df654373365"
+version = "1.2.15"
+source = "git+https://github.com/tonlabs/ton-labs-block.git#c8f2a3ade0590bf50af3ae97c3ea809bdd5f0ecf"
 dependencies = [
  "base64 0.10.1",
  "clear_on_drop",
@@ -3384,8 +3384,8 @@ dependencies = [
 
 [[package]]
 name = "ton_types"
-version = "1.3.33"
-source = "git+https://github.com/tonlabs/ton-labs-types.git#709120f8ccec23ad7c1085a9e5fc9f9f3dc7620c"
+version = "1.6.13"
+source = "git+https://github.com/tonlabs/ton-labs-types.git#566e7f5ae0bc5e2ea50f6ce537d9d4a911e7f9df"
 dependencies = [
  "base64 0.11.0",
  "crc",
@@ -3421,7 +3421,7 @@ dependencies = [
 [[package]]
 name = "tonlib"
 version = "0.1.0"
-source = "git+https://github.com/broxus/tonlib-rs.git#84dafb46a7bbc5f0f6cc4e60e5e71aa619488287"
+source = "git+https://github.com/broxus/tonlib-rs.git#031a53a8bfe250d40b22ac295386d179d952da9d"
 dependencies = [
  "anyhow",
  "async-trait",

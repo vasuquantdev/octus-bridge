@@ -1,6 +1,6 @@
 [package]
 name = "relay-models"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Vladimir Petrzhikovskiy <v.petrzhikovskiy@dexpa.io>"]
 edition = "2018"
 
