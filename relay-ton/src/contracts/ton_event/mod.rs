@@ -3,6 +3,7 @@ use crate::prelude::*;
 use crate::transport::*;
 
 use super::errors::*;
+use super::message_builder::*;
 use super::models::*;
 use super::prelude::*;
 
@@ -45,7 +46,7 @@ impl TonEventContract {
         self.message(addr, "getDetails")?
             .run_local()
             .await?
-            .parse_all()
+            .try_into()
     }
 }
 

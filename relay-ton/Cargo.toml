@@ -30,11 +30,14 @@ sled = "0.34.6"
 primitive-types = "0.9.0"
 tokio-stream = "0.1.5"
 
-ton_abi = { git = "https://github.com/tonlabs/ton-labs-abi.git" }
+ton_abi = { git = "https://github.com/tonlabs/ton-labs-abi", rev = "a2b2a9dc2e8c30a070e9af79cf0c24a55bdd5a87" }
 ton_vm = { git = "https://github.com/tonlabs/ton-labs-vm.git", default-features = false }
 ton_types = { git = "https://github.com/tonlabs/ton-labs-types.git" }
 ton_block = { git = "https://github.com/tonlabs/ton-labs-block.git" }
 tonlib = { git = "https://github.com/broxus/tonlib-rs.git", optional = true }
+
+# Nekoton SDK
+nekoton-parser = { git = "https://github.com/broxus/nekoton.git", branch = "feature/new_split", features = ["derive"] }
 
 [features]
 default = ["graphql-transport"]

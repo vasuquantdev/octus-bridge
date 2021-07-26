@@ -1696,6 +1696,64 @@ dependencies = [
 ]
 
 [[package]]
+name = "nekoton-derive"
+version = "0.1.0"
+source = "git+https://github.com/broxus/nekoton.git?branch=feature/new_split#91d31d70f1eb7b842cb4af0cbe5f52962f3ec215"
+dependencies = [
+ "either",
+ "proc-macro2 1.0.27",
+ "quote 1.0.9",
+ "syn 1.0.73",
+]
+
+[[package]]
+name = "nekoton-parser"
+version = "0.1.0"
+source = "git+https://github.com/broxus/nekoton.git?branch=feature/new_split#91d31d70f1eb7b842cb4af0cbe5f52962f3ec215"
+dependencies = [
+ "anyhow",
+ "base64 0.13.0",
+ "chrono",
+ "ed25519-dalek",
+ "failure",
+ "hex 0.4.3",
+ "log",
+ "nekoton-derive",
+ "nekoton-utils",
+ "num-bigint",
+ "num-traits 0.2.14",
+ "primitive-types",
+ "serde 1.0.126",
+ "sha2 0.9.5",
+ "thiserror",
+ "ton_abi",
+ "ton_block",
+ "ton_executor",
+ "ton_types",
+ "ton_vm 1.0.0",
+]
+
+[[package]]
+name = "nekoton-utils"
+version = "0.1.0"
+source = "git+https://github.com/broxus/nekoton.git?branch=feature/new_split#91d31d70f1eb7b842cb4af0cbe5f52962f3ec215"
+dependencies = [
+ "anyhow",
+ "base64 0.13.0",
+ "chrono",
+ "failure",
+ "hex 0.4.3",
+ "log",
+ "num-bigint",
+ "num-traits 0.2.14",
+ "serde 1.0.126",
+ "sha2 0.9.5",
+ "thiserror",
+ "ton_block",
+ "ton_types",
+]
+
+[[package]]
 name = "nom"
 version = "5.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2421,7 +2479,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "backtrace",
- "base64 0.10.1",
+ "base64 0.13.0",
  "borsh",
  "chrono",
  "clap",
@@ -2434,6 +2492,7 @@ dependencies = [
  "http",
  "log",
  "log4rs",
+ "nekoton-parser",
  "num-bigint",
  "num-traits 0.2.14",
  "opg",
@@ -2507,6 +2566,7 @@ dependencies = [
  "graphql_client",
  "hex 0.4.3",
  "log",
+ "nekoton-parser",
  "num-bigint",
  "num-traits 0.2.14",
  "once_cell",
@@ -2522,7 +2582,7 @@ dependencies = [
  "ton_abi",
  "ton_block",
  "ton_types",
- "ton_vm",
+ "ton_vm 1.1.30",
  "tonlib",
 ]
 
@@ -3293,8 +3353,8 @@ dependencies = [
 
 [[package]]
 name = "ton_abi"
-version = "1.0.0"
-source = "git+https://github.com/tonlabs/ton-labs-abi.git#2a7d2bca456fc01092bff3c6692f443a1c807020"
+version = "1.0.1"
+source = "git+https://github.com/tonlabs/ton-labs-abi?rev=a2b2a9dc2e8c30a070e9af79cf0c24a55bdd5a87#a2b2a9dc2e8c30a070e9af79cf0c24a55bdd5a87"
 dependencies = [
  "base64 0.10.1",
  "byteorder",
@@ -3355,6 +3415,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "ton_executor"
+version = "1.0.0"
+source = "git+https://github.com/broxus/ton-labs-executor.git#8aaf9c32f06e4017aec115a6fdb06d02487ae8e6"
+dependencies = [
+ "base64 0.10.1",
+ "clear_on_drop",
+ "failure",
+ "lazy_static",
+ "log",
+ "num",
+ "num-traits 0.2.14",
+ "ton_block",
+ "ton_labs_assembler",
+ "ton_types",
+ "ton_vm 1.0.0",
+]
+
+[[package]]
 name = "ton_labs_assembler"
 version = "1.1.100"
 source = "git+https://github.com/tonlabs/ton-labs-assembler.git#f67b2f7382b525fdf2233e2f9e0fcbc6016c7878"
@@ -3398,6 +3476,24 @@ dependencies = [
  "num-traits 0.2.14",
  "rand 0.8.4",
  "sha2 0.8.2",
+]
+
+[[package]]
+name = "ton_vm"
+version = "1.0.0"
+source = "git+https://github.com/broxus/ton-labs-vm.git#82094e2a5a5fcdd69a791b2c91b26c0c9001390b"
+dependencies = [
+ "ed25519",
+ "ed25519-dalek",
+ "failure",
+ "hex 0.4.3",
+ "log",
+ "num",
+ "num-traits 0.2.14",
+ "rand 0.7.3",
+ "sha2 0.8.2",
+ "ton_labs_assembler",
+ "ton_types",
 ]
 
 [[package]]

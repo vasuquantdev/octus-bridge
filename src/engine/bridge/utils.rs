@@ -1,7 +1,8 @@
 use ethabi::{ParamType as EthParamType, Token as EthTokenValue};
 use ton_abi::{ParamType as TonParamType, Token as TonToken, TokenValue as TonTokenValue};
 
-use relay_ton::contracts::message_builder::FunctionArg;
+use nekoton_parser::abi::BuildTokenValue;
+
 use relay_ton::contracts::{
     ContractError, ContractResult, EthEventConfiguration, SwapBackEvent, TonEventConfiguration,
 };

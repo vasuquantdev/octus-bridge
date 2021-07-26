@@ -1,4 +1,5 @@
 use thiserror::Error;
+use nekoton_parser::abi::UnpackerError;
 
 use crate::transport::errors::*;
 
@@ -18,6 +19,8 @@ pub enum ContractError {
     InvalidEvent { reason: String },
     #[error("transport error")]
     TransportError(#[from] TransportError),
+    #[error("unpack token error")]
+    UnpackerError(#[from] UnpackerError),
     #[error("invalid eth address")]
     InvalidEthAddress,
 }

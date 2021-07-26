@@ -1,5 +1,4 @@
 use super::node_client::*;
-use crate::models::*;
 use crate::prelude::*;
 use crate::transport::errors::*;
 use crate::transport::{AccountSubscription, AccountSubscriptionFull, RunLocal, Transport};

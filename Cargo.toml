@@ -58,7 +58,7 @@ ethabi = "14.0.0"
 
 # TON specific dependencies
 ton_block = { git = "https://github.com/tonlabs/ton-labs-block.git" }
-ton_abi = { git = "https://github.com/tonlabs/ton-labs-abi.git" }
+ton_abi = { git = "https://github.com/tonlabs/ton-labs-abi", rev = "a2b2a9dc2e8c30a070e9af79cf0c24a55bdd5a87" }
 
 # Crypto stuff
 secp256k1 = { version = "0.20.0", features = ["default", "rand", "recovery"] }
@@ -69,6 +69,9 @@ secstr = "0.4.0"
 tiny-hderive = "0.3.0"
 tiny-bip39 = "0.8.0"
 tokio-stream = "0.1.5"
+
+# Nekoton SDK
+nekoton-parser = { git = "https://github.com/broxus/nekoton.git", branch = "feature/new_split"}
 
 [dev-dependencies]
 pretty_assertions = "0.7.2"
