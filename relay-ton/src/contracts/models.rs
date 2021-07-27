@@ -2,13 +2,15 @@ use std::hash::Hash;
 use std::io::Write;
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use nekoton_parser::abi::{IntoUnpacker, StandaloneToken, TokenValueExt, UnpackToken};
-use nekoton_parser::derive::{PackAbi, UnpackAbi};
+use nekoton_parser::abi::{
+    IntoUnpacker, PackAbi, StandaloneToken, TokenValueExt, UnpackAbi, UnpackToken,
+};
 use primitive_types::H256;
 use ton_abi::Token;
 use ton_block::{Deserializable, Serializable};
 
 use crate::contracts::errors::*;
+use crate::contracts::prelude::*;
 use crate::models::*;
 use crate::prelude::*;
 
@@ -213,6 +215,14 @@ impl TryFrom<(EthEventConfigurationContractEventKind, Vec<Token>)>
 
 // Models
 
+#[derive(UnpackAbi)]
+pub struct EthereumAccount {
+    #[abi(name = "ethereumAccount", unpack_with = "unpack_h160")]
+    ethereum_account: primitive_types::H160,
+}
+
+impl StandaloneToken for EthereumAccount {}
+
 #[derive(PackAbi, UnpackAbi, Debug, Clone, Eq, PartialEq)]
 pub struct BridgeConfiguration {
     #[abi(uint16)]
@@ -265,9 +275,9 @@ pub struct RelayUpdate {
     pub nonce: u16,
     #[abi(int8)]
     pub wid: i8,
-    #[abi(uint256)]
+    #[abi(with = "nekoton_parser::abi::uint256_bytes")]
     pub addr: UInt256,
-    #[abi(uint256, name = "ethereumAccount")]
+    #[abi(name = "ethereumAccount", with = "nekoton_parser::abi::uint256_bytes")]
     pub ethereum_account: UInt256,
     #[abi]
     pub action: RelayUpdateAction,
@@ -307,7 +317,10 @@ pub struct CommonEventConfigurationParams {
     pub event_code: Cell,
     #[abi(address, name = "bridgeAddress")]
     pub bridge_address: MsgAddressInt,
-    #[abi(biguint128, name = "eventInitialBalance")]
+    #[abi(
+        name = "eventInitialBalance",
+        with = "nekoton_parser::abi::uint128_number"
+    )]
     pub event_initial_balance: BigUint,
     #[abi(cell)]
     pub meta: Cell,
@@ -316,7 +329,7 @@ pub struct CommonEventConfigurationParams {
 #[derive(UnpackAbi, Debug, Clone)]
 pub struct EthEventConfiguration {
     pub common: CommonEventConfigurationParams,
-    #[abi(name = "eventAddress")]
+    #[abi(name = "eventAddress", unpack_with = "unpack_h160")]
     pub event_address: EthAddress,
     #[abi(uint16, name = "eventBlocksToConfirm")]
     pub event_blocks_to_confirm: u16,
@@ -350,7 +363,7 @@ pub struct TonEventConfiguration {
     pub common: CommonEventConfigurationParams,
     #[abi(address, name = "eventAddress")]
     pub event_address: MsgAddressInt,
-    #[abi(name = "proxyAddress")]
+    #[abi(name = "proxyAddress", unpack_with = "unpack_h160")]
     pub proxy_address: primitive_types::H160,
     #[abi(uint32, name = "startTimestamp")]
     pub start_timestamp: u32,
@@ -385,7 +398,7 @@ impl StandaloneToken for EventStatus {}
 
 #[derive(UnpackAbi, Debug, Clone)]
 pub struct TonEventInitData {
-    #[abi(uint256, name = "eventTransaction")]
+    #[abi(name = "eventTransaction", with = "nekoton_parser::abi::uint256_bytes")]
     pub event_transaction: UInt256,
     #[abi(uint64, name = "eventTransactionLt")]
     pub event_transaction_lt: u64,
@@ -495,7 +508,7 @@ impl TryFrom<ContractOutput> for TonEventDetails {
 
 #[derive(UnpackAbi, Debug, Clone)]
 pub struct EthEventInitData {
-    #[abi(name = "eventTransaction")]
+    #[abi(name = "eventTransaction", unpack_with = "unpack_h256")]
     pub event_transaction: primitive_types::H256,
     #[abi(uint32, name = "eventIndex")]
     pub event_index: u32,
@@ -503,7 +516,7 @@ pub struct EthEventInitData {
     pub event_data: Cell,
     #[abi(uint32, name = "eventBlockNumber")]
     pub event_block_number: u32,
-    #[abi(name = "eventBlock")]
+    #[abi(name = "eventBlock", unpack_with = "unpack_h256")]
     pub event_block: primitive_types::H256,
     #[abi(address, name = "ethereumEventConfiguration")]
     pub eth_event_configuration: MsgAddressInt,
@@ -521,7 +534,7 @@ pub struct EthEventInitData {
 pub struct EthEventVoteData {
     /// Not serializable!
     pub configuration_id: u32,
-    #[abi(name = "eventTransaction")]
+    #[abi(name = "eventTransaction", pack_with = "pack_h256")]
     pub event_transaction: primitive_types::H256,
     #[abi(name = "eventIndex")]
     pub event_index: u32,
@@ -529,7 +542,7 @@ pub struct EthEventVoteData {
     pub event_data: Cell,
     #[abi(name = "eventBlockNumber")]
     pub event_block_number: u32,
-    #[abi(name = "eventBlock")]
+    #[abi(name = "eventBlock", pack_with = "pack_h256")]
     pub event_block: primitive_types::H256,
 }
 
@@ -636,7 +649,7 @@ impl TryFrom<ContractOutput> for Vec<BridgeKey> {
         let mut tuple = value.tokens.into_unpacker();
 
         let keys: Vec<_> = tuple.unpack_next()?;
-        let ethereum_accounts: Vec<_> = tuple.unpack_next()?;
+        let ethereum_accounts: Vec<EthereumAccount> = tuple.unpack_next()?;
 
         if keys.len() != ethereum_accounts.len() {
             return Err(ContractError::InvalidAbi);
@@ -645,7 +658,10 @@ impl TryFrom<ContractOutput> for Vec<BridgeKey> {
         Ok(keys
             .into_iter()
             .zip(ethereum_accounts.into_iter())
-            .map(|(ton, eth)| BridgeKey { ton, eth })
+            .map(|(ton, eth)| BridgeKey {
+                ton,
+                eth: eth.ethereum_account,
+            })
             .collect())
     }
 }

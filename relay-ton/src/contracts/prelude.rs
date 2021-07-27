@@ -1,4 +1,4 @@
-use nekoton_parser::abi::{IntoUnpacker, UnpackToken};
+use nekoton_parser::abi::{BigUint256, BuildTokenValue, UnpackToken, UnpackerError};
 pub use ton_abi::{Token, TokenValue};
 
 pub use super::contract::*;
@@ -86,4 +86,57 @@ macro_rules! define_event{
             }
         }
     };
+}
+
+pub fn unpack_h160(
+    value: &TokenValue,
+) -> nekoton_parser::abi::ContractResult<primitive_types::H160> {
+    match value {
+        TokenValue::Uint(value) => {
+            let mut hash = primitive_types::H160::default();
+            let bytes = value.number.to_bytes_be();
+
+            const ADDRESS_SIZE: usize = 20;
+
+            // copy min(N,20) bytes into last min(N,20) elements of address
+
+            let size = bytes.len();
+            let src_offset = size - size.min(ADDRESS_SIZE);
+            let dest_offset = ADDRESS_SIZE - size.min(ADDRESS_SIZE);
+            hash.0[dest_offset..ADDRESS_SIZE].copy_from_slice(&bytes[src_offset..size]);
+
+            Ok(hash)
+        }
+        _ => Err(UnpackerError::InvalidAbi),
+    }
+}
+
+pub fn unpack_h256(
+    value: &TokenValue,
+) -> nekoton_parser::abi::ContractResult<primitive_types::H256> {
+    match value {
+        TokenValue::Uint(value) => {
+            let mut hash = primitive_types::H256::default();
+            let bytes = value.number.to_bytes_be();
+
+            const HASH_SIZE: usize = 32;
+
+            // copy min(N,32) bytes into last min(N,32) elements of address
+
+            let size = bytes.len();
+            let src_offset = size - HASH_SIZE.min(size);
+            let dest_offset = HASH_SIZE - HASH_SIZE.min(size);
+            hash.0[dest_offset..HASH_SIZE].copy_from_slice(&bytes[src_offset..size]);
+
+            Ok(hash)
+        }
+        _ => Err(UnpackerError::InvalidAbi),
+    }
+}
+
+pub fn pack_h256(name: &str, value: primitive_types::H256) -> Token {
+    Token::new(
+        name,
+        BigUint256(BigUint::from_bytes_be(value.as_bytes())).token_value(),
+    )
 }
