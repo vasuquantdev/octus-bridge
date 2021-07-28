@@ -1714,7 +1714,7 @@ dependencies = [
 [[package]]
 name = "nekoton-derive"
 version = "0.1.0"
-source = "git+https://github.com/broxus/nekoton.git?branch=feature/new_split#0a63786a682cf3ba4cd2585ca6d3319fd03da547"
+source = "git+https://github.com/broxus/nekoton.git?branch=feature/new_split#3cbd98d1aac59006f1da389e4d09bb87b100c2f1"
 dependencies = [
  "either",
  "proc-macro2 1.0.28",
@@ -1725,7 +1725,7 @@ dependencies = [
 [[package]]
 name = "nekoton-parser"
 version = "0.1.0"
-source = "git+https://github.com/broxus/nekoton.git?branch=feature/new_split#0a63786a682cf3ba4cd2585ca6d3319fd03da547"
+source = "git+https://github.com/broxus/nekoton.git?branch=feature/new_split#3cbd98d1aac59006f1da389e4d09bb87b100c2f1"
 dependencies = [
  "anyhow",
  "base64 0.13.0",
@@ -1751,7 +1751,7 @@ dependencies = [
 [[package]]
 name = "nekoton-utils"
 version = "0.1.0"
-source = "git+https://github.com/broxus/nekoton.git?branch=feature/new_split#0a63786a682cf3ba4cd2585ca6d3319fd03da547"
+source = "git+https://github.com/broxus/nekoton.git?branch=feature/new_split#3cbd98d1aac59006f1da389e4d09bb87b100c2f1"
 dependencies = [
  "anyhow",
  "base64 0.13.0",
@@ -3043,9 +3043,9 @@ checksum = "fe0f37c9e8f3c5a4a66ad655a93c74daac4ad00c441533bf5c6e7990bb42604e"
 
 [[package]]
 name = "socket2"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e3dfc207c526015c632472a77be09cf1b6e46866581aecae5cc38fb4235dea2"
+checksum = "765f090f0e423d2b55843402a07915add955e7d60657db13707a159727326cad"
 dependencies = [
  "libc",
  "winapi",
@@ -3220,7 +3220,7 @@ dependencies = [
 [[package]]
 name = "tiny-adnl"
 version = "0.1.0"
-source = "git+https://github.com/broxus/tiny-adnl.git#f1fb57b433aa3c9b700ec50458f9bd4a3df86810"
+source = "git+https://github.com/broxus/tiny-adnl.git#ba1184a5634be3956884da0f02e0889d22f7e439"
 dependencies = [
  "aes",
  "anyhow",

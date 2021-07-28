@@ -1,4 +1,6 @@
-use nekoton_parser::abi::{BigUint256, BuildTokenValue, UnpackToken, UnpackerError};
+use nekoton_parser::abi::{
+    BigUint256, BuildTokenValue, UnpackToken, UnpackerError, UnpackerResult,
+};
 pub use ton_abi::{Token, TokenValue};
 
 pub use super::contract::*;
@@ -88,9 +90,7 @@ macro_rules! define_event{
     };
 }
 
-pub fn unpack_h160(
-    value: &TokenValue,
-) -> nekoton_parser::abi::ContractResult<primitive_types::H160> {
+pub fn unpack_h160(value: &TokenValue) -> UnpackerResult<primitive_types::H160> {
     match value {
         TokenValue::Uint(value) => {
             let mut hash = primitive_types::H160::default();
@@ -111,9 +111,7 @@ pub fn unpack_h160(
     }
 }
 
-pub fn unpack_h256(
-    value: &TokenValue,
-) -> nekoton_parser::abi::ContractResult<primitive_types::H256> {
+pub fn unpack_h256(value: &TokenValue) -> UnpackerResult<primitive_types::H256> {
     match value {
         TokenValue::Uint(value) => {
             let mut hash = primitive_types::H256::default();
