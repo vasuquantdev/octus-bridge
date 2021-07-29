@@ -211,7 +211,7 @@ impl TonEventsHandler {
             <TonEventConfigurationContract as ContractWithEvents>::Event,
         >,
     ) {
-        let handler = Arc::downgrade(&self);
+        let handler = Arc::downgrade(self);
 
         tokio::spawn(async move {
             let mut stream =
@@ -266,7 +266,7 @@ impl TonEventsHandler {
     }
 
     fn start_listening_swapback_events(self: &Arc<Self>, mut swapback_events: SwapBackEvents) {
-        let handler = Arc::downgrade(&self);
+        let handler = Arc::downgrade(self);
 
         tokio::spawn(async move {
             while let Some(event) = swapback_events.next().await {
@@ -395,11 +395,8 @@ impl TonEventsHandler {
 
 impl State {
     fn calculate_signature(&self, event: &SwapBackEvent) -> Result<Vec<u8>, Error> {
-        let payload = utils::prepare_ton_event_payload(
-            &self.config_contract.address(),
-            &self.details,
-            event,
-        )?;
+        let payload =
+            utils::prepare_ton_event_payload(self.config_contract.address(), &self.details, event)?;
         let signature = self.eth_signer.sign(&payload);
 
         log::info!(

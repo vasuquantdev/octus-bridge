@@ -473,7 +473,7 @@ impl Bridge {
             })?;
             // Decode event data
             let got_tokens: Vec<ethabi::Token> =
-                utils::parse_eth_event_data(&eth_abi, &ton_abi, event.event_data.clone())
+                utils::parse_eth_event_data(eth_abi, ton_abi, event.event_data.clone())
                     .map_err(|e| e.context("Failed decoding other relay data as eth types"))?;
 
             if got_tokens != expected_tokens {

@@ -254,6 +254,7 @@ impl EthListener {
         }
     }
 
+    #[allow(dead_code)]
     async fn get_actual_keys(&self) -> Result<(Address, Vec<H160>), Error> {
         let address = self.bridge_address;
         async fn get_keys(
@@ -604,6 +605,6 @@ fn update_eth_state(db: &Tree, height: u64, key: &str) -> Result<(), Error> {
 }
 
 pub fn update_height(db: &Tree, height: u64) -> Result<(), Error> {
-    update_eth_state(&db, height, ETH_LAST_MET_HEIGHT)?;
+    update_eth_state(db, height, ETH_LAST_MET_HEIGHT)?;
     Ok(())
 }

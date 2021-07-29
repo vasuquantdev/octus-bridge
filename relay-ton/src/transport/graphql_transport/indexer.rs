@@ -1,23 +1,25 @@
 use super::node_client::*;
 use crate::prelude::*;
 use crate::transport::errors::*;
-use crate::transport::{AccountSubscription, AccountSubscriptionFull, RunLocal, Transport};
 
+#[allow(dead_code)]
 pub struct Indexer {
     node_client: Arc<NodeClient>,
 }
 
 impl Indexer {
+    #[allow(dead_code)]
     pub fn new(node_client: Arc<NodeClient>) -> Self {
         Self { node_client }
     }
 
+    #[allow(dead_code)]
     pub async fn start(self: &Arc<Self>) -> TransportResult<()> {
-        let latest_masterchain_block = self.node_client.get_latest_masterchain_block().await?;
+        let _latest_masterchain_block = self.node_client.get_latest_masterchain_block().await?;
         let indexer = Arc::downgrade(self);
 
         tokio::spawn(async move {
-            let indexer = match indexer.upgrade() {
+            let _indexer = match indexer.upgrade() {
                 Some(indexer) => indexer,
                 None => return,
             };
