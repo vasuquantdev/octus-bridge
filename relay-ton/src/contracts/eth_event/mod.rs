@@ -1,3 +1,4 @@
+use super::message_builder::*;
 use crate::models::*;
 use crate::prelude::*;
 use crate::transport::*;
@@ -45,7 +46,7 @@ impl EthEventContract {
         self.message(addr, "getDetails")?
             .run_local()
             .await?
-            .parse_all()
+            .try_into()
     }
 }
 

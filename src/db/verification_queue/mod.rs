@@ -27,7 +27,7 @@ impl TonVerificationQueue {
         const COMMON_PREFIX_LEN: usize = TON_QUEUE.as_bytes().len();
 
         let mut prefix = [0u8; COMMON_PREFIX_LEN + std::mem::size_of::<u32>()];
-        prefix[..COMMON_PREFIX_LEN].copy_from_slice(&TON_QUEUE.as_bytes());
+        prefix[..COMMON_PREFIX_LEN].copy_from_slice(TON_QUEUE.as_bytes());
         prefix[COMMON_PREFIX_LEN..].copy_from_slice(&configuration_id.to_le_bytes());
 
         Ok(Self {

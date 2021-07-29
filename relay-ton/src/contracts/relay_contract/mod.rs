@@ -1,4 +1,7 @@
+use nekoton_abi::BigUint128;
+
 use super::errors::*;
+use super::message_builder::*;
 use super::models::*;
 use super::prelude::*;
 use crate::models::*;
@@ -197,7 +200,7 @@ impl RelayContract {
     fn message(&self, name: &str) -> ContractResult<MessageBuilder> {
         MessageBuilder::new(
             Cow::Borrowed(&self.config),
-            &self.bridge_contract.abi(),
+            self.bridge_contract.abi(),
             self.transport.as_ref(),
             name,
         )

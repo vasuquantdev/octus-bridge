@@ -179,7 +179,7 @@ impl EthSigner {
     ///getting address according to https://github.com/ethereumbook/ethereumbook/blob/develop/04keys-addresses.asciidoc#public-keys
     pub fn address(&self) -> Address {
         let pub_key = &self.pubkey.serialize_uncompressed()[1..];
-        Address::from_slice(&sha3::Keccak256::digest(&pub_key).as_slice()[32 - 20..])
+        Address::from_slice(&sha3::Keccak256::digest(pub_key).as_slice()[32 - 20..])
     }
 }
 
@@ -295,7 +295,7 @@ impl KeyData {
             password.unsecure(),
             &mut pbkdf2_hash.unsecure_mut(),
         );
-        secretbox::Key::from_slice(&pbkdf2_hash.unsecure()).expect("Shouldn't panic")
+        secretbox::Key::from_slice(pbkdf2_hash.unsecure()).expect("Shouldn't panic")
     }
 
     fn eth_private_key_from_encrypted(

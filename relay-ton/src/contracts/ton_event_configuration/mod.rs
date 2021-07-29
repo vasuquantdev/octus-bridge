@@ -1,4 +1,5 @@
 use super::errors::*;
+use super::message_builder::*;
 use super::models::*;
 use super::prelude::*;
 use crate::models::*;
@@ -125,7 +126,7 @@ impl TonEventConfigurationContract {
     }
 
     pub async fn get_details(&self) -> ContractResult<TonEventConfiguration> {
-        self.message("getDetails")?.run_local().await?.parse_all()
+        self.message("getDetails")?.run_local().await?.try_into()
     }
 }
 

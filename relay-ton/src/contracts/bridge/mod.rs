@@ -1,6 +1,9 @@
 #![allow(clippy::too_many_arguments)]
 
+use nekoton_abi::UnpackFirst;
+
 use super::errors::*;
+use super::message_builder::*;
 use super::models::*;
 use super::prelude::*;
 use crate::models::*;
@@ -56,7 +59,7 @@ impl BridgeContract {
         self.message("getActiveEventConfigurations")?
             .run_local()
             .await?
-            .parse_all()
+            .try_into()
     }
 
     pub async fn get_bridge_configuration_votes(
@@ -67,31 +70,43 @@ impl BridgeContract {
             .arg(configuration)
             .run_local()
             .await?
-            .parse_all()
+            .try_into()
     }
 
     pub async fn is_relay_active(&self, relay: MsgAddressInt) -> ContractResult<bool> {
-        self.message("getAccountStatus")?
+        Ok(self
+            .message("getAccountStatus")?
             .arg(relay)
             .run_local()
             .await?
-            .parse_first()
+            .tokens
+            .unpack_first()?)
     }
 
     pub async fn get_details(&self) -> ContractResult<BridgeConfiguration> {
-        self.message("getDetails")?.run_local().await?.parse_first()
+        Ok(self
+            .message("getDetails")?
+            .run_local()
+            .await?
+            .tokens
+            .unpack_first()?)
     }
 
-    pub async fn get_ethereum_account(&self, relay: MsgAddressInt) -> ContractResult<EthAddress> {
-        self.message("getEthereumAccount")?
+    pub async fn get_ethereum_account(
+        &self,
+        relay: MsgAddressInt,
+    ) -> ContractResult<EthereumAccount> {
+        Ok(self
+            .message("getEthereumAccount")?
             .arg(relay)
             .run_local()
             .await?
-            .parse_first()
+            .tokens
+            .unpack_first()?)
     }
 
     pub async fn get_keys(&self) -> ContractResult<Vec<BridgeKey>> {
-        self.message("getAccounts")?.run_local().await?.parse_all()
+        self.message("getAccounts")?.run_local().await?.try_into()
     }
 
     #[inline]

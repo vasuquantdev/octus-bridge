@@ -144,6 +144,7 @@ impl NodeClient {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn get_latest_masterchain_block(&self) -> TransportResult<MasterchainBlock> {
         let blocks = self
             .fetch::<QueryLatestMasterchainBlock>(query_latest_masterchain_block::Variables)
@@ -346,6 +347,7 @@ impl NodeClient {
         .collect::<Result<Vec<_>, _>>()
     }
 
+    #[allow(dead_code)]
     pub async fn wait_for_next_masterchain_block(
         &self,
         current: &str,
@@ -374,7 +376,7 @@ impl NodeClient {
             .and_then(|blocks| blocks.into_iter().flatten().next())
             .ok_or_else(no_blocks_found)?;
 
-        return match (
+        match (
             block.id,
             block.end_lt,
             block.gen_utime,
@@ -406,7 +408,7 @@ impl NodeClient {
                     .collect::<TransportResult<HashMap<_, _>>>()?,
             }),
             _ => Err(invalid_response()),
-        };
+        }
     }
 
     pub async fn wait_for_next_block(
@@ -693,13 +695,14 @@ fn check_shard_match(
     shard: &str,
     addr: &MsgAddressInt,
 ) -> TransportResult<bool> {
-    let shard = u64::from_str_radix(&shard, 16).map_err(|_| TransportError::NoBlocksFound)?;
+    let shard = u64::from_str_radix(shard, 16).map_err(|_| TransportError::NoBlocksFound)?;
 
     let ident = ShardIdent::with_tagged_prefix(workchain_id as i32, shard).map_err(api_failure)?;
 
     Ok(ident.contains_full_prefix(&AccountIdPrefixFull::prefix(addr).map_err(api_failure)?))
 }
 
+#[allow(dead_code)]
 fn parse_shard_block(
     shard: String,
     root_hash: Option<String>,
