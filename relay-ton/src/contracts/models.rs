@@ -2,9 +2,9 @@ use std::hash::Hash;
 use std::io::Write;
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use nekoton_parser::abi::{
-    BuildTokenValue, IntoUnpacker, PackAbi, StandaloneToken, TokenValueExt, UnpackAbi, UnpackToken,
-    UnpackerError, UnpackerResult,
+use nekoton_abi::{
+    uint128_number, uint256_bytes, BuildTokenValue, IntoUnpacker, PackAbi, StandaloneToken,
+    TokenValueExt, UnpackAbi, UnpackToken, UnpackerError, UnpackerResult,
 };
 use primitive_types::H256;
 use ton_abi::Token;
@@ -276,9 +276,9 @@ pub struct RelayUpdate {
     pub nonce: u16,
     #[abi(int8)]
     pub wid: i8,
-    #[abi(with = "nekoton_parser::abi::uint256_bytes")]
+    #[abi(with = "uint256_bytes")]
     pub addr: UInt256,
-    #[abi(name = "ethereumAccount", with = "nekoton_parser::abi::uint256_bytes")]
+    #[abi(name = "ethereumAccount", with = "uint256_bytes")]
     pub ethereum_account: UInt256,
     #[abi]
     pub action: RelayUpdateAction,
@@ -318,10 +318,7 @@ pub struct CommonEventConfigurationParams {
     pub event_code: Cell,
     #[abi(address, name = "bridgeAddress")]
     pub bridge_address: MsgAddressInt,
-    #[abi(
-        name = "eventInitialBalance",
-        with = "nekoton_parser::abi::uint128_number"
-    )]
+    #[abi(name = "eventInitialBalance", with = "uint128_number")]
     pub event_initial_balance: BigUint,
     #[abi(cell)]
     pub meta: Cell,
@@ -399,7 +396,7 @@ impl StandaloneToken for EventStatus {}
 
 #[derive(UnpackAbi, Debug, Clone)]
 pub struct TonEventInitData {
-    #[abi(name = "eventTransaction", with = "nekoton_parser::abi::uint256_bytes")]
+    #[abi(name = "eventTransaction", with = "uint256_bytes")]
     pub event_transaction: UInt256,
     #[abi(uint64, name = "eventTransactionLt")]
     pub event_transaction_lt: u64,

@@ -1,4 +1,4 @@
-use nekoton_parser::abi::{BuildTokenValue, BuildTokenValues};
+use nekoton_abi::{BuildTokenValue, BuildTokenValues};
 use ton_abi::{Contract, Function, Token, TokenValue};
 
 use super::errors::*;

@@ -1,4 +1,4 @@
-use nekoton_parser::abi::UnpackerError;
+use nekoton_abi::UnpackerError;
 use thiserror::Error;
 
 use crate::transport::errors::*;

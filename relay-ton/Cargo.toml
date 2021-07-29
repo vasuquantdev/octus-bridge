@@ -37,7 +37,7 @@ ton_block = { git = "https://github.com/tonlabs/ton-labs-block.git" }
 tonlib = { git = "https://github.com/broxus/tonlib-rs.git", optional = true }
 
 # Nekoton SDK
-nekoton-parser = { git = "https://github.com/broxus/nekoton.git", branch = "feature/new_split", features = ["derive"] }
+nekoton-abi = { git = "https://github.com/broxus/nekoton.git", features = ["derive"] }
 
 [features]
 default = ["graphql-transport"]

@@ -1,6 +1,6 @@
 #![allow(clippy::too_many_arguments)]
 
-use nekoton_parser::abi::UnpackFirst;
+use nekoton_abi::UnpackFirst;
 
 use super::errors::*;
 use super::message_builder::*;

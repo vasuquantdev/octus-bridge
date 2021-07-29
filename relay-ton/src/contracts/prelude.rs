@@ -1,6 +1,4 @@
-use nekoton_parser::abi::{
-    BigUint256, BuildTokenValue, UnpackToken, UnpackerError, UnpackerResult,
-};
+use nekoton_abi::{BigUint256, BuildTokenValue, UnpackToken, UnpackerError, UnpackerResult};
 pub use ton_abi::{Token, TokenValue};
 
 pub use super::contract::*;

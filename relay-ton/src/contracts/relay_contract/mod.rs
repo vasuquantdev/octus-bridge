@@ -1,4 +1,4 @@
-use nekoton_parser::abi::BigUint128;
+use nekoton_abi::BigUint128;
 
 use super::errors::*;
 use super::message_builder::*;

@@ -1,7 +1,7 @@
 use ethabi::{ParamType as EthParamType, Token as EthTokenValue};
 use ton_abi::{ParamType as TonParamType, Token as TonToken, TokenValue as TonTokenValue};
 
-use nekoton_parser::abi::BuildTokenValue;
+use nekoton_abi::BuildTokenValue;
 
 use relay_ton::contracts::{
     ContractError, ContractResult, EthEventConfiguration, SwapBackEvent, TonEventConfiguration,

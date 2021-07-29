@@ -71,7 +71,7 @@ tiny-bip39 = "0.8.0"
 tokio-stream = "0.1.5"
 
 # Nekoton SDK
-nekoton-parser = { git = "https://github.com/broxus/nekoton.git", branch = "feature/new_split"}
+nekoton-abi = { git = "https://github.com/broxus/nekoton.git" }
 
 [dev-dependencies]
 pretty_assertions = "0.7.2"
