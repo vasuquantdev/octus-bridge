@@ -11,10 +11,12 @@ async-trait = "0.1"
 anyhow = "1.0"
 clap = "3.0.0-beta.2"
 config = "0.11"
+dashmap = "4.0"
 external-ip = "4.1"
 futures = "0.3"
 log = "0.4"
 log4rs = "1.0"
+parking_lot = "0.11"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.8"
@@ -25,6 +27,8 @@ tokio = { version = "1.6", features = ["sync", "fs", "rt-multi-thread", "macros"
 ton_block = { git = "https://github.com/tonlabs/ton-labs-block" }
 ton_abi = { git = "https://github.com/tonlabs/ton-labs-abi", rev = "a2b2a9dc2e8c30a070e9af79cf0c24a55bdd5a87" }
 ton_types = { git = "https://github.com/tonlabs/ton-labs-types" }
+
+tiny-adnl = { git = "https://github.com/broxus/tiny-adnl" }
 
 # Nekoton SDK
 nekoton-abi = { git = "https://github.com/broxus/nekoton.git" }
@@ -45,7 +49,7 @@ assets = [
 ]
 conf-files = ["/etc/relay.conf"]
 maintainer-scripts = "debian/"
-features = [ "graphql-transport", "tonlib-transport" ]
+features = ["graphql-transport", "tonlib-transport"]
 
 [package.metadata.deb.systemd-units]
 unit-scripts = "debian/"

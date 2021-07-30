@@ -12,7 +12,7 @@ mod ton_subscriber;
 
 pub struct Engine {
     ton_engine: Arc<ton_indexer::Engine>,
-    _ton_subscriber: Arc<TonSubscriber>,
+    ton_subscriber: Arc<TonSubscriber>,
 }
 
 impl Engine {
@@ -32,7 +32,7 @@ impl Engine {
 
         let engine = Arc::new(Self {
             ton_engine,
-            _ton_subscriber: ton_subscriber,
+            ton_subscriber,
         });
 
         engine.start_message_sender(external_messages_rx);
@@ -42,6 +42,8 @@ impl Engine {
 
     pub async fn start(&self) -> Result<()> {
         self.ton_engine.start().await?;
+        self.ton_subscriber.start();
+
         // TODO: start eth indexer
 
         Ok(())
