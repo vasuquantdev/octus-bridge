@@ -22,11 +22,13 @@ thiserror = "1.0"
 tokio = { version = "1.6", features = ["sync", "fs", "rt-multi-thread", "macros"] }
 
 # TON specific dependencies
-ton_block = { git = "https://github.com/tonlabs/ton-labs-block.git" }
+ton_block = { git = "https://github.com/tonlabs/ton-labs-block" }
 ton_abi = { git = "https://github.com/tonlabs/ton-labs-abi", rev = "a2b2a9dc2e8c30a070e9af79cf0c24a55bdd5a87" }
+ton_types = { git = "https://github.com/tonlabs/ton-labs-types" }
 
 # Nekoton SDK
 nekoton-abi = { git = "https://github.com/broxus/nekoton.git" }
+nekoton-utils = { git = "https://github.com/broxus/nekoton.git" }
 
 # Indexer engine
 ton-indexer = { git = "https://github.com/broxus/ton-indexer.git" }

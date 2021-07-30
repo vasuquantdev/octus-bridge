@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use relay::config::*;
+use relay::engine::*;
 use serde::Deserialize;
 
 #[tokio::main]
@@ -13,17 +14,16 @@ async fn run() -> Result<()> {
     let config = ApplicationConfig::from_env()?;
 
     let relay_config = RelayConfig::from_file(&config.relay_config)?;
-    let _global_config = ton_indexer::GlobalConfig::from_file(&config.global_config)?;
+    let global_config = ton_indexer::GlobalConfig::from_file(&config.global_config)?;
 
     init_logger(&relay_config.logger_settings)?;
 
     log::info!("Initializing relay...");
 
-    // TODO: init engine, create service
+    let engine = Engine::new(relay_config, global_config).await?;
+    engine.start().await?;
 
     log::info!("Initialized relay");
-
-    // TODO: start service
 
     futures::future::pending().await
 }

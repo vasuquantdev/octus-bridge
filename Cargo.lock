@@ -1690,6 +1690,7 @@ dependencies = [
  "log",
  "log4rs",
  "nekoton-abi",
+ "nekoton-utils",
  "pretty_assertions 0.7.2",
  "serde 1.0.126",
  "serde_json",
@@ -1699,6 +1700,7 @@ dependencies = [
  "ton-indexer",
  "ton_abi",
  "ton_block",
+ "ton_types",
 ]
 
 [[package]]
