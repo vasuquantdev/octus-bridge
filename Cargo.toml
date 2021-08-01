@@ -16,6 +16,7 @@ external-ip = "4.1"
 futures = "0.3"
 log = "0.4"
 log4rs = "1.0"
+num-bigint = "0.2.6"
 parking_lot = "0.11"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -24,14 +25,14 @@ thiserror = "1.0"
 tokio = { version = "1.6", features = ["sync", "fs", "rt-multi-thread", "macros"] }
 
 # TON specific dependencies
-ton_block = { git = "https://github.com/tonlabs/ton-labs-block" }
-ton_abi = { git = "https://github.com/tonlabs/ton-labs-abi", rev = "a2b2a9dc2e8c30a070e9af79cf0c24a55bdd5a87" }
-ton_types = { git = "https://github.com/tonlabs/ton-labs-types" }
+ton_block = { git = "https://github.com/broxus/ton-labs-block" }
+ton_abi = { git = "https://github.com/broxus/ton-labs-abi" }
+ton_types = { git = "https://github.com/broxus/ton-labs-types" }
 
 tiny-adnl = { git = "https://github.com/broxus/tiny-adnl" }
 
 # Nekoton SDK
-nekoton-abi = { git = "https://github.com/broxus/nekoton.git" }
+nekoton-abi = { git = "https://github.com/broxus/nekoton.git", features = ["derive", "nekoton-derive"] }
 nekoton-utils = { git = "https://github.com/broxus/nekoton.git" }
 
 # Indexer engine
