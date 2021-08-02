@@ -44,6 +44,19 @@ impl Engine {
         self.ton_engine.start().await?;
         self.ton_subscriber.start();
 
+        // TEMP:
+        let bridge_account = ton_types::UInt256::from_be_bytes(
+            &hex::decode("459b6795bf4d4c3b930c83fe7625cfee99a762e1e114c749b62bfa751b781fa5")
+                .unwrap(),
+        );
+
+        log::info!("REQUESTING SHARD ACCOUNT");
+        let account = self
+            .ton_subscriber
+            .get_contract_state(bridge_account)
+            .await?;
+        log::info!("SHARD ACCOUNT: {:?}", account);
+
         // TODO: start eth indexer
 
         Ok(())

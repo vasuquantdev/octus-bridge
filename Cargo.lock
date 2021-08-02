@@ -1135,7 +1135,7 @@ dependencies = [
 [[package]]
 name = "nekoton-abi"
 version = "0.3.0"
-source = "git+https://github.com/broxus/nekoton.git#e474b00508d32ca25c46a31b12500504b3f4825a"
+source = "git+https://github.com/broxus/nekoton.git#926535ea01a9698972f3a62bdc771b38bfb902f0"
 dependencies = [
  "anyhow",
  "base64 0.13.0",
@@ -1160,7 +1160,7 @@ dependencies = [
 [[package]]
 name = "nekoton-derive"
 version = "0.3.0"
-source = "git+https://github.com/broxus/nekoton.git#e474b00508d32ca25c46a31b12500504b3f4825a"
+source = "git+https://github.com/broxus/nekoton.git#926535ea01a9698972f3a62bdc771b38bfb902f0"
 dependencies = [
  "either",
  "proc-macro2 1.0.28",
@@ -1171,7 +1171,7 @@ dependencies = [
 [[package]]
 name = "nekoton-utils"
 version = "0.3.0"
-source = "git+https://github.com/broxus/nekoton.git#e474b00508d32ca25c46a31b12500504b3f4825a"
+source = "git+https://github.com/broxus/nekoton.git#926535ea01a9698972f3a62bdc771b38bfb902f0"
 dependencies = [
  "anyhow",
  "base64 0.13.0",
@@ -1706,11 +1706,13 @@ dependencies = [
  "dashmap",
  "external-ip",
  "futures",
+ "hex 0.4.3",
  "log",
  "log4rs",
  "nekoton-abi",
  "nekoton-utils",
  "num-bigint",
+ "once_cell",
  "parking_lot",
  "pretty_assertions 0.7.2",
  "serde 1.0.127",
@@ -2294,7 +2296,7 @@ dependencies = [
 [[package]]
 name = "ton_executor"
 version = "1.0.0"
-source = "git+https://github.com/broxus/ton-labs-executor.git#216d96cbfadd3e58cc948701a68acb3f48a5d1fc"
+source = "git+https://github.com/broxus/ton-labs-executor.git#db7aa828b532abd587a1bcb242f12e8b62223ccb"
 dependencies = [
  "base64 0.10.1",
  "clear_on_drop",
