@@ -2,10 +2,14 @@ use std::fs::File;
 use std::path::Path;
 
 use anyhow::Result;
+use nekoton_utils::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub struct RelayConfig {
+    #[serde(with = "serde_address")]
+    pub relay_address: ton_block::MsgAddressInt,
+
     pub indexer: ton_indexer::NodeConfig,
 
     #[serde(default = "default_logger_settings")]
