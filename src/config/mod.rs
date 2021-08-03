@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize)]
 pub struct RelayConfig {
     #[serde(with = "serde_address")]
-    pub relay_address: ton_block::MsgAddressInt,
+    pub bridge_address: ton_block::MsgAddressInt,
 
     pub indexer: ton_indexer::NodeConfig,
 

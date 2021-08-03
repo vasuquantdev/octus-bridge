@@ -22,7 +22,7 @@ impl Engine {
         global_config: ton_indexer::GlobalConfig,
     ) -> Result<Arc<Self>> {
         let bridge_account =
-            UInt256::from_be_bytes(&config.relay_address.address().get_bytestring(0));
+            UInt256::from_be_bytes(&config.bridge_address.address().get_bytestring(0));
 
         let ton_subscriber = TonSubscriber::new();
 
