@@ -1,23 +1,25 @@
-use std::collections::{hash_map, HashMap, HashSet};
+use std::collections::{hash_map, HashMap};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Weak};
 
 use anyhow::{Context, Result};
-use nekoton_abi::{LastTransactionId, TransactionId};
 use nekoton_utils::NoFailure;
-use parking_lot::{Mutex, RwLock};
-use tokio::sync::{watch, Notify};
+use parking_lot::Mutex;
+use tokio::sync::{oneshot, watch, Notify};
 use ton_block::{BinTreeType, Deserializable, HashmapAugType};
 use ton_indexer::utils::{BlockIdExtExtension, BlockProofStuff, BlockStuff, ShardStateStuff};
 use ton_indexer::EngineStatus;
 use ton_types::{HashmapType, UInt256};
+
+use crate::utils::*;
+use std::ops::Deref;
 
 pub struct TonSubscriber {
     ready: AtomicBool,
     ready_signal: Notify,
     current_utime: AtomicU32,
     state_subscriptions: Mutex<HashMap<UInt256, StateSubscription>>,
-    shards: RwLock<HashSet<ton_block::ShardIdent>>,
+    mc_block_awaiters: Mutex<Vec<Box<dyn BlockAwaiter>>>,
 }
 
 impl TonSubscriber {
@@ -27,13 +29,70 @@ impl TonSubscriber {
             ready_signal: Notify::new(),
             current_utime: AtomicU32::new(0),
             state_subscriptions: Mutex::new(HashMap::new()),
-            shards: RwLock::new(HashSet::new()),
+            mc_block_awaiters: Mutex::new(Vec::with_capacity(4)),
         })
     }
 
     pub async fn start(self: &Arc<Self>) -> Result<()> {
         self.wait_sync().await;
         Ok(())
+    }
+
+    pub async fn wait_shards(&self) -> Result<ShardsMap> {
+        struct Handler {
+            tx: Option<oneshot::Sender<Result<ShardsMap>>>,
+        }
+
+        impl BlockAwaiter for Handler {
+            fn handle_block(&mut self, block: &ton_block::Block) -> Result<()> {
+                if let Some(tx) = self.tx.take() {
+                    let _ = tx.send(extract_shards(block));
+                }
+                Ok(())
+            }
+        }
+
+        fn extract_shards(block: &ton_block::Block) -> Result<ShardsMap> {
+            let extra = block.extra.read_struct().convert()?;
+            let custom = match extra.read_custom().convert()? {
+                Some(custom) => custom,
+                None => return Ok(ShardsMap::default()),
+            };
+
+            let mut shards = HashMap::with_capacity(16);
+
+            custom
+                .shards()
+                .iterate_with_keys(|wc_id: i32, ton_block::InRefValue(shards_tree)| {
+                    if wc_id == ton_block::MASTERCHAIN_ID {
+                        return Ok(true);
+                    }
+
+                    shards_tree.iterate(|prefix, descr| {
+                        let shard_id = ton_block::ShardIdent::with_prefix_slice(wc_id, prefix)?;
+
+                        shards.insert(
+                            shard_id,
+                            ton_block::BlockIdExt::with_params(
+                                shard_id,
+                                descr.seq_no,
+                                descr.root_hash,
+                                descr.file_hash,
+                            ),
+                        );
+                        Ok(true)
+                    })
+                })
+                .convert()?;
+
+            Ok(shards)
+        }
+
+        let (tx, rx) = oneshot::channel();
+        self.mc_block_awaiters
+            .lock()
+            .push(Box::new(Handler { tx: Some(tx) }));
+        rx.await?
     }
 
     pub fn add_transactions_subscription(
@@ -78,21 +137,8 @@ impl TonSubscriber {
         };
 
         state_rx.changed().await?;
-
-        let shard_account = (*state_rx.borrow()).clone();
-        Ok(match shard_account {
-            Some(shard_account) => match shard_account.read_account().convert()? {
-                ton_block::Account::Account(account) => Some(ExistingContract {
-                    account,
-                    last_transaction_id: LastTransactionId::Exact(TransactionId {
-                        lt: shard_account.last_trans_lt(),
-                        hash: *shard_account.last_trans_hash(),
-                    }),
-                }),
-                ton_block::Account::AccountNone => None,
-            },
-            None => None,
-        })
+        let account = state_rx.borrow();
+        ExistingContract::from_shard_account(account.deref())
     }
 
     fn handle_masterchain_block(&self, block: &ton_block::Block) -> Result<()> {
@@ -100,29 +146,12 @@ impl TonSubscriber {
         self.current_utime
             .store(info.gen_utime().0, Ordering::Release);
 
-        let extra = block.extra.read_struct().convert()?;
-        let custom = match extra.read_custom().convert()? {
-            Some(custom) => custom,
-            None => return Ok(()),
-        };
-
-        let mut shards = HashSet::with_capacity(16);
-
-        custom
-            .shards()
-            .iterate_with_keys(|wc_id: i32, ton_block::InRefValue(shards_tree)| {
-                if wc_id == ton_block::MASTERCHAIN_ID {
-                    return Ok(true);
-                }
-
-                shards_tree.iterate(|prefix, _| {
-                    shards.insert(ton_block::ShardIdent::with_prefix_slice(wc_id, prefix)?);
-                    Ok(true)
-                })
-            })
-            .convert()?;
-
-        *self.shards.write() = shards;
+        let awaiters = std::mem::take(&mut *self.mc_block_awaiters.lock());
+        for mut awaiter in awaiters {
+            if let Err(e) = awaiter.handle_block(block) {
+                log::error!("Failed to handle masterchain block: {:?}", e);
+            }
+        }
 
         Ok(())
     }
@@ -212,44 +241,6 @@ impl ton_indexer::Subscriber for TonSubscriber {
 
         Ok(())
     }
-}
-
-pub struct ExistingContract {
-    pub account: ton_block::AccountStuff,
-    pub last_transaction_id: LastTransactionId,
-}
-
-fn contains_account(shard: &ton_block::ShardIdent, account: &UInt256) -> bool {
-    let shard_prefix = shard.shard_prefix_with_tag();
-    if shard_prefix == ton_block::SHARD_FULL {
-        true
-    } else {
-        let len = shard.prefix_len();
-        let account_prefix = account_prefix(account, len as usize) >> (64 - len);
-        let shard_prefix = shard_prefix >> (64 - len);
-        account_prefix == shard_prefix
-    }
-}
-
-fn account_prefix(account: &UInt256, len: usize) -> u64 {
-    debug_assert!(len <= 64);
-
-    let account = account.as_slice();
-
-    let mut value: u64 = 0;
-
-    let bytes = len / 8;
-    for i in 0..bytes {
-        value |= (account[i] as u64) << (8 * (7 - i));
-    }
-
-    let remainder = len % 8;
-    if remainder > 0 {
-        let r = account[bytes] >> (8 - remainder);
-        value |= (r as u64) << (8 * (7 - bytes) + 8 - remainder);
-    }
-
-    value
 }
 
 struct StateSubscription {
@@ -347,6 +338,10 @@ enum StateSubscriptionStatus {
     Stopped,
 }
 
+pub trait BlockAwaiter: Send + Sync {
+    fn handle_block(&mut self, block: &ton_block::Block) -> Result<()>;
+}
+
 pub trait TransactionsSubscription: Send + Sync {
     fn handle_transaction(
         &self,
@@ -359,58 +354,4 @@ pub trait TransactionsSubscription: Send + Sync {
 type ShardAccountTx = watch::Sender<Option<ton_block::ShardAccount>>;
 type ShardAccountRx = watch::Receiver<Option<ton_block::ShardAccount>>;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_account_prefix() {
-        let mut account_id = [0u8; 32];
-        for i in 0..8 {
-            account_id[i] = 0xff;
-        }
-
-        let account_id = UInt256::from(account_id);
-        for i in 0..64 {
-            let prefix = account_prefix(&account_id, i);
-            assert_eq!(64 - prefix.trailing_zeros(), i as u32);
-        }
-    }
-
-    #[test]
-    fn test_contains_account() {
-        let account = ton_types::UInt256::from_be_bytes(
-            &hex::decode("459b6795bf4d4c3b930c83fe7625cfee99a762e1e114c749b62bfa751b781fa5")
-                .unwrap(),
-        );
-
-        let mut shards =
-            vec![ton_block::ShardIdent::with_tagged_prefix(0, ton_block::SHARD_FULL).unwrap()];
-        for _ in 0..4 {
-            let mut new_shards = vec![];
-            for shard in &shards {
-                let (left, right) = shard.split().unwrap();
-                new_shards.push(left);
-                new_shards.push(right);
-            }
-
-            shards = new_shards;
-        }
-
-        let mut target_shard = None;
-        for shard in shards {
-            if !contains_account(&shard, &account) {
-                continue;
-            }
-
-            if target_shard.is_some() {
-                panic!("Account can't be in two shards");
-            }
-            target_shard = Some(shard);
-        }
-
-        assert!(
-            matches!(target_shard, Some(shard) if shard.shard_prefix_with_tag() == 0x4800000000000000)
-        );
-    }
-}
+type ShardsMap = HashMap<ton_block::ShardIdent, ton_block::BlockIdExt>;

@@ -990,9 +990,9 @@ checksum = "dd25036021b0de88a0aff6b850051563c6516d0bf53f8638938edbb9de732736"
 
 [[package]]
 name = "jobserver"
-version = "0.1.22"
+version = "0.1.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "972f5ae5d1cb9c6ae417789196c803205313edde988685da5e3aae0827b9e7fd"
+checksum = "f5ca711fd837261e14ec9e674f092cbb931d3fa1482b017ae59328ddc6f3212b"
 dependencies = [
  "libc",
 ]
@@ -1196,7 +1196,7 @@ dependencies = [
 [[package]]
 name = "nekoton-abi"
 version = "0.3.0"
-source = "git+https://github.com/broxus/nekoton.git#db85ad6842559d778e491a9fc6b3df81984227bc"
+source = "git+https://github.com/broxus/nekoton.git#a96670e86b7415b9aad47a0dacb3af87e473217c"
 dependencies = [
  "anyhow",
  "base64 0.13.0",
@@ -1221,7 +1221,7 @@ dependencies = [
 [[package]]
 name = "nekoton-derive"
 version = "0.3.0"
-source = "git+https://github.com/broxus/nekoton.git#db85ad6842559d778e491a9fc6b3df81984227bc"
+source = "git+https://github.com/broxus/nekoton.git#a96670e86b7415b9aad47a0dacb3af87e473217c"
 dependencies = [
  "either",
  "proc-macro2 1.0.28",
@@ -1232,7 +1232,7 @@ dependencies = [
 [[package]]
 name = "nekoton-utils"
 version = "0.3.0"
-source = "git+https://github.com/broxus/nekoton.git#db85ad6842559d778e491a9fc6b3df81984227bc"
+source = "git+https://github.com/broxus/nekoton.git#a96670e86b7415b9aad47a0dacb3af87e473217c"
 dependencies = [
  "anyhow",
  "base64 0.13.0",
@@ -2307,7 +2307,6 @@ dependencies = [
 [[package]]
 name = "ton-indexer"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#988dfa78fe9d3595d41282061d03d1c6626fbe48"
 dependencies = [
  "anyhow",
  "async-trait",

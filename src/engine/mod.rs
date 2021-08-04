@@ -1,16 +1,15 @@
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use nekoton_abi::{
-    BuildTokenValue, FunctionBuilder, FunctionExt, GenTimings, IntoUnpacker, LastTransactionId,
-    TokenValueExt, TransactionId, UnpackFirst,
-};
+use nekoton_abi::{BuildTokenValue, FunctionBuilder, IntoUnpacker, TokenValueExt, UnpackFirst};
 use nekoton_utils::NoFailure;
-use ton_block::Serializable;
+use ton_block::{HashmapAugType, Serializable};
 use ton_types::UInt256;
 
 use self::ton_subscriber::*;
 use crate::config::*;
+use crate::utils::*;
 
 mod ton_subscriber;
 
@@ -56,14 +55,54 @@ impl Engine {
     }
 
     async fn get_all_configurations(&self) -> Result<()> {
-        let contract = match self
-            .ton_subscriber
-            .get_contract_state(self.bridge_account)
-            .await?
-        {
-            Some(contract) => contract,
-            None => return Err(EngineError::BridgeAccountNotFound.into()),
+        let mut bridge_shard = None;
+
+        let shard_blocks = self.ton_subscriber.wait_shards().await?;
+
+        let mut shard_accounts = BTreeMap::new();
+        for (shard_ident, block_id) in shard_blocks {
+            log::info!(
+                "Loading state: {:016x}, {}",
+                shard_ident.shard_prefix_with_tag(),
+                block_id.seq_no
+            );
+            let shard = self.ton_engine.wait_state(&block_id, None, false).await?;
+            log::info!("Loaded state");
+            let accounts = shard.state().read_accounts().convert()?;
+            log::info!("Loaded accounts");
+
+            if contains_account(&shard_ident, &self.bridge_account) {
+                bridge_shard = Some(shard_ident);
+            }
+
+            shard_accounts.insert(shard_ident, accounts);
+        }
+
+        log::info!(
+            "---\nLoaded all shards. Bridge shard: {:016x}",
+            if let Some(shard) = bridge_shard {
+                shard.shard_prefix_with_tag()
+            } else {
+                0
+            }
+        );
+
+        let contract = match bridge_shard.and_then(|shard| shard_accounts.get(&shard)) {
+            Some(shard) => match shard
+                .get(&self.bridge_account)
+                .convert()
+                .and_then(|account| ExistingContract::from_shard_account(&account))?
+            {
+                Some(contract) => contract,
+                None => return Err(EngineError::BridgeAccountNotFound.into()),
+            },
+            None => {
+                return Err(EngineError::BridgeAccountNotFound).context("Bridge shard not found")
+            }
         };
+
+        log::info!("---\nLoaded bridge account");
+
         let bridge = BridgeContract(&contract);
 
         log::info!("GOT BRIDGE CONTRACT");
@@ -71,14 +110,25 @@ impl Engine {
         for i in 0..u64::MAX {
             log::info!("GETTING INFO FOR CONNECTOR {}...", i);
             let connector_address = bridge.derive_connector_address(i)?;
-            let contract = match self
-                .ton_subscriber
-                .get_contract_state(connector_address)
-                .await?
+
+            let contract = match shard_accounts
+                .iter()
+                .find(|(shard_ident, _)| contains_account(shard_ident, &connector_address))
             {
-                Some(contract) => contract,
-                None => break,
+                Some((_, shard)) => match shard
+                    .get(&connector_address)
+                    .convert()
+                    .and_then(|account| ExistingContract::from_shard_account(&account))?
+                {
+                    Some(contract) => contract,
+                    None => break,
+                },
+                None => {
+                    return Err(EngineError::InvalidConnectorAddress)
+                        .context("No suitable shard found")
+                }
             };
+
             log::info!("EXTRACTING INFO FOR CONNECTOR {}...", i);
             let details = ConnectorContract(&contract).get_details()?;
             log::info!("FOUND CONFIGURATION CONNECTOR {}: {:?}", i, details);
@@ -153,38 +203,12 @@ struct ConnectorDetails {
     enabled: bool,
 }
 
-trait ExistingContractExt {
-    fn run_local(
-        &self,
-        function: &ton_abi::Function,
-        input: &[ton_abi::Token],
-    ) -> Result<Vec<ton_abi::Token>>;
-}
-
-impl ExistingContractExt for ExistingContract {
-    fn run_local(
-        &self,
-        function: &ton_abi::Function,
-        input: &[ton_abi::Token],
-    ) -> Result<Vec<ton_abi::Token>> {
-        let output = function.run_local(
-            self.account.clone(),
-            GenTimings::Unknown,
-            &self.last_transaction_id,
-            input,
-        )?;
-        output
-            .tokens
-            .ok_or_else(|| EngineError::NonZeroResultCode.into())
-    }
-}
-
 #[derive(thiserror::Error, Debug)]
 enum EngineError {
     #[error("External ton message expected")]
     ExternalTonMessageExpected,
     #[error("Bridge account not found")]
     BridgeAccountNotFound,
-    #[error("Contract execution error")]
-    NonZeroResultCode,
+    #[error("Invalid connector address")]
+    InvalidConnectorAddress,
 }
