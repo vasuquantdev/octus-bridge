@@ -95,29 +95,30 @@ impl TonSubscriber {
         rx.await?
     }
 
-    pub fn add_transactions_subscription(
-        &self,
-        account: UInt256,
-        subscription: &Arc<dyn TransactionsSubscription>,
-    ) {
+    pub fn add_transactions_subscription<I, T>(&self, accounts: I, subscription: &Arc<T>)
+    where
+        I: IntoIterator<Item = UInt256>,
+        T: TransactionsSubscription + 'static,
+    {
         let mut state_subscriptions = self.state_subscriptions.lock();
 
-        match state_subscriptions.entry(account) {
-            hash_map::Entry::Vacant(entry) => {
-                let (state_tx, state_rx) = watch::channel(None);
-                entry.insert(StateSubscription {
-                    state_tx,
-                    state_rx,
-                    transaction_subscriptions: vec![Arc::downgrade(subscription)],
-                });
-            }
-            hash_map::Entry::Occupied(mut entry) => {
-                entry
-                    .get_mut()
-                    .transaction_subscriptions
-                    .push(Arc::downgrade(subscription));
-            }
-        };
+        let weak = Arc::downgrade(subscription) as Weak<dyn TransactionsSubscription>;
+
+        for account in accounts {
+            match state_subscriptions.entry(account) {
+                hash_map::Entry::Vacant(entry) => {
+                    let (state_tx, state_rx) = watch::channel(None);
+                    entry.insert(StateSubscription {
+                        state_tx,
+                        state_rx,
+                        transaction_subscriptions: vec![weak.clone()],
+                    });
+                }
+                hash_map::Entry::Occupied(mut entry) => {
+                    entry.get_mut().transaction_subscriptions.push(weak.clone());
+                }
+            };
+        }
     }
 
     pub async fn get_contract_state(&self, account: UInt256) -> Result<Option<ExistingContract>> {
@@ -274,7 +275,7 @@ impl StateSubscription {
         }
 
         let account_block = match account_blocks
-            .get_with_aug(&account)
+            .get_with_aug(account)
             .convert()
             .with_context(|| {
                 format!(
@@ -307,7 +308,9 @@ impl StateSubscription {
             };
 
             for subscription in self.iter_transaction_subscriptions() {
-                if let Err(e) = subscription.handle_transaction(&block_info, &hash, &transaction) {
+                if let Err(e) =
+                    subscription.handle_transaction(&block_info, account, &hash, &transaction)
+                {
                     log::error!(
                         "Failed to handle transaction {} for account {}: {:?}",
                         hash.to_hex_string(),
@@ -346,6 +349,7 @@ pub trait TransactionsSubscription: Send + Sync {
     fn handle_transaction(
         &self,
         block_info: &ton_block::BlockInfo,
+        account: &UInt256,
         transaction_hash: &UInt256,
         transaction: &ton_block::Transaction,
     ) -> Result<()>;

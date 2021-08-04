@@ -1,9 +1,10 @@
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use nekoton_abi::{BuildTokenValue, FunctionBuilder, IntoUnpacker, TokenValueExt, UnpackFirst};
 use nekoton_utils::NoFailure;
+use parking_lot::RwLock;
 use ton_block::{HashmapAugType, Serializable};
 use ton_types::UInt256;
 
@@ -17,6 +18,7 @@ pub struct Engine {
     bridge_account: UInt256,
     ton_engine: Arc<ton_indexer::Engine>,
     ton_subscriber: Arc<TonSubscriber>,
+    connectors_observer: Arc<ConnectorsObserver>,
 }
 
 impl Engine {
@@ -40,6 +42,7 @@ impl Engine {
             bridge_account,
             ton_engine,
             ton_subscriber,
+            connectors_observer: Arc::new(Default::default()),
         }))
     }
 
@@ -55,88 +58,55 @@ impl Engine {
     }
 
     async fn get_all_configurations(&self) -> Result<()> {
-        let mut bridge_shard = None;
+        let shard_accounts = self.get_all_shard_accounts().await?;
 
-        let shard_blocks = self.ton_subscriber.wait_shards().await?;
-
-        let mut shard_accounts = BTreeMap::new();
-        for (shard_ident, block_id) in shard_blocks {
-            log::info!(
-                "Loading state: {:016x}, {}",
-                shard_ident.shard_prefix_with_tag(),
-                block_id.seq_no
-            );
-            let shard = self.ton_engine.wait_state(&block_id, None, false).await?;
-            log::info!("Loaded state");
-            let accounts = shard.state().read_accounts().convert()?;
-            log::info!("Loaded accounts");
-
-            if contains_account(&shard_ident, &self.bridge_account) {
-                bridge_shard = Some(shard_ident);
-            }
-
-            shard_accounts.insert(shard_ident, accounts);
-        }
-
-        log::info!(
-            "---\nLoaded all shards. Bridge shard: {:016x}",
-            if let Some(shard) = bridge_shard {
-                shard.shard_prefix_with_tag()
-            } else {
-                0
-            }
-        );
-
-        let contract = match bridge_shard.and_then(|shard| shard_accounts.get(&shard)) {
-            Some(shard) => match shard
-                .get(&self.bridge_account)
-                .convert()
-                .and_then(|account| ExistingContract::from_shard_account(&account))?
-            {
-                Some(contract) => contract,
-                None => return Err(EngineError::BridgeAccountNotFound.into()),
-            },
-            None => {
-                return Err(EngineError::BridgeAccountNotFound).context("Bridge shard not found")
-            }
-        };
-
-        log::info!("---\nLoaded bridge account");
-
+        let contract = shard_accounts
+            .find_account(&self.bridge_account)?
+            .ok_or(EngineError::BridgeAccountNotFound)?;
         let bridge = BridgeContract(&contract);
 
-        log::info!("GOT BRIDGE CONTRACT");
+        let mut connectors = Vec::new();
+        let mut active_configurations = Vec::new();
 
-        for i in 0..u64::MAX {
-            log::info!("GETTING INFO FOR CONNECTOR {}...", i);
+        for i in 0.. {
             let connector_address = bridge.derive_connector_address(i)?;
 
-            let contract = match shard_accounts
-                .iter()
-                .find(|(shard_ident, _)| contains_account(shard_ident, &connector_address))
-            {
-                Some((_, shard)) => match shard
-                    .get(&connector_address)
-                    .convert()
-                    .and_then(|account| ExistingContract::from_shard_account(&account))?
-                {
-                    Some(contract) => contract,
-                    None => break,
-                },
-                None => {
-                    return Err(EngineError::InvalidConnectorAddress)
-                        .context("No suitable shard found")
-                }
+            let contract = match shard_accounts.find_account(&connector_address)? {
+                Some(contract) => contract,
+                None => break,
             };
 
-            log::info!("EXTRACTING INFO FOR CONNECTOR {}...", i);
             let details = ConnectorContract(&contract).get_details()?;
-            log::info!("FOUND CONFIGURATION CONNECTOR {}: {:?}", i, details);
+            log::info!("Found configuration connector {}: {:?}", i, details);
+
+            if details.enabled {
+                active_configurations.push(details.event_configuration);
+            }
+            connectors.push(details);
         }
+
+        *self.connectors_observer.connectors.write() = connectors.clone();
+        self.ton_subscriber.add_transactions_subscription(
+            connectors.into_iter().map(|item| item.event_configuration),
+            &self.connectors_observer,
+        );
 
         // TODO
 
         Ok(())
+    }
+
+    async fn get_all_shard_accounts(&self) -> Result<ShardAccountsMap> {
+        let shard_blocks = self.ton_subscriber.wait_shards().await?;
+
+        let mut shard_accounts = HashMap::with_capacity(shard_blocks.len());
+        for (shard_ident, block_id) in shard_blocks {
+            let shard = self.ton_engine.wait_state(&block_id, None, false).await?;
+            let accounts = shard.state().read_accounts().convert()?;
+            shard_accounts.insert(shard_ident, accounts);
+        }
+
+        Ok(shard_accounts)
     }
 
     async fn send_ton_message(&self, message: &ton_block::Message) -> Result<()> {
@@ -153,6 +123,27 @@ impl Engine {
         self.ton_engine
             .broadcast_external_message(&to, &serialized)
             .await
+    }
+}
+
+#[derive(Default)]
+struct ConnectorsObserver {
+    connectors: RwLock<Vec<ConnectorDetails>>,
+}
+
+impl TransactionsSubscription for ConnectorsObserver {
+    fn handle_transaction(
+        &self,
+        block_info: &ton_block::BlockInfo,
+        account: &UInt256,
+        transaction_hash: &UInt256,
+        transaction: &ton_block::Transaction,
+    ) -> Result<()> {
+        log::info!("Got transaction on connector {}", account.to_hex_string());
+
+        // TODO: parse connector events
+
+        Ok(())
     }
 }
 
@@ -197,11 +188,36 @@ impl ConnectorContract<'_> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 struct ConnectorDetails {
     event_configuration: UInt256,
     enabled: bool,
 }
+
+trait ShardAccountsMapExt {
+    fn find_account(&self, account: &UInt256) -> Result<Option<ExistingContract>>;
+}
+
+impl ShardAccountsMapExt for ShardAccountsMap {
+    fn find_account(&self, account: &UInt256) -> Result<Option<ExistingContract>> {
+        match self
+            .iter()
+            .find(|(shard_ident, _)| contains_account(shard_ident, account))
+        {
+            Some((_, shard)) => match shard
+                .get(&account)
+                .convert()
+                .and_then(|account| ExistingContract::from_shard_account(&account))?
+            {
+                Some(contract) => Ok(Some(contract)),
+                None => Ok(None),
+            },
+            None => Err(EngineError::InvalidContractAddress).context("No suitable shard found"),
+        }
+    }
+}
+
+type ShardAccountsMap = HashMap<ton_block::ShardIdent, ton_block::ShardAccounts>;
 
 #[derive(thiserror::Error, Debug)]
 enum EngineError {
@@ -209,6 +225,8 @@ enum EngineError {
     ExternalTonMessageExpected,
     #[error("Bridge account not found")]
     BridgeAccountNotFound,
-    #[error("Invalid connector address")]
-    InvalidConnectorAddress,
+    #[error("Invalid contract address")]
+    InvalidContractAddress,
+    #[error("Already initialized")]
+    AlreadyInitialized,
 }
