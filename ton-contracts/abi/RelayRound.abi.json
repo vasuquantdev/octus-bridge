@@ -1,0 +1,188 @@
+{
+	"ABI version": 2,
+	"header": ["time"],
+	"functions": [
+		{
+			"name": "constructor",
+			"inputs": [
+			],
+			"outputs": [
+			]
+		},
+		{
+			"name": "getRelayByStakerAddress",
+			"inputs": [
+				{"name":"_answer_id","type":"uint32"},
+				{"name":"staker_addr","type":"address"}
+			],
+			"outputs": [
+				{"components":[{"name":"staker_addr","type":"address"},{"name":"ton_pubkey","type":"uint256"},{"name":"eth_addr","type":"uint160"},{"name":"staked_tokens","type":"uint128"},{"name":"reward_claimed","type":"bool"}],"name":"value0","type":"tuple"}
+			]
+		},
+		{
+			"name": "getRewardForRound",
+			"inputs": [
+				{"name":"staker_addr","type":"address"},
+				{"name":"send_gas_to","type":"address"},
+				{"name":"code_version","type":"uint32"}
+			],
+			"outputs": [
+			]
+		},
+		{
+			"name": "getDetails",
+			"inputs": [
+				{"name":"_answer_id","type":"uint32"}
+			],
+			"outputs": [
+				{"components":[{"name":"root","type":"address"},{"name":"round_num","type":"uint128"},{"components":[{"name":"staker_addr","type":"address"},{"name":"ton_pubkey","type":"uint256"},{"name":"eth_addr","type":"uint160"},{"name":"staked_tokens","type":"uint128"},{"name":"reward_claimed","type":"bool"}],"name":"relays","type":"tuple[]"},{"name":"relays_installed","type":"bool"},{"name":"code_version","type":"uint32"}],"name":"value0","type":"tuple"}
+			]
+		},
+		{
+			"name": "getRelays",
+			"inputs": [
+				{"name":"send_gas_to","type":"address"}
+			],
+			"outputs": [
+			]
+		},
+		{
+			"name": "relayKeys",
+			"inputs": [
+				{"name":"_answer_id","type":"uint32"}
+			],
+			"outputs": [
+				{"name":"value0","type":"uint256[]"}
+			]
+		},
+		{
+			"name": "setRelays",
+			"inputs": [
+				{"components":[{"name":"staker_addr","type":"address"},{"name":"ton_pubkey","type":"uint256"},{"name":"eth_addr","type":"uint160"},{"name":"staked_tokens","type":"uint128"},{"name":"reward_claimed","type":"bool"}],"name":"_relay_list","type":"tuple[]"},
+				{"name":"send_gas_to","type":"address"}
+			],
+			"outputs": [
+			]
+		},
+		{
+			"name": "upgrade",
+			"inputs": [
+				{"name":"code","type":"cell"},
+				{"name":"new_version","type":"uint32"},
+				{"name":"send_gas_to","type":"address"}
+			],
+			"outputs": [
+			]
+		},
+		{
+			"name": "getUserDataAddress",
+			"inputs": [
+				{"name":"_answer_id","type":"uint32"},
+				{"name":"user","type":"address"}
+			],
+			"outputs": [
+				{"name":"value0","type":"address"}
+			]
+		},
+		{
+			"name": "relays_installed",
+			"inputs": [
+			],
+			"outputs": [
+				{"name":"relays_installed","type":"bool"}
+			]
+		},
+		{
+			"name": "relays_count",
+			"inputs": [
+			],
+			"outputs": [
+				{"name":"relays_count","type":"uint256"}
+			]
+		},
+		{
+			"name": "start_time",
+			"inputs": [
+			],
+			"outputs": [
+				{"name":"start_time","type":"uint128"}
+			]
+		},
+		{
+			"name": "round_len",
+			"inputs": [
+			],
+			"outputs": [
+				{"name":"round_len","type":"uint128"}
+			]
+		},
+		{
+			"name": "total_tokens_staked",
+			"inputs": [
+			],
+			"outputs": [
+				{"name":"total_tokens_staked","type":"uint128"}
+			]
+		},
+		{
+			"name": "reward_round_num",
+			"inputs": [
+			],
+			"outputs": [
+				{"name":"reward_round_num","type":"uint128"}
+			]
+		},
+		{
+			"name": "round_reward",
+			"inputs": [
+			],
+			"outputs": [
+				{"name":"round_reward","type":"uint128"}
+			]
+		},
+		{
+			"name": "round_num",
+			"inputs": [
+			],
+			"outputs": [
+				{"name":"round_num","type":"uint128"}
+			]
+		},
+		{
+			"name": "current_version",
+			"inputs": [
+			],
+			"outputs": [
+				{"name":"current_version","type":"uint32"}
+			]
+		},
+		{
+			"name": "platform_code",
+			"inputs": [
+			],
+			"outputs": [
+				{"name":"platform_code","type":"cell"}
+			]
+		},
+		{
+			"name": "root",
+			"inputs": [
+			],
+			"outputs": [
+				{"name":"root","type":"address"}
+			]
+		}
+	],
+	"data": [
+	],
+	"events": [
+		{
+			"name": "RelayRoundCodeUpgraded",
+			"inputs": [
+				{"name":"code_version","type":"uint32"}
+			],
+			"outputs": [
+			]
+		}
+	]
+}

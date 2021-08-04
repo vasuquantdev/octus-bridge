@@ -1,0 +1,147 @@
+{
+	"ABI version": 2,
+	"header": ["time"],
+	"functions": [
+		{
+			"name": "constructor",
+			"inputs": [
+				{"name":"_owner","type":"address"}
+			],
+			"outputs": [
+			]
+		},
+		{
+			"name": "deployEvent",
+			"inputs": [
+				{"components":[{"name":"eventTransaction","type":"uint256"},{"name":"eventIndex","type":"uint32"},{"name":"eventData","type":"cell"},{"name":"eventBlockNumber","type":"uint32"},{"name":"eventBlock","type":"uint256"}],"name":"eventVoteData","type":"tuple"}
+			],
+			"outputs": [
+				{"name":"eventContract","type":"address"}
+			]
+		},
+		{
+			"name": "deriveEventAddress",
+			"inputs": [
+				{"name":"_answer_id","type":"uint32"},
+				{"components":[{"name":"eventTransaction","type":"uint256"},{"name":"eventIndex","type":"uint32"},{"name":"eventData","type":"cell"},{"name":"eventBlockNumber","type":"uint32"},{"name":"eventBlock","type":"uint256"}],"name":"eventVoteData","type":"tuple"}
+			],
+			"outputs": [
+				{"name":"eventContract","type":"address"}
+			]
+		},
+		{
+			"name": "getDetails",
+			"inputs": [
+				{"name":"_answer_id","type":"uint32"}
+			],
+			"outputs": [
+				{"components":[{"name":"eventABI","type":"bytes"},{"name":"staking","type":"address"},{"name":"eventInitialBalance","type":"uint128"},{"name":"eventCode","type":"cell"},{"name":"meta","type":"cell"},{"name":"chainId","type":"uint32"}],"name":"_basicConfiguration","type":"tuple"},
+				{"components":[{"name":"eventEmitter","type":"uint160"},{"name":"eventBlocksToConfirm","type":"uint16"},{"name":"proxy","type":"address"},{"name":"startBlockNumber","type":"uint32"}],"name":"_networkConfiguration","type":"tuple"}
+			]
+		},
+		{
+			"name": "getType",
+			"inputs": [
+				{"name":"_answer_id","type":"uint32"}
+			],
+			"outputs": [
+				{"name":"_type","type":"uint8"}
+			]
+		},
+		{
+			"name": "update",
+			"inputs": [
+				{"components":[{"name":"eventABI","type":"bytes"},{"name":"staking","type":"address"},{"name":"eventInitialBalance","type":"uint128"},{"name":"eventCode","type":"cell"},{"name":"meta","type":"cell"},{"name":"chainId","type":"uint32"}],"name":"_basicConfiguration","type":"tuple"},
+				{"components":[{"name":"eventEmitter","type":"uint160"},{"name":"eventBlocksToConfirm","type":"uint16"},{"name":"proxy","type":"address"},{"name":"startBlockNumber","type":"uint32"}],"name":"_networkConfiguration","type":"tuple"}
+			],
+			"outputs": [
+			]
+		},
+		{
+			"name": "broxusBridgeCallback",
+			"inputs": [
+				{"components":[{"components":[{"name":"eventTransaction","type":"uint256"},{"name":"eventIndex","type":"uint32"},{"name":"eventData","type":"cell"},{"name":"eventBlockNumber","type":"uint32"},{"name":"eventBlock","type":"uint256"}],"name":"voteData","type":"tuple"},{"name":"configuration","type":"address"},{"name":"staking","type":"address"},{"name":"chainId","type":"uint32"}],"name":"eventInitData","type":"tuple"},
+				{"name":"gasBackAddress","type":"address"}
+			],
+			"outputs": [
+			]
+		},
+		{
+			"name": "transferOwnership",
+			"inputs": [
+				{"name":"newOwner","type":"address"}
+			],
+			"outputs": [
+			]
+		},
+		{
+			"name": "renounceOwnership",
+			"inputs": [
+			],
+			"outputs": [
+			]
+		},
+		{
+			"name": "owner",
+			"inputs": [
+			],
+			"outputs": [
+				{"name":"owner","type":"address"}
+			]
+		},
+		{
+			"name": "basicConfiguration",
+			"inputs": [
+			],
+			"outputs": [
+				{"components":[{"name":"eventABI","type":"bytes"},{"name":"staking","type":"address"},{"name":"eventInitialBalance","type":"uint128"},{"name":"eventCode","type":"cell"},{"name":"meta","type":"cell"},{"name":"chainId","type":"uint32"}],"name":"basicConfiguration","type":"tuple"}
+			]
+		},
+		{
+			"name": "networkConfiguration",
+			"inputs": [
+			],
+			"outputs": [
+				{"components":[{"name":"eventEmitter","type":"uint160"},{"name":"eventBlocksToConfirm","type":"uint16"},{"name":"proxy","type":"address"},{"name":"startBlockNumber","type":"uint32"}],"name":"networkConfiguration","type":"tuple"}
+			]
+		}
+	],
+	"data": [
+		{"components":[{"name":"eventABI","type":"bytes"},{"name":"staking","type":"address"},{"name":"eventInitialBalance","type":"uint128"},{"name":"eventCode","type":"cell"},{"name":"meta","type":"cell"},{"name":"chainId","type":"uint32"}],"key":1,"name":"basicConfiguration","type":"tuple"},
+		{"components":[{"name":"eventEmitter","type":"uint160"},{"name":"eventBlocksToConfirm","type":"uint16"},{"name":"proxy","type":"address"},{"name":"startBlockNumber","type":"uint32"}],"key":2,"name":"networkConfiguration","type":"tuple"}
+	],
+	"events": [
+		{
+			"name": "OwnershipTransferred",
+			"inputs": [
+				{"name":"previousOwner","type":"address"},
+				{"name":"newOwner","type":"address"}
+			],
+			"outputs": [
+			]
+		},
+		{
+			"name": "Confirm",
+			"inputs": [
+				{"name":"relay","type":"uint256"}
+			],
+			"outputs": [
+			]
+		},
+		{
+			"name": "Reject",
+			"inputs": [
+				{"name":"relay","type":"uint256"}
+			],
+			"outputs": [
+			]
+		},
+		{
+			"name": "Closed",
+			"inputs": [
+			],
+			"outputs": [
+			]
+		}
+	]
+}

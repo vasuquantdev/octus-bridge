@@ -1,6 +1,10 @@
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
+use nekoton_abi::{
+    BuildTokenValue, FunctionBuilder, FunctionExt, GenTimings, IntoUnpacker, LastTransactionId,
+    TokenValueExt, TransactionId, UnpackFirst,
+};
 use nekoton_utils::NoFailure;
 use ton_block::Serializable;
 use ton_types::UInt256;
@@ -44,16 +48,39 @@ impl Engine {
         self.ton_engine.start().await?;
         self.ton_subscriber.start().await?;
 
-        // TEMP:
-
-        log::info!("REQUESTING SHARD ACCOUNT");
-        let account = self
-            .ton_subscriber
-            .get_contract_state(self.bridge_account)
-            .await?;
-        log::info!("SHARD ACCOUNT: {:?}", account);
+        self.get_all_configurations().await?;
 
         // TODO: start eth indexer
+
+        Ok(())
+    }
+
+    async fn get_all_configurations(&self) -> Result<()> {
+        let contract = match self
+            .ton_subscriber
+            .get_contract_state(self.bridge_account)
+            .await?
+        {
+            Some(contract) => contract,
+            None => return Err(EngineError::BridgeAccountNotFound.into()),
+        };
+        let bridge = BridgeContract(&contract);
+
+        for i in 0..u64::MAX {
+            let connector_address = bridge.derive_connector_address(i)?;
+            let contract = match self
+                .ton_subscriber
+                .get_contract_state(connector_address)
+                .await?
+            {
+                Some(contract) => contract,
+                None => break,
+            };
+            let details = ConnectorContract(&contract).get_details()?;
+            log::info!("FOUND CONFIGURATION CONNECTOR {}: {:?}", i, details);
+        }
+
+        // TODO
 
         Ok(())
     }
@@ -75,8 +102,85 @@ impl Engine {
     }
 }
 
+struct BridgeContract<'a>(&'a ExistingContract);
+
+impl BridgeContract<'_> {
+    fn derive_connector_address(&self, id: u64) -> Result<UInt256> {
+        let function = FunctionBuilder::new("deriveConnectorAddress")
+            .default_headers()
+            .in_arg("id", ton_abi::ParamType::Uint(128))
+            .out_arg("connector", ton_abi::ParamType::Address);
+
+        let address: ton_block::MsgAddrStd = self
+            .0
+            .run_local(&function.build(), &[(id as u128).token_value().named("id")])?
+            .unpack_first()?;
+        Ok(UInt256::from_be_bytes(&address.address.get_bytestring(0)))
+    }
+}
+
+struct ConnectorContract<'a>(&'a ExistingContract);
+
+impl ConnectorContract<'_> {
+    fn get_details(&self) -> Result<ConnectorDetails> {
+        let function = FunctionBuilder::new("getDetails")
+            .default_headers()
+            .out_arg("id", ton_abi::ParamType::Uint(128))
+            .out_arg("eventConfiguration", ton_abi::ParamType::Address)
+            .out_arg("enabled", ton_abi::ParamType::Bool);
+
+        let mut result = self.0.run_local(&function.build(), &[])?.into_unpacker();
+        let _id: u128 = result.unpack_next()?;
+        let event_configuration: ton_block::MsgAddrStd = result.unpack_next()?;
+        let enabled: bool = result.unpack_next()?;
+
+        Ok(ConnectorDetails {
+            event_configuration: UInt256::from_be_bytes(
+                &event_configuration.address.get_bytestring(0),
+            ),
+            enabled,
+        })
+    }
+}
+
+#[derive(Debug)]
+struct ConnectorDetails {
+    event_configuration: UInt256,
+    enabled: bool,
+}
+
+trait ExistingContractExt {
+    fn run_local(
+        &self,
+        function: &ton_abi::Function,
+        input: &[ton_abi::Token],
+    ) -> Result<Vec<ton_abi::Token>>;
+}
+
+impl ExistingContractExt for ExistingContract {
+    fn run_local(
+        &self,
+        function: &ton_abi::Function,
+        input: &[ton_abi::Token],
+    ) -> Result<Vec<ton_abi::Token>> {
+        let output = function.run_local(
+            self.account.clone(),
+            GenTimings::Unknown,
+            &self.last_transaction_id,
+            input,
+        )?;
+        output
+            .tokens
+            .ok_or_else(|| EngineError::NonZeroResultCode.into())
+    }
+}
+
 #[derive(thiserror::Error, Debug)]
 enum EngineError {
     #[error("External ton message expected")]
     ExternalTonMessageExpected,
+    #[error("Bridge account not found")]
+    BridgeAccountNotFound,
+    #[error("Contract execution error")]
+    NonZeroResultCode,
 }

@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Weak};
 
 use anyhow::{Context, Result};
+use nekoton_abi::{LastTransactionId, TransactionId};
 use nekoton_utils::NoFailure;
 use parking_lot::{Mutex, RwLock};
 use tokio::sync::{watch, Notify};
@@ -60,10 +61,7 @@ impl TonSubscriber {
         };
     }
 
-    pub async fn get_contract_state(
-        &self,
-        account: UInt256,
-    ) -> Result<Option<ton_block::ShardAccount>> {
+    pub async fn get_contract_state(&self, account: UInt256) -> Result<Option<ExistingContract>> {
         let mut state_rx = match self.state_subscriptions.lock().entry(account) {
             hash_map::Entry::Vacant(entry) => {
                 let (state_tx, state_rx) = watch::channel(None);
@@ -81,8 +79,20 @@ impl TonSubscriber {
 
         state_rx.changed().await?;
 
-        let value = (*state_rx.borrow()).clone();
-        Ok(value)
+        let shard_account = (*state_rx.borrow()).clone();
+        Ok(match shard_account {
+            Some(shard_account) => match shard_account.read_account().convert()? {
+                ton_block::Account::Account(account) => Some(ExistingContract {
+                    account,
+                    last_transaction_id: LastTransactionId::Exact(TransactionId {
+                        lt: shard_account.last_trans_lt(),
+                        hash: *shard_account.last_trans_hash(),
+                    }),
+                }),
+                ton_block::Account::AccountNone => None,
+            },
+            None => None,
+        })
     }
 
     fn handle_masterchain_block(&self, block: &ton_block::Block) -> Result<()> {
@@ -202,6 +212,11 @@ impl ton_indexer::Subscriber for TonSubscriber {
 
         Ok(())
     }
+}
+
+pub struct ExistingContract {
+    pub account: ton_block::AccountStuff,
+    pub last_transaction_id: LastTransactionId,
 }
 
 fn contains_account(shard: &ton_block::ShardIdent, account: &UInt256) -> bool {
