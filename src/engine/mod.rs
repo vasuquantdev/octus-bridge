@@ -66,7 +66,10 @@ impl Engine {
         };
         let bridge = BridgeContract(&contract);
 
+        log::info!("GOT BRIDGE CONTRACT");
+
         for i in 0..u64::MAX {
+            log::info!("GETTING INFO FOR CONNECTOR {}...", i);
             let connector_address = bridge.derive_connector_address(i)?;
             let contract = match self
                 .ton_subscriber
@@ -76,6 +79,7 @@ impl Engine {
                 Some(contract) => contract,
                 None => break,
             };
+            log::info!("EXTRACTING INFO FOR CONNECTOR {}...", i);
             let details = ConnectorContract(&contract).get_details()?;
             log::info!("FOUND CONFIGURATION CONNECTOR {}: {:?}", i, details);
         }
@@ -124,7 +128,7 @@ struct ConnectorContract<'a>(&'a ExistingContract);
 impl ConnectorContract<'_> {
     fn get_details(&self) -> Result<ConnectorDetails> {
         let function = FunctionBuilder::new("getDetails")
-            .default_headers()
+            .header("time", ton_abi::ParamType::Time)
             .out_arg("id", ton_abi::ParamType::Uint(128))
             .out_arg("eventConfiguration", ton_abi::ParamType::Address)
             .out_arg("enabled", ton_abi::ParamType::Bool);
