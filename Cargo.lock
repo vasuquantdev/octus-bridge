@@ -1196,7 +1196,7 @@ dependencies = [
 [[package]]
 name = "nekoton-abi"
 version = "0.3.0"
-source = "git+https://github.com/broxus/nekoton.git#8696cbabcf6a583955c82e04687bc378f594ae62"
+source = "git+https://github.com/broxus/nekoton.git#e549b00968bc0c313cc4957016ef9c35199ee117"
 dependencies = [
  "anyhow",
  "base64 0.13.0",
@@ -1206,7 +1206,7 @@ dependencies = [
  "log",
  "nekoton-derive",
  "nekoton-utils",
- "num-bigint 0.2.6",
+ "num-bigint",
  "num-traits 0.2.14",
  "serde 1.0.127",
  "sha2 0.9.5",
@@ -1221,7 +1221,7 @@ dependencies = [
 [[package]]
 name = "nekoton-derive"
 version = "0.3.0"
-source = "git+https://github.com/broxus/nekoton.git#8696cbabcf6a583955c82e04687bc378f594ae62"
+source = "git+https://github.com/broxus/nekoton.git#e549b00968bc0c313cc4957016ef9c35199ee117"
 dependencies = [
  "either",
  "proc-macro2 1.0.28",
@@ -1232,7 +1232,7 @@ dependencies = [
 [[package]]
 name = "nekoton-utils"
 version = "0.3.0"
-source = "git+https://github.com/broxus/nekoton.git#8696cbabcf6a583955c82e04687bc378f594ae62"
+source = "git+https://github.com/broxus/nekoton.git#e549b00968bc0c313cc4957016ef9c35199ee117"
 dependencies = [
  "anyhow",
  "base64 0.13.0",
@@ -1240,7 +1240,7 @@ dependencies = [
  "failure",
  "hex 0.4.3",
  "log",
- "num-bigint 0.2.6",
+ "num-bigint",
  "num-traits 0.2.14",
  "serde 1.0.127",
  "sha2 0.9.5",
@@ -1287,7 +1287,7 @@ version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8536030f9fea7127f841b45bb6243b27255787fb4eb83958aa1ef9d2fdc0c36"
 dependencies = [
- "num-bigint 0.2.6",
+ "num-bigint",
  "num-complex",
  "num-integer",
  "num-iter",
@@ -1300,18 +1300,6 @@ name = "num-bigint"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "090c7f9998ee0ff65aa5b723e4009f7b217707f1fb5ea551329cc4d6231fb304"
-dependencies = [
- "autocfg",
- "num-integer",
- "num-traits 0.2.14",
- "serde 1.0.127",
-]
-
-[[package]]
-name = "num-bigint"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4e0d047c1062aa51e256408c560894e5251f08925980e53cf1aa5bd00eec6512"
 dependencies = [
  "autocfg",
  "num-integer",
@@ -1368,7 +1356,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c000134b5dbf44adc5cb772486d335293351644b801551abe8f75c84cfa4aef"
 dependencies = [
  "autocfg",
- "num-bigint 0.2.6",
+ "num-bigint",
  "num-integer",
  "num-traits 0.2.14",
 ]
@@ -1796,7 +1784,7 @@ dependencies = [
  "log4rs",
  "nekoton-abi",
  "nekoton-utils",
- "num-bigint 0.2.6",
+ "num-bigint",
  "once_cell",
  "parking_lot",
  "pretty_assertions 0.7.2",
@@ -2291,20 +2279,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ton-contracts"
-version = "2.0.0"
-dependencies = [
- "nekoton-abi",
- "nekoton-utils",
- "num-bigint 0.4.0",
- "once_cell",
- "serde 1.0.127",
- "ton_abi",
- "ton_block",
- "ton_types",
-]
-
-[[package]]
 name = "ton-indexer"
 version = "0.1.0"
 source = "git+https://github.com/broxus/ton-indexer.git#4c88e723bbeef5fe0005f6b59b4deffbc90ed877"
@@ -2347,7 +2321,7 @@ dependencies = [
  "ed25519-dalek",
  "failure",
  "hex 0.3.2",
- "num-bigint 0.2.6",
+ "num-bigint",
  "num-traits 0.2.14",
  "pretty_assertions 0.5.1",
  "serde 1.0.127",

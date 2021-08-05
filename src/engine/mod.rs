@@ -1,5 +1,4 @@
 use std::collections::hash_map::{self, HashMap};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use anyhow::{Context, Result};

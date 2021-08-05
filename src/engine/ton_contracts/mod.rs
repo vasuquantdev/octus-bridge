@@ -4,6 +4,229 @@ use ton_types::UInt256;
 
 use crate::utils::*;
 
+pub struct EthEventContract<'a>(pub &'a ExistingContract);
+
+impl EthEventContract<'_> {
+    pub fn get_details(&self) -> Result<TonEventDetails> {
+        let mut function = FunctionBuilder::new("getDetails")
+            .default_headers()
+            .out_arg("event_init_data", EthEventInitData::make_params_tuple())
+            .out_arg("status", ton_abi::ParamType::Uint(8))
+            .out_arg(
+                "confirms",
+                ton_abi::ParamType::Array(Box::new(ton_abi::ParamType::Uint(256))),
+            )
+            .out_arg(
+                "rejects",
+                ton_abi::ParamType::Array(Box::new(ton_abi::ParamType::Uint(256))),
+            )
+            .out_arg(
+                "empty",
+                ton_abi::ParamType::Array(Box::new(ton_abi::ParamType::Uint(256))),
+            )
+            .out_arg("balance", ton_abi::ParamType::Uint(128))
+            .out_arg("initializer", ton_abi::ParamType::Address)
+            .out_arg("meta", ton_abi::ParamType::Cell)
+            .out_arg("required_votes", ton_abi::ParamType::Uint(32));
+        function.make_responsible();
+
+        let result = self
+            .0
+            .run_local(&function.build(), &[answer_id()])?
+            .unpack()?;
+        Ok(result)
+    }
+}
+
+#[derive(Debug, PackAbiPlain, UnpackAbiPlain, Clone)]
+pub struct EthEventDetails {
+    #[abi]
+    pub event_init_data: EthEventInitData,
+    #[abi]
+    pub status: EventStatus,
+    #[abi(with = "array_uint256_bytes")]
+    pub confirms: Vec<UInt256>,
+    #[abi(with = "array_uint256_bytes")]
+    pub rejects: Vec<UInt256>,
+    #[abi(with = "array_uint256_bytes")]
+    pub empty: Vec<UInt256>,
+    #[abi(uint128)]
+    pub balance: u128,
+    #[abi(address)]
+    pub initializer: ton_block::MsgAddressInt,
+    #[abi(cell)]
+    pub meta: ton_types::Cell,
+    #[abi(uint32)]
+    pub required_votes: u32,
+}
+
+#[derive(Debug, PackAbi, UnpackAbi, Clone)]
+pub struct EthEventInitData {
+    #[abi]
+    pub vote_data: EthEventVoteData,
+    #[abi(with = "address_only_hash")]
+    pub configuration: UInt256,
+    #[abi(with = "address_only_hash")]
+    pub staking: UInt256,
+    #[abi(uint32)]
+    pub chain_id: u32,
+}
+
+impl EthEventInitData {
+    pub fn make_params_tuple() -> ton_abi::ParamType {
+        TupleBuilder::new()
+            .arg("vote_data", EthEventVoteData::make_params_tuple())
+            .arg("configuration", ton_abi::ParamType::Address)
+            .arg("staking", ton_abi::ParamType::Address)
+            .arg("chain_id", ton_abi::ParamType::Uint(32))
+            .build()
+    }
+}
+
+#[derive(Debug, PackAbi, UnpackAbi, Clone)]
+pub struct EthEventVoteData {
+    #[abi(with = "uint256_bytes")]
+    pub event_transaction: UInt256,
+    #[abi(uint32)]
+    pub event_index: u32,
+    #[abi(cell)]
+    pub event_data: ton_types::Cell,
+    #[abi(uint32)]
+    pub event_block_number: u32,
+    #[abi(with = "uint256_bytes")]
+    pub event_block: UInt256,
+}
+
+impl EthEventVoteData {
+    pub fn make_params_tuple() -> ton_abi::ParamType {
+        TupleBuilder::new()
+            .arg("event_transaction", ton_abi::ParamType::Uint(256))
+            .arg("event_index", ton_abi::ParamType::Uint(32))
+            .arg("event_data", ton_abi::ParamType::Cell)
+            .arg("event_block_number", ton_abi::ParamType::Uint(32))
+            .arg("event_block", ton_abi::ParamType::Uint(256))
+            .build()
+    }
+}
+
+pub struct TonEventContract<'a>(pub &'a ExistingContract);
+
+impl TonEventContract<'_> {
+    pub fn get_details(&self) -> Result<TonEventDetails> {
+        let mut function = FunctionBuilder::new("getDetails")
+            .default_headers()
+            .out_arg("event_init_data", TonEventInitData::make_params_tuple())
+            .out_arg("status", ton_abi::ParamType::Uint(8))
+            .out_arg(
+                "confirms",
+                ton_abi::ParamType::Array(Box::new(ton_abi::ParamType::Uint(256))),
+            )
+            .out_arg(
+                "rejects",
+                ton_abi::ParamType::Array(Box::new(ton_abi::ParamType::Uint(256))),
+            )
+            .out_arg(
+                "empty",
+                ton_abi::ParamType::Array(Box::new(ton_abi::ParamType::Uint(256))),
+            )
+            .out_arg(
+                "signatures",
+                ton_abi::ParamType::Array(Box::new(ton_abi::ParamType::Bytes)),
+            )
+            .out_arg("balance", ton_abi::ParamType::Uint(128))
+            .out_arg("initializer", ton_abi::ParamType::Address)
+            .out_arg("meta", ton_abi::ParamType::Cell)
+            .out_arg("required_votes", ton_abi::ParamType::Uint(32));
+        function.make_responsible();
+
+        let result = self
+            .0
+            .run_local(&function.build(), &[answer_id()])?
+            .unpack()?;
+        Ok(result)
+    }
+}
+
+#[derive(Debug, PackAbiPlain, UnpackAbiPlain, Clone)]
+pub struct TonEventDetails {
+    #[abi]
+    pub event_init_data: TonEventInitData,
+    #[abi]
+    pub status: EventStatus,
+    #[abi(with = "array_uint256_bytes")]
+    pub confirms: Vec<UInt256>,
+    #[abi(with = "array_uint256_bytes")]
+    pub rejects: Vec<UInt256>,
+    #[abi(with = "array_uint256_bytes")]
+    pub empty: Vec<UInt256>,
+    #[abi]
+    pub signatures: Vec<Vec<u8>>,
+    #[abi(uint128)]
+    pub balance: u128,
+    #[abi(address)]
+    pub initializer: ton_block::MsgAddressInt,
+    #[abi(cell)]
+    pub meta: ton_types::Cell,
+    #[abi(uint32)]
+    pub required_votes: u32,
+}
+
+#[derive(Debug, PackAbi, UnpackAbi, Clone)]
+pub struct TonEventInitData {
+    #[abi]
+    pub vote_data: TonEventVoteData,
+    #[abi(with = "address_only_hash")]
+    pub configuration: UInt256,
+    #[abi(with = "address_only_hash")]
+    pub staking: UInt256,
+    #[abi(uint32)]
+    pub chain_id: u32,
+}
+
+impl TonEventInitData {
+    pub fn make_params_tuple() -> ton_abi::ParamType {
+        TupleBuilder::new()
+            .arg("vote_data", TonEventVoteData::make_params_tuple())
+            .arg("configuration", ton_abi::ParamType::Address)
+            .arg("staking", ton_abi::ParamType::Address)
+            .arg("chain_id", ton_abi::ParamType::Uint(32))
+            .build()
+    }
+}
+
+#[derive(Debug, PackAbi, UnpackAbi, Clone)]
+pub struct TonEventVoteData {
+    #[abi(with = "uint256_bytes")]
+    pub event_transaction: UInt256,
+    #[abi(uint64)]
+    pub event_transaction_lt: u64,
+    #[abi(uint32)]
+    pub event_timestamp: u32,
+    #[abi(uint32)]
+    pub event_index: u32,
+    #[abi(cell)]
+    pub event_data: ton_types::Cell,
+}
+
+impl TonEventVoteData {
+    pub fn make_params_tuple() -> ton_abi::ParamType {
+        TupleBuilder::new()
+            .arg("event_transaction", ton_abi::ParamType::Uint(256))
+            .arg("event_transaction_lt", ton_abi::ParamType::Uint(64))
+            .arg("event_timestamp", ton_abi::ParamType::Uint(32))
+            .arg("event_index", ton_abi::ParamType::Uint(32))
+            .arg("event_data", ton_abi::ParamType::Cell)
+            .build()
+    }
+}
+
+#[derive(Debug, PackAbi, UnpackAbi, Copy, Clone, Eq, PartialEq)]
+pub enum EventStatus {
+    Pending = 0,
+    Confirmed = 1,
+    Rejected = 2,
+}
+
 pub struct EventConfigurationBaseContract<'a>(pub &'a ExistingContract);
 
 impl EventConfigurationBaseContract<'_> {
@@ -115,7 +338,7 @@ pub struct BasicConfiguration {
     pub event_code: ton_types::Cell,
     #[abi(cell)]
     pub meta: ton_types::Cell,
-    #[abi]
+    #[abi(uint32)]
     pub chain_id: u32,
 }
 
@@ -136,11 +359,11 @@ impl BasicConfiguration {
 pub struct EthEventConfiguration {
     #[abi(with = "uint160_bytes")]
     pub event_emitter: [u8; 20],
-    #[abi]
+    #[abi(uint16)]
     pub event_blocks_to_confirm: u16,
     #[abi(with = "address_only_hash")]
     pub proxy: UInt256,
-    #[abi]
+    #[abi(uint32)]
     pub start_block_number: u32,
 }
 
@@ -161,7 +384,7 @@ pub struct TonEventConfiguration {
     pub event_emitter: UInt256,
     #[abi(with = "uint160_bytes")]
     pub proxy: [u8; 20],
-    #[abi]
+    #[abi(uint32)]
     pub start_timestamp: u32,
 }
 
