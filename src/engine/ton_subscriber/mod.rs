@@ -309,7 +309,7 @@ impl StateSubscription {
 
             for subscription in self.iter_transaction_subscriptions() {
                 if let Err(e) =
-                    subscription.handle_transaction(&block_info, account, &hash, &transaction)
+                    subscription.handle_transaction(block_info, account, &hash, &transaction)
                 {
                     log::error!(
                         "Failed to handle transaction {} for account {}: {:?}",

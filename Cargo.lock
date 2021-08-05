@@ -1196,7 +1196,7 @@ dependencies = [
 [[package]]
 name = "nekoton-abi"
 version = "0.3.0"
-source = "git+https://github.com/broxus/nekoton.git#a96670e86b7415b9aad47a0dacb3af87e473217c"
+source = "git+https://github.com/broxus/nekoton.git#8696cbabcf6a583955c82e04687bc378f594ae62"
 dependencies = [
  "anyhow",
  "base64 0.13.0",
@@ -1221,7 +1221,7 @@ dependencies = [
 [[package]]
 name = "nekoton-derive"
 version = "0.3.0"
-source = "git+https://github.com/broxus/nekoton.git#a96670e86b7415b9aad47a0dacb3af87e473217c"
+source = "git+https://github.com/broxus/nekoton.git#8696cbabcf6a583955c82e04687bc378f594ae62"
 dependencies = [
  "either",
  "proc-macro2 1.0.28",
@@ -1232,7 +1232,7 @@ dependencies = [
 [[package]]
 name = "nekoton-utils"
 version = "0.3.0"
-source = "git+https://github.com/broxus/nekoton.git#a96670e86b7415b9aad47a0dacb3af87e473217c"
+source = "git+https://github.com/broxus/nekoton.git#8696cbabcf6a583955c82e04687bc378f594ae62"
 dependencies = [
  "anyhow",
  "base64 0.13.0",
@@ -2307,6 +2307,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer"
 version = "0.1.0"
+source = "git+https://github.com/broxus/ton-indexer.git#4c88e723bbeef5fe0005f6b59b4deffbc90ed877"
 dependencies = [
  "anyhow",
  "async-trait",

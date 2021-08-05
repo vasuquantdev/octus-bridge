@@ -24,8 +24,8 @@ pub fn account_prefix(account: &UInt256, len: usize) -> u64 {
     let mut value: u64 = 0;
 
     let bytes = len / 8;
-    for i in 0..bytes {
-        value |= (account[i] as u64) << (8 * (7 - i));
+    for (i, byte) in account.iter().enumerate().take(bytes) {
+        value |= (*byte as u64) << (8 * (7 - i));
     }
 
     let remainder = len % 8;
@@ -44,8 +44,8 @@ mod tests {
     #[test]
     fn test_account_prefix() {
         let mut account_id = [0u8; 32];
-        for i in 0..8 {
-            account_id[i] = 0xff;
+        for byte in account_id.iter_mut().take(8) {
+            *byte = 0xff;
         }
 
         let account_id = UInt256::from(account_id);
