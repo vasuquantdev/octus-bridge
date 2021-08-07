@@ -1,18 +1,20 @@
-use std::collections::hash_map::{self, HashMap};
-use std::sync::Arc;
-
 use anyhow::{Context, Result};
 use dashmap::DashMap;
 use nekoton_utils::*;
 use parking_lot::RwLock;
+use std::collections::hash_map::{self, HashMap};
+use std::sync::Arc;
 use ton_block::{HashmapAugType, Serializable};
 use ton_types::UInt256;
 
-use self::ton_contracts::*;
-use self::ton_subscriber::*;
 use crate::config::*;
 use crate::utils::*;
 
+use self::ton_contracts::*;
+use self::ton_subscriber::*;
+
+mod eth_subscriber;
+mod state;
 mod ton_contracts;
 mod ton_subscriber;
 

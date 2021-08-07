@@ -26,6 +26,11 @@ serde_yaml = "0.8"
 thiserror = "1.0"
 tokio = { version = "1.6", features = ["sync", "fs", "rt-multi-thread", "macros"] }
 
+# ETH
+web3 = { version = "0.17.0", default-features = false, features = ["http-rustls-tls"] }
+ethabi = "14.0.0"
+
+
 # TON specific dependencies
 ton_block = { git = "https://github.com/broxus/ton-labs-block" }
 ton_abi = { git = "https://github.com/broxus/ton-labs-abi" }
@@ -39,6 +44,9 @@ nekoton-utils = { git = "https://github.com/broxus/nekoton.git" }
 
 # Indexer engine
 ton-indexer = { git = "https://github.com/broxus/ton-indexer.git" }
+url = { version = "2.2.2", features = ["serde"] }
+sqlx = { version = "0.5.5", features = ["sqlite","runtime-tokio-rustls"] }
+tryhard = "0.4.0"
 
 [dev-dependencies]
 pretty_assertions = "0.7.2"
