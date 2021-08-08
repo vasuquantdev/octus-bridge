@@ -159,7 +159,7 @@ pub struct TonEventDetails {
     pub rejects: Vec<UInt256>,
     #[abi(with = "array_uint256_bytes")]
     pub empty: Vec<UInt256>,
-    #[abi]
+    #[abi(array, bytes)]
     pub signatures: Vec<Vec<u8>>,
     #[abi(uint128)]
     pub balance: u128,
@@ -233,30 +233,14 @@ impl EventConfigurationBaseContract<'_> {
     pub fn get_type(&self) -> Result<EventType> {
         let mut function = FunctionBuilder::new("getType")
             .time_header()
-            .out_arg("_type", ton_abi::ParamType::Uint(8));
+            .expire_header()
+            .out_arg("type", ton_abi::ParamType::Uint(8));
         function.make_responsible();
 
-        let inputs = [answer_id()];
-
-        // TODO: rewrite after https://gitlab.dexpa.io/ethereum-freeton-bridge/bridge-contracts/-/issues/51
-
-        let event_type = match self
+        let event_type = self
             .0
-            .run_local(&function.clone().build(), &inputs)
-            .and_then(|tokens| {
-                tokens
-                    .unpack_first::<EventType>()
-                    .map_err(anyhow::Error::from)
-            }) {
-            Ok(event_type) => event_type,
-            Err(_) => {
-                function = function.expire_header();
-                self.0
-                    .run_local(&function.build(), &inputs)?
-                    .unpack_first()?
-            }
-        };
-
+            .run_local(&function.build(), &[answer_id()])?
+            .unpack_first()?;
         Ok(event_type)
     }
 }
@@ -267,6 +251,7 @@ impl EthEventConfigurationContract<'_> {
     pub fn get_details(&self) -> Result<EthEventConfigurationDetails> {
         let mut function = FunctionBuilder::new("getDetails")
             .time_header()
+            .expire_header()
             .out_arg(
                 "basic_configuration",
                 BasicConfiguration::make_params_tuple(),
@@ -333,7 +318,7 @@ pub struct BasicConfiguration {
     #[abi(with = "address_only_hash")]
     pub staking: UInt256,
     #[abi]
-    pub event_initial_balance: u128,
+    pub event_initial_balance: u64,
     #[abi(cell)]
     pub event_code: ton_types::Cell,
     #[abi(cell)]
@@ -347,7 +332,7 @@ impl BasicConfiguration {
         TupleBuilder::new()
             .arg("event_abi", ton_abi::ParamType::Bytes)
             .arg("staking", ton_abi::ParamType::Address)
-            .arg("event_initial_balance", ton_abi::ParamType::Uint(128))
+            .arg("event_initial_balance", ton_abi::ParamType::Uint(64))
             .arg("event_code", ton_abi::ParamType::Cell)
             .arg("meta", ton_abi::ParamType::Cell)
             .arg("chain_id", ton_abi::ParamType::Uint(32))
@@ -410,12 +395,12 @@ impl BridgeContract<'_> {
     pub fn derive_connector_address(&self, id: u64) -> Result<UInt256> {
         let function = FunctionBuilder::new("deriveConnectorAddress")
             .default_headers()
-            .in_arg("id", ton_abi::ParamType::Uint(128))
+            .in_arg("id", ton_abi::ParamType::Uint(64))
             .out_arg("connector", ton_abi::ParamType::Address);
 
         let address: ton_block::MsgAddrStd = self
             .0
-            .run_local(&function.build(), &[(id as u128).token_value().named("id")])?
+            .run_local(&function.build(), &[id.token_value().named("id")])?
             .unpack_first()?;
         Ok(UInt256::from_be_bytes(&address.address.get_bytestring(0)))
     }
@@ -426,17 +411,18 @@ pub struct ConnectorContract<'a>(pub &'a ExistingContract);
 impl ConnectorContract<'_> {
     pub fn get_details(&self) -> Result<ConnectorDetails> {
         let function = FunctionBuilder::new("getDetails")
-            .header("time", ton_abi::ParamType::Time)
-            .out_arg("id", ton_abi::ParamType::Uint(128))
-            .out_arg("eventConfiguration", ton_abi::ParamType::Address)
+            .time_header()
+            .out_arg("id", ton_abi::ParamType::Uint(64))
+            .out_arg("event_configuration", ton_abi::ParamType::Address)
             .out_arg("enabled", ton_abi::ParamType::Bool);
 
         let mut result = self.0.run_local(&function.build(), &[])?.into_unpacker();
-        let _id: u128 = result.unpack_next()?;
+        let id: u64 = result.unpack_next()?;
         let event_configuration: ton_block::MsgAddrStd = result.unpack_next()?;
         let enabled: bool = result.unpack_next()?;
 
         Ok(ConnectorDetails {
+            id,
             event_configuration: UInt256::from_be_bytes(
                 &event_configuration.address.get_bytestring(0),
             ),
@@ -447,6 +433,7 @@ impl ConnectorContract<'_> {
 
 #[derive(Debug, Copy, Clone)]
 pub struct ConnectorDetails {
+    pub id: u64,
     pub event_configuration: UInt256,
     pub enabled: bool,
 }
