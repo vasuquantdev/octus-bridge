@@ -1,5 +1,6 @@
 use anyhow::Result;
 use nekoton_abi::*;
+use once_cell::sync::OnceCell;
 use ton_types::UInt256;
 
 use crate::utils::*;
@@ -8,32 +9,32 @@ pub struct EthEventContract<'a>(pub &'a ExistingContract);
 
 impl EthEventContract<'_> {
     pub fn get_details(&self) -> Result<TonEventDetails> {
-        let mut function = FunctionBuilder::new("getDetails")
-            .default_headers()
-            .out_arg("event_init_data", EthEventInitData::make_params_tuple())
-            .out_arg("status", ton_abi::ParamType::Uint(8))
-            .out_arg(
-                "confirms",
-                ton_abi::ParamType::Array(Box::new(ton_abi::ParamType::Uint(256))),
-            )
-            .out_arg(
-                "rejects",
-                ton_abi::ParamType::Array(Box::new(ton_abi::ParamType::Uint(256))),
-            )
-            .out_arg(
-                "empty",
-                ton_abi::ParamType::Array(Box::new(ton_abi::ParamType::Uint(256))),
-            )
-            .out_arg("balance", ton_abi::ParamType::Uint(128))
-            .out_arg("initializer", ton_abi::ParamType::Address)
-            .out_arg("meta", ton_abi::ParamType::Cell)
-            .out_arg("required_votes", ton_abi::ParamType::Uint(32));
-        function.make_responsible();
+        static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
+        let function = FUNCTION.get_or_init(|| {
+            FunctionBuilder::new_responsible("getDetails")
+                .default_headers()
+                .out_arg("event_init_data", EthEventInitData::make_params_tuple())
+                .out_arg("status", ton_abi::ParamType::Uint(8))
+                .out_arg(
+                    "confirms",
+                    ton_abi::ParamType::Array(Box::new(ton_abi::ParamType::Uint(256))),
+                )
+                .out_arg(
+                    "rejects",
+                    ton_abi::ParamType::Array(Box::new(ton_abi::ParamType::Uint(256))),
+                )
+                .out_arg(
+                    "empty",
+                    ton_abi::ParamType::Array(Box::new(ton_abi::ParamType::Uint(256))),
+                )
+                .out_arg("balance", ton_abi::ParamType::Uint(128))
+                .out_arg("initializer", ton_abi::ParamType::Address)
+                .out_arg("meta", ton_abi::ParamType::Cell)
+                .out_arg("required_votes", ton_abi::ParamType::Uint(32))
+                .build()
+        });
 
-        let result = self
-            .0
-            .run_local(&function.build(), &[answer_id()])?
-            .unpack()?;
+        let result = self.0.run_local(function, &[answer_id()])?.unpack()?;
         Ok(result)
     }
 }
@@ -113,36 +114,36 @@ pub struct TonEventContract<'a>(pub &'a ExistingContract);
 
 impl TonEventContract<'_> {
     pub fn get_details(&self) -> Result<TonEventDetails> {
-        let mut function = FunctionBuilder::new("getDetails")
-            .default_headers()
-            .out_arg("event_init_data", TonEventInitData::make_params_tuple())
-            .out_arg("status", ton_abi::ParamType::Uint(8))
-            .out_arg(
-                "confirms",
-                ton_abi::ParamType::Array(Box::new(ton_abi::ParamType::Uint(256))),
-            )
-            .out_arg(
-                "rejects",
-                ton_abi::ParamType::Array(Box::new(ton_abi::ParamType::Uint(256))),
-            )
-            .out_arg(
-                "empty",
-                ton_abi::ParamType::Array(Box::new(ton_abi::ParamType::Uint(256))),
-            )
-            .out_arg(
-                "signatures",
-                ton_abi::ParamType::Array(Box::new(ton_abi::ParamType::Bytes)),
-            )
-            .out_arg("balance", ton_abi::ParamType::Uint(128))
-            .out_arg("initializer", ton_abi::ParamType::Address)
-            .out_arg("meta", ton_abi::ParamType::Cell)
-            .out_arg("required_votes", ton_abi::ParamType::Uint(32));
-        function.make_responsible();
+        static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
+        let function = FUNCTION.get_or_init(|| {
+            FunctionBuilder::new_responsible("getDetails")
+                .default_headers()
+                .out_arg("event_init_data", TonEventInitData::make_params_tuple())
+                .out_arg("status", ton_abi::ParamType::Uint(8))
+                .out_arg(
+                    "confirms",
+                    ton_abi::ParamType::Array(Box::new(ton_abi::ParamType::Uint(256))),
+                )
+                .out_arg(
+                    "rejects",
+                    ton_abi::ParamType::Array(Box::new(ton_abi::ParamType::Uint(256))),
+                )
+                .out_arg(
+                    "empty",
+                    ton_abi::ParamType::Array(Box::new(ton_abi::ParamType::Uint(256))),
+                )
+                .out_arg(
+                    "signatures",
+                    ton_abi::ParamType::Array(Box::new(ton_abi::ParamType::Bytes)),
+                )
+                .out_arg("balance", ton_abi::ParamType::Uint(128))
+                .out_arg("initializer", ton_abi::ParamType::Address)
+                .out_arg("meta", ton_abi::ParamType::Cell)
+                .out_arg("required_votes", ton_abi::ParamType::Uint(32))
+                .build()
+        });
 
-        let result = self
-            .0
-            .run_local(&function.build(), &[answer_id()])?
-            .unpack()?;
+        let result = self.0.run_local(function, &[answer_id()])?.unpack()?;
         Ok(result)
     }
 }
@@ -231,16 +232,16 @@ pub struct EventConfigurationBaseContract<'a>(pub &'a ExistingContract);
 
 impl EventConfigurationBaseContract<'_> {
     pub fn get_type(&self) -> Result<EventType> {
-        let mut function = FunctionBuilder::new("getType")
-            .time_header()
-            .expire_header()
-            .out_arg("type", ton_abi::ParamType::Uint(8));
-        function.make_responsible();
+        static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
+        let function = FUNCTION.get_or_init(|| {
+            FunctionBuilder::new_responsible("getType")
+                .time_header()
+                .expire_header()
+                .out_arg("type", ton_abi::ParamType::Uint(8))
+                .build()
+        });
 
-        let event_type = self
-            .0
-            .run_local(&function.build(), &[answer_id()])?
-            .unpack_first()?;
+        let event_type = self.0.run_local(function, &[answer_id()])?.unpack_first()?;
         Ok(event_type)
     }
 }
@@ -249,23 +250,23 @@ pub struct EthEventConfigurationContract<'a>(pub &'a ExistingContract);
 
 impl EthEventConfigurationContract<'_> {
     pub fn get_details(&self) -> Result<EthEventConfigurationDetails> {
-        let mut function = FunctionBuilder::new("getDetails")
-            .time_header()
-            .expire_header()
-            .out_arg(
-                "basic_configuration",
-                BasicConfiguration::make_params_tuple(),
-            )
-            .out_arg(
-                "network_configuration",
-                EthEventConfiguration::make_params_tuple(),
-            );
-        function.make_responsible();
+        static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
+        let function = FUNCTION.get_or_init(|| {
+            FunctionBuilder::new_responsible("getDetails")
+                .time_header()
+                .expire_header()
+                .out_arg(
+                    "basic_configuration",
+                    BasicConfiguration::make_params_tuple(),
+                )
+                .out_arg(
+                    "network_configuration",
+                    EthEventConfiguration::make_params_tuple(),
+                )
+                .build()
+        });
 
-        let details = self
-            .0
-            .run_local(&function.build(), &[answer_id()])?
-            .unpack()?;
+        let details = self.0.run_local(function, &[answer_id()])?.unpack()?;
         Ok(details)
     }
 }
@@ -274,23 +275,23 @@ pub struct TonEventConfigurationContract<'a>(pub &'a ExistingContract);
 
 impl TonEventConfigurationContract<'_> {
     pub fn get_details(&self) -> Result<TonEventConfigurationDetails> {
-        let mut function = FunctionBuilder::new("getDetails")
-            .time_header()
-            .expire_header()
-            .out_arg(
-                "basic_configuration",
-                BasicConfiguration::make_params_tuple(),
-            )
-            .out_arg(
-                "network_configuration",
-                TonEventConfiguration::make_params_tuple(),
-            );
-        function.make_responsible();
+        static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
+        let function = FUNCTION.get_or_init(|| {
+            FunctionBuilder::new_responsible("getDetails")
+                .time_header()
+                .expire_header()
+                .out_arg(
+                    "basic_configuration",
+                    BasicConfiguration::make_params_tuple(),
+                )
+                .out_arg(
+                    "network_configuration",
+                    TonEventConfiguration::make_params_tuple(),
+                )
+                .build()
+        });
 
-        let details = self
-            .0
-            .run_local(&function.build(), &[answer_id()])?
-            .unpack()?;
+        let details = self.0.run_local(function, &[answer_id()])?.unpack()?;
         Ok(details)
     }
 }
@@ -393,15 +394,18 @@ pub struct BridgeContract<'a>(pub &'a ExistingContract);
 
 impl BridgeContract<'_> {
     pub fn derive_connector_address(&self, id: u64) -> Result<UInt256> {
-        let function = FunctionBuilder::new("deriveConnectorAddress")
-            .default_headers()
-            .in_arg("id", ton_abi::ParamType::Uint(64))
-            .out_arg("connector", ton_abi::ParamType::Address);
+        static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
+        let function = FUNCTION.get_or_init(|| {
+            FunctionBuilder::new("deriveConnectorAddress")
+                .default_headers()
+                .in_arg("id", ton_abi::ParamType::Uint(64))
+                .out_arg("connector", ton_abi::ParamType::Address)
+                .build()
+        });
 
-        let address: ton_block::MsgAddrStd = self
-            .0
-            .run_local(&function.build(), &[id.token_value().named("id")])?
-            .unpack_first()?;
+        let input = [id.token_value().named("id")];
+
+        let address: ton_block::MsgAddrStd = self.0.run_local(function, &input)?.unpack_first()?;
         Ok(UInt256::from_be_bytes(&address.address.get_bytestring(0)))
     }
 }
@@ -410,13 +414,17 @@ pub struct ConnectorContract<'a>(pub &'a ExistingContract);
 
 impl ConnectorContract<'_> {
     pub fn get_details(&self) -> Result<ConnectorDetails> {
-        let function = FunctionBuilder::new("getDetails")
-            .time_header()
-            .out_arg("id", ton_abi::ParamType::Uint(64))
-            .out_arg("event_configuration", ton_abi::ParamType::Address)
-            .out_arg("enabled", ton_abi::ParamType::Bool);
+        static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
+        let function = FUNCTION.get_or_init(|| {
+            FunctionBuilder::new("getDetails")
+                .time_header()
+                .out_arg("id", ton_abi::ParamType::Uint(64))
+                .out_arg("event_configuration", ton_abi::ParamType::Address)
+                .out_arg("enabled", ton_abi::ParamType::Bool)
+                .build()
+        });
 
-        let mut result = self.0.run_local(&function.build(), &[])?.into_unpacker();
+        let mut result = self.0.run_local(function, &[])?.into_unpacker();
         let id: u64 = result.unpack_next()?;
         let event_configuration: ton_block::MsgAddrStd = result.unpack_next()?;
         let enabled: bool = result.unpack_next()?;
