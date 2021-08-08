@@ -1996,6 +1996,16 @@ dependencies = [
  "cpufeatures",
  "digest 0.9.0",
  "opaque-debug 0.3.0",
+ "sha2-asm",
+]
+
+[[package]]
+name = "sha2-asm"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf27176fb5d15398e3a479c652c20459d9dac830dedd1fa55b42a77dbcdbfcea"
+dependencies = [
+ "cc",
 ]
 
 [[package]]
@@ -2181,7 +2191,7 @@ dependencies = [
 [[package]]
 name = "tiny-adnl"
 version = "0.1.0"
-source = "git+https://github.com/broxus/tiny-adnl#bceb1b7153ececc0676c6e7cc8969f4520fc6598"
+source = "git+https://github.com/broxus/tiny-adnl#e53f7d5432ad2275d249927a27ad8bd249775ac3"
 dependencies = [
  "aes",
  "anyhow",
@@ -2286,7 +2296,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#b361a153a51b5786a82dc733bcfa5d85ae18715e"
+source = "git+https://github.com/broxus/ton-indexer.git#ebf4fd2bde481f6b07076e4d129532ec18c9722a"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2361,7 +2371,7 @@ dependencies = [
 [[package]]
 name = "ton_block"
 version = "1.7.14"
-source = "git+https://github.com/broxus/ton-labs-block#bb2c911c9d18191ab07930406e674abe3242091a"
+source = "git+https://github.com/broxus/ton-labs-block#37cbb0fa66608794302a96cab9a9ccebf6f9225a"
 dependencies = [
  "base64 0.10.1",
  "clear_on_drop",
@@ -2374,7 +2384,7 @@ dependencies = [
  "num",
  "num-traits 0.2.14",
  "rand 0.7.3",
- "sha2 0.8.2",
+ "sha2 0.9.5",
  "ton_types",
 ]
 
@@ -2411,7 +2421,7 @@ dependencies = [
 [[package]]
 name = "ton_types"
 version = "1.10.2"
-source = "git+https://github.com/broxus/ton-labs-types#d03d308fb8787b3ab8b9679c89ef1686eec87212"
+source = "git+https://github.com/broxus/ton-labs-types#ecc35045f4ab993cc91261dcf86da3e43e28054b"
 dependencies = [
  "base64 0.11.0",
  "crc",
@@ -2423,7 +2433,7 @@ dependencies = [
  "num-derive",
  "num-traits 0.2.14",
  "rand 0.7.3",
- "sha2 0.8.2",
+ "sha2 0.9.5",
 ]
 
 [[package]]
