@@ -2286,7 +2286,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#3c7345a8ec7cafcbfe71712af534e78f9878068a"
+source = "git+https://github.com/broxus/ton-indexer.git#b361a153a51b5786a82dc733bcfa5d85ae18715e"
 dependencies = [
  "anyhow",
  "async-trait",

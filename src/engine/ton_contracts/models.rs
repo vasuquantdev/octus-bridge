@@ -255,3 +255,13 @@ pub struct ConnectorDetails {
     #[abi(bool)]
     pub enabled: bool,
 }
+
+#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain)]
+pub struct ConnectorDeployedEvent {
+    #[abi(uint64)]
+    pub id: u64,
+    #[abi(with = "address_only_hash")]
+    pub connector: UInt256,
+    #[abi(with = "address_only_hash")]
+    pub event_configuration: UInt256,
+}
