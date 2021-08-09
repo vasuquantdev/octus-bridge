@@ -139,7 +139,37 @@ impl TonSubscriber {
 
         state_rx.changed().await?;
         let account = state_rx.borrow();
-        ExistingContract::from_shard_account(account.deref())
+        ExistingContract::from_shard_account_opt(account.deref())
+    }
+
+    pub async fn wait_contract_state(&self, account: UInt256) -> Result<ExistingContract> {
+        let mut state_rx = match self.state_subscriptions.lock().entry(account) {
+            hash_map::Entry::Vacant(entry) => {
+                let (state_tx, state_rx) = watch::channel(None);
+                entry
+                    .insert(StateSubscription {
+                        state_tx,
+                        state_rx,
+                        transaction_subscriptions: Vec::new(),
+                    })
+                    .state_rx
+                    .clone()
+            }
+            hash_map::Entry::Occupied(entry) => entry.get().state_rx.clone(),
+        };
+
+        loop {
+            state_rx.changed().await?;
+
+            let shard_account = match state_rx.borrow().deref() {
+                Some(shard_account) => ExistingContract::from_shard_account(shard_account)?,
+                None => continue,
+            };
+
+            if let Some(shard_account) = shard_account {
+                return Ok(shard_account);
+            }
+        }
     }
 
     fn handle_masterchain_block(&self, block: &ton_block::Block) -> Result<()> {

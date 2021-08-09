@@ -8,14 +8,16 @@ pub struct ExistingContract {
 }
 
 impl ExistingContract {
-    pub fn from_shard_account(
+    pub fn from_shard_account_opt(
         shard_account: &Option<ton_block::ShardAccount>,
     ) -> Result<Option<Self>> {
-        let shard_account = match shard_account {
-            Some(shard_account) => shard_account,
-            None => return Ok(None),
-        };
+        match shard_account {
+            Some(shard_account) => Self::from_shard_account(shard_account),
+            None => Ok(None),
+        }
+    }
 
+    pub fn from_shard_account(shard_account: &ton_block::ShardAccount) -> Result<Option<Self>> {
         Ok(match shard_account.read_account().convert()? {
             ton_block::Account::Account(account) => Some(Self {
                 account,
