@@ -53,6 +53,15 @@ impl EthEventConfigurationContract<'_> {
         let details = self.0.run_local(function, &[answer_id()])?.unpack()?;
         Ok(details)
     }
+
+    pub fn derive_event_address(&self, vote_data: EthEventVoteData) -> Result<UInt256> {
+        let function = eth_event_configuration_contract::derive_event_address();
+        let input = [answer_id(), vote_data.token_value().named("vote_data")];
+        let ton_block::MsgAddrStd { address, .. } =
+            self.0.run_local(function, &input)?.unpack_first()?;
+
+        Ok(UInt256::from_be_bytes(&address.get_bytestring(0)))
+    }
 }
 
 pub struct TonEventConfigurationContract<'a>(pub &'a ExistingContract);
@@ -63,6 +72,15 @@ impl TonEventConfigurationContract<'_> {
         let details = self.0.run_local(function, &[answer_id()])?.unpack()?;
         Ok(details)
     }
+
+    pub fn derive_event_address(&self, vote_data: TonEventVoteData) -> Result<UInt256> {
+        let function = ton_event_configuration_contract::derive_event_address();
+        let input = [answer_id(), vote_data.token_value().named("vote_data")];
+        let ton_block::MsgAddrStd { address, .. } =
+            self.0.run_local(function, &input)?.unpack_first()?;
+
+        Ok(UInt256::from_be_bytes(&address.get_bytestring(0)))
+    }
 }
 
 pub struct BridgeContract<'a>(pub &'a ExistingContract);
@@ -71,9 +89,10 @@ impl BridgeContract<'_> {
     pub fn derive_connector_address(&self, id: u64) -> Result<UInt256> {
         let function = bridge_contract::derive_connector_address();
         let input = [id.token_value().named("id")];
-        let address: ton_block::MsgAddrStd = self.0.run_local(function, &input)?.unpack_first()?;
+        let ton_block::MsgAddrStd { address, .. } =
+            self.0.run_local(function, &input)?.unpack_first()?;
 
-        Ok(UInt256::from_be_bytes(&address.address.get_bytestring(0)))
+        Ok(UInt256::from_be_bytes(&address.get_bytestring(0)))
     }
 }
 

@@ -13,7 +13,7 @@ use self::ton_contracts::*;
 use self::ton_subscriber::*;
 use crate::config::*;
 use crate::utils::*;
-use nekoton_abi::UnpackAbiPlain;
+use nekoton_abi::{IntoUnpacker, UnpackAbiPlain};
 
 mod ton_contracts;
 mod ton_subscriber;
@@ -22,11 +22,17 @@ pub struct Engine {
     bridge_account: UInt256,
     ton_engine: Arc<ton_indexer::Engine>,
     ton_subscriber: Arc<TonSubscriber>,
+
+    eth_configurations_observer: Arc<EventConfigurationsObserver<EthEventConfiguration>>,
+    ton_configurations_observer: Arc<EventConfigurationsObserver<TonEventConfiguration>>,
     connectors_observer: Arc<ConnectorsObserver>,
-    eth_configurations_observer: Arc<EthEventConfigurationsObserver>,
-    ton_configurations_observer: Arc<TonEventConfigurationsObserver>,
     bridge_observer: Arc<BridgeObserver>,
+
+    eth_event_configurations: EthEventConfigurationsMap,
+    ton_event_configurations: TonEventConfigurationsMap,
+    connectors: ConnectorsMap,
     event_code_hashes: Arc<RwLock<EventCodeHashesMap>>,
+
     initialized: tokio::sync::Mutex<bool>,
 }
 
@@ -47,10 +53,10 @@ impl Engine {
         )
         .await?;
 
-        let connectors = Arc::new(ConnectorsMap::new());
-        let eth_event_configurations = Arc::new(EthEventConfigurationsMap::new());
-        let ton_event_configurations = Arc::new(TonEventConfigurationsMap::new());
-
+        let (eth_event_configuration_events_tx, eth_event_configuration_events_rx) =
+            mpsc::unbounded_channel();
+        let (ton_event_configuration_events_tx, ton_event_configuration_events_rx) =
+            mpsc::unbounded_channel();
         let (connector_events_tx, _connector_events_rx) = mpsc::unbounded_channel();
         let (bridge_events_tx, _bridge_events_rx) = mpsc::unbounded_channel();
 
@@ -60,16 +66,25 @@ impl Engine {
             bridge_account,
             ton_engine,
             ton_subscriber,
-            connectors_observer: Arc::new(ConnectorsObserver::new(connectors, connector_events_tx)),
-            eth_configurations_observer: Arc::new(EthEventConfigurationsObserver::new(
-                eth_event_configurations,
-            )),
-            ton_configurations_observer: Arc::new(TonEventConfigurationsObserver::new(
-                ton_event_configurations,
-            )),
-            bridge_observer: Arc::new(BridgeObserver::new(bridge_events_tx)),
-            event_code_hashes: Arc::new(Default::default()),
-            initialized: tokio::sync::Mutex::new(false),
+            eth_configurations_observer: Arc::new(EventConfigurationsObserver {
+                events_tx: eth_event_configuration_events_tx,
+                function_update: eth_event_configuration_contract::update(),
+            }),
+            ton_configurations_observer: Arc::new(EventConfigurationsObserver {
+                events_tx: ton_event_configuration_events_tx,
+                function_update: ton_event_configuration_contract::update(),
+            }),
+            connectors_observer: Arc::new(ConnectorsObserver {
+                events_tx: connector_events_tx,
+            }),
+            bridge_observer: Arc::new(BridgeObserver {
+                events_tx: bridge_events_tx,
+            }),
+            eth_event_configurations: Default::default(),
+            ton_event_configurations: Default::default(),
+            connectors: Default::default(),
+            event_code_hashes: Default::default(),
+            initialized: Default::default(),
         }))
     }
 
@@ -176,8 +191,8 @@ impl Engine {
 
         let mut ctx = EventConfigurationsProcessingContext {
             event_code_hashes: &mut event_code_hashes,
-            eth_event_configurations: &self.eth_configurations_observer.configurations,
-            ton_event_configurations: &self.ton_configurations_observer.configurations,
+            eth_event_configurations: &self.eth_event_configurations,
+            ton_event_configurations: &self.ton_event_configurations,
         };
 
         for (connector_id, account) in active_configuration_accounts {
@@ -198,22 +213,22 @@ impl Engine {
 
         *self.event_code_hashes.write() = event_code_hashes;
 
-        connectors
-            .into_iter()
-            .for_each(|(account, state)| self.connectors_observer.add_connector(account, state));
+        for (account, state) in connectors {
+            self.connectors.insert(account, state);
+        }
 
         self.ton_subscriber.add_transactions_subscription(
-            self.connectors_observer.connector_accounts(),
+            self.connectors.iter().map(|item| *item.key()),
             &self.connectors_observer,
         );
 
         self.ton_subscriber.add_transactions_subscription(
-            self.eth_configurations_observer.configuration_accounts(),
+            self.eth_event_configurations.iter().map(|item| *item.key()),
             &self.eth_configurations_observer,
         );
 
         self.ton_subscriber.add_transactions_subscription(
-            self.ton_configurations_observer.configuration_accounts(),
+            self.ton_event_configurations.iter().map(|item| *item.key()),
             &self.ton_configurations_observer,
         );
 
@@ -280,58 +295,25 @@ struct BridgeObserver {
     events_tx: BridgeEventsTx,
 }
 
-impl BridgeObserver {
-    fn new(events_tx: BridgeEventsTx) -> Self {
-        Self { events_tx }
-    }
-}
-
 impl TransactionsSubscription for BridgeObserver {
-    fn handle_transaction(
-        &self,
-        _block_info: &ton_block::BlockInfo,
-        _account: &UInt256,
-        _transaction_hash: &UInt256,
-        transaction: &ton_block::Transaction,
-    ) -> Result<()> {
-        // Skip non-ordinary or aborted transactions
-        let descr = transaction.description.read_struct().convert()?;
-        if !matches!(descr, ton_block::TransactionDescr::Ordinary(info) if !info.aborted) {
-            return Ok(());
-        }
-
+    fn handle_transaction(&self, ctx: TxContext<'_>) -> Result<()> {
         // Parse all outgoing messages and search proper event
         let mut event: Option<ConnectorDeployedEvent> = None;
-        transaction
-            .out_msgs
-            .iterate(|message| {
-                let message = message.0;
-                if !matches!(message.header(), ton_block::CommonMsgInfo::ExtOutMsgInfo(_)) {
-                    return Ok(true);
-                }
-
-                let body = match message.body() {
-                    Some(body) => body,
-                    None => return Ok(true),
+        iterate_transaction_events(&ctx, |body| {
+            let id = nekoton_abi::read_function_id(&body);
+            if matches!(id, Ok(id) if id == bridge_contract::events::connector_deployed().id) {
+                match bridge_contract::events::connector_deployed()
+                    .decode_input(body)
+                    .convert()
+                    .and_then(|tokens| tokens.unpack().map_err(anyhow::Error::from))
+                {
+                    Ok(parsed) => event = Some(parsed),
+                    Err(e) => {
+                        log::error!("Failed to parse bridge event: {:?}", e);
+                    }
                 };
-
-                let id = nekoton_abi::read_function_id(&body);
-                if matches!(id, Ok(id) if id == bridge_contract::events::connector_deployed().id) {
-                    match bridge_contract::events::connector_deployed()
-                        .decode_input(body)
-                        .convert()
-                        .and_then(|tokens| tokens.unpack().map_err(anyhow::Error::from))
-                    {
-                        Ok(parsed) => event = Some(parsed),
-                        Err(e) => {
-                            log::error!("Failed to parse bridge event: {:?}", e);
-                        }
-                    };
-                }
-
-                Ok(true)
-            })
-            .convert()?;
+            }
+        })?;
 
         log::info!("Got transaction on bridge: {:?}", event);
 
@@ -349,79 +331,32 @@ impl TransactionsSubscription for BridgeObserver {
 ///
 /// **Registered for each connector account**
 struct ConnectorsObserver {
-    connectors: Arc<ConnectorsMap>,
     events_tx: ConnectorEventsTx,
 }
 
-impl ConnectorsObserver {
-    fn new(connectors: Arc<ConnectorsMap>, events_tx: ConnectorEventsTx) -> Self {
-        Self {
-            connectors,
-            events_tx,
-        }
-    }
-
-    fn add_connector(&self, account: UInt256, state: ConnectorState) {
-        self.connectors.insert(account, state);
-    }
-
-    fn connector_accounts(&'_ self) -> impl Iterator<Item = UInt256> + '_ {
-        self.connectors.iter().map(|item| *item.key())
-    }
-}
-
 impl TransactionsSubscription for ConnectorsObserver {
-    fn handle_transaction(
-        &self,
-        _block_info: &ton_block::BlockInfo,
-        account: &UInt256,
-        _transaction_hash: &UInt256,
-        transaction: &ton_block::Transaction,
-    ) -> Result<()> {
-        // Skip non-ordinary or aborted transactions
-        let descr = transaction.description.read_struct().convert()?;
-        if !matches!(descr, ton_block::TransactionDescr::Ordinary(info) if !info.aborted) {
-            return Ok(());
-        }
-
+    fn handle_transaction(&self, ctx: TxContext<'_>) -> Result<()> {
         // Parse all outgoing messages and search proper event
         let mut event = None;
-        transaction
-            .out_msgs
-            .iterate(|message| {
-                let message = message.0;
-                if !matches!(message.header(), ton_block::CommonMsgInfo::ExtOutMsgInfo(_)) {
-                    return Ok(true);
-                }
-
-                let body = match message.body() {
-                    Some(body) => body,
-                    None => return Ok(true),
-                };
-
-                match nekoton_abi::read_function_id(&body) {
-                    Ok(id) if id == connector_contract::events::enabled().id => {
-                        event = Some(ConnectorEvent::Enable);
-                    }
-                    Ok(id) if id == connector_contract::events::disabled().id => {
-                        event = Some(ConnectorEvent::Disable);
-                    }
-                    _ => { /* do nothing */ }
-                }
-
-                Ok(true)
-            })
-            .convert()?;
+        iterate_transaction_events(&ctx, |body| match nekoton_abi::read_function_id(&body) {
+            Ok(id) if id == connector_contract::events::enabled().id => {
+                event = Some(ConnectorEvent::Enable);
+            }
+            Ok(id) if id == connector_contract::events::disabled().id => {
+                event = Some(ConnectorEvent::Disable);
+            }
+            _ => { /* do nothing */ }
+        })?;
 
         log::info!(
             "Got transaction on connector {}: {:?}",
-            account.to_hex_string(),
+            ctx.account.to_hex_string(),
             event
         );
 
         // Send event to event manager if it exist
         if let Some(event) = event {
-            self.events_tx.send((*account, event)).ok();
+            self.events_tx.send((*ctx.account, event)).ok();
         }
 
         // Done
@@ -429,76 +364,66 @@ impl TransactionsSubscription for ConnectorsObserver {
     }
 }
 
-/// Listener for ETH event configuration transactions
-///
-/// **Registered for each active ETH event configuration account**
-struct EthEventConfigurationsObserver {
-    configurations: Arc<EthEventConfigurationsMap>,
-}
-
-impl EthEventConfigurationsObserver {
-    fn new(configurations: Arc<EthEventConfigurationsMap>) -> Self {
-        Self { configurations }
-    }
-
-    fn configuration_accounts(&'_ self) -> impl Iterator<Item = UInt256> + '_ {
-        self.configurations.iter().map(|item| *item.key())
-    }
-}
-
-impl TransactionsSubscription for EthEventConfigurationsObserver {
-    fn handle_transaction(
-        &self,
-        block_info: &ton_block::BlockInfo,
-        account: &UInt256,
-        transaction_hash: &UInt256,
-        transaction: &ton_block::Transaction,
-    ) -> Result<()> {
-        log::info!(
-            "Got transaction on eth event configuration {}",
-            account.to_hex_string()
-        );
-
-        // TODO: parse configuration events
-
-        Ok(())
-    }
-}
-
-/// Listener for TON event configuration transactions
+/// Generic listener for event configuration transactions
 ///
 /// **Registered for each active TON event configuration account**
-struct TonEventConfigurationsObserver {
-    configurations: Arc<TonEventConfigurationsMap>,
+struct EventConfigurationsObserver<T> {
+    events_tx: EventConfigurationEventsTx<T>,
+    function_update: &'static ton_abi::Function,
 }
 
-impl TonEventConfigurationsObserver {
-    fn new(configurations: Arc<TonEventConfigurationsMap>) -> Self {
-        Self { configurations }
-    }
+impl<T> TransactionsSubscription for EventConfigurationsObserver<T>
+where
+    T: std::fmt::Debug + Send + Sync,
+    ton_abi::TokenValue: nekoton_abi::UnpackAbi<T>,
+{
+    fn handle_transaction(&self, ctx: TxContext<'_>) -> Result<()> {
+        let mut event = None;
+        parse_incoming_internal_message(&ctx, |body| match nekoton_abi::read_function_id(&body) {
+            Ok(id) if id == self.function_update.input_id => {
+                let input = self
+                    .function_update
+                    .decode_input(body, true)
+                    .convert()
+                    .and_then(|tokens| {
+                        let mut tokens = tokens.into_unpacker();
+                        Ok(EventConfigurationEvent::Update {
+                            basic_configuration: tokens.unpack_next::<BasicConfiguration>()?,
+                            network_configuration: tokens.unpack_next::<T>()?,
+                        })
+                    });
+                match input {
+                    Ok(input) => event = Some(input),
+                    Err(e) => {
+                        log::error!("Failed to parse event configuration transaction: {:?}", e);
+                    }
+                }
+            }
+            _ => { /* do nothing */ }
+        });
 
-    fn configuration_accounts(&'_ self) -> impl Iterator<Item = UInt256> + '_ {
-        self.configurations.iter().map(|item| *item.key())
-    }
-}
-
-impl TransactionsSubscription for TonEventConfigurationsObserver {
-    fn handle_transaction(
-        &self,
-        block_info: &ton_block::BlockInfo,
-        account: &UInt256,
-        transaction_hash: &UInt256,
-        transaction: &ton_block::Transaction,
-    ) -> Result<()> {
         log::info!(
-            "Got transaction on ton event configuration {}",
-            account.to_hex_string()
+            "Got transaction on event configuration {}: {:?}",
+            ctx.account.to_hex_string(),
+            event
         );
 
-        // TODO: parse configuration events
+        // Send event to event manager if it exist
+        if let Some(event) = event {
+            self.events_tx.send((*ctx.account, event)).ok();
+        }
 
+        // Done
         Ok(())
     }
+}
+
+#[derive(Debug)]
+enum EventConfigurationEvent<T> {
+    Update {
+        basic_configuration: BasicConfiguration,
+        network_configuration: T,
+    },
 }
 
 /// Startup configurations processing context
@@ -619,6 +544,57 @@ impl ShardAccountsMapExt for ShardAccountsMap {
     }
 }
 
+fn parse_incoming_internal_message<F>(ctx: &TxContext<'_>, mut f: F)
+where
+    F: FnMut(ton_types::SliceData),
+{
+    // Read incoming message
+    let message = match ctx
+        .transaction
+        .in_msg
+        .as_ref()
+        .map(|message| message.read_struct())
+    {
+        Some(Ok(message)) => message,
+        _ => return,
+    };
+
+    // Allow only internal messages
+    if !matches!(message.header(), ton_block::CommonMsgInfo::IntMsgInfo(_)) {
+        return;
+    }
+
+    // Handle body if it exists
+    if let Some(body) = message.body() {
+        f(body);
+    }
+}
+
+fn iterate_transaction_events<F>(ctx: &TxContext<'_>, mut f: F) -> Result<()>
+where
+    F: FnMut(ton_types::SliceData),
+{
+    ctx.transaction
+        .out_msgs
+        .iterate(|ton_block::InRefValue(message)| {
+            // Skip all messages except external outgoing
+            if !matches!(message.header(), ton_block::CommonMsgInfo::ExtOutMsgInfo(_)) {
+                return Ok(true);
+            }
+
+            // Handle body if it exists
+            if let Some(body) = message.body() {
+                f(body);
+            }
+
+            // Process all messages
+            Ok(true)
+        })
+        .convert()?;
+    Ok(())
+}
+
+type EventConfigurationEventsTx<T> = mpsc::UnboundedSender<(UInt256, EventConfigurationEvent<T>)>;
 type ConnectorEventsTx = mpsc::UnboundedSender<(UInt256, ConnectorEvent)>;
 type BridgeEventsTx = mpsc::UnboundedSender<ConnectorDeployedEvent>;
 
