@@ -8,4 +8,5 @@ pub struct EthConfig {
     pub get_timeout: Duration,
     pub pool_size: usize,
     pub poll_interval: Duration,
+    pub maximum_failed_responses_time: Duration,
 }

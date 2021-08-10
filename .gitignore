@@ -15,3 +15,5 @@ scripts/relay*
 docker-compose.yaml
 
 artifacts/
+
+relay.sqlite

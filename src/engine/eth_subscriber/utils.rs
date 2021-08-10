@@ -1,6 +1,6 @@
 use anyhow::Context;
 use anyhow::Result;
-use ethabi::{Contract, Event};
+use ethabi::Contract;
 use serde_json::Value;
 use std::convert::TryInto;
 use std::time::Duration;
@@ -8,7 +8,7 @@ use tryhard::backoff_strategies::{ExponentialBackoff, FixedBackoff};
 use tryhard::{NoOnRetry, RetryFutureConfig};
 
 #[inline]
-fn generate_default_timeout_config(
+pub fn generate_default_timeout_config(
     total_time: Duration,
 ) -> RetryFutureConfig<ExponentialBackoff, NoOnRetry> {
     let max_delay = Duration::from_secs(600);
@@ -23,7 +23,8 @@ fn generate_default_timeout_config(
         .max_delay(Duration::from_secs(600))
 }
 
-fn generate_fixed_config(
+#[inline]
+pub fn generate_fixed_config(
     sleep_time: Duration,
     total_time: Duration,
 ) -> RetryFutureConfig<FixedBackoff, NoOnRetry> {
@@ -124,7 +125,8 @@ mod test {
 
     #[test]
     fn test_abi() {
-        get_topic_hash(ABI).unwrap();
+        let expected = web3::signing::keccak256(b"StateChange(uint256,address)");
+        assert_eq!(expected, get_topic_hash(ABI).unwrap());
     }
 
     #[test]
