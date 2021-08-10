@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 pub struct RelayConfig {
     #[serde(with = "serde_address")]
     pub bridge_address: ton_block::MsgAddressInt,
+    #[serde(with = "serde_address")]
+    pub staking_address: ton_block::MsgAddressInt,
 
     pub indexer: ton_indexer::NodeConfig,
 

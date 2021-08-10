@@ -87,12 +87,6 @@ impl TonEventConfigurationContract<'_> {
 pub struct BridgeContract<'a>(pub &'a ExistingContract);
 
 impl BridgeContract<'_> {
-    pub fn bridge_configuration(&self) -> Result<BridgeConfiguration> {
-        let function = bridge_contract::bridge_configuration();
-        let bridge_configuration: BridgeConfiguration = self.0.run_local(function, &[])?.unpack_first()?;
-        Ok(bridge_configuration)
-    }
-
     pub fn derive_connector_address(&self, id: u64) -> Result<UInt256> {
         let function = bridge_contract::derive_connector_address();
         let input = [id.token_value().named("id")];
@@ -133,19 +127,8 @@ impl StakingContract<'_> {
         ))
     }
 
-    pub fn get_relay_round_address_from_timestamp(&self, time: u128) -> Result<UInt256> {
-        let function = staking_contract::get_relay_round_address_from_timestamp();
-        let input = [time.token_value().named("time")];
-        let relay_round_address_from_timestamp: ton_block::MsgAddrStd =
-            self.0.run_local(function, &input)?.unpack_first()?;
-
-        Ok(UInt256::from_be_bytes(
-            &relay_round_address_from_timestamp.address.get_bytestring(0),
-        ))
-    }
-
-    pub fn prev_relay_round_end_time(&self) -> Result<u128> {
-        let function = staking_contract::prev_relay_round_end_time();
+    pub fn current_relay_round_start_time(&self) -> Result<u128> {
+        let function = staking_contract::current_relay_round_start_time();
         let prev_relay_round_end_time: u128 = self.0.run_local(function, &[])?.unpack_first()?;
         Ok(prev_relay_round_end_time)
     }

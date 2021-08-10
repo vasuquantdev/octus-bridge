@@ -22,6 +22,7 @@ mod ton_subscriber;
 
 pub struct Engine {
     bridge_account: UInt256,
+    staking_account: UInt256,
     ton_engine: Arc<ton_indexer::Engine>,
     ton_subscriber: Arc<TonSubscriber>,
 
@@ -29,6 +30,7 @@ pub struct Engine {
     ton_configurations_observer: Arc<EventConfigurationsObserver<TonEventConfiguration>>,
     connectors_observer: Arc<ConnectorsObserver>,
     bridge_observer: Arc<BridgeObserver>,
+    staking_observer: Arc<StakingObserver>,
 
     eth_event_configurations: EthEventConfigurationsMap,
     ton_event_configurations: TonEventConfigurationsMap,
@@ -48,6 +50,9 @@ impl Engine {
         let bridge_account =
             UInt256::from_be_bytes(&config.bridge_address.address().get_bytestring(0));
 
+        let staking_account =
+            UInt256::from_be_bytes(&config.staking_address.address().get_bytestring(0));
+
         let ton_subscriber = TonSubscriber::new();
 
         let ton_engine = ton_indexer::Engine::new(
@@ -57,15 +62,17 @@ impl Engine {
         )
         .await?;
 
-        let (eth_event_configuration_events_tx, eth_event_configuration_events_rx) =
+        let (eth_event_configuration_events_tx, _eth_event_configuration_events_rx) =
             mpsc::unbounded_channel();
-        let (ton_event_configuration_events_tx, ton_event_configuration_events_rx) =
+        let (ton_event_configuration_events_tx, _ton_event_configuration_events_rx) =
             mpsc::unbounded_channel();
         let (connector_events_tx, _connector_events_rx) = mpsc::unbounded_channel();
         let (bridge_events_tx, bridge_events_rx) = mpsc::unbounded_channel();
+        let (staking_events_tx, staking_events_rx) = mpsc::unbounded_channel();
 
         let engine = Arc::new(Self {
             bridge_account,
+            staking_account,
             ton_engine,
             ton_subscriber,
             eth_configurations_observer: Arc::new(EventConfigurationsObserver {
@@ -82,6 +89,9 @@ impl Engine {
             bridge_observer: Arc::new(BridgeObserver {
                 events_tx: bridge_events_tx,
             }),
+            staking_observer: Arc::new(StakingObserver {
+                events_tx: staking_events_tx,
+            }),
             eth_event_configurations: Default::default(),
             ton_event_configurations: Default::default(),
             connectors: Default::default(),
@@ -91,6 +101,7 @@ impl Engine {
         });
 
         engine.start_listening_bridge_events(bridge_events_rx);
+        engine.start_listening_staking_events(staking_events_rx);
 
         Ok(engine)
     }
@@ -140,8 +151,6 @@ impl Engine {
     }
 
     async fn process_bridge_event(&self, event: ConnectorDeployedEvent) -> Result<()> {
-        use dashmap::mapref::entry::Entry;
-
         // Process event configuration
         let event_type = {
             // Wait until event configuration state is found
@@ -201,6 +210,33 @@ impl Engine {
         Ok(())
     }
 
+    fn start_listening_staking_events(self: &Arc<Self>, mut staking_events_rx: StakingEventsRx) {
+        let engine = Arc::downgrade(self);
+
+        tokio::spawn(async move {
+            while let Some(event) = staking_events_rx.recv().await {
+                let engine = match engine.upgrade() {
+                    Some(engine) => engine,
+                    None => break,
+                };
+
+                let _round_addr = UInt256::from_be_bytes(&event.round_addr.address().get_bytestring(0));
+
+                // TODO: get vote state for new round
+                let round_state = VoteStateType::NotInRound;
+
+                engine.vote_state.write().new_round = round_state;
+
+                let vote_state = engine.vote_state.clone();
+                let deadline = Instant::now() + Duration::from_secs((event.round_start_time - Utc::now().timestamp() as u128) as u64);
+                run_vote_state_task(deadline, vote_state);
+            }
+
+            staking_events_rx.close();
+            while staking_events_rx.recv().await.is_some() {}
+        });
+    }
+
     pub async fn start(&self) -> Result<()> {
         let mut initialized = self.initialized.lock().await;
         if *initialized {
@@ -212,11 +248,13 @@ impl Engine {
 
         self.ton_subscriber
             .add_transactions_subscription([self.bridge_account], &self.bridge_observer);
+        self.ton_subscriber
+            .add_transactions_subscription([self.staking_account], &self.staking_observer);
 
         self.get_all_configurations().await?;
         self.get_all_events().await?;
 
-        self.update_vote_state(true).await?;
+        self.init_vote_state().await?;
 
         // TODO: start eth indexer
 
@@ -365,61 +403,39 @@ impl Engine {
         Ok(())
     }
 
-    async fn update_vote_state(&self, startup: bool) -> Result<()> {
+    async fn init_vote_state(&self) -> Result<()> {
         let shard_accounts = self.get_all_shard_accounts().await?;
 
         let contract = shard_accounts
-            .find_account(&self.bridge_account)?
-            .ok_or(EngineError::BridgeAccountNotFound)?;
-        let bridge = BridgeContract(&contract);
-
-        let staking_account = bridge.bridge_configuration()?.staking;
-        let staking_contract = shard_accounts
-            .find_account(&staking_account)?
+            .find_account(&self.staking_account)?
             .ok_or(EngineError::StakingAccountNotFound)?;
-        let staking = StakingContract(&staking_contract);
+        let staking = StakingContract(&contract);
 
         let round_num = staking.current_relay_round()?;
         let current_time = Utc::now().timestamp() as u128;
-        let prev_relay_round_end_time = staking.prev_relay_round_end_time()?;
+        let current_relay_round_start_time = staking.current_relay_round_start_time()?;
 
-        match startup {
-            true => {
-                if current_time < prev_relay_round_end_time {
-                    let current_relay_round_addr = staking.get_relay_round_address(round_num - 1)?;
-                    let new_relay_round_addr = staking.get_relay_round_address(round_num)?;
+        if current_time < current_relay_round_start_time {
+            let _current_relay_round_addr = staking.get_relay_round_address(round_num - 1)?;
+            let _new_relay_round_addr = staking.get_relay_round_address(round_num)?;
 
-                    // TODO: get vote state for each round
-                    let current_round_state = VoteStateType::InRound;
-                    let new_round_state = VoteStateType::NotInRound;
+            // TODO: get vote state for each round
+            let current_round_state = VoteStateType::InRound;
+            let new_round_state = VoteStateType::NotInRound;
 
-                    self.vote_state.write().current_round = current_round_state;
-                    self.vote_state.write().new_round = new_round_state;
+            self.vote_state.write().current_round = current_round_state;
+            self.vote_state.write().new_round = new_round_state;
 
-                    let vote_state = self.vote_state.clone();
-                    let deadline = Instant::now() + Duration::from_secs((prev_relay_round_end_time - current_time) as u64);
-                    run_vote_state_task(deadline, vote_state);
-                } else {
-                    let current_relay_round_addr = staking.get_relay_round_address(round_num)?;
+            let vote_state = self.vote_state.clone();
+            let deadline = Instant::now() + Duration::from_secs((current_relay_round_start_time - current_time) as u64);
+            run_vote_state_task(deadline, vote_state);
+        } else {
+            let _current_relay_round_addr = staking.get_relay_round_address(round_num)?;
 
-                    // TODO: get vote state for current round
-                    let current_round_state = VoteStateType::InRound;
+            // TODO: get vote state for current round
+            let current_round_state = VoteStateType::InRound;
 
-                    self.vote_state.write().current_round = current_round_state;
-                }
-            }
-            false => {
-                let new_relay_round_addr = staking.get_relay_round_address(round_num)?;
-
-                // TODO: get vote state for each round
-                let new_round_state = VoteStateType::NotInRound;
-
-                self.vote_state.write().new_round = new_round_state;
-
-                let vote_state = self.vote_state.clone();
-                let deadline = Instant::now() + Duration::from_secs((prev_relay_round_end_time - current_time) as u64);
-                run_vote_state_task(deadline, vote_state);
-            }
+            self.vote_state.write().current_round = current_round_state;
         }
 
         Ok(())
@@ -596,6 +612,45 @@ impl TransactionsSubscription for BridgeObserver {
         })?;
 
         log::info!("Got transaction on bridge: {:?}", event);
+
+        // Send event to event manager if it exist
+        if let Some(event) = event {
+            self.events_tx.send(event).ok();
+        }
+
+        // Done
+        Ok(())
+    }
+}
+
+/// Listener for staking transactions
+///
+/// **Registered only for staking account**
+struct StakingObserver {
+    events_tx: StakingEventsTx,
+}
+
+impl TransactionsSubscription for StakingObserver {
+    fn handle_transaction(&self, ctx: TxContext<'_>) -> Result<()> {
+        // Parse all outgoing messages and search proper event
+        let mut event: Option<RelayRoundInitializedEvent> = None;
+        iterate_transaction_events(&ctx, |body| {
+            let id = nekoton_abi::read_function_id(&body);
+            if matches!(id, Ok(id) if id == staking_contract::events::relay_round_initialized().id) {
+                match staking_contract::events::relay_round_initialized()
+                    .decode_input(body)
+                    .convert()
+                    .and_then(|tokens| tokens.unpack().map_err(anyhow::Error::from))
+                {
+                    Ok(parsed) => event = Some(parsed),
+                    Err(e) => {
+                        log::error!("Failed to parse staking event: {:?}", e);
+                    }
+                };
+            }
+        })?;
+
+        log::info!("Got transaction on staking: {:?}", event);
 
         // Send event to event manager if it exist
         if let Some(event) = event {
@@ -793,6 +848,9 @@ type ConnectorEventsTx = mpsc::UnboundedSender<(UInt256, ConnectorEvent)>;
 
 type BridgeEventsTx = mpsc::UnboundedSender<ConnectorDeployedEvent>;
 type BridgeEventsRx = mpsc::UnboundedReceiver<ConnectorDeployedEvent>;
+
+type StakingEventsTx = mpsc::UnboundedSender<RelayRoundInitializedEvent>;
+type StakingEventsRx = mpsc::UnboundedReceiver<RelayRoundInitializedEvent>;
 
 type ShardAccountsMap = FxHashMap<ton_block::ShardIdent, ton_block::ShardAccounts>;
 type EventCodeHashesMap = FxHashMap<UInt256, EventType>;

@@ -240,29 +240,6 @@ impl TonEventConfiguration {
     }
 }
 
-#[derive(Debug, Clone, PackAbi, UnpackAbi)]
-pub struct BridgeConfiguration {
-    #[abi(with = "address_only_hash")]
-    pub staking: UInt256,
-    #[abi(bool)]
-    pub active: bool,
-    #[abi(cell, name = "connectorCode")]
-    pub connector_code: ton_types::Cell,
-    #[abi(uint128, name = "connectorDeployValue")]
-    pub connector_deploy_value: u128,
-}
-
-impl BridgeConfiguration {
-    pub fn make_params_tuple() -> ton_abi::ParamType {
-        TupleBuilder::new()
-            .arg("staking", ton_abi::ParamType::Address)
-            .arg("active", ton_abi::ParamType::Bool)
-            .arg("connector_code", ton_abi::ParamType::Cell)
-            .arg("connector_deploy_value", ton_abi::ParamType::Uint(128))
-            .build()
-    }
-}
-
 #[derive(Debug, Copy, Clone, Eq, PartialEq, PackAbi, UnpackAbi)]
 pub enum EventType {
     Eth = 0,
@@ -287,4 +264,18 @@ pub struct ConnectorDeployedEvent {
     pub connector: UInt256,
     #[abi(with = "address_only_hash")]
     pub event_configuration: UInt256,
+}
+
+#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain)]
+pub struct RelayRoundInitializedEvent {
+    #[abi(uint128)]
+    pub round_num: u128,
+    #[abi(uint128)]
+    pub round_start_time: u128,
+    #[abi(address)]
+    pub round_addr: ton_block::MsgAddressInt,
+    #[abi(uint128)]
+    pub relays_count: u128,
+    #[abi(bool)]
+    pub duplicate: bool,
 }

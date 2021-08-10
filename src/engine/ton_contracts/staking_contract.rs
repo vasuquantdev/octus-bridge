@@ -22,23 +22,12 @@ pub fn get_relay_round_address() -> &'static ton_abi::Function {
     })
 }
 
-pub fn get_relay_round_address_from_timestamp() -> &'static ton_abi::Function {
+pub fn current_relay_round_start_time() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
     FUNCTION.get_or_init(|| {
-        FunctionBuilder::new("getRelayRoundAddressFromTimestamp")
+        FunctionBuilder::new("currentRelayRoundStartTime")
             .time_header()
-            .in_arg("time", ton_abi::ParamType::Uint(128))
-            .out_arg("value0", ton_abi::ParamType::Address)
-            .build()
-    })
-}
-
-pub fn prev_relay_round_end_time() -> &'static ton_abi::Function {
-    static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
-    FUNCTION.get_or_init(|| {
-        FunctionBuilder::new("prevRelayRoundEndTime")
-            .time_header()
-            .out_arg("prevRelayRoundEndTime", ton_abi::ParamType::Uint(128))
+            .out_arg("currentRelayRoundStartTime", ton_abi::ParamType::Uint(128))
             .build()
     })
 }
