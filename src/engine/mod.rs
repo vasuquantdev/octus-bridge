@@ -2,11 +2,13 @@ use std::collections::hash_map;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
+use chrono::Utc;
 use nekoton_abi::*;
 use nekoton_utils::*;
 use parking_lot::RwLock;
 use tiny_adnl::utils::*;
 use tokio::sync::mpsc;
+use tokio::time::{Duration, Instant, sleep_until};
 use ton_block::{HashmapAugType, Serializable};
 use ton_types::UInt256;
 
@@ -34,6 +36,8 @@ pub struct Engine {
     event_code_hashes: Arc<RwLock<EventCodeHashesMap>>,
 
     initialized: tokio::sync::Mutex<bool>,
+
+    vote_state: Arc<RwLock<VoteState>>,
 }
 
 impl Engine {
@@ -83,6 +87,7 @@ impl Engine {
             connectors: Default::default(),
             event_code_hashes: Default::default(),
             initialized: Default::default(),
+            vote_state: Arc::new(Default::default()),
         });
 
         engine.start_listening_bridge_events(bridge_events_rx);
@@ -210,6 +215,8 @@ impl Engine {
 
         self.get_all_configurations().await?;
         self.get_all_events().await?;
+
+        self.update_vote_state(true).await?;
 
         // TODO: start eth indexer
 
@@ -358,6 +365,66 @@ impl Engine {
         Ok(())
     }
 
+    async fn update_vote_state(&self, startup: bool) -> Result<()> {
+        let shard_accounts = self.get_all_shard_accounts().await?;
+
+        let contract = shard_accounts
+            .find_account(&self.bridge_account)?
+            .ok_or(EngineError::BridgeAccountNotFound)?;
+        let bridge = BridgeContract(&contract);
+
+        let staking_account = bridge.bridge_configuration()?.staking;
+        let staking_contract = shard_accounts
+            .find_account(&staking_account)?
+            .ok_or(EngineError::StakingAccountNotFound)?;
+        let staking = StakingContract(&staking_contract);
+
+        let round_num = staking.current_relay_round()?;
+        let current_time = Utc::now().timestamp() as u128;
+        let prev_relay_round_end_time = staking.prev_relay_round_end_time()?;
+
+        match startup {
+            true => {
+                if current_time < prev_relay_round_end_time {
+                    let current_relay_round_addr = staking.get_relay_round_address(round_num - 1)?;
+                    let new_relay_round_addr = staking.get_relay_round_address(round_num)?;
+
+                    // TODO: get vote state for each round
+                    let current_round_state = VoteStateType::InRound;
+                    let new_round_state = VoteStateType::NotInRound;
+
+                    self.vote_state.write().current_round = current_round_state;
+                    self.vote_state.write().new_round = new_round_state;
+
+                    let vote_state = self.vote_state.clone();
+                    let deadline = Instant::now() + Duration::from_secs((prev_relay_round_end_time - current_time) as u64);
+                    run_vote_state_task(deadline, vote_state);
+                } else {
+                    let current_relay_round_addr = staking.get_relay_round_address(round_num)?;
+
+                    // TODO: get vote state for current round
+                    let current_round_state = VoteStateType::InRound;
+
+                    self.vote_state.write().current_round = current_round_state;
+                }
+            }
+            false => {
+                let new_relay_round_addr = staking.get_relay_round_address(round_num)?;
+
+                // TODO: get vote state for each round
+                let new_round_state = VoteStateType::NotInRound;
+
+                self.vote_state.write().new_round = new_round_state;
+
+                let vote_state = self.vote_state.clone();
+                let deadline = Instant::now() + Duration::from_secs((prev_relay_round_end_time - current_time) as u64);
+                run_vote_state_task(deadline, vote_state);
+            }
+        }
+
+        Ok(())
+    }
+
     async fn get_all_shard_accounts(&self) -> Result<ShardAccountsMap> {
         let shard_blocks = self.ton_subscriber.wait_shards().await?;
 
@@ -387,6 +454,16 @@ impl Engine {
             .broadcast_external_message(&to, &serialized)
             .await
     }
+}
+
+/// Timer task that updates vote state
+fn run_vote_state_task(deadline: Instant, vote_state: Arc<RwLock<VoteState>>) {
+    tokio::spawn(async move {
+        sleep_until(deadline).await;
+
+        vote_state.write().current_round = vote_state.read().new_round;
+        vote_state.write().new_round = VoteStateType::None;
+    });
 }
 
 /// Startup configurations processing context
@@ -471,6 +548,24 @@ enum ConnectorConfigurationType {
 enum ConnectorEvent {
     Enable,
     Disable,
+}
+
+/// Whether Relay is able to vote in each of round
+#[derive(Debug, Copy, Clone, Default)]
+struct VoteState {
+    current_round: VoteStateType,
+    new_round: VoteStateType,
+}
+
+#[derive(Debug, Copy, Clone)]
+enum VoteStateType {
+    None,
+    InRound,
+    NotInRound,
+}
+
+impl Default for VoteStateType {
+    fn default() -> Self { VoteStateType::None }
 }
 
 /// Listener for bridge transactions
@@ -712,6 +807,8 @@ enum EngineError {
     ExternalTonMessageExpected,
     #[error("Bridge account not found")]
     BridgeAccountNotFound,
+    #[error("Staking account not found")]
+    StakingAccountNotFound,
     #[error("Invalid contract address")]
     InvalidContractAddress,
     #[error("Already initialized")]

@@ -9,6 +9,7 @@ license-file = "LICENSE"
 [dependencies]
 async-trait = "0.1"
 anyhow = "1.0"
+chrono = "0.4.19"
 clap = "3.0.0-beta.2"
 config = "0.11"
 dashmap = "4.0"

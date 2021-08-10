@@ -240,6 +240,29 @@ impl TonEventConfiguration {
     }
 }
 
+#[derive(Debug, Clone, PackAbi, UnpackAbi)]
+pub struct BridgeConfiguration {
+    #[abi(with = "address_only_hash")]
+    pub staking: UInt256,
+    #[abi(bool)]
+    pub active: bool,
+    #[abi(cell, name = "connectorCode")]
+    pub connector_code: ton_types::Cell,
+    #[abi(uint128, name = "connectorDeployValue")]
+    pub connector_deploy_value: u128,
+}
+
+impl BridgeConfiguration {
+    pub fn make_params_tuple() -> ton_abi::ParamType {
+        TupleBuilder::new()
+            .arg("staking", ton_abi::ParamType::Address)
+            .arg("active", ton_abi::ParamType::Bool)
+            .arg("connector_code", ton_abi::ParamType::Cell)
+            .arg("connector_deploy_value", ton_abi::ParamType::Uint(128))
+            .build()
+    }
+}
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq, PackAbi, UnpackAbi)]
 pub enum EventType {
     Eth = 0,
