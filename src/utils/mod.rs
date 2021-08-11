@@ -89,6 +89,20 @@ pub fn calculate_times_from_max_delay(
     (steps + saturation_steps).ceil() as u32
 }
 
+#[macro_export]
+/// Maps `Result<T,E>` to `Option<T>` logging errors.
+macro_rules! filter_log {
+    ($val:expr, $log_msg:literal) => {{
+        match $val {
+            Ok(a) => Some(a),
+            Err(e) => {
+                ::log::error!("{}:{}", $log_msg, e);
+                None
+            }
+        }
+    }};
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

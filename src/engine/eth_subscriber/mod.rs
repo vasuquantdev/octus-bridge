@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use dashmap::DashSet;
+use futures::{SinkExt, Stream, StreamExt};
 use nekoton_utils::TrustMe;
 use tokio::sync::Semaphore;
 use tokio::time::timeout;
@@ -20,8 +21,8 @@ use crate::engine::eth_subscriber::models::Event;
 use crate::engine::eth_subscriber::utils::generate_default_timeout_config;
 use crate::engine::state::eth_state::EthState;
 use crate::engine::state::State;
+use crate::filter_log;
 use crate::utils::retry;
-use futures::{SinkExt, Stream, StreamExt};
 
 mod eth_config;
 pub mod models;
@@ -159,7 +160,6 @@ impl EthSubscriber {
     }
 
     async fn process_block(&self, from: u64, to: u64) -> Result<Vec<Event>> {
-        // TODO: optimize
         let (addresses, topics): (Vec<_>, Vec<_>) = {
             (
                 self.addresses.iter().map(|x| *x.key()).collect(),
@@ -191,15 +191,44 @@ impl EthSubscriber {
         let logs = logs
             .into_iter()
             .map(Event::try_from)
-            .filter_map(|x| match x {
-                Ok(a) => Some(a),
-                Err(e) => {
-                    log::error!("Failed maping log to event: {}", e);
-                    None
-                }
-            })
+            .filter_map(|x| filter_log!(x, "Failed mapping log to event"))
             .collect();
         Ok(logs)
+    }
+
+    pub async fn check_transaction(&self, hash: H256, event_index: u32) -> Result<Event> {
+        let _permission = self.pool.acquire().await;
+        let receipt = retry(
+            || {
+                timeout(
+                    self.config.get_timeout,
+                    self.web3.eth().transaction_receipt(hash),
+                )
+            },
+            generate_default_timeout_config(self.config.maximum_failed_responses_time),
+            "get transaction receipt",
+        )
+        .await
+        .context("Timed out getting receipt")?
+        .context("Failed getting logs")?
+        .with_context(|| format!("No logs found for {}", hex::encode(&hash.0)))?;
+
+        match receipt.status {
+            Some(a) => {
+                if a.as_u64() == 0 {
+                    anyhow::bail!("Tx has failed status")
+                }
+            }
+            None => anyhow::bail!("No status field in eth node answer"),
+        };
+
+        receipt
+            .logs
+            .into_iter()
+            .map(Event::try_from)
+            .filter_map(|x| filter_log!(x, "Failed mapping log to event in receipt logs"))
+            .find(|x| x.tx_hash == hash && x.event_index == event_index)
+            .context("No events for tx. Assuming confirmation is fake")
     }
 
     async fn save_logs(&self, logs: Vec<Event>) -> Result<Vec<Uuid>> {
