@@ -10,11 +10,14 @@ use tokio::sync::mpsc;
 use ton_block::{HashmapAugType, Serializable};
 use ton_types::UInt256;
 
-use self::ton_contracts::*;
-use self::ton_subscriber::*;
 use crate::config::*;
 use crate::utils::*;
 
+use self::ton_contracts::*;
+use self::ton_subscriber::*;
+
+mod eth_subscriber;
+mod state;
 mod ton_contracts;
 mod ton_subscriber;
 
@@ -135,8 +138,6 @@ impl Engine {
     }
 
     async fn process_bridge_event(&self, event: ConnectorDeployedEvent) -> Result<()> {
-        use dashmap::mapref::entry::Entry;
-
         // Process event configuration
         let event_type = {
             // Wait until event configuration state is found
