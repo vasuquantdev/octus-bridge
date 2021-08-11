@@ -10,6 +10,7 @@ pub mod bridge_contract;
 pub mod connector_contract;
 pub mod eth_event_configuration_contract;
 pub mod eth_event_contract;
+pub mod relay_round_contract;
 pub mod staking_contract;
 pub mod ton_event_configuration_contract;
 pub mod ton_event_contract;
@@ -131,5 +132,15 @@ impl StakingContract<'_> {
         let function = staking_contract::current_relay_round_start_time();
         let prev_relay_round_end_time: u128 = self.0.run_local(function, &[])?.unpack_first()?;
         Ok(prev_relay_round_end_time)
+    }
+}
+
+pub struct RelayRoundContract<'a>(pub &'a ExistingContract);
+
+impl RelayRoundContract<'_> {
+    pub fn relay_keys(&self) -> Result<RelayKeys> {
+        let function = relay_round_contract::relay_keys();
+        let relay_keys = self.0.run_local(function, &[])?.unpack()?;
+        Ok(relay_keys)
     }
 }

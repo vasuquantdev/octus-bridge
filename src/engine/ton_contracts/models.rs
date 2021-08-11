@@ -272,10 +272,16 @@ pub struct RelayRoundInitializedEvent {
     pub round_num: u128,
     #[abi(uint128)]
     pub round_start_time: u128,
-    #[abi(address)]
-    pub round_addr: ton_block::MsgAddressInt,
+    #[abi(with = "address_only_hash")]
+    pub round_addr: UInt256,
     #[abi(uint128)]
     pub relays_count: u128,
     #[abi(bool)]
     pub duplicate: bool,
+}
+
+#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain)]
+pub struct RelayKeys {
+    #[abi(with = "array_uint256_bytes")]
+    pub value0: Vec<UInt256>,
 }

@@ -1,4 +1,5 @@
 use std::collections::hash_map;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
@@ -8,7 +9,7 @@ use nekoton_utils::*;
 use parking_lot::RwLock;
 use tiny_adnl::utils::*;
 use tokio::sync::mpsc;
-use tokio::time::{Duration, Instant, sleep_until};
+use tokio::time::{sleep_until, Duration, Instant};
 use ton_block::{HashmapAugType, Serializable};
 use ton_types::UInt256;
 
@@ -220,16 +221,29 @@ impl Engine {
                     None => break,
                 };
 
-                let _round_addr = UInt256::from_be_bytes(&event.round_addr.address().get_bytestring(0));
+                let shard_accounts = match engine.get_all_shard_accounts().await {
+                    Ok(shard_accounts) => shard_accounts,
+                    Err(e) => {
+                        log::error!("Failed to get shard accounts: {:?}", e);
+                        continue;
+                    }
+                };
 
-                // TODO: get vote state for new round
-                let round_state = VoteStateType::NotInRound;
-
-                engine.vote_state.write().new_round = round_state;
+                if let Err(e) = update_vote_state(
+                    &shard_accounts,
+                    &event.round_addr,
+                    &mut engine.vote_state.write().new_round,
+                ) {
+                    log::error!("Failed to update vote state: {:?}", e);
+                    continue;
+                }
 
                 let vote_state = engine.vote_state.clone();
-                let deadline = Instant::now() + Duration::from_secs((event.round_start_time - Utc::now().timestamp() as u128) as u64);
-                run_vote_state_task(deadline, vote_state);
+                let deadline = Instant::now()
+                    + Duration::from_secs(
+                        (event.round_start_time - Utc::now().timestamp() as u128) as u64,
+                    );
+                run_vote_state_timer(deadline, vote_state);
             }
 
             staking_events_rx.close();
@@ -415,28 +429,29 @@ impl Engine {
         let current_time = Utc::now().timestamp() as u128;
         let current_relay_round_start_time = staking.current_relay_round_start_time()?;
 
+        let current_relay_round_addr;
         if current_time < current_relay_round_start_time {
-            let _current_relay_round_addr = staking.get_relay_round_address(round_num - 1)?;
-            let _new_relay_round_addr = staking.get_relay_round_address(round_num)?;
+            current_relay_round_addr = staking.get_relay_round_address(round_num - 1)?;
 
-            // TODO: get vote state for each round
-            let current_round_state = VoteStateType::InRound;
-            let new_round_state = VoteStateType::NotInRound;
-
-            self.vote_state.write().current_round = current_round_state;
-            self.vote_state.write().new_round = new_round_state;
+            let new_relay_round_addr = staking.get_relay_round_address(round_num)?;
+            update_vote_state(
+                &shard_accounts,
+                &new_relay_round_addr,
+                &mut self.vote_state.write().new_round,
+            )?;
 
             let vote_state = self.vote_state.clone();
-            let deadline = Instant::now() + Duration::from_secs((current_relay_round_start_time - current_time) as u64);
-            run_vote_state_task(deadline, vote_state);
+            let deadline = Instant::now()
+                + Duration::from_secs((current_relay_round_start_time - current_time) as u64);
+            run_vote_state_timer(deadline, vote_state);
         } else {
-            let _current_relay_round_addr = staking.get_relay_round_address(round_num)?;
-
-            // TODO: get vote state for current round
-            let current_round_state = VoteStateType::InRound;
-
-            self.vote_state.write().current_round = current_round_state;
+            current_relay_round_addr = staking.get_relay_round_address(round_num)?;
         }
+        update_vote_state(
+            &shard_accounts,
+            &current_relay_round_addr,
+            &mut self.vote_state.write().current_round,
+        )?;
 
         Ok(())
     }
@@ -472,14 +487,38 @@ impl Engine {
     }
 }
 
-/// Timer task that updates vote state
-fn run_vote_state_task(deadline: Instant, vote_state: Arc<RwLock<VoteState>>) {
+/// Timer task that switch round state
+fn run_vote_state_timer(deadline: Instant, vote_state: Arc<RwLock<VoteState>>) {
     tokio::spawn(async move {
         sleep_until(deadline).await;
 
         vote_state.write().current_round = vote_state.read().new_round;
         vote_state.write().new_round = VoteStateType::None;
     });
+}
+
+fn update_vote_state(
+    shard_accounts: &ShardAccountsMap,
+    addr: &UInt256,
+    vote_state: &mut VoteStateType,
+) -> Result<()> {
+    // Test key
+    let relay_pubkey =
+        UInt256::from_str("e4e82dd4c0df20b0467b1cf48320f4921796c6c8f76ff5999f91ad9175186635")
+            .unwrap();
+
+    let contract = shard_accounts
+        .find_account(addr)?
+        .ok_or(EngineError::RelayRoundAccountNotFound)?;
+    let relay_round = RelayRoundContract(&contract);
+
+    if relay_round.relay_keys()?.value0.contains(&relay_pubkey) {
+        *vote_state = VoteStateType::InRound;
+    } else {
+        *vote_state = VoteStateType::NotInRound;
+    }
+
+    Ok(())
 }
 
 /// Startup configurations processing context
@@ -581,7 +620,9 @@ enum VoteStateType {
 }
 
 impl Default for VoteStateType {
-    fn default() -> Self { VoteStateType::None }
+    fn default() -> Self {
+        VoteStateType::None
+    }
 }
 
 /// Listener for bridge transactions
@@ -636,7 +677,8 @@ impl TransactionsSubscription for StakingObserver {
         let mut event: Option<RelayRoundInitializedEvent> = None;
         iterate_transaction_events(&ctx, |body| {
             let id = nekoton_abi::read_function_id(&body);
-            if matches!(id, Ok(id) if id == staking_contract::events::relay_round_initialized().id) {
+            if matches!(id, Ok(id) if id == staking_contract::events::relay_round_initialized().id)
+            {
                 match staking_contract::events::relay_round_initialized()
                     .decode_input(body)
                     .convert()
@@ -867,6 +909,8 @@ enum EngineError {
     BridgeAccountNotFound,
     #[error("Staking account not found")]
     StakingAccountNotFound,
+    #[error("Relay Round account not found")]
+    RelayRoundAccountNotFound,
     #[error("Invalid contract address")]
     InvalidContractAddress,
     #[error("Already initialized")]
