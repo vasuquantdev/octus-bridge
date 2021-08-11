@@ -10,7 +10,7 @@ license-file = "LICENSE"
 async-trait = "0.1"
 anyhow = "1.0"
 clap = "3.0.0-beta.2"
-config = "0.11"
+config = { version = "0.11", default-features = false, features = ["yaml"] }
 dashmap = "4.0"
 external-ip = "4.1"
 futures = "0.3"

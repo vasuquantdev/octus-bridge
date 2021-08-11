@@ -139,7 +139,37 @@ impl TonSubscriber {
 
         state_rx.changed().await?;
         let account = state_rx.borrow();
-        ExistingContract::from_shard_account(account.deref())
+        ExistingContract::from_shard_account_opt(account.deref())
+    }
+
+    pub async fn wait_contract_state(&self, account: UInt256) -> Result<ExistingContract> {
+        let mut state_rx = match self.state_subscriptions.lock().entry(account) {
+            hash_map::Entry::Vacant(entry) => {
+                let (state_tx, state_rx) = watch::channel(None);
+                entry
+                    .insert(StateSubscription {
+                        state_tx,
+                        state_rx,
+                        transaction_subscriptions: Vec::new(),
+                    })
+                    .state_rx
+                    .clone()
+            }
+            hash_map::Entry::Occupied(entry) => entry.get().state_rx.clone(),
+        };
+
+        loop {
+            state_rx.changed().await?;
+
+            let shard_account = match state_rx.borrow().deref() {
+                Some(shard_account) => ExistingContract::from_shard_account(shard_account)?,
+                None => continue,
+            };
+
+            if let Some(shard_account) = shard_account {
+                return Ok(shard_account);
+            }
+        }
     }
 
     fn handle_masterchain_block(&self, block: &ton_block::Block) -> Result<()> {
@@ -307,10 +337,23 @@ impl StateSubscription {
                 }
             };
 
+            // Skip non-ordinary or aborted transactions
+            let transaction_info = match transaction.description.read_struct() {
+                Ok(ton_block::TransactionDescr::Ordinary(info)) if !info.aborted => info,
+                _ => continue,
+            };
+
+            let ctx = TxContext {
+                block_info,
+                account,
+                transaction_hash: &hash,
+                transaction_info: &transaction_info,
+                transaction: &transaction,
+            };
+
+            // Handle transaction
             for subscription in self.iter_transaction_subscriptions() {
-                if let Err(e) =
-                    subscription.handle_transaction(block_info, account, &hash, &transaction)
-                {
+                if let Err(e) = subscription.handle_transaction(ctx) {
                     log::error!(
                         "Failed to handle transaction {} for account {}: {:?}",
                         hash.to_hex_string(),
@@ -346,13 +389,16 @@ pub trait BlockAwaiter: Send + Sync {
 }
 
 pub trait TransactionsSubscription: Send + Sync {
-    fn handle_transaction(
-        &self,
-        block_info: &ton_block::BlockInfo,
-        account: &UInt256,
-        transaction_hash: &UInt256,
-        transaction: &ton_block::Transaction,
-    ) -> Result<()>;
+    fn handle_transaction(&self, ctx: TxContext<'_>) -> Result<()>;
+}
+
+#[derive(Copy, Clone)]
+pub struct TxContext<'a> {
+    pub block_info: &'a ton_block::BlockInfo,
+    pub account: &'a UInt256,
+    pub transaction_hash: &'a UInt256,
+    pub transaction_info: &'a ton_block::TransactionDescrOrdinary,
+    pub transaction: &'a ton_block::Transaction,
 }
 
 type ShardAccountTx = watch::Sender<Option<ton_block::ShardAccount>>;
