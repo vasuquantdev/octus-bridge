@@ -3,7 +3,7 @@ use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use dashmap::DashSet;
+use dashmap::{DashMap, DashSet};
 use futures::{SinkExt, Stream, StreamExt};
 use nekoton_utils::TrustMe;
 use tokio::sync::Semaphore;
@@ -23,13 +23,14 @@ use crate::engine::state::eth_state::EthState;
 use crate::engine::state::State;
 use crate::filter_log;
 use crate::utils::retry;
+use tap::Pipe;
 
 mod eth_config;
 pub mod models;
 mod utils;
 
 pub struct EthSubscriberRegistry {
-    subscribed: DashSet<u8>,
+    subscribed: DashMap<u8, Arc<EthSubscriber>>,
 }
 
 impl EthSubscriberRegistry {
@@ -38,11 +39,17 @@ impl EthSubscriberRegistry {
         config: EthConfig,
         chain_id: u8,
         state: State,
-    ) -> Option<Result<EthSubscriber>> {
-        if self.subscribed.insert(chain_id) {
-            return Some(EthSubscriber::new(config, chain_id, state).await);
+    ) -> Result<Arc<EthSubscriber>> {
+        match self.subscribed.get(&chain_id) {
+            Some(a) => a.clone(),
+            None => Arc::new(EthSubscriber::new(config, chain_id, state).await?),
         }
-        None
+        .pipe(Ok)
+    }
+
+    pub fn get_subscriber(&self, chain_id: u8) -> Option<Arc<EthSubscriber>> {
+        // Not cloning will deadlock
+        self.subscribed.get(&chain_id).map(|x| x.clone())
     }
 }
 
@@ -84,7 +91,10 @@ impl EthSubscriber {
             loop {
                 let this = match this.upgrade() {
                     Some(a) => a,
-                    None => return,
+                    None => {
+                        log::error!("Eth subscriber is dropped.");
+                        return;
+                    }
                 };
                 let ethereum_actual_height = match retry(
                     || this.get_current_height(),
@@ -265,7 +275,8 @@ impl EthSubscriber {
 
     async fn get_current_height(&self) -> Result<u64> {
         let res = *timeout(self.config.get_timeout, self.web3.eth().block_number())
-            .await??
+            .await
+            .context("Timeout getting height")??
             .0
             .get(0)
             .trust_me();
