@@ -3,7 +3,6 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Weak};
 
 use anyhow::{Context, Result};
-use nekoton_utils::NoFailure;
 use parking_lot::Mutex;
 use tokio::sync::{oneshot, watch, Notify};
 use ton_block::{BinTreeType, Deserializable, HashmapAugType};
@@ -53,17 +52,16 @@ impl TonSubscriber {
         }
 
         fn extract_shards(block: &ton_block::Block) -> Result<ShardsMap> {
-            let extra = block.extra.read_struct().convert()?;
-            let custom = match extra.read_custom().convert()? {
+            let extra = block.extra.read_struct()?;
+            let custom = match extra.read_custom()? {
                 Some(custom) => custom,
                 None => return Ok(ShardsMap::default()),
             };
 
             let mut shards = HashMap::with_capacity(16);
 
-            custom
-                .shards()
-                .iterate_with_keys(|wc_id: i32, ton_block::InRefValue(shards_tree)| {
+            custom.shards().iterate_with_keys(
+                |wc_id: i32, ton_block::InRefValue(shards_tree)| {
                     if wc_id == ton_block::MASTERCHAIN_ID {
                         return Ok(true);
                     }
@@ -82,8 +80,8 @@ impl TonSubscriber {
                         );
                         Ok(true)
                     })
-                })
-                .convert()?;
+                },
+            )?;
 
             Ok(shards)
         }
@@ -173,7 +171,7 @@ impl TonSubscriber {
     }
 
     fn handle_masterchain_block(&self, block: &ton_block::Block) -> Result<()> {
-        let info = block.info.read_struct().convert()?;
+        let info = block.info.read_struct()?;
         self.current_utime
             .store(info.gen_utime().0, Ordering::Release);
 
@@ -192,10 +190,10 @@ impl TonSubscriber {
         block: &ton_block::Block,
         shard_state: &ton_block::ShardStateUnsplit,
     ) -> Result<()> {
-        let block_info = block.info.read_struct().convert()?;
-        let extra = block.extra.read_struct().convert()?;
-        let account_blocks = extra.read_account_blocks().convert()?;
-        let accounts = shard_state.read_accounts().convert()?;
+        let block_info = block.info.read_struct()?;
+        let extra = block.extra.read_struct()?;
+        let account_blocks = extra.read_account_blocks()?;
+        let accounts = shard_state.read_accounts()?;
 
         let mut blocks = self.state_subscriptions.lock();
 
@@ -304,15 +302,12 @@ impl StateSubscription {
             return Ok(());
         }
 
-        let account_block = match account_blocks
-            .get_with_aug(account)
-            .convert()
-            .with_context(|| {
-                format!(
-                    "Failed to get account block for {}",
-                    account.to_hex_string()
-                )
-            })? {
+        let account_block = match account_blocks.get_with_aug(account).with_context(|| {
+            format!(
+                "Failed to get account block for {}",
+                account.to_hex_string()
+            )
+        })? {
             Some((account_block, _)) => account_block,
             None => return Ok(()),
         };

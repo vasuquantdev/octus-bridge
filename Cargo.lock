@@ -3,21 +3,6 @@
 version = 3
 
 [[package]]
-name = "addr2line"
-version = "0.15.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e7a2e47a1fbe209ee101dd6d61285226744c6c8d3c21c8dc878ba6cb9f467f3a"
-dependencies = [
- "gimli",
-]
-
-[[package]]
-name = "adler"
-version = "1.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f26201604c87b1e01bd3d98f8d5d9a8fcbb815e8cedb41ffccbeb4bf593a35fe"
-
-[[package]]
 name = "aes"
 version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -50,9 +35,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.42"
+version = "1.0.43"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "595d3cfa7a60d4555cb5067b99f07142a08ea778de5cf993f7b75c7d8fabc486"
+checksum = "28ae2b3dec75a406790005a200b1bd89785afc02517a00ca99ecfe093ee9e6cf"
 
 [[package]]
 name = "arc-swap"
@@ -107,30 +92,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cdb031dd78e28731d87d56cc8ffef4a8f36ca26c38fe2de700543e627f8a464a"
 
 [[package]]
-name = "backtrace"
-version = "0.3.59"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4717cfcbfaa661a0fd48f8453951837ae7e8f81e481fbb136e3202d72805a744"
-dependencies = [
- "addr2line",
- "cc",
- "cfg-if",
- "libc",
- "miniz_oxide",
- "object",
- "rustc-demangle",
-]
-
-[[package]]
-name = "base64"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b25d992356d2eb0ed82172f5248873db5560c4721f564b13cb5193bda5e668e"
-dependencies = [
- "byteorder",
-]
-
-[[package]]
 name = "base64"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -166,9 +127,9 @@ dependencies = [
 
 [[package]]
 name = "bitflags"
-version = "1.2.1"
+version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf1de2fe8c75bc145a2f577add951f8134889b4795d47466a54a5c846d691693"
+checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "bitvec"
@@ -268,9 +229,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "3.0.0-beta.2"
+version = "3.0.0-beta.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4bd1061998a501ee7d4b6d449020df3266ca3124b941ec56cf2005c3779ca142"
+checksum = "fcd70aa5597dbc42f7217a543f9ef2768b2ef823ba29036072d30e1d88e98406"
 dependencies = [
  "atty",
  "bitflags",
@@ -281,15 +242,14 @@ dependencies = [
  "strsim",
  "termcolor",
  "textwrap",
- "unicode-width",
  "vec_map",
 ]
 
 [[package]]
 name = "clap_derive"
-version = "3.0.0-beta.2"
+version = "3.0.0-beta.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "370f715b81112975b1b69db93e0b56ea4cd4e5002ac43b2da8474106a54096a1"
+checksum = "0b5bb0d655624a0b8770d1c178fb8ffcb1f91cc722cb08f451e3dc72465421ac"
 dependencies = [
  "heck",
  "proc-macro-error",
@@ -526,28 +486,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a48fe53466ab1f4ea6303bf9d7a0ca8060778590f09fd6c3304cc817aeb9935d"
 
 [[package]]
-name = "failure"
-version = "0.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d32e9bd16cc02eae7db7ef620b392808b89f6a5e16bb3497d159c6b92a0f4f86"
-dependencies = [
- "backtrace",
- "failure_derive",
-]
-
-[[package]]
-name = "failure_derive"
-version = "0.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa4da3c766cd7a0db8242e326e9e4e081edd567072893ed320008189715366a4"
-dependencies = [
- "proc-macro2 1.0.28",
- "quote 1.0.9",
- "syn 1.0.74",
- "synstructure",
-]
-
-[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -709,12 +647,6 @@ dependencies = [
  "libc",
  "wasi 0.10.0+wasi-snapshot-preview1",
 ]
-
-[[package]]
-name = "gimli"
-version = "0.24.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e4075386626662786ddb0ec9081e7c7eeb1ba31951f447ca780ef9f5d568189"
 
 [[package]]
 name = "glob"
@@ -1051,25 +983,15 @@ checksum = "ffbee8634e0d45d258acb448e7eaab3fce7a0a467395d4d9f228e3c1f01fb2e4"
 
 [[package]]
 name = "matches"
-version = "0.1.8"
+version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ffc5c5338469d4d3ea17d269fa8ea3512ad247247c30bd2df69e68309ed0a08"
+checksum = "a3e378b66a060d48947b590737b30a1be76706c8dd7b8ba0f2fe3989c68a853f"
 
 [[package]]
 name = "memchr"
 version = "2.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ee1c47aaa256ecabcaea351eae4a9b01ef39ed810004e298d2511ed284b1525"
-
-[[package]]
-name = "miniz_oxide"
-version = "0.4.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a92518e98c078586bc6c934028adcca4c92a53d6a958196de835170a01d84e4b"
-dependencies = [
- "adler",
- "autocfg",
-]
 
 [[package]]
 name = "mio"
@@ -1095,9 +1017,9 @@ dependencies = [
 
 [[package]]
 name = "native-tls"
-version = "0.2.7"
+version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8d96b2e1c8da3957d58100b09f102c6d9cfdfced01b7ec5a8974044bb09dbd4"
+checksum = "48ba9f7719b5a0f42f338907614285fb5fd70e53858141f69898a1fb7203b24d"
 dependencies = [
  "lazy_static",
  "libc",
@@ -1114,10 +1036,10 @@ dependencies = [
 [[package]]
 name = "nekoton-abi"
 version = "0.3.0"
-source = "git+https://github.com/broxus/nekoton.git#3b08154e91b902705842a4a08c3285a0adefa22a"
+source = "git+https://github.com/broxus/nekoton.git#cfac8568b33a3e998a671bea9518551d45151c6b"
 dependencies = [
  "anyhow",
- "base64 0.13.0",
+ "base64",
  "chrono",
  "ed25519-dalek",
  "hex",
@@ -1139,7 +1061,7 @@ dependencies = [
 [[package]]
 name = "nekoton-derive"
 version = "0.3.0"
-source = "git+https://github.com/broxus/nekoton.git#3b08154e91b902705842a4a08c3285a0adefa22a"
+source = "git+https://github.com/broxus/nekoton.git#cfac8568b33a3e998a671bea9518551d45151c6b"
 dependencies = [
  "either",
  "proc-macro2 1.0.28",
@@ -1150,12 +1072,11 @@ dependencies = [
 [[package]]
 name = "nekoton-utils"
 version = "0.3.0"
-source = "git+https://github.com/broxus/nekoton.git#3b08154e91b902705842a4a08c3285a0adefa22a"
+source = "git+https://github.com/broxus/nekoton.git#cfac8568b33a3e998a671bea9518551d45151c6b"
 dependencies = [
  "anyhow",
- "base64 0.13.0",
+ "base64",
  "ed25519-dalek",
- "failure",
  "hex",
  "log",
  "num-bigint",
@@ -1201,9 +1122,9 @@ dependencies = [
 
 [[package]]
 name = "num"
-version = "0.2.1"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8536030f9fea7127f841b45bb6243b27255787fb4eb83958aa1ef9d2fdc0c36"
+checksum = "8b7a8e9be5e039e2ff869df49155f1c06bd01ade2117ec783e56ab0932b67a8f"
 dependencies = [
  "num-bigint",
  "num-complex",
@@ -1215,9 +1136,9 @@ dependencies = [
 
 [[package]]
 name = "num-bigint"
-version = "0.2.6"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "090c7f9998ee0ff65aa5b723e4009f7b217707f1fb5ea551329cc4d6231fb304"
+checksum = "7d0a3d5e207573f948a9e5376662aa743a2ea13f7c50a554d7af443a73fbfeba"
 dependencies = [
  "autocfg",
  "num-integer",
@@ -1227,11 +1148,10 @@ dependencies = [
 
 [[package]]
 name = "num-complex"
-version = "0.2.4"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6b19411a9719e753aff12e5187b74d60d3dc449ec3f4dc21e3989c3f554bc95"
+checksum = "747d632c0c558b87dbabbe6a82f3b4ae03720d0646ac5b7b4dae89394be5f2c5"
 dependencies = [
- "autocfg",
  "num-traits",
 ]
 
@@ -1269,9 +1189,9 @@ dependencies = [
 
 [[package]]
 name = "num-rational"
-version = "0.2.4"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c000134b5dbf44adc5cb772486d335293351644b801551abe8f75c84cfa4aef"
+checksum = "12ac428b1cb17fce6f731001d307d351ec70a6d202fc2e60f7d4c5e42d8f4f07"
 dependencies = [
  "autocfg",
  "num-bigint",
@@ -1297,12 +1217,6 @@ dependencies = [
  "hermit-abi",
  "libc",
 ]
-
-[[package]]
-name = "object"
-version = "0.24.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a5b3dd1c072ee7963717671d1ca129f1048fda25edea6b752bfc71ac8854170"
 
 [[package]]
 name = "once_cell"
@@ -1361,9 +1275,9 @@ dependencies = [
 
 [[package]]
 name = "os_str_bytes"
-version = "2.4.0"
+version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "afb2e1c3ee07430c2cf76151675e583e0f19985fa6efae47d6848a3e2c824f85"
+checksum = "6acbef58a60fe69ab50510a55bc8cdd4d6cf2283d27ad338f54cb52747a9cf2d"
 
 [[package]]
 name = "output_vt100"
@@ -1667,6 +1581,7 @@ version = "2.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "chrono",
  "clap",
  "config",
  "dashmap",
@@ -1721,12 +1636,6 @@ dependencies = [
  "libc",
  "librocksdb-sys",
 ]
-
-[[package]]
-name = "rustc-demangle"
-version = "0.1.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dead70b0b5e03e9c814bcb6b01e03e68f7c57a80aa48c72ec92152ab3e818d49"
 
 [[package]]
 name = "rustc-hash"
@@ -1996,9 +1905,9 @@ dependencies = [
 
 [[package]]
 name = "textwrap"
-version = "0.12.1"
+version = "0.14.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "203008d98caf094106cfaba70acfed15e18ed3ddb7d94e49baec153a2b462789"
+checksum = "0066c8d12af8b5acd21e00547c3797fde4e8677254a7ee429176ccebbe93dd80"
 dependencies = [
  "unicode-width",
 ]
@@ -2048,12 +1957,12 @@ dependencies = [
 [[package]]
 name = "tiny-adnl"
 version = "0.1.0"
-source = "git+https://github.com/broxus/tiny-adnl#41138d98c17f135e19a74fe99130469510db1038"
+source = "git+https://github.com/broxus/tiny-adnl#4bd01ac2d16a154a2e8be77b6f0af04103dae4b8"
 dependencies = [
  "aes",
  "anyhow",
  "async-trait",
- "base64 0.13.0",
+ "base64",
  "crossbeam-queue",
  "curve25519-dalek",
  "dashmap",
@@ -2062,7 +1971,6 @@ dependencies = [
  "hex",
  "libc",
  "log",
- "nekoton-utils",
  "parking_lot",
  "rand 0.7.3",
  "raptorq",
@@ -2095,9 +2003,9 @@ checksum = "cda74da7e1a664f795bb1f8a87ec406fb89a02522cf6e50620d016add6dbbf5c"
 
 [[package]]
 name = "tokio"
-version = "1.9.0"
+version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b7b349f11a7047e6d1276853e612d152f5e8a352c61917887cc2169e2366b4c"
+checksum = "01cf844b23c6131f624accf65ce0e4e9956a8bb329400ea5bcc26ae3a5c20b0b"
 dependencies = [
  "autocfg",
  "bytes",
@@ -2144,11 +2052,11 @@ dependencies = [
 [[package]]
 name = "ton-indexer"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#a4160cce4cc344b51eab9cd921f27eaa937af44e"
+source = "git+https://github.com/broxus/ton-indexer.git#948f2133b05a49ac6927779c35f60dec888dfdda"
 dependencies = [
  "anyhow",
  "async-trait",
- "base64 0.13.0",
+ "base64",
  "bincode",
  "crc",
  "dashmap",
@@ -2177,20 +2085,21 @@ dependencies = [
 [[package]]
 name = "ton_abi"
 version = "1.0.1"
-source = "git+https://github.com/broxus/ton-labs-abi#4cf5255b68cc818dd9b9ad47d00ad646f50f7e98"
+source = "git+https://github.com/broxus/ton-labs-abi#0a3745991bffaafa687eb47530eb2bea0977845b"
 dependencies = [
- "base64 0.13.0",
+ "anyhow",
+ "base64",
  "byteorder",
  "chrono",
  "ed25519",
  "ed25519-dalek",
- "failure",
  "hex",
  "num-bigint",
  "num-traits",
  "serde",
  "serde_json",
  "sha2",
+ "thiserror",
  "ton_block",
  "ton_types",
 ]
@@ -2198,18 +2107,19 @@ dependencies = [
 [[package]]
 name = "ton_api"
 version = "0.0.1"
-source = "git+https://github.com/broxus/ton-labs-tl.git#578be7529e57d73be049268dbe4c65a14c12faac"
+source = "git+https://github.com/broxus/ton-labs-tl.git#0ca67dfe6ee8246f80579b4dabf6570f8d949e4f"
 dependencies = [
+ "anyhow",
  "byteorder",
  "erased-serde",
  "extfmt",
- "failure",
  "hex",
  "lazy_static",
  "ordered-float",
  "rand 0.7.3",
  "secstr",
  "serde",
+ "thiserror",
  "ton_tl_codegen",
  "ton_types",
 ]
@@ -2217,35 +2127,36 @@ dependencies = [
 [[package]]
 name = "ton_block"
 version = "1.7.14"
-source = "git+https://github.com/broxus/ton-labs-block#2baac53fc2f9ca77af9913c6662f2de502523aa7"
+source = "git+https://github.com/broxus/ton-labs-block#28ca66fcd81f22dcf3f81d05837793109af301ae"
 dependencies = [
- "base64 0.13.0",
+ "anyhow",
+ "base64",
  "clear_on_drop",
  "crc",
  "ed25519",
  "ed25519-dalek",
- "failure",
  "hex",
  "log",
  "num",
  "num-traits",
  "rand 0.7.3",
  "sha2",
+ "thiserror",
  "ton_types",
 ]
 
 [[package]]
 name = "ton_executor"
 version = "1.0.0"
-source = "git+https://github.com/broxus/ton-labs-executor.git#db7aa828b532abd587a1bcb242f12e8b62223ccb"
+source = "git+https://github.com/broxus/ton-labs-executor.git#34a25d80d0a7fa8bb5ed4b3e71684198322ad2ea"
 dependencies = [
- "base64 0.10.1",
+ "anyhow",
+ "base64",
  "clear_on_drop",
- "failure",
- "lazy_static",
  "log",
  "num",
  "num-traits",
+ "thiserror",
  "ton_block",
  "ton_types",
  "ton_vm",
@@ -2254,10 +2165,10 @@ dependencies = [
 [[package]]
 name = "ton_tl_codegen"
 version = "0.0.1"
-source = "git+https://github.com/broxus/ton-labs-tl.git#578be7529e57d73be049268dbe4c65a14c12faac"
+source = "git+https://github.com/broxus/ton-labs-tl.git#0ca67dfe6ee8246f80579b4dabf6570f8d949e4f"
 dependencies = [
+ "anyhow",
  "crc",
- "failure",
  "pom",
  "proc-macro2 0.4.30",
  "quote 0.6.13",
@@ -2267,11 +2178,11 @@ dependencies = [
 [[package]]
 name = "ton_types"
 version = "1.10.2"
-source = "git+https://github.com/broxus/ton-labs-types#b3bd9e2643603d395b08414247648fb58d58380f"
+source = "git+https://github.com/broxus/ton-labs-types#8ebe1b2dbf6bd7eada2dd32929e211c9d708a04b"
 dependencies = [
- "base64 0.13.0",
+ "anyhow",
+ "base64",
  "crc",
- "failure",
  "hex",
  "lockfree",
  "log",
@@ -2280,22 +2191,24 @@ dependencies = [
  "num-traits",
  "rand 0.7.3",
  "sha2",
+ "thiserror",
 ]
 
 [[package]]
 name = "ton_vm"
 version = "1.0.0"
-source = "git+https://github.com/broxus/ton-labs-vm.git#23bf87441b366276e7f7c12eafdacb74d627b393"
+source = "git+https://github.com/broxus/ton-labs-vm.git#a211b20c36a0f48972bf7f39833a3679e7f1c85b"
 dependencies = [
+ "anyhow",
  "ed25519",
  "ed25519-dalek",
- "failure",
  "hex",
  "log",
  "num",
  "num-traits",
  "rand 0.7.3",
  "sha2",
+ "thiserror",
  "ton_types",
 ]
 
@@ -2399,12 +2312,9 @@ checksum = "879f6906492a7cd215bfa4cf595b600146ccfac0c79bcbd1f3000162af5e8b06"
 
 [[package]]
 name = "unicode-bidi"
-version = "0.3.5"
+version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eeb8be209bb1c96b7c177c7420d26e04eccacb0eeae6b980e35fcb74678107e0"
-dependencies = [
- "matches",
-]
+checksum = "246f4c42e67e7a4e3c6106ff716a5d067d4132a642840b242e357e468a2a0085"
 
 [[package]]
 name = "unicode-normalization"

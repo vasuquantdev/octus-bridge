@@ -265,3 +265,23 @@ pub struct ConnectorDeployedEvent {
     #[abi(with = "address_only_hash")]
     pub event_configuration: UInt256,
 }
+
+#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain)]
+pub struct RelayRoundInitializedEvent {
+    #[abi(uint32)]
+    pub round_num: u32,
+    #[abi(uint32)]
+    pub round_start_time: u32,
+    #[abi(with = "address_only_hash")]
+    pub round_addr: UInt256,
+    #[abi(uint32)]
+    pub relays_count: u32,
+    #[abi(bool)]
+    pub duplicate: bool,
+}
+
+#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain)]
+pub struct RelayKeys {
+    #[abi(with = "array_uint256_bytes")]
+    pub items: Vec<UInt256>,
+}
