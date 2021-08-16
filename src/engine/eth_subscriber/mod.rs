@@ -6,6 +6,7 @@ use anyhow::{Context, Result};
 use dashmap::{DashMap, DashSet};
 use futures::{SinkExt, Stream, StreamExt};
 use nekoton_utils::TrustMe;
+use tap::Pipe;
 use tokio::sync::Semaphore;
 use tokio::time::timeout;
 use uuid::Uuid;
@@ -14,16 +15,13 @@ use web3::types::U64;
 use web3::types::{BlockNumber, FilterBuilder, H256};
 use web3::Web3;
 
-use eth_config::EthConfig;
-use utils::generate_fixed_config;
-
-use crate::engine::eth_subscriber::models::Event;
-use crate::engine::eth_subscriber::utils::generate_default_timeout_config;
-use crate::engine::state::eth_state::EthState;
-use crate::engine::state::State;
+use self::eth_config::EthConfig;
+use self::utils::{generate_default_timeout_config, generate_fixed_config};
 use crate::filter_log;
+use crate::state::db::Pool;
+use crate::state::eth_state::EthState;
+use crate::state::models::StoredEthEvent;
 use crate::utils::retry;
-use tap::Pipe;
 
 mod eth_config;
 pub mod models;
@@ -38,11 +36,11 @@ impl EthSubscriberRegistry {
         &self,
         config: EthConfig,
         chain_id: u8,
-        state: State,
+        db: Arc<Pool>,
     ) -> Result<Arc<EthSubscriber>> {
         match self.subscribed.get(&chain_id) {
             Some(a) => a.clone(),
-            None => Arc::new(EthSubscriber::new(config, chain_id, state).await?),
+            None => Arc::new(EthSubscriber::new(config, chain_id, db).await?),
         }
         .pipe(Ok)
     }
@@ -66,11 +64,11 @@ pub struct EthSubscriber {
 }
 
 impl EthSubscriber {
-    async fn new(config: EthConfig, id: u8, state: State) -> Result<Self> {
+    async fn new(config: EthConfig, id: u8, db: Arc<Pool>) -> Result<Self> {
         let transport = web3::transports::Http::new(config.endpoint.as_str())?;
         let web3 = web3::Web3::new(transport);
         let pool = Arc::new(Semaphore::new(config.pool_size));
-        let state = EthState::new(state);
+        let state = EthState::new(db);
         let current_height = state.get_last_block_id(id).await?;
         Ok(Self {
             config,
@@ -169,7 +167,7 @@ impl EthSubscriber {
         events_rx
     }
 
-    async fn process_block(&self, from: u64, to: u64) -> Result<Vec<Event>> {
+    async fn process_block(&self, from: u64, to: u64) -> Result<Vec<StoredEthEvent>> {
         let (addresses, topics): (Vec<_>, Vec<_>) = {
             (
                 self.addresses.iter().map(|x| *x.key()).collect(),
@@ -200,13 +198,13 @@ impl EthSubscriber {
         .context("Failed getting eth logs")?;
         let logs = logs
             .into_iter()
-            .map(Event::try_from)
+            .map(StoredEthEvent::try_from)
             .filter_map(|x| filter_log!(x, "Failed mapping log to event"))
             .collect();
         Ok(logs)
     }
 
-    pub async fn check_transaction(&self, hash: H256, event_index: u32) -> Result<Event> {
+    pub async fn check_transaction(&self, hash: H256, event_index: u32) -> Result<StoredEthEvent> {
         let _permission = self.pool.acquire().await;
         let receipt = retry(
             || {
@@ -235,13 +233,13 @@ impl EthSubscriber {
         receipt
             .logs
             .into_iter()
-            .map(Event::try_from)
+            .map(StoredEthEvent::try_from)
             .filter_map(|x| filter_log!(x, "Failed mapping log to event in receipt logs"))
             .find(|x| x.tx_hash == hash && x.event_index == event_index)
             .context("No events for tx. Assuming confirmation is fake")
     }
 
-    async fn save_logs(&self, logs: Vec<Event>) -> Result<Vec<Uuid>> {
+    async fn save_logs(&self, logs: Vec<StoredEthEvent>) -> Result<Vec<Uuid>> {
         let uuids: Vec<_> = futures::stream::iter(logs.into_iter())
             .then(|x| self.state.new_event(x))
             .collect()

@@ -12,18 +12,18 @@ use tokio::time::{sleep_until, Duration, Instant};
 use ton_block::{HashmapAugType, Serializable};
 use ton_types::UInt256;
 
-use crate::config::*;
-use crate::utils::*;
-
 use self::ton_contracts::*;
 use self::ton_subscriber::*;
+use crate::config::*;
+use crate::state::State;
+use crate::utils::*;
 
 mod eth_subscriber;
-mod state;
 mod ton_contracts;
 mod ton_subscriber;
 
 pub struct Engine {
+    state: State,
     ton_engine: Arc<ton_indexer::Engine>,
     ton_subscriber: Arc<TonSubscriber>,
 
@@ -52,6 +52,9 @@ impl Engine {
         config: RelayConfig,
         global_config: ton_indexer::GlobalConfig,
     ) -> Result<Arc<Self>> {
+        let state = State::new("test.sqlite").await?;
+        state.apply_migrations().await?;
+
         let bridge_account =
             UInt256::from_be_bytes(&config.bridge_address.address().get_bytestring(0));
 
@@ -74,6 +77,7 @@ impl Engine {
         let (staking_events_tx, staking_events_rx) = mpsc::unbounded_channel();
 
         let engine = Arc::new(Self {
+            state,
             ton_engine,
             ton_subscriber,
             bridge_account,
