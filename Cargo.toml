@@ -39,10 +39,14 @@ nekoton-abi = { git = "https://github.com/broxus/nekoton.git", features = ["deri
 nekoton-utils = { git = "https://github.com/broxus/nekoton.git" }
 
 # Indexer engine
-ton-indexer = { git = "https://github.com/broxus/ton-indexer.git", features = ["sha-native"] }
+ton-indexer = { git = "https://github.com/broxus/ton-indexer.git" }
 
 [dev-dependencies]
 pretty_assertions = "0.7.2"
+
+[features]
+default = []
+asm = ["ton_types/asm", "ton_block/asm", "ton_abi/asm", "tiny-adnl/asm", "ton-indexer/asm"]
 
 [package.metadata.deb]
 depends = "$auto"
