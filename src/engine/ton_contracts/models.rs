@@ -121,8 +121,6 @@ impl TonEventInitData {
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi)]
 pub struct TonEventVoteData {
-    #[abi(with = "uint256_bytes")]
-    pub event_transaction: UInt256,
     #[abi(uint64)]
     pub event_transaction_lt: u64,
     #[abi(uint32)]
@@ -136,7 +134,6 @@ pub struct TonEventVoteData {
 impl TonEventVoteData {
     pub fn make_params_tuple() -> ton_abi::ParamType {
         TupleBuilder::new()
-            .arg("event_transaction", ton_abi::ParamType::Uint(256))
             .arg("event_transaction_lt", ton_abi::ParamType::Uint(64))
             .arg("event_timestamp", ton_abi::ParamType::Uint(32))
             .arg("event_index", ton_abi::ParamType::Uint(32))

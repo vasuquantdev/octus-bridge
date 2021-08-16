@@ -20,9 +20,4 @@ pub mod events {
         static EVENT: OnceCell<ton_abi::Event> = OnceCell::new();
         EVENT.get_or_init(|| EventBuilder::new("Enabled").build())
     }
-
-    pub fn disabled() -> &'static ton_abi::Event {
-        static EVENT: OnceCell<ton_abi::Event> = OnceCell::new();
-        EVENT.get_or_init(|| EventBuilder::new("Disabled").build())
-    }
 }

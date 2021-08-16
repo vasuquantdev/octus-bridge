@@ -12,11 +12,14 @@ use tokio::time::{sleep_until, Duration, Instant};
 use ton_block::{HashmapAugType, Serializable};
 use ton_types::UInt256;
 
-use self::ton_contracts::*;
-use self::ton_subscriber::*;
 use crate::config::*;
 use crate::utils::*;
 
+use self::ton_contracts::*;
+use self::ton_subscriber::*;
+
+mod eth_subscriber;
+mod state;
 mod ton_contracts;
 mod ton_subscriber;
 
@@ -622,7 +625,6 @@ enum ConnectorConfigurationType {
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 enum ConnectorEvent {
     Enable,
-    Disable,
 }
 
 /// Whether Relay is able to vote in each of round
@@ -734,9 +736,6 @@ impl TransactionsSubscription for ConnectorObserver {
         iterate_transaction_events(&ctx, |body| match nekoton_abi::read_function_id(&body) {
             Ok(id) if id == connector_contract::events::enabled().id => {
                 event = Some(ConnectorEvent::Enable);
-            }
-            Ok(id) if id == connector_contract::events::disabled().id => {
-                event = Some(ConnectorEvent::Disable);
             }
             _ => { /* do nothing */ }
         })?;
