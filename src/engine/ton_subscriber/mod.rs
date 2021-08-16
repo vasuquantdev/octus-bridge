@@ -193,7 +193,7 @@ impl TonSubscriber {
         let block_info = block.info.read_struct()?;
         let extra = block.extra.read_struct()?;
         let account_blocks = extra.read_account_blocks()?;
-        let accounts = shard_state.read_accounts()?;
+        let shard_accounts = shard_state.read_accounts()?;
 
         let mut blocks = self.state_subscriptions.lock();
 
@@ -207,14 +207,16 @@ impl TonSubscriber {
                 return true;
             }
 
-            if let Err(e) = subscription.handle_block(&block_info, &account_blocks, account) {
+            if let Err(e) =
+                subscription.handle_block(&shard_accounts, &block_info, &account_blocks, account)
+            {
                 log::error!("Failed to handle block: {:?}", e);
             }
 
             let mut keep = true;
 
             if subscription_status == StateSubscriptionStatus::Alive {
-                let account = match accounts.get(account) {
+                let account = match shard_accounts.get(account) {
                     Ok(account) => account,
                     Err(e) => {
                         log::error!("Failed to get account {}: {:?}", account.to_hex_string(), e);
@@ -294,6 +296,7 @@ impl StateSubscription {
 
     fn handle_block(
         &self,
+        shard_accounts: &ton_block::ShardAccounts,
         block_info: &ton_block::BlockInfo,
         account_blocks: &ton_block::ShardAccountBlocks,
         account: &UInt256,
@@ -339,6 +342,7 @@ impl StateSubscription {
             };
 
             let ctx = TxContext {
+                shard_accounts,
                 block_info,
                 account,
                 transaction_hash: &hash,
@@ -389,6 +393,7 @@ pub trait TransactionsSubscription: Send + Sync {
 
 #[derive(Copy, Clone)]
 pub struct TxContext<'a> {
+    pub shard_accounts: &'a ton_block::ShardAccounts,
     pub block_info: &'a ton_block::BlockInfo,
     pub account: &'a UInt256,
     pub transaction_hash: &'a UInt256,
