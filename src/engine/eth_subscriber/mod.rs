@@ -16,33 +16,47 @@ use web3::types::{BlockNumber, FilterBuilder, H256};
 use web3::Web3;
 
 use self::eth_config::EthConfig;
-use self::utils::{generate_default_timeout_config, generate_fixed_config};
+use self::models::StoredEthEvent;
+use self::utils::*;
+use crate::engine::state::*;
 use crate::filter_log;
-use crate::state::db::Pool;
-use crate::state::eth_state::EthState;
-use crate::state::models::StoredEthEvent;
-use crate::utils::retry;
+use crate::utils::*;
 
 mod eth_config;
 pub mod models;
 mod utils;
 
 pub struct EthSubscriberRegistry {
+    state: Arc<State>,
     subscribed: DashMap<u8, Arc<EthSubscriber>>,
 }
 
 impl EthSubscriberRegistry {
-    pub async fn new_subscriber(
-        &self,
-        config: EthConfig,
-        chain_id: u8,
-        db: Arc<Pool>,
-    ) -> Result<Arc<EthSubscriber>> {
-        match self.subscribed.get(&chain_id) {
-            Some(a) => a.clone(),
-            None => Arc::new(EthSubscriber::new(config, chain_id, db).await?),
-        }
-        .pipe(Ok)
+    pub fn new(state: Arc<State>) -> Result<Arc<Self>> {
+        // TODO: add config and create subscriber for each chain id
+
+        Ok(Arc::new(Self {
+            state,
+            subscribed: Default::default(),
+        }))
+    }
+
+    pub async fn new_subscriber(&self, chain_id: u8, config: EthConfig) -> Result<()> {
+        use dashmap::mapref::entry::Entry;
+
+        let subscriber = EthSubscriber::new(self.state.clone(), chain_id, config).await?;
+
+        match self.subscribed.entry(chain_id) {
+            Entry::Vacant(entry) => {
+                entry.insert(subscriber);
+            }
+            Entry::Occupied(entry) => {
+                log::warn!("Replacing existing ETH subscriber with id {}", chain_id);
+                entry.replace_entry(subscriber);
+            }
+        };
+
+        Ok(())
     }
 
     pub fn get_subscriber(&self, chain_id: u8) -> Option<Arc<EthSubscriber>> {
@@ -53,36 +67,49 @@ impl EthSubscriberRegistry {
 
 #[derive(Clone)]
 pub struct EthSubscriber {
-    config: EthConfig,
     chain_id: u8,
+    config: EthConfig,
     web3: Web3<Http>,
     pool: Arc<Semaphore>,
     topics: DashSet<[u8; 32]>,
     addresses: DashSet<ethabi::Address>,
     current_height: Arc<AtomicU64>,
-    state: EthState,
+    state: Arc<State>,
 }
 
 impl EthSubscriber {
-    async fn new(config: EthConfig, id: u8, db: Arc<Pool>) -> Result<Self> {
+    async fn new(state: Arc<State>, chain_id: u8, config: EthConfig) -> Result<Arc<Self>> {
         let transport = web3::transports::Http::new(config.endpoint.as_str())?;
         let web3 = web3::Web3::new(transport);
         let pool = Arc::new(Semaphore::new(config.pool_size));
-        let state = EthState::new(db);
-        let current_height = state.get_last_block_id(id).await?;
-        Ok(Self {
+
+        let current_height = {
+            let conn = state.get_connection().await?;
+            conn.eth_state().get_last_block_id(chain_id)?
+        };
+
+        Ok(Arc::new(Self {
+            chain_id,
             config,
-            chain_id: id,
             web3,
             pool,
             topics: Default::default(),
             addresses: Default::default(),
             current_height: Arc::new(current_height.into()),
             state,
-        })
+        }))
+    }
+
+    async fn use_eth_state<F, T>(&self, f: F) -> Result<T>
+    where
+        F: FnOnce(EthState<PooledConnection<'_>>) -> Result<T>,
+    {
+        self.state.get_connection().await.map(EthState).and_then(f)
     }
 
     pub fn run(self: &Arc<Self>) -> impl Stream<Item = Uuid> {
+        // TODO: replace `DB error` with proper handlers
+
         let (mut events_tx, events_rx) = futures::channel::mpsc::unbounded();
         let this = Arc::downgrade(self);
         tokio::spawn(async move {
@@ -113,11 +140,12 @@ impl EthSubscriber {
                         continue;
                     }
                 };
+
                 let last_id = this
-                    .state
-                    .get_last_block_id(this.chain_id)
+                    .use_eth_state(|state| state.get_last_block_id(this.chain_id))
                     .await
-                    .expect("DB error");
+                    .expect("DB ERROR");
+
                 if last_id == ethereum_actual_height {
                     tokio::time::sleep(this.config.poll_interval).await;
                     continue;
@@ -152,16 +180,19 @@ impl EthSubscriber {
                         continue;
                     }
                 };
+
                 for uuid in this.save_logs(logs).await.expect("DB ERROR") {
                     if let Err(e) = events_tx.send(uuid).await {
                         log::error!("CRITICAL ERROR: failed sending event notify: {}", e);
                         return;
                     }
                 }
-                this.state
-                    .block_processed(ethereum_actual_height, this.chain_id)
-                    .await
-                    .expect("DB ERROR");
+
+                this.use_eth_state(|state| {
+                    state.block_processed(ethereum_actual_height, this.chain_id)
+                })
+                .await
+                .expect("DB error");
             }
         });
         events_rx
@@ -178,9 +209,11 @@ impl EthSubscriber {
                     .collect(),
             )
         };
+
         if addresses.is_empty() && topics.is_empty() {
-            anyhow::anyhow!("Addresses and topics are empty. Cowardly refusing to process all ethereum transactions");
+            return Err(anyhow::anyhow!("Addresses and topics are empty. Cowardly refusing to process all ethereum transactions"));
         }
+
         let filter = FilterBuilder::default()
             .address(addresses)
             .topics(Some(topics), None, None, None)
@@ -240,11 +273,15 @@ impl EthSubscriber {
     }
 
     async fn save_logs(&self, logs: Vec<StoredEthEvent>) -> Result<Vec<Uuid>> {
-        let uuids: Vec<_> = futures::stream::iter(logs.into_iter())
-            .then(|x| self.state.new_event(x))
-            .collect()
-            .await;
-        uuids.into_iter().collect()
+        // TODO: use transaction
+
+        let connection = self.state.get_connection().await.map(EthState)?;
+
+        logs.into_iter()
+            .try_fold(Vec::with_capacity(logs.len()), |mut uuids, event| {
+                uuids.push(connection.new_event(event)?);
+                Ok(uuids)
+            })
     }
 
     pub async fn subscribe_topic(&self, abi: &str) -> Result<()> {

@@ -36,18 +36,11 @@ pub fn derive_event_address() -> &'static ton_abi::Function {
 }
 
 /// Internal function
-pub fn update() -> &'static ton_abi::Function {
+pub fn set_end_timestamp() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
     FUNCTION.get_or_init(|| {
-        FunctionBuilder::new("update")
-            .in_arg(
-                "basic_configuration",
-                BasicConfiguration::make_params_tuple(),
-            )
-            .in_arg(
-                "network_configuration",
-                TonEventConfiguration::make_params_tuple(),
-            )
+        FunctionBuilder::new("setEndTimestamp")
+            .in_arg("end_timestamp", ton_abi::ParamType::Uint(32))
             .build()
     })
 }

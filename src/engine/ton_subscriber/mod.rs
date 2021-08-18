@@ -4,7 +4,8 @@ use std::sync::{Arc, Weak};
 
 use anyhow::{Context, Result};
 use parking_lot::Mutex;
-use tokio::sync::{oneshot, watch, Notify};
+use tiny_adnl::utils::*;
+use tokio::sync::{mpsc, oneshot, watch, Notify};
 use ton_block::{BinTreeType, Deserializable, HashmapAugType};
 use ton_indexer::utils::{BlockIdExtExtension, BlockProofStuff, BlockStuff, ShardStateStuff};
 use ton_indexer::EngineStatus;
@@ -383,6 +384,99 @@ enum StateSubscriptionStatus {
     Stopped,
 }
 
+pub type ShardAccountsMap = FxHashMap<ton_block::ShardIdent, ton_block::ShardAccounts>;
+
+/// Helper trait to reduce boilerplate for getting accounts from shards state
+pub trait ShardAccountsMapExt {
+    /// Looks for a suitable shard and tries to extract information about the contract from it
+    fn find_account(&self, account: &UInt256) -> Result<Option<ExistingContract>>;
+}
+
+impl<T> ShardAccountsMapExt for &T
+where
+    T: ShardAccountsMapExt,
+{
+    fn find_account(&self, account: &UInt256) -> Result<Option<ExistingContract>> {
+        T::find_account(self, account)
+    }
+}
+
+impl ShardAccountsMapExt for ShardAccountsMap {
+    fn find_account(&self, account: &UInt256) -> Result<Option<ExistingContract>> {
+        // Search suitable shard for account by prefix.
+        // NOTE: In **most** cases suitable shard will be found
+        let item = self
+            .iter()
+            .find(|(shard_ident, _)| contains_account(shard_ident, account));
+
+        match item {
+            // Search account in shard state
+            Some((_, shard)) => match shard
+                .get(account)
+                .and_then(|account| ExistingContract::from_shard_account_opt(&account))?
+            {
+                // Account found
+                Some(contract) => Ok(Some(contract)),
+                // Account was not found (it never had any transactions) or there is not AccountStuff in it
+                None => Ok(None),
+            },
+            // Exceptional situation when no suitable shard was found
+            None => {
+                Err(TonSubscriberError::InvalidContractAddress).context("No suitable shard found")
+            }
+        }
+    }
+}
+
+pub fn parse_incoming_internal_message<F>(ctx: &TxContext<'_>, mut f: F)
+where
+    F: FnMut(ton_types::SliceData),
+{
+    // Read incoming message
+    let message = match ctx
+        .transaction
+        .in_msg
+        .as_ref()
+        .map(|message| message.read_struct())
+    {
+        Some(Ok(message)) => message,
+        _ => return,
+    };
+
+    // Allow only internal messages
+    if !matches!(message.header(), ton_block::CommonMsgInfo::IntMsgInfo(_)) {
+        return;
+    }
+
+    // Handle body if it exists
+    if let Some(body) = message.body() {
+        f(body);
+    }
+}
+
+pub fn iterate_transaction_events<F>(ctx: &TxContext<'_>, mut f: F) -> Result<()>
+where
+    F: FnMut(ton_types::SliceData),
+{
+    ctx.transaction
+        .out_msgs
+        .iterate(|ton_block::InRefValue(message)| {
+            // Skip all messages except external outgoing
+            if !matches!(message.header(), ton_block::CommonMsgInfo::ExtOutMsgInfo(_)) {
+                return Ok(true);
+            }
+
+            // Handle body if it exists
+            if let Some(body) = message.body() {
+                f(body);
+            }
+
+            // Process all messages
+            Ok(true)
+        })?;
+    Ok(())
+}
+
 pub trait BlockAwaiter: Send + Sync {
     fn handle_block(&mut self, block: &ton_block::Block) -> Result<()>;
 }
@@ -404,4 +498,13 @@ pub struct TxContext<'a> {
 type ShardAccountTx = watch::Sender<Option<ton_block::ShardAccount>>;
 type ShardAccountRx = watch::Receiver<Option<ton_block::ShardAccount>>;
 
+pub type AccountEventsTx<T> = mpsc::UnboundedSender<(UInt256, T)>;
+pub type AccountEventsRx<T> = mpsc::UnboundedReceiver<(UInt256, T)>;
+
 type ShardsMap = HashMap<ton_block::ShardIdent, ton_block::BlockIdExt>;
+
+#[derive(thiserror::Error, Debug)]
+enum TonSubscriberError {
+    #[error("Invalid contract address")]
+    InvalidContractAddress,
+}

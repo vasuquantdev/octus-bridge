@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use nekoton_utils::*;
@@ -7,13 +7,19 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub struct RelayConfig {
-    #[serde(with = "serde_address")]
-    pub bridge_address: ton_block::MsgAddressInt,
+    pub bridge_settings: BridgeConfig,
 
-    pub indexer: ton_indexer::NodeConfig,
+    pub node_settings: ton_indexer::NodeConfig,
 
     #[serde(default = "default_logger_settings")]
     pub logger_settings: serde_yaml::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BridgeConfig {
+    #[serde(with = "serde_address")]
+    pub bridge_address: ton_block::MsgAddressInt,
+    pub db_path: PathBuf,
 }
 
 impl ConfigExt for RelayConfig {

@@ -204,6 +204,8 @@ pub struct EthEventConfiguration {
     pub proxy: UInt256,
     #[abi(uint32)]
     pub start_block_number: u32,
+    #[abi(uint32)]
+    pub end_block_number: u32,
 }
 
 impl EthEventConfiguration {
@@ -213,6 +215,7 @@ impl EthEventConfiguration {
             .arg("event_blocks_to_confirm", ton_abi::ParamType::Uint(16))
             .arg("proxy", ton_abi::ParamType::Address)
             .arg("start_block_number", ton_abi::ParamType::Uint(32))
+            .arg("end_block_number", ton_abi::ParamType::Uint(32))
             .build()
     }
 }
@@ -225,6 +228,8 @@ pub struct TonEventConfiguration {
     pub proxy: [u8; 20],
     #[abi(uint32)]
     pub start_timestamp: u32,
+    #[abi(uint32)]
+    pub end_timestamp: u32,
 }
 
 impl TonEventConfiguration {
@@ -233,6 +238,7 @@ impl TonEventConfiguration {
             .arg("event_emitter", ton_abi::ParamType::Address)
             .arg("proxy", ton_abi::ParamType::Uint(160))
             .arg("start_timestamp", ton_abi::ParamType::Uint(32))
+            .arg("end_timestamp", ton_abi::ParamType::Uint(32))
             .build()
     }
 }
@@ -241,6 +247,29 @@ impl TonEventConfiguration {
 pub enum EventType {
     Eth = 0,
     Ton = 1,
+}
+
+#[derive(Debug, Copy, Clone, PackAbi, UnpackAbi)]
+pub struct BridgeConfiguration {
+    #[abi(address)]
+    pub staking: UInt256,
+    #[abi(bool)]
+    pub active: bool,
+    #[abi(cell)]
+    pub connector_code: ton_types::Cell,
+    #[abi(uint64)]
+    pub connector_deploy_value: u64,
+}
+
+impl BridgeConfiguration {
+    pub fn make_params_tuple() -> ton_abi::ParamType {
+        TupleBuilder::new()
+            .arg("staking", ton_abi::ParamType::Address)
+            .arg("active", ton_abi::ParamType::Bool)
+            .arg("connector_code", ton_abi::ParamType::Cell)
+            .arg("connector_deploy_value", ton_abi::ParamType::Uint(64))
+            .build()
+    }
 }
 
 #[derive(Debug, Copy, Clone, PackAbiPlain, UnpackAbiPlain)]

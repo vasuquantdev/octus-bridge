@@ -1,6 +1,20 @@
 use nekoton_abi::*;
 use once_cell::sync::OnceCell;
 
+use crate::engine::ton_contracts::*;
+
+/// External function
+pub fn bridge_configuration() -> &'static ton_abi::Function {
+    static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
+    FUNCTION.get_or_init(|| {
+        FunctionBuilder::new("bridgeConfiguration")
+            .default_headers()
+            .out_arg("configuration", BridgeConfiguration::make_params_tuple())
+            .build()
+    })
+}
+
+/// External function
 pub fn derive_connector_address() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
     FUNCTION.get_or_init(|| {

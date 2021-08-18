@@ -88,6 +88,12 @@ impl TonEventConfigurationContract<'_> {
 pub struct BridgeContract<'a>(pub &'a ExistingContract);
 
 impl BridgeContract<'_> {
+    pub fn bridge_configuration(&self) -> Result<BridgeConfiguration> {
+        let function = bridge_contract::bridge_configuration();
+        let configuration = self.0.run_local(function, &[])?.unpack_first()?;
+        Ok(configuration)
+    }
+
     pub fn derive_connector_address(&self, id: u64) -> Result<UInt256> {
         let function = bridge_contract::derive_connector_address();
         let input = [id.token_value().named("id")];

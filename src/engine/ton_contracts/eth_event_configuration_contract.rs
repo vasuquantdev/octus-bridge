@@ -36,18 +36,11 @@ pub fn derive_event_address() -> &'static ton_abi::Function {
 }
 
 /// Internal function
-pub fn update() -> &'static ton_abi::Function {
+pub fn set_end_block_number() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
     FUNCTION.get_or_init(|| {
-        FunctionBuilder::new("update")
-            .in_arg(
-                "basic_configuration",
-                BasicConfiguration::make_params_tuple(),
-            )
-            .in_arg(
-                "network_configuration",
-                EthEventConfiguration::make_params_tuple(),
-            )
+        FunctionBuilder::new("setEndBlockNumber")
+            .in_arg("end_block_number", ton_abi::ParamType::Uint(32))
             .build()
     })
 }

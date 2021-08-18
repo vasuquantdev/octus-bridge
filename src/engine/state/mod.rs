@@ -4,15 +4,14 @@ use std::sync::Arc;
 use anyhow::Result;
 use bb8::ManageConnection;
 
-use self::db::*;
+pub use self::eth_state::*;
+use crate::utils::*;
 
-pub mod db;
-pub mod eth_state;
-pub mod models;
+mod eth_state;
 
 #[derive(Clone)]
 pub struct State {
-    db: Arc<Pool>,
+    db: Pool,
 }
 
 impl State {
@@ -20,15 +19,13 @@ impl State {
     where
         P: AsRef<Path>,
     {
-        let db = Arc::new(
-            Pool::builder()
-                .build(ConnectionManager::new(ConnectionOptions {
-                    path: db_path.as_ref().into(),
-                    flags: rusqlite::OpenFlags::SQLITE_OPEN_CREATE
-                        | rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE,
-                }))
-                .await?,
-        );
+        let db = Pool::builder()
+            .build(ConnectionManager::new(ConnectionOptions {
+                path: db_path.as_ref().into(),
+                flags: rusqlite::OpenFlags::SQLITE_OPEN_CREATE
+                    | rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE,
+            }))
+            .await?;
 
         Ok(Self { db })
     }
@@ -39,8 +36,8 @@ impl State {
         Ok(())
     }
 
-    pub fn db(&self) -> &Arc<Pool> {
-        &self.db
+    pub async fn get_connection(&'_ self) -> Result<PooledConnection<'_>> {
+        self.db.get_connection().await
     }
 }
 
