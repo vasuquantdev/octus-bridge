@@ -249,9 +249,9 @@ pub enum EventType {
     Ton = 1,
 }
 
-#[derive(Debug, Copy, Clone, PackAbi, UnpackAbi)]
+#[derive(Debug, Clone, PackAbi, UnpackAbi)]
 pub struct BridgeConfiguration {
-    #[abi(address)]
+    #[abi(with = "address_only_hash")]
     pub staking: UInt256,
     #[abi(bool)]
     pub active: bool,

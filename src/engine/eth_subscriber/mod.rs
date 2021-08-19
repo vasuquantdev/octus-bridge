@@ -277,8 +277,9 @@ impl EthSubscriber {
 
         let connection = self.state.get_connection().await.map(EthState)?;
 
+        let len = logs.len();
         logs.into_iter()
-            .try_fold(Vec::with_capacity(logs.len()), |mut uuids, event| {
+            .try_fold(Vec::with_capacity(len), |mut uuids, event| {
                 uuids.push(connection.new_event(event)?);
                 Ok(uuids)
             })

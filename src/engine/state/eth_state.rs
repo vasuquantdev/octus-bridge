@@ -18,11 +18,11 @@ pub trait EthStateTable: Sized {
 
 impl EthStateTable for PooledConnection<'_> {}
 
-pub struct EthState<T>(T);
+pub struct EthState<T>(pub T);
 
-impl<T> EthState<T>
+impl<'a, T> EthState<T>
 where
-    T: Borrow<PooledConnection<'_>>,
+    T: Borrow<PooledConnection<'a>>,
 {
     pub fn block_processed(&self, id: u64, chain_id: u8) -> Result<()> {
         self.conn().execute_in_place(
@@ -100,7 +100,7 @@ where
         Ok(result)
     }
 
-    fn conn(&self) -> &PooledConnection<'_> {
+    fn conn(&self) -> &PooledConnection<'a> {
         self.0.borrow()
     }
 }

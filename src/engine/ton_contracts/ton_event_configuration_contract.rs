@@ -44,3 +44,14 @@ pub fn set_end_timestamp() -> &'static ton_abi::Function {
             .build()
     })
 }
+
+/// Internal function
+pub fn deploy_event() -> &'static ton_abi::Function {
+    static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
+    FUNCTION.get_or_init(|| {
+        FunctionBuilder::new("deployEvent")
+            .in_arg("vote_data", TonEventVoteData::make_params_tuple())
+            .out_arg("event_address", ton_abi::ParamType::Address)
+            .build()
+    })
+}

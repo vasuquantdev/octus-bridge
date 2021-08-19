@@ -18,6 +18,7 @@ use self::staking::*;
 use self::ton_contracts::*;
 use self::ton_subscriber::*;
 use crate::config::*;
+use crate::engine::state::State;
 use crate::utils::*;
 
 mod bridge;
@@ -53,10 +54,21 @@ impl Engine {
 
         // Fetch bridge configuration
         let bridge_account = only_account_hash(&self.context.settings.bridge_address);
-        let bridge_configuration = self.get_bridge_configuration(bridge_account).await?;
+
+        let bridge_contract = match self
+            .context
+            .ton_subscriber
+            .get_contract_state(bridge_account)
+            .await?
+        {
+            Some(contract) => contract,
+            None => return Err(EngineError::BridgeAccountNotFound.into()),
+        };
+
+        let bridge_configuration = BridgeContract(&bridge_contract).bridge_configuration()?;
 
         // Initialize bridge
-        let bridge = Bridge::new(self.context.clone(), bridge_account).await?;
+        let bridge = Bridge::new(self.context.clone(), bridge_account, bridge_contract).await?;
         *self.bridge.lock() = Some(bridge);
 
         // Initialize staking
@@ -66,26 +78,11 @@ impl Engine {
         // Done
         Ok(())
     }
-
-    async fn get_bridge_configuration(
-        &self,
-        bridge_account: UInt256,
-    ) -> Result<BridgeConfiguration> {
-        let bridge_contract = match self
-            .context
-            .ton_subscriber
-            .get_contract_state(bridge_account)
-        {
-            Some(contract) => contract,
-            None => return Err(EngineError::BridgeAccountNotFound.into()),
-        };
-        BridgeContract(&bridge_contract).bridge_configuration()
-    }
 }
 
 pub struct EngineContext {
     pub settings: BridgeConfig,
-    pub state: State,
+    pub state: Arc<State>,
     pub ton_engine: Arc<ton_indexer::Engine>,
     pub ton_subscriber: Arc<TonSubscriber>,
     pub eth_subscribers: Arc<EthSubscriberRegistry>,
@@ -109,7 +106,7 @@ impl EngineContext {
         )
         .await?;
 
-        let eth_subscribers = EthSubscriberRegistry::new()?;
+        let eth_subscribers = EthSubscriberRegistry::new(state.clone())?;
 
         Ok(Arc::new(Self {
             settings,

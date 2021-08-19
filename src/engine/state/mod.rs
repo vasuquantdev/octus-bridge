@@ -9,13 +9,12 @@ use crate::utils::*;
 
 mod eth_state;
 
-#[derive(Clone)]
 pub struct State {
     db: Pool,
 }
 
 impl State {
-    pub async fn new<P>(db_path: P) -> Result<Self>
+    pub async fn new<P>(db_path: P) -> Result<Arc<Self>>
     where
         P: AsRef<Path>,
     {
@@ -27,7 +26,7 @@ impl State {
             }))
             .await?;
 
-        Ok(Self { db })
+        Ok(Arc::new(Self { db }))
     }
 
     pub async fn apply_migrations(&self) -> Result<()> {

@@ -8,7 +8,7 @@ use parking_lot::RwLock;
 use tiny_adnl::utils::*;
 use tokio::sync::{mpsc, watch};
 use ton_block::{HashmapAugType, Serializable};
-use ton_types::UInt256;
+use ton_types::{SliceData, UInt256};
 
 use crate::engine::ton_contracts::*;
 use crate::engine::ton_subscriber::*;
@@ -22,7 +22,7 @@ pub struct Bridge {
 
     bridge_observer: Arc<BridgeObserver>,
 
-    connector_events_tx: AccountEventsTx<ConnectorEvent>,
+    connectors_tx: AccountEventsTx<ConnectorEvent>,
     connectors: ConnectorsMap,
 
     eth_event_configurations_tx: AccountEventsTx<EthEventConfigurationEvent>,
@@ -35,19 +35,23 @@ pub struct Bridge {
 }
 
 impl Bridge {
-    pub async fn new(context: Arc<EngineContext>, bridge_account: UInt256) -> Result<Arc<Self>> {
+    pub async fn new(
+        context: Arc<EngineContext>,
+        bridge_account: UInt256,
+        bridge_contract: ExistingContract,
+    ) -> Result<Arc<Self>> {
         let (bridge_events_tx, bridge_events_rx) = mpsc::unbounded_channel();
         let (connector_events_tx, connector_events_rx) = mpsc::unbounded_channel();
         let (eth_event_configurations_tx, eth_event_configurations_rx) = mpsc::unbounded_channel();
         let (ton_event_configurations_tx, ton_event_configurations_rx) = mpsc::unbounded_channel();
 
         let bridge = Arc::new(Bridge {
-            context,
+            context: context.clone(),
             bridge_account,
             bridge_observer: Arc::new(BridgeObserver {
                 events_tx: bridge_events_tx,
             }),
-            connector_events_tx,
+            connectors_tx: connector_events_tx,
             connectors: Default::default(),
             eth_event_configurations_tx,
             eth_event_configurations: Default::default(),
@@ -59,10 +63,7 @@ impl Bridge {
         bridge.start_listening_bridge_events(bridge_events_rx);
         bridge.start_listening_connector_events(connector_events_rx);
 
-        let bridge_contract = match shard_accounts.find_account()? {
-            Some(contract) => contract,
-            None => bridge_account,
-        };
+        let shard_accounts = context.get_all_shard_accounts().await?;
 
         bridge.get_all_configurations(&shard_accounts);
 
@@ -80,15 +81,14 @@ impl Bridge {
 
         tokio::spawn(async move {
             while let Some(event) = bridge_events_rx.recv().await {
-                let engine = match engine.upgrade() {
+                let bridge = match engine.upgrade() {
                     Some(engine) => engine,
                     None => break,
                 };
 
-                match engine.connectors.entry(event.connector) {
+                match bridge.connectors.entry(event.connector) {
                     Entry::Vacant(entry) => {
-                        let observer =
-                            Arc::new(ConnectorObserver(engine.connector_events_tx.clone()));
+                        let observer = Arc::new(ConnectorObserver(bridge.connectors_tx.clone()));
 
                         let entry = entry.insert(ConnectorState {
                             details: ConnectorDetails {
@@ -100,7 +100,8 @@ impl Bridge {
                             observer,
                         });
 
-                        engine
+                        bridge
+                            .context
                             .ton_subscriber
                             .add_transactions_subscription([event.connector], &entry.observer);
                     }
@@ -114,7 +115,7 @@ impl Bridge {
                 };
 
                 tokio::spawn(async move {
-                    if let Err(e) = engine.process_bridge_event(event).await {
+                    if let Err(e) = bridge.process_bridge_event(event).await {
                         log::error!("Failed to process bridge event: {:?}", e);
                     }
                 });
@@ -123,14 +124,15 @@ impl Bridge {
     }
 
     async fn process_bridge_event(&self, event: ConnectorDeployedEvent) -> Result<()> {
+        let ton_subscriber = &self.context.ton_subscriber;
+
         // Process event configuration
         let event_type = {
             // Wait until event configuration state is found
             let contract = loop {
                 // TODO: add finite retires for getting configuration info
 
-                match self
-                    .ton_subscriber
+                match ton_subscriber
                     .wait_contract_state(event.event_configuration)
                     .await
                 {
@@ -147,7 +149,9 @@ impl Bridge {
             let mut ctx = EventConfigurationsProcessingContext {
                 event_code_hashes: &mut event_code_hashes,
                 eth_event_configurations: &self.eth_event_configurations,
+                eth_event_configurations_tx: &self.eth_event_configurations_tx,
                 ton_event_configurations: &self.ton_event_configurations,
+                ton_event_configurations_tx: &self.ton_event_configurations_tx,
             };
             match process_event_configuration(&event.event_configuration, &contract, &mut ctx)? {
                 Some(event_type) => event_type,
@@ -163,17 +167,6 @@ impl Bridge {
             }
         };
 
-        match event_type {
-            EventType::Eth => self.ton_subscriber.add_transactions_subscription(
-                [event.event_configuration],
-                &self.eth_configurations_observer,
-            ),
-            EventType::Ton => self.ton_subscriber.add_transactions_subscription(
-                [event.event_configuration],
-                &self.ton_configurations_observer,
-            ),
-        }
-
         // self.ton_subscriber
         //     .add_transactions_subscription([event.connector], &self.connectors_observer);
 
@@ -184,12 +177,12 @@ impl Bridge {
 
     fn start_listening_connector_events(
         self: &Arc<Self>,
-        mut connector_events_rx: ConnectorEventsRx,
+        mut connectors_rx: AccountEventsRx<ConnectorEvent>,
     ) {
         let engine = Arc::downgrade(self);
 
         tokio::spawn(async move {
-            while let Some(event) = connector_events_rx.recv().await {
+            while let Some(event) = connectors_rx.recv().await {
                 let engine = match engine.upgrade() {
                     Some(engine) => engine,
                     None => break,
@@ -201,6 +194,8 @@ impl Bridge {
     }
 
     async fn get_all_configurations(&self, shard_accounts: &ShardAccountsMap) -> Result<()> {
+        let ton_subscriber = &self.context.ton_subscriber;
+
         let contract = shard_accounts
             .find_account(&self.bridge_account)?
             .ok_or(EngineError::BridgeAccountNotFound)?;
@@ -235,7 +230,7 @@ impl Bridge {
                 ConnectorState {
                     details,
                     event_type: ConnectorConfigurationType::Unknown,
-                    observer: Arc::new(ConnectorObserver(self.connector_events_tx.clone())),
+                    observer: Arc::new(ConnectorObserver(self.connectors_tx.clone())),
                 },
             ));
         }
@@ -243,7 +238,9 @@ impl Bridge {
         let mut ctx = EventConfigurationsProcessingContext {
             event_code_hashes: &mut event_code_hashes,
             eth_event_configurations: &self.eth_event_configurations,
+            eth_event_configurations_tx: &self.eth_event_configurations_tx,
             ton_event_configurations: &self.ton_event_configurations,
+            ton_event_configurations_tx: &self.ton_event_configurations_tx,
         };
 
         for (connector_id, account) in active_configuration_accounts {
@@ -282,20 +279,19 @@ impl Bridge {
             self.connectors.insert(account, state);
         }
 
-        for item in &self.connectors {
-            self.ton_subscriber
-                .add_transactions_subscription([*item.key()], &item.observer);
-        }
-
-        self.ton_subscriber.add_transactions_subscription(
-            self.eth_event_configurations.iter().map(|item| *item.key()),
-            &self.eth_configurations_observer,
-        );
-
-        self.ton_subscriber.add_transactions_subscription(
-            self.ton_event_configurations.iter().map(|item| *item.key()),
-            &self.ton_configurations_observer,
-        );
+        // Register
+        self.connectors.iter().for_each(|item| {
+            ton_subscriber
+                .add_transactions_subscription(std::iter::once(*item.key()), &item.observer);
+        });
+        self.eth_event_configurations.iter().for_each(|item| {
+            ton_subscriber
+                .add_transactions_subscription(std::iter::once(*item.key()), &item.observer);
+        });
+        self.ton_event_configurations.iter().for_each(|item| {
+            ton_subscriber
+                .add_transactions_subscription(std::iter::once(*item.key()), &item.observer)
+        });
 
         // TODO
 
@@ -303,7 +299,7 @@ impl Bridge {
     }
 
     async fn get_all_events(&self, shard_accounts: &ShardAccountsMap) -> Result<()> {
-        let shard_accounts = self.get_all_shard_accounts().await?;
+        let shard_accounts = self.context.get_all_shard_accounts().await?;
 
         let event_code_hashes = self.event_code_hashes.read();
 
@@ -345,8 +341,10 @@ struct EventConfigurationsProcessingContext<'a> {
     event_code_hashes: &'a mut EventCodeHashesMap,
     /// Details of parsed ETH event configurations
     eth_event_configurations: &'a EthEventConfigurationsMap,
+    eth_event_configurations_tx: &'a AccountEventsTx<EthEventConfigurationEvent>,
     /// Details of parsed TON event configurations
     ton_event_configurations: &'a TonEventConfigurationsMap,
+    ton_event_configurations_tx: &'a AccountEventsTx<TonEventConfigurationEvent>,
 }
 
 /// Searches for the account contract and extracts the configuration information into context
@@ -358,9 +356,11 @@ fn process_event_configuration(
     // Get event type using base contract abi
     let event_type = EventConfigurationBaseContract(contract).get_type()?;
 
+    let event_code_hashes = &mut ctx.event_code_hashes;
+
     // Small helper to populate unique event contract code hashes
     let mut fill_event_code_hash = |code: &ton_types::Cell| {
-        match ctx.event_code_hashes.entry(code.repr_hash()) {
+        match event_code_hashes.entry(code.repr_hash()) {
             // Just insert if it was not in the map
             hash_map::Entry::Vacant(entry) => {
                 entry.insert(event_type);
@@ -386,16 +386,26 @@ fn process_event_configuration(
             let details = EthEventConfigurationContract(contract).get_details()?;
             log::info!("Ethereum event configuration details: {:?}", details);
 
+            let observer = Arc::new(EventConfigurationsObserver(
+                ctx.eth_event_configurations_tx.clone(),
+            ));
+
             fill_event_code_hash(&details.basic_configuration.event_code)?;
-            ctx.eth_event_configurations.insert(*account, details);
+            ctx.eth_event_configurations
+                .insert(*account, EventConfigurationState { details, observer });
         }
         // Extract and populate TON event configuration details
         EventType::Ton => {
             let details = TonEventConfigurationContract(contract).get_details()?;
             log::info!("TON event configuration details: {:?}", details);
 
+            let observer = Arc::new(EventConfigurationsObserver(
+                ctx.ton_event_configurations_tx.clone(),
+            ));
+
             fill_event_code_hash(&details.basic_configuration.event_code)?;
-            ctx.ton_event_configurations.insert(*account, details);
+            ctx.ton_event_configurations
+                .insert(*account, EventConfigurationState { details, observer });
         }
     };
 
@@ -423,6 +433,12 @@ enum ConnectorEvent {
     Enable,
 }
 
+#[derive(Clone)]
+struct EventConfigurationState<T, E> {
+    details: T,
+    observer: Arc<EventConfigurationsObserver<E>>,
+}
+
 /// Listener for bridge transactions
 ///
 /// **Registered only for bridge account**
@@ -434,10 +450,11 @@ impl TransactionsSubscription for BridgeObserver {
     fn handle_transaction(&self, ctx: TxContext<'_>) -> Result<()> {
         // Parse all outgoing messages and search proper event
         let mut event: Option<ConnectorDeployedEvent> = None;
-        iterate_transaction_events(&ctx, |body| {
-            let id = nekoton_abi::read_function_id(&body);
-            if matches!(id, Ok(id) if id == bridge_contract::events::connector_deployed().id) {
-                match bridge_contract::events::connector_deployed()
+        ctx.iterate_events(|id, body| {
+            let connector_deployed = bridge_contract::events::connector_deployed();
+
+            if id == connector_deployed.id {
+                match connector_deployed
                     .decode_input(body)
                     .and_then(|tokens| tokens.unpack().map_err(anyhow::Error::from))
                 {
@@ -445,9 +462,9 @@ impl TransactionsSubscription for BridgeObserver {
                     Err(e) => {
                         log::error!("Failed to parse bridge event: {:?}", e);
                     }
-                };
+                }
             }
-        })?;
+        });
 
         log::info!("Got transaction on bridge: {:?}", event);
 
@@ -464,18 +481,17 @@ impl TransactionsSubscription for BridgeObserver {
 /// Listener for connector transactions
 ///
 /// **Registered for each connector account**
-struct ConnectorObserver(ConnectorEventsTx);
+struct ConnectorObserver(AccountEventsTx<ConnectorEvent>);
 
 impl TransactionsSubscription for ConnectorObserver {
     fn handle_transaction(&self, ctx: TxContext<'_>) -> Result<()> {
         // Parse all outgoing messages and search proper event
         let mut event = None;
-        iterate_transaction_events(&ctx, |body| match nekoton_abi::read_function_id(&body) {
-            Ok(id) if id == connector_contract::events::enabled().id => {
+        ctx.iterate_events(|id, _| {
+            if id == connector_contract::events::enabled().id {
                 event = Some(ConnectorEvent::Enable);
             }
-            _ => { /* do nothing */ }
-        })?;
+        });
 
         log::info!(
             "Got transaction on connector {}: {:?}",
@@ -496,39 +512,14 @@ impl TransactionsSubscription for ConnectorObserver {
 /// Generic listener for event configuration transactions
 ///
 /// **Registered for each active TON event configuration account**
-struct EventConfigurationsObserver<T> {
-    events_tx: AccountEventsTx<T>,
-    function_update: &'static ton_abi::Function,
-}
+struct EventConfigurationsObserver<T>(AccountEventsTx<T>);
 
 impl<T> TransactionsSubscription for EventConfigurationsObserver<T>
 where
-    T: std::fmt::Debug + Send + Sync,
-    ton_abi::TokenValue: nekoton_abi::UnpackAbi<T>,
+    T: ReadFromTransaction + std::fmt::Debug + Send + Sync,
 {
     fn handle_transaction(&self, ctx: TxContext<'_>) -> Result<()> {
-        let mut event = None;
-        parse_incoming_internal_message(&ctx, |body| match nekoton_abi::read_function_id(&body) {
-            Ok(id) if id == self.function_update.input_id => {
-                let input = self
-                    .function_update
-                    .decode_input(body, true)
-                    .and_then(|tokens| {
-                        let mut tokens = tokens.into_unpacker();
-                        Ok(EventConfigurationEvent::Update {
-                            basic_configuration: tokens.unpack_next::<BasicConfiguration>()?,
-                            network_configuration: tokens.unpack_next::<T>()?,
-                        })
-                    });
-                match input {
-                    Ok(input) => event = Some(input),
-                    Err(e) => {
-                        log::error!("Failed to parse event configuration transaction: {:?}", e);
-                    }
-                }
-            }
-            _ => { /* do nothing */ }
-        });
+        let mut event = T::read_from_transaction(&ctx);
 
         log::info!(
             "Got transaction on event configuration {}: {:?}",
@@ -538,7 +529,7 @@ where
 
         // Send event to event manager if it exist
         if let Some(event) = event {
-            self.events_tx.send((*ctx.account, event)).ok();
+            self.0.send((*ctx.account, event)).ok();
         }
 
         // Done
@@ -548,24 +539,92 @@ where
 
 #[derive(Debug, Clone)]
 enum TonEventConfigurationEvent {
-    SetEndTimestamp {
-        end_timestamp: u32,
-    },
     EventDeployed {
         vote_data: TonEventVoteData,
         address: UInt256,
     },
+    SetEndTimestamp {
+        end_timestamp: u32,
+    },
+}
+
+impl ReadFromTransaction for TonEventConfigurationEvent {
+    fn read_from_transaction(ctx: &TxContext<'_>) -> Option<Self> {
+        let in_msg_body = ctx.in_msg_internal()?.body()?;
+
+        match nekoton_abi::read_function_id(&in_msg_body).ok()? {
+            id if id == ton_event_configuration_contract::deploy_event().input_id => {
+                let function = ton_event_configuration_contract::set_end_timestamp();
+
+                let vote_data: TonEventVoteData = function
+                    .decode_input(in_msg_body, true)
+                    .and_then(|tokens| tokens.unpack_first().map_err(anyhow::Error::from))
+                    .ok()?;
+
+                let address: ton_block::MsgAddressInt =
+                    ctx.find_function_output(function)?.unpack_first().ok()?;
+
+                Some(Self::EventDeployed {
+                    vote_data,
+                    address: only_account_hash(address),
+                })
+            }
+            id if id == ton_event_configuration_contract::set_end_timestamp().input_id => {
+                let end_timestamp = ton_event_configuration_contract::set_end_timestamp()
+                    .decode_input(in_msg_body, true)
+                    .and_then(|tokens| tokens.unpack_first().map_err(anyhow::Error::from))
+                    .ok()?;
+
+                Some(Self::SetEndTimestamp { end_timestamp })
+            }
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
 enum EthEventConfigurationEvent {
-    SetEndBlockNumber {
-        end_block_number: u32,
-    },
     EventDeployed {
         vote_data: EthEventVoteData,
         address: UInt256,
     },
+    SetEndBlockNumber {
+        end_block_number: u32,
+    },
+}
+
+impl ReadFromTransaction for EthEventConfigurationEvent {
+    fn read_from_transaction(ctx: &TxContext<'_>) -> Option<Self> {
+        let in_msg_body = ctx.in_msg_internal()?.body()?;
+
+        match nekoton_abi::read_function_id(&in_msg_body).ok()? {
+            id if id == eth_event_configuration_contract::deploy_event().input_id => {
+                let function = eth_event_configuration_contract::deploy_event();
+
+                let vote_data: EthEventVoteData = function
+                    .decode_input(in_msg_body, true)
+                    .and_then(|tokens| tokens.unpack_first().map_err(anyhow::Error::from))
+                    .ok()?;
+
+                let address: ton_block::MsgAddressInt =
+                    ctx.find_function_output(function)?.unpack_first().ok()?;
+
+                Some(Self::EventDeployed {
+                    vote_data,
+                    address: only_account_hash(address),
+                })
+            }
+            id if id == eth_event_configuration_contract::set_end_block_number().input_id => {
+                let end_block_number = eth_event_configuration_contract::set_end_block_number()
+                    .decode_input(in_msg_body, true)
+                    .and_then(|tokens| tokens.unpack_first().map_err(anyhow::Error::from))
+                    .ok()?;
+
+                Some(Self::SetEndBlockNumber { end_block_number })
+            }
+            _ => None,
+        }
+    }
 }
 
 type AccountEventsRx<T> = mpsc::UnboundedReceiver<(UInt256, T)>;
@@ -577,8 +636,14 @@ type BridgeEventsRx = mpsc::UnboundedReceiver<ConnectorDeployedEvent>;
 type EventCodeHashesMap = FxHashMap<UInt256, EventType>;
 
 type ConnectorsMap = FxDashMap<UInt256, ConnectorState>;
-type EthEventConfigurationsMap = FxDashMap<UInt256, EthEventConfigurationDetails>;
-type TonEventConfigurationsMap = FxDashMap<UInt256, TonEventConfigurationDetails>;
+type EthEventConfigurationsMap = FxDashMap<
+    UInt256,
+    EventConfigurationState<EthEventConfigurationDetails, EthEventConfigurationEvent>,
+>;
+type TonEventConfigurationsMap = FxDashMap<
+    UInt256,
+    EventConfigurationState<TonEventConfigurationDetails, TonEventConfigurationEvent>,
+>;
 
 #[derive(thiserror::Error, Debug)]
 enum EngineError {
@@ -586,10 +651,6 @@ enum EngineError {
     ExternalTonMessageExpected,
     #[error("Bridge account not found")]
     BridgeAccountNotFound,
-    #[error("Staking account not found")]
-    StakingAccountNotFound,
-    #[error("Relay Round account not found")]
-    RelayRoundAccountNotFound,
     #[error("Already initialized")]
     AlreadyInitialized,
     #[error("Invalid event configuration")]

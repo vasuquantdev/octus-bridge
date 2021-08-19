@@ -1,3 +1,5 @@
+use std::borrow::Borrow;
+
 use ton_types::UInt256;
 
 pub fn contains_account(shard: &ton_block::ShardIdent, account: &UInt256) -> bool {
@@ -35,9 +37,9 @@ pub fn account_prefix(account: &UInt256, len: usize) -> u64 {
 
 pub fn only_account_hash<T>(address: T) -> UInt256
 where
-    T: AsRef<ton_block::MsgAddressInt>,
+    T: Borrow<ton_block::MsgAddressInt>,
 {
-    UInt256::from_be_bytes(&address.as_ref().address().get_bytestring(0))
+    UInt256::from_be_bytes(&address.borrow().address().get_bytestring(0))
 }
 
 #[cfg(test)]
