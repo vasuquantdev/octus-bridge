@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
-use web3::types::{Address, Log, H256};
+use web3::types::Log;
 
 ///topics: `Keccak256("Method_Signature")`
 #[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

@@ -1,16 +1,9 @@
-use std::collections::hash_map;
-use std::str::FromStr;
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
-use chrono::Utc;
-use nekoton_abi::*;
+use anyhow::Result;
 use parking_lot::Mutex;
 use tiny_adnl::utils::*;
-use tokio::sync::{mpsc, watch};
-use tokio::time::{sleep_until, Duration, Instant};
-use ton_block::{HashmapAugType, Serializable};
-use ton_types::UInt256;
+use ton_block::Serializable;
 
 use self::bridge::*;
 use self::eth_subscriber::*;
@@ -68,7 +61,7 @@ impl Engine {
         let bridge_configuration = BridgeContract(&bridge_contract).bridge_configuration()?;
 
         // Initialize bridge
-        let bridge = Bridge::new(self.context.clone(), bridge_account, bridge_contract).await?;
+        let bridge = Bridge::new(self.context.clone(), bridge_account).await?;
         *self.bridge.lock() = Some(bridge);
 
         // Initialize staking

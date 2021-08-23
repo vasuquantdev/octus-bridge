@@ -4,9 +4,8 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use dashmap::{DashMap, DashSet};
-use futures::{SinkExt, Stream, StreamExt};
+use futures::{SinkExt, Stream};
 use nekoton_utils::TrustMe;
-use tap::Pipe;
 use tokio::sync::Semaphore;
 use tokio::time::timeout;
 use uuid::Uuid;
@@ -28,7 +27,7 @@ mod utils;
 
 pub struct EthSubscriberRegistry {
     state: Arc<State>,
-    subscribed: DashMap<u8, Arc<EthSubscriber>>,
+    subscribers: DashMap<u32, Arc<EthSubscriber>>,
 }
 
 impl EthSubscriberRegistry {
@@ -37,16 +36,16 @@ impl EthSubscriberRegistry {
 
         Ok(Arc::new(Self {
             state,
-            subscribed: Default::default(),
+            subscribers: Default::default(),
         }))
     }
 
-    pub async fn new_subscriber(&self, chain_id: u8, config: EthConfig) -> Result<()> {
+    pub async fn new_subscriber(&self, chain_id: u32, config: EthConfig) -> Result<()> {
         use dashmap::mapref::entry::Entry;
 
         let subscriber = EthSubscriber::new(self.state.clone(), chain_id, config).await?;
 
-        match self.subscribed.entry(chain_id) {
+        match self.subscribers.entry(chain_id) {
             Entry::Vacant(entry) => {
                 entry.insert(subscriber);
             }
@@ -59,15 +58,15 @@ impl EthSubscriberRegistry {
         Ok(())
     }
 
-    pub fn get_subscriber(&self, chain_id: u8) -> Option<Arc<EthSubscriber>> {
+    pub fn get_subscriber(&self, chain_id: u32) -> Option<Arc<EthSubscriber>> {
         // Not cloning will deadlock
-        self.subscribed.get(&chain_id).map(|x| x.clone())
+        self.subscribers.get(&chain_id).map(|x| x.clone())
     }
 }
 
 #[derive(Clone)]
 pub struct EthSubscriber {
-    chain_id: u8,
+    chain_id: u32,
     config: EthConfig,
     web3: Web3<Http>,
     pool: Arc<Semaphore>,
@@ -78,7 +77,7 @@ pub struct EthSubscriber {
 }
 
 impl EthSubscriber {
-    async fn new(state: Arc<State>, chain_id: u8, config: EthConfig) -> Result<Arc<Self>> {
+    async fn new(state: Arc<State>, chain_id: u32, config: EthConfig) -> Result<Arc<Self>> {
         let transport = web3::transports::Http::new(config.endpoint.as_str())?;
         let web3 = web3::Web3::new(transport);
         let pool = Arc::new(Semaphore::new(config.pool_size));
@@ -285,25 +284,25 @@ impl EthSubscriber {
             })
     }
 
-    pub async fn subscribe_topic(&self, abi: &str) -> Result<()> {
+    pub fn subscribe_topic(&self, abi: &str) -> Result<()> {
         let topic_hash = utils::get_topic_hash(abi)?;
         self.topics.insert(topic_hash);
         Ok(())
     }
 
-    pub async fn subscribe_address(&self, address: ethabi::Address) {
+    pub fn subscribe_address(&self, address: ethabi::Address) {
         self.addresses.insert(address);
     }
 
-    pub async fn unsubscribe_address(&self, address: &ethabi::Address) {
+    pub fn unsubscribe_address(&self, address: &ethabi::Address) {
         self.addresses.remove(address);
     }
 
-    pub async fn unsubscribe_by_encoded_topic<K: AsRef<[u8]>>(&self, key: K) {
+    pub fn unsubscribe_by_encoded_topic<K: AsRef<[u8]>>(&self, key: K) {
         self.topics.remove(key.as_ref());
     }
 
-    pub async fn unsubscribe_by_abi(&self, abi: &str) -> Result<()> {
+    pub fn unsubscribe_by_abi(&self, abi: &str) -> Result<()> {
         let topic_hash = utils::get_topic_hash(abi)?;
         self.topics.remove(&topic_hash);
         Ok(())

@@ -2,7 +2,6 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::Result;
-use bb8::ManageConnection;
 
 pub use self::eth_state::*;
 use crate::utils::*;

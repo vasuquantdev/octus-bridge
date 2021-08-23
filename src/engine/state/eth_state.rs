@@ -1,9 +1,6 @@
 use std::borrow::Borrow;
-use std::str::FromStr;
-use std::sync::Arc;
 
 use anyhow::Result;
-use futures::StreamExt;
 use nekoton_utils::TrustMe;
 use uuid::Uuid;
 
@@ -24,7 +21,7 @@ impl<'a, T> EthState<T>
 where
     T: Borrow<PooledConnection<'a>>,
 {
-    pub fn block_processed(&self, id: u64, chain_id: u8) -> Result<()> {
+    pub fn block_processed(&self, id: u64, chain_id: u32) -> Result<()> {
         self.conn().execute_in_place(
             "UPDATE eth_last_block SET block_number=?1 WHERE chain_id=?2",
             rusqlite::params![id, chain_id],
@@ -32,7 +29,7 @@ where
         Ok(())
     }
 
-    pub fn get_last_block_id(&self, chain_id: u8) -> Result<u64> {
+    pub fn get_last_block_id(&self, chain_id: u32) -> Result<u64> {
         let block_number: u64 = self.conn().query_row_in_place(
             "SELECT block_number FROM eth_last_block WHERE chain_id = ?1",
             rusqlite::params![chain_id],
