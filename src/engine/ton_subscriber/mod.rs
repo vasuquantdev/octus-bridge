@@ -38,28 +38,45 @@ impl TonSubscriber {
         Ok(())
     }
 
-    pub async fn wait_shards(&self) -> Result<ShardsMap> {
+    pub fn current_utime(&self) -> u32 {
+        self.current_utime.load(Ordering::Acquire)
+    }
+
+    pub async fn wait_shards(&self) -> Result<LatestShardBlocks> {
         struct Handler {
-            tx: Option<oneshot::Sender<Result<ShardsMap>>>,
+            tx: Option<oneshot::Sender<Result<LatestShardBlocks>>>,
         }
 
         impl BlockAwaiter for Handler {
-            fn handle_block(&mut self, block: &ton_block::Block) -> Result<()> {
+            fn handle_block(
+                &mut self,
+                block: &ton_block::Block,
+                block_info: &ton_block::BlockInfo,
+            ) -> Result<()> {
                 if let Some(tx) = self.tx.take() {
-                    let _ = tx.send(extract_shards(block));
+                    let _ = tx.send(extract_shards(block, block_info));
                 }
                 Ok(())
             }
         }
 
-        fn extract_shards(block: &ton_block::Block) -> Result<ShardsMap> {
+        fn extract_shards(
+            block: &ton_block::Block,
+            block_info: &ton_block::BlockInfo,
+        ) -> Result<LatestShardBlocks> {
+            let current_utime = block_info.gen_utime().0;
             let extra = block.extra.read_struct()?;
             let custom = match extra.read_custom()? {
                 Some(custom) => custom,
-                None => return Ok(ShardsMap::default()),
+                None => {
+                    return Ok(LatestShardBlocks {
+                        current_utime,
+                        block_ids: Default::default(),
+                    })
+                }
             };
 
-            let mut shards = HashMap::with_capacity(16);
+            let mut block_ids = HashMap::with_capacity(16);
 
             custom.shards().iterate_with_keys(
                 |wc_id: i32, ton_block::InRefValue(shards_tree)| {
@@ -70,7 +87,7 @@ impl TonSubscriber {
                     shards_tree.iterate(|prefix, descr| {
                         let shard_id = ton_block::ShardIdent::with_prefix_slice(wc_id, prefix)?;
 
-                        shards.insert(
+                        block_ids.insert(
                             shard_id,
                             ton_block::BlockIdExt::with_params(
                                 shard_id,
@@ -84,7 +101,10 @@ impl TonSubscriber {
                 },
             )?;
 
-            Ok(shards)
+            Ok(LatestShardBlocks {
+                current_utime,
+                block_ids,
+            })
         }
 
         let (tx, rx) = oneshot::channel();
@@ -172,13 +192,13 @@ impl TonSubscriber {
     }
 
     fn handle_masterchain_block(&self, block: &ton_block::Block) -> Result<()> {
-        let info = block.info.read_struct()?;
+        let block_info = block.info.read_struct()?;
         self.current_utime
-            .store(info.gen_utime().0, Ordering::Release);
+            .store(block_info.gen_utime().0, Ordering::Release);
 
         let awaiters = std::mem::take(&mut *self.mc_block_awaiters.lock());
         for mut awaiter in awaiters {
-            if let Err(e) = awaiter.handle_block(block) {
+            if let Err(e) = awaiter.handle_block(block, &block_info) {
                 log::error!("Failed to handle masterchain block: {:?}", e);
             }
         }
@@ -429,7 +449,11 @@ impl ShardAccountsMapExt for ShardAccountsMap {
 }
 
 pub trait BlockAwaiter: Send + Sync {
-    fn handle_block(&mut self, block: &ton_block::Block) -> Result<()>;
+    fn handle_block(
+        &mut self,
+        block: &ton_block::Block,
+        block_info: &ton_block::BlockInfo,
+    ) -> Result<()>;
 }
 
 pub trait TransactionsSubscription: Send + Sync {
@@ -537,6 +561,12 @@ impl TxContext<'_> {
 
 pub trait ReadFromTransaction: Sized {
     fn read_from_transaction(ctx: &TxContext<'_>) -> Option<Self>;
+}
+
+#[derive(Debug, Clone)]
+pub struct LatestShardBlocks {
+    pub current_utime: u32,
+    pub block_ids: ShardsMap,
 }
 
 type ShardAccountTx = watch::Sender<Option<ton_block::ShardAccount>>;

@@ -1,6 +1,7 @@
 use std::collections::hash_map;
 use std::future::Future;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Result;
 use nekoton_abi::*;
@@ -27,14 +28,6 @@ pub struct Bridge {
     ton_event_configurations_tx: AccountEventsTx<TonEventConfigurationEvent>,
 
     state: Arc<RwLock<BridgeState>>,
-}
-
-#[derive(Default)]
-struct BridgeState {
-    connectors: ConnectorsMap,
-    eth_event_configurations: EthEventConfigurationsMap,
-    ton_event_configurations: TonEventConfigurationsMap,
-    event_code_hashes: EventCodeHashesMap,
 }
 
 impl Bridge {
@@ -83,6 +76,8 @@ impl Bridge {
         let shard_accounts = context.get_all_shard_accounts().await?;
 
         bridge.get_all_configurations(&shard_accounts).await?;
+
+        bridge.start_ton_event_configurations_gc();
 
         Ok(bridge)
     }
@@ -141,18 +136,46 @@ impl Bridge {
         self: &Arc<Self>,
         (account, event): (UInt256, EthEventConfigurationEvent),
     ) -> Result<()> {
-        // TODO
+        match event {
+            EthEventConfigurationEvent::EventDeployed { vote_data, address } => {
+                todo!()
+            }
+            EthEventConfigurationEvent::SetEndBlockNumber { end_block_number } => {
+                let mut state = self.state.write();
 
-        Ok(())
+                let configuration = state
+                    .eth_event_configurations
+                    .get_mut(&account)
+                    .ok_or(BridgeError::UnknownConfiguration)?;
+
+                configuration.details.network_configuration.end_block_number = end_block_number;
+
+                Ok(())
+            }
+        }
     }
 
     async fn process_ton_event_configuration_event(
         self: &Arc<Self>,
         (account, event): (UInt256, TonEventConfigurationEvent),
     ) -> Result<()> {
-        // TODO
+        match event {
+            TonEventConfigurationEvent::EventDeployed { vote_data, address } => {
+                todo!()
+            }
+            TonEventConfigurationEvent::SetEndTimestamp { end_timestamp } => {
+                let mut state = self.state.write();
 
-        Ok(())
+                let configuration = state
+                    .ton_event_configurations
+                    .get_mut(&account)
+                    .ok_or(BridgeError::UnknownConfiguration)?;
+
+                configuration.details.network_configuration.end_timestamp = end_timestamp;
+
+                Ok(())
+            }
+        }
     }
 
     async fn check_connector_contract(&self, connector_account: UInt256) -> Result<()> {
@@ -362,6 +385,19 @@ impl Bridge {
         contract: &ExistingContract,
     ) -> Result<()> {
         let details = TonEventConfigurationContract(contract).get_details()?;
+
+        let end_timestamp = details.network_configuration.end_timestamp;
+        let current_timestamp = self.context.ton_subscriber.current_utime();
+        if (1..current_timestamp).contains(&end_timestamp) {
+            log::warn!(
+                "Ignoring TON event configuration {}: end timestamp {} is less then current {}",
+                account.to_hex_string(),
+                end_timestamp,
+                current_timestamp
+            );
+            return Ok(());
+        };
+
         let observer = EventConfigurationsObserver::new(&self.ton_event_configurations_tx);
 
         add_event_code_hash(
@@ -425,6 +461,69 @@ impl Bridge {
         Ok(())
     }
 
+    fn start_ton_event_configurations_gc(self: &Arc<Self>) {
+        let bridge = Arc::downgrade(self);
+
+        tokio::spawn(async move {
+            'outer: loop {
+                tokio::time::sleep(Duration::from_secs(10)).await;
+
+                // Get bridge if it is still alive
+                let bridge = match bridge.upgrade() {
+                    Some(bridge) => bridge,
+                    None => return,
+                };
+                let ton_subscriber = &bridge.context.ton_subscriber;
+                let ton_engine = &bridge.context.ton_engine;
+
+                // Get current time from masterchain
+                let current_utime = ton_subscriber.current_utime();
+
+                // Check expired configurations
+                let has_expired_configurations = {
+                    let state = bridge.state.read();
+                    state.has_expired_ton_event_configurations(current_utime)
+                };
+
+                // Do nothing if there are not expired configurations
+                if !has_expired_configurations {
+                    continue;
+                }
+
+                // Wait all shards
+                let current_utime = match ton_subscriber.wait_shards().await {
+                    Ok(shards) => {
+                        for (_, block_id) in shards.block_ids {
+                            if let Err(e) = ton_engine.wait_state(&block_id, None, false).await {
+                                log::error!("Failed to wait shard state: {:?}", e);
+                                continue 'outer;
+                            }
+                        }
+                        shards.current_utime
+                    }
+                    Err(e) => {
+                        log::error!("Failed to wait current shards info: {:?}", e);
+                        continue;
+                    }
+                };
+
+                // Get all expired configurations
+                let mut state = bridge.state.write();
+                state.ton_event_configurations.retain(|account, state| {
+                    if state.details.is_expired(current_utime) {
+                        log::warn!(
+                            "Removing TON event configuration {}",
+                            account.to_hex_string()
+                        );
+                        false
+                    } else {
+                        true
+                    }
+                });
+            }
+        });
+    }
+
     fn start_listening_events<E, F, R>(
         self: &Arc<Self>,
         name: &'static str,
@@ -452,6 +551,22 @@ impl Bridge {
             events_rx.close();
             while events_rx.recv().await.is_some() {}
         });
+    }
+}
+
+#[derive(Default)]
+struct BridgeState {
+    connectors: ConnectorsMap,
+    eth_event_configurations: EthEventConfigurationsMap,
+    ton_event_configurations: TonEventConfigurationsMap,
+    event_code_hashes: EventCodeHashesMap,
+}
+
+impl BridgeState {
+    fn has_expired_ton_event_configurations(&self, current_timestamp: u32) -> bool {
+        self.ton_event_configurations
+            .iter()
+            .any(|(_, state)| state.details.is_expired(current_timestamp))
     }
 }
 
@@ -500,6 +615,16 @@ enum ConnectorEvent {
 struct EventConfigurationState<T, E> {
     details: T,
     observer: Arc<EventConfigurationsObserver<E>>,
+}
+
+trait TonEventConfigurationDetailsExt {
+    fn is_expired(&self, current_timestamp: u32) -> bool;
+}
+
+impl TonEventConfigurationDetailsExt for TonEventConfigurationDetails {
+    fn is_expired(&self, current_timestamp: u32) -> bool {
+        (1..current_timestamp).contains(&self.network_configuration.end_timestamp)
+    }
 }
 
 /// Listener for bridge transactions
@@ -716,6 +841,8 @@ enum BridgeError {
     UnknownChainId,
     #[error("Unknown connector")]
     UnknownConnector,
+    #[error("Unknown event configuration")]
+    UnknownConfiguration,
     #[error("Bridge account not found")]
     BridgeAccountNotFound,
     #[error("Invalid event configuration")]

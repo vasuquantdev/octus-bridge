@@ -117,7 +117,7 @@ impl EngineContext {
     }
 
     pub async fn get_all_shard_accounts(&self) -> Result<ShardAccountsMap> {
-        let shard_blocks = self.ton_subscriber.wait_shards().await?;
+        let shard_blocks = self.ton_subscriber.wait_shards().await?.block_ids;
 
         let mut shard_accounts =
             FxHashMap::with_capacity_and_hasher(shard_blocks.len(), Default::default());
