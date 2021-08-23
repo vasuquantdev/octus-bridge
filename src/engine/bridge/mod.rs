@@ -386,13 +386,12 @@ impl Bridge {
     ) -> Result<()> {
         let details = TonEventConfigurationContract(contract).get_details()?;
 
-        let end_timestamp = details.network_configuration.end_timestamp;
         let current_timestamp = self.context.ton_subscriber.current_utime();
-        if (1..current_timestamp).contains(&end_timestamp) {
+        if details.is_expired(current_timestamp) {
             log::warn!(
                 "Ignoring TON event configuration {}: end timestamp {} is less then current {}",
                 account.to_hex_string(),
-                end_timestamp,
+                details.network_configuration.end_timestamp,
                 current_timestamp
             );
             return Ok(());
