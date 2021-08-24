@@ -279,9 +279,9 @@ dependencies = [
 
 [[package]]
 name = "clang-sys"
-version = "1.2.0"
+version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "853eda514c284c2287f4bf20ae614f8781f40a81d32ecda6e91449304dfe077c"
+checksum = "81cf2cc85830eae84823884db23c5306442a6c3d5bfd3beb2f2a2c829faa1816"
 dependencies = [
  "glob",
  "libc",
@@ -2645,7 +2645,7 @@ dependencies = [
 [[package]]
 name = "tiny-adnl"
 version = "0.1.0"
-source = "git+https://github.com/broxus/tiny-adnl#aa6f57db2bc0fb8ec7b2b5f4ab2c275f7789c202"
+source = "git+https://github.com/broxus/tiny-adnl#76aa549f8511f322943913b7be9f4d688a121d65"
 dependencies = [
  "aes",
  "anyhow",
