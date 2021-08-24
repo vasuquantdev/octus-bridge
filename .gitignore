@@ -16,4 +16,4 @@ docker-compose.yaml
 
 artifacts/
 
-relay.sqlite
+*.sqlite

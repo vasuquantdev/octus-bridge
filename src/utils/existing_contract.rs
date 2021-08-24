@@ -1,6 +1,5 @@
 use anyhow::Result;
 use nekoton_abi::{ExecutionOutput, FunctionExt, GenTimings, LastTransactionId, TransactionId};
-use nekoton_utils::NoFailure;
 
 pub struct ExistingContract {
     pub account: ton_block::AccountStuff,
@@ -18,7 +17,7 @@ impl ExistingContract {
     }
 
     pub fn from_shard_account(shard_account: &ton_block::ShardAccount) -> Result<Option<Self>> {
-        Ok(match shard_account.read_account().convert()? {
+        Ok(match shard_account.read_account()? {
             ton_block::Account::Account(account) => Some(Self {
                 account,
                 last_transaction_id: LastTransactionId::Exact(TransactionId {

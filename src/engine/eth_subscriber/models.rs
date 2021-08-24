@@ -2,19 +2,9 @@ use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 use web3::types::{Address, Log, H256};
 
-///topics: `Keccak256("Method_Signature")`
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Serialize, Deserialize, Ord)]
-pub struct Event {
-    pub address: Address,
-    pub data: Vec<u8>,
-    pub tx_hash: H256,
-    pub topics: Vec<H256>,
-    pub event_index: u32,
-    pub block_number: u64,
-    pub block_hash: H256,
-}
+use crate::state::models::StoredEthEvent;
 
-impl TryFrom<Log> for Event {
+impl TryFrom<Log> for StoredEthEvent {
     type Error = anyhow::Error;
 
     fn try_from(log: Log) -> Result<Self, Self::Error> {
@@ -50,7 +40,7 @@ impl TryFrom<Log> for Event {
         };
 
         log::debug!("Sent logs from block {} with hash {}", block_number, hash);
-        Ok(Event {
+        Ok(StoredEthEvent {
             address: log.address,
             data,
             tx_hash: hash,

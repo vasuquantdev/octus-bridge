@@ -1,6 +1,6 @@
 -- Add migration script here
 
-CREATE TABLE ETH_LAST_BLOCK
+CREATE TABLE eth_last_block
 (
     chain_id     INTEGER PRIMARY KEY,
     block_number INTEGER NOT NULL

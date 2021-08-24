@@ -1,42 +1,50 @@
 use std::collections::hash_map;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
+use chrono::Utc;
 use nekoton_abi::*;
-use nekoton_utils::*;
 use parking_lot::RwLock;
 use tiny_adnl::utils::*;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
+use tokio::time::{sleep_until, Duration, Instant};
 use ton_block::{HashmapAugType, Serializable};
 use ton_types::UInt256;
 
-use crate::config::*;
-use crate::utils::*;
-
 use self::ton_contracts::*;
 use self::ton_subscriber::*;
+use crate::config::*;
+use crate::state::State;
+use crate::utils::*;
 
 mod eth_subscriber;
-mod state;
 mod ton_contracts;
 mod ton_subscriber;
 
 pub struct Engine {
-    bridge_account: UInt256,
+    state: State,
     ton_engine: Arc<ton_indexer::Engine>,
     ton_subscriber: Arc<TonSubscriber>,
 
+    bridge_account: UInt256,
+    staking_account_tx: StakingAccountTx,
     eth_configurations_observer: Arc<EventConfigurationsObserver<EthEventConfiguration>>,
     ton_configurations_observer: Arc<EventConfigurationsObserver<TonEventConfiguration>>,
-    connectors_observer: Arc<ConnectorsObserver>,
     bridge_observer: Arc<BridgeObserver>,
+    staking_observer: Arc<StakingObserver>,
 
     eth_event_configurations: EthEventConfigurationsMap,
     ton_event_configurations: TonEventConfigurationsMap,
+
+    connector_events_tx: ConnectorEventsTx,
     connectors: ConnectorsMap,
+
     event_code_hashes: Arc<RwLock<EventCodeHashesMap>>,
 
     initialized: tokio::sync::Mutex<bool>,
+
+    vote_state: Arc<RwLock<VoteState>>,
 }
 
 impl Engine {
@@ -44,6 +52,9 @@ impl Engine {
         config: RelayConfig,
         global_config: ton_indexer::GlobalConfig,
     ) -> Result<Arc<Self>> {
+        let state = State::new("test.sqlite").await?;
+        state.apply_migrations().await?;
+
         let bridge_account =
             UInt256::from_be_bytes(&config.bridge_address.address().get_bytestring(0));
 
@@ -56,17 +67,21 @@ impl Engine {
         )
         .await?;
 
-        let (eth_event_configuration_events_tx, eth_event_configuration_events_rx) =
+        let (staking_account_tx, staking_account_rx) = watch::channel(Default::default());
+        let (eth_event_configuration_events_tx, _eth_event_configuration_events_rx) =
             mpsc::unbounded_channel();
-        let (ton_event_configuration_events_tx, ton_event_configuration_events_rx) =
+        let (ton_event_configuration_events_tx, _ton_event_configuration_events_rx) =
             mpsc::unbounded_channel();
         let (connector_events_tx, _connector_events_rx) = mpsc::unbounded_channel();
         let (bridge_events_tx, bridge_events_rx) = mpsc::unbounded_channel();
+        let (staking_events_tx, staking_events_rx) = mpsc::unbounded_channel();
 
         let engine = Arc::new(Self {
-            bridge_account,
+            state,
             ton_engine,
             ton_subscriber,
+            bridge_account,
+            staking_account_tx,
             eth_configurations_observer: Arc::new(EventConfigurationsObserver {
                 events_tx: eth_event_configuration_events_tx,
                 function_update: eth_event_configuration_contract::update(),
@@ -75,22 +90,43 @@ impl Engine {
                 events_tx: ton_event_configuration_events_tx,
                 function_update: ton_event_configuration_contract::update(),
             }),
-            connectors_observer: Arc::new(ConnectorsObserver {
-                events_tx: connector_events_tx,
-            }),
             bridge_observer: Arc::new(BridgeObserver {
                 events_tx: bridge_events_tx,
             }),
+            staking_observer: Arc::new(StakingObserver {
+                events_tx: staking_events_tx,
+            }),
             eth_event_configurations: Default::default(),
             ton_event_configurations: Default::default(),
+            connector_events_tx,
             connectors: Default::default(),
             event_code_hashes: Default::default(),
             initialized: Default::default(),
+            vote_state: Arc::new(Default::default()),
         });
 
         engine.start_listening_bridge_events(bridge_events_rx);
+        engine.start_listening_staking_events(staking_events_rx);
 
         Ok(engine)
+    }
+
+    fn start_listening_connector_events(
+        self: &Arc<Self>,
+        mut connector_events_rx: ConnectorEventsRx,
+    ) {
+        let engine = Arc::downgrade(self);
+
+        tokio::spawn(async move {
+            while let Some(event) = connector_events_rx.recv().await {
+                let engine = match engine.upgrade() {
+                    Some(engine) => engine,
+                    None => break,
+                };
+
+                // TODO
+            }
+        });
     }
 
     fn start_listening_bridge_events(self: &Arc<Self>, mut bridge_events_rx: BridgeEventsRx) {
@@ -107,21 +143,29 @@ impl Engine {
 
                 match engine.connectors.entry(event.connector) {
                     Entry::Vacant(entry) => {
-                        entry.insert(ConnectorState {
+                        let observer =
+                            Arc::new(ConnectorObserver(engine.connector_events_tx.clone()));
+
+                        let entry = entry.insert(ConnectorState {
                             details: ConnectorDetails {
                                 id: event.id,
                                 event_configuration: event.event_configuration,
-                                enabled: true,
+                                enabled: false,
                             },
                             event_type: ConnectorConfigurationType::Unknown,
+                            observer,
                         });
+
+                        engine
+                            .ton_subscriber
+                            .add_transactions_subscription([event.connector], &entry.observer);
                     }
                     Entry::Occupied(_) => {
                         log::error!(
                             "Got connector deployment event but it already exists: {}",
                             event.connector.to_hex_string()
                         );
-                        continue;
+                        return;
                     }
                 };
 
@@ -131,9 +175,6 @@ impl Engine {
                     }
                 });
             }
-
-            bridge_events_rx.close();
-            while bridge_events_rx.recv().await.is_some() {}
         });
     }
 
@@ -189,12 +230,52 @@ impl Engine {
             ),
         }
 
-        self.ton_subscriber
-            .add_transactions_subscription([event.connector], &self.connectors_observer);
+        // self.ton_subscriber
+        //     .add_transactions_subscription([event.connector], &self.connectors_observer);
 
         // TODO: check connector state and remove configuration subscription if it was disabled
 
         Ok(())
+    }
+
+    fn start_listening_staking_events(self: &Arc<Self>, mut staking_events_rx: StakingEventsRx) {
+        let engine = Arc::downgrade(self);
+
+        tokio::spawn(async move {
+            while let Some(event) = staking_events_rx.recv().await {
+                let engine = match engine.upgrade() {
+                    Some(engine) => engine,
+                    None => break,
+                };
+
+                let shard_accounts = match engine.get_all_shard_accounts().await {
+                    Ok(shard_accounts) => shard_accounts,
+                    Err(e) => {
+                        log::error!("Failed to get shard accounts: {:?}", e);
+                        continue;
+                    }
+                };
+
+                if let Err(e) = update_vote_state(
+                    &shard_accounts,
+                    &event.round_addr,
+                    &mut engine.vote_state.write().new_round,
+                ) {
+                    log::error!("Failed to update vote state: {:?}", e);
+                    continue;
+                }
+
+                let vote_state = engine.vote_state.clone();
+                let deadline = Instant::now()
+                    + Duration::from_secs(
+                        (event.round_start_time - Utc::now().timestamp() as u32) as u64,
+                    );
+                run_vote_state_timer(deadline, vote_state);
+            }
+
+            staking_events_rx.close();
+            while staking_events_rx.recv().await.is_some() {}
+        });
     }
 
     pub async fn start(&self) -> Result<()> {
@@ -208,9 +289,13 @@ impl Engine {
 
         self.ton_subscriber
             .add_transactions_subscription([self.bridge_account], &self.bridge_observer);
+        // self.ton_subscriber
+        //     .add_transactions_subscription([self.staking_account], &self.staking_observer);
 
         self.get_all_configurations().await?;
         self.get_all_events().await?;
+
+        // self.init_vote_state().await?;
 
         // TODO: start eth indexer
 
@@ -224,33 +309,31 @@ impl Engine {
         let event_code_hashes = self.event_code_hashes.read();
 
         for (_, accounts) in shard_accounts {
-            accounts
-                .iterate_with_keys(|hash, shard_account| {
-                    let account = match shard_account.read_account()? {
-                        ton_block::Account::Account(account) => account,
-                        ton_block::Account::AccountNone => return Ok(true),
-                    };
+            accounts.iterate_with_keys(|hash, shard_account| {
+                let account = match shard_account.read_account()? {
+                    ton_block::Account::Account(account) => account,
+                    ton_block::Account::AccountNone => return Ok(true),
+                };
 
-                    let code_hash = match account.storage.state() {
-                        ton_block::AccountState::AccountActive(ton_block::StateInit {
-                            code: Some(code),
-                            ..
-                        }) => code.repr_hash(),
-                        _ => return Ok(true),
-                    };
+                let code_hash = match account.storage.state() {
+                    ton_block::AccountState::AccountActive(ton_block::StateInit {
+                        code: Some(code),
+                        ..
+                    }) => code.repr_hash(),
+                    _ => return Ok(true),
+                };
 
-                    let event_type = match event_code_hashes.get(&code_hash) {
-                        Some(event_type) => event_type,
-                        None => return Ok(true),
-                    };
+                let event_type = match event_code_hashes.get(&code_hash) {
+                    Some(event_type) => event_type,
+                    None => return Ok(true),
+                };
 
-                    log::info!("FOUND EVENT {:?}: {}", event_type, hash.to_hex_string());
+                log::info!("FOUND EVENT {:?}: {}", event_type, hash.to_hex_string());
 
-                    // TODO: get details and filter current
+                // TODO: get details and filter current
 
-                    Ok(true)
-                })
-                .convert()?;
+                Ok(true)
+            })?;
         }
 
         Ok(())
@@ -293,6 +376,7 @@ impl Engine {
                 ConnectorState {
                     details,
                     event_type: ConnectorConfigurationType::Unknown,
+                    observer: Arc::new(ConnectorObserver(self.connector_events_tx.clone())),
                 },
             ));
         }
@@ -339,10 +423,10 @@ impl Engine {
             self.connectors.insert(account, state);
         }
 
-        self.ton_subscriber.add_transactions_subscription(
-            self.connectors.iter().map(|item| *item.key()),
-            &self.connectors_observer,
-        );
+        for item in &self.connectors {
+            self.ton_subscriber
+                .add_transactions_subscription([*item.key()], &item.observer);
+        }
 
         self.ton_subscriber.add_transactions_subscription(
             self.eth_event_configurations.iter().map(|item| *item.key()),
@@ -359,6 +443,45 @@ impl Engine {
         Ok(())
     }
 
+    // async fn init_vote_state(&self) -> Result<()> {
+    //     let shard_accounts = self.get_all_shard_accounts().await?;
+    //
+    //     let contract = shard_accounts
+    //         .find_account(&self.staking_account)?
+    //         .ok_or(EngineError::StakingAccountNotFound)?;
+    //     let staking = StakingContract(&contract);
+    //
+    //     let round_num = staking.current_relay_round()?;
+    //     let current_time = Utc::now().timestamp() as u128;
+    //     let current_relay_round_start_time = staking.current_relay_round_start_time()?;
+    //
+    //     let current_relay_round_addr;
+    //     if current_time < current_relay_round_start_time {
+    //         current_relay_round_addr = staking.get_relay_round_address(round_num - 1)?;
+    //
+    //         let new_relay_round_addr = staking.get_relay_round_address(round_num)?;
+    //         update_vote_state(
+    //             &shard_accounts,
+    //             &new_relay_round_addr,
+    //             &mut self.vote_state.write().new_round,
+    //         )?;
+    //
+    //         let vote_state = self.vote_state.clone();
+    //         let deadline = Instant::now()
+    //             + Duration::from_secs((current_relay_round_start_time - current_time) as u64);
+    //         run_vote_state_timer(deadline, vote_state);
+    //     } else {
+    //         current_relay_round_addr = staking.get_relay_round_address(round_num)?;
+    //     }
+    //     update_vote_state(
+    //         &shard_accounts,
+    //         &current_relay_round_addr,
+    //         &mut self.vote_state.write().current_round,
+    //     )?;
+    //
+    //     Ok(())
+    // }
+
     async fn get_all_shard_accounts(&self) -> Result<ShardAccountsMap> {
         let shard_blocks = self.ton_subscriber.wait_shards().await?;
 
@@ -366,7 +489,7 @@ impl Engine {
             FxHashMap::with_capacity_and_hasher(shard_blocks.len(), Default::default());
         for (shard_ident, block_id) in shard_blocks {
             let shard = self.ton_engine.wait_state(&block_id, None, false).await?;
-            let accounts = shard.state().read_accounts().convert()?;
+            let accounts = shard.state().read_accounts()?;
             shard_accounts.insert(shard_ident, accounts);
         }
 
@@ -376,18 +499,52 @@ impl Engine {
     async fn send_ton_message(&self, message: &ton_block::Message) -> Result<()> {
         let to = match message.header() {
             ton_block::CommonMsgInfo::ExtInMsgInfo(header) => {
-                ton_block::AccountIdPrefixFull::prefix(&header.dst).convert()?
+                ton_block::AccountIdPrefixFull::prefix(&header.dst)?
             }
             _ => return Err(EngineError::ExternalTonMessageExpected.into()),
         };
 
-        let cells = message.write_to_new_cell().convert()?.into();
-        let serialized = ton_types::serialize_toc(&cells).convert()?;
+        let cells = message.write_to_new_cell()?.into();
+        let serialized = ton_types::serialize_toc(&cells)?;
 
         self.ton_engine
             .broadcast_external_message(&to, &serialized)
             .await
     }
+}
+
+/// Timer task that switch round state
+fn run_vote_state_timer(deadline: Instant, vote_state: Arc<RwLock<VoteState>>) {
+    tokio::spawn(async move {
+        sleep_until(deadline).await;
+
+        vote_state.write().current_round = vote_state.read().new_round;
+        vote_state.write().new_round = VoteStateType::None;
+    });
+}
+
+fn update_vote_state(
+    shard_accounts: &ShardAccountsMap,
+    addr: &UInt256,
+    vote_state: &mut VoteStateType,
+) -> Result<()> {
+    // Test key
+    let relay_pubkey =
+        UInt256::from_str("e4e82dd4c0df20b0467b1cf48320f4921796c6c8f76ff5999f91ad9175186635")
+            .unwrap();
+
+    let contract = shard_accounts
+        .find_account(addr)?
+        .ok_or(EngineError::RelayRoundAccountNotFound)?;
+    let relay_round = RelayRoundContract(&contract);
+
+    if relay_round.relay_keys()?.items.contains(&relay_pubkey) {
+        *vote_state = VoteStateType::InRound;
+    } else {
+        *vote_state = VoteStateType::NotInRound;
+    }
+
+    Ok(())
 }
 
 /// Startup configurations processing context
@@ -454,10 +611,11 @@ fn process_event_configuration(
     Ok(Some(event_type))
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Clone)]
 struct ConnectorState {
     details: ConnectorDetails,
     event_type: ConnectorConfigurationType,
+    observer: Arc<ConnectorObserver>,
 }
 
 /// Linked configuration event type hint
@@ -471,7 +629,26 @@ enum ConnectorConfigurationType {
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 enum ConnectorEvent {
     Enable,
-    Disable,
+}
+
+/// Whether Relay is able to vote in each of round
+#[derive(Debug, Copy, Clone, Default)]
+struct VoteState {
+    current_round: VoteStateType,
+    new_round: VoteStateType,
+}
+
+#[derive(Debug, Copy, Clone)]
+enum VoteStateType {
+    None,
+    InRound,
+    NotInRound,
+}
+
+impl Default for VoteStateType {
+    fn default() -> Self {
+        VoteStateType::None
+    }
 }
 
 /// Listener for bridge transactions
@@ -490,7 +667,6 @@ impl TransactionsSubscription for BridgeObserver {
             if matches!(id, Ok(id) if id == bridge_contract::events::connector_deployed().id) {
                 match bridge_contract::events::connector_deployed()
                     .decode_input(body)
-                    .convert()
                     .and_then(|tokens| tokens.unpack().map_err(anyhow::Error::from))
                 {
                     Ok(parsed) => event = Some(parsed),
@@ -513,23 +689,57 @@ impl TransactionsSubscription for BridgeObserver {
     }
 }
 
+/// Listener for staking transactions
+///
+/// **Registered only for staking account**
+struct StakingObserver {
+    events_tx: StakingEventsTx,
+}
+
+impl TransactionsSubscription for StakingObserver {
+    fn handle_transaction(&self, ctx: TxContext<'_>) -> Result<()> {
+        // Parse all outgoing messages and search proper event
+        let mut event: Option<RelayRoundInitializedEvent> = None;
+        iterate_transaction_events(&ctx, |body| {
+            let id = nekoton_abi::read_function_id(&body);
+            if matches!(id, Ok(id) if id == staking_contract::events::relay_round_initialized().id)
+            {
+                match staking_contract::events::relay_round_initialized()
+                    .decode_input(body)
+                    .and_then(|tokens| tokens.unpack().map_err(anyhow::Error::from))
+                {
+                    Ok(parsed) => event = Some(parsed),
+                    Err(e) => {
+                        log::error!("Failed to parse staking event: {:?}", e);
+                    }
+                };
+            }
+        })?;
+
+        log::info!("Got transaction on staking: {:?}", event);
+
+        // Send event to event manager if it exist
+        if let Some(event) = event {
+            self.events_tx.send(event).ok();
+        }
+
+        // Done
+        Ok(())
+    }
+}
+
 /// Listener for connector transactions
 ///
 /// **Registered for each connector account**
-struct ConnectorsObserver {
-    events_tx: ConnectorEventsTx,
-}
+struct ConnectorObserver(ConnectorEventsTx);
 
-impl TransactionsSubscription for ConnectorsObserver {
+impl TransactionsSubscription for ConnectorObserver {
     fn handle_transaction(&self, ctx: TxContext<'_>) -> Result<()> {
         // Parse all outgoing messages and search proper event
         let mut event = None;
         iterate_transaction_events(&ctx, |body| match nekoton_abi::read_function_id(&body) {
             Ok(id) if id == connector_contract::events::enabled().id => {
                 event = Some(ConnectorEvent::Enable);
-            }
-            Ok(id) if id == connector_contract::events::disabled().id => {
-                event = Some(ConnectorEvent::Disable);
             }
             _ => { /* do nothing */ }
         })?;
@@ -542,7 +752,7 @@ impl TransactionsSubscription for ConnectorsObserver {
 
         // Send event to event manager if it exist
         if let Some(event) = event {
-            self.events_tx.send((*ctx.account, event)).ok();
+            self.0.send((*ctx.account, event)).ok();
         }
 
         // Done
@@ -570,7 +780,6 @@ where
                 let input = self
                     .function_update
                     .decode_input(body, true)
-                    .convert()
                     .and_then(|tokens| {
                         let mut tokens = tokens.into_unpacker();
                         Ok(EventConfigurationEvent::Update {
@@ -630,7 +839,6 @@ impl ShardAccountsMapExt for ShardAccountsMap {
             // Search account in shard state
             Some((_, shard)) => match shard
                 .get(account)
-                .convert()
                 .and_then(|account| ExistingContract::from_shard_account_opt(&account))?
             {
                 // Account found
@@ -689,16 +897,23 @@ where
 
             // Process all messages
             Ok(true)
-        })
-        .convert()?;
+        })?;
     Ok(())
 }
 
 type EventConfigurationEventsTx<T> = mpsc::UnboundedSender<(UInt256, EventConfigurationEvent<T>)>;
+
 type ConnectorEventsTx = mpsc::UnboundedSender<(UInt256, ConnectorEvent)>;
+type ConnectorEventsRx = mpsc::UnboundedReceiver<(UInt256, ConnectorEvent)>;
 
 type BridgeEventsTx = mpsc::UnboundedSender<ConnectorDeployedEvent>;
 type BridgeEventsRx = mpsc::UnboundedReceiver<ConnectorDeployedEvent>;
+
+type StakingAccountTx = watch::Sender<UInt256>;
+type StakingAccountRx = watch::Receiver<UInt256>;
+
+type StakingEventsTx = mpsc::UnboundedSender<RelayRoundInitializedEvent>;
+type StakingEventsRx = mpsc::UnboundedReceiver<RelayRoundInitializedEvent>;
 
 type ShardAccountsMap = FxHashMap<ton_block::ShardIdent, ton_block::ShardAccounts>;
 type EventCodeHashesMap = FxHashMap<UInt256, EventType>;
@@ -713,6 +928,10 @@ enum EngineError {
     ExternalTonMessageExpected,
     #[error("Bridge account not found")]
     BridgeAccountNotFound,
+    #[error("Staking account not found")]
+    StakingAccountNotFound,
+    #[error("Relay Round account not found")]
+    RelayRoundAccountNotFound,
     #[error("Invalid contract address")]
     InvalidContractAddress,
     #[error("Already initialized")]
