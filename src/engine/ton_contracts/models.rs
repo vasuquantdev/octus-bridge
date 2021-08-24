@@ -144,9 +144,10 @@ impl TonEventVoteData {
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, PackAbi, UnpackAbi)]
 pub enum EventStatus {
-    Pending = 0,
-    Confirmed = 1,
-    Rejected = 2,
+    Initializing = 0,
+    Pending = 1,
+    Confirmed = 2,
+    Rejected = 3,
 }
 
 #[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain)]

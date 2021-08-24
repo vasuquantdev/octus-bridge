@@ -22,20 +22,24 @@ pub struct Bridge {
     bridge_account: UInt256,
 
     bridge_observer: Arc<AccountObserver<BridgeEvent>>,
+    state: Arc<RwLock<BridgeState>>,
 
     connectors_tx: AccountEventsTx<ConnectorEvent>,
     eth_event_configurations_tx: AccountEventsTx<EthEventConfigurationEvent>,
     ton_event_configurations_tx: AccountEventsTx<TonEventConfigurationEvent>,
-
-    state: Arc<RwLock<BridgeState>>,
+    eth_events_tx: AccountEventsTx<EthEvent>,
+    ton_events_tx: AccountEventsTx<TonEvent>,
 }
 
 impl Bridge {
     pub async fn new(context: Arc<EngineContext>, bridge_account: UInt256) -> Result<Arc<Self>> {
+        // Create bridge
         let (bridge_events_tx, bridge_events_rx) = mpsc::unbounded_channel();
         let (connectors_tx, connectors_rx) = mpsc::unbounded_channel();
         let (eth_event_configurations_tx, eth_event_configurations_rx) = mpsc::unbounded_channel();
         let (ton_event_configurations_tx, ton_event_configurations_rx) = mpsc::unbounded_channel();
+        let (eth_events_tx, eth_events_rx) = mpsc::unbounded_channel();
+        let (ton_events_tx, ton_events_rx) = mpsc::unbounded_channel();
 
         let bridge_observer = AccountObserver::new(&bridge_events_tx);
 
@@ -43,41 +47,48 @@ impl Bridge {
             context,
             bridge_account,
             bridge_observer: bridge_observer.clone(),
+            state: Arc::new(Default::default()),
             connectors_tx,
             eth_event_configurations_tx,
             ton_event_configurations_tx,
-            state: Arc::new(Default::default()),
+            eth_events_tx,
+            ton_events_tx,
         });
 
+        // Prepare listeners
         bridge.start_listening_events(
             "BridgeContract",
             bridge_events_rx,
-            |bridge, (_, event)| async move { bridge.process_bridge_event(event).await },
+            Self::process_bridge_event,
         );
 
         bridge.start_listening_events(
             "ConnectorContract",
             connectors_rx,
-            |bridge, event| async move { bridge.process_connector_event(event).await },
+            Self::process_connector_event,
         );
 
         bridge.start_listening_events(
             "EthEventConfigurationContract",
             eth_event_configurations_rx,
-            |bridge, event| async move { bridge.process_eth_event_configuration_event(event).await },
+            Self::process_eth_event_configuration_event,
         );
 
         bridge.start_listening_events(
             "TonEventConfigurationContract",
             ton_event_configurations_rx,
-            |bridge, event| async move { bridge.process_ton_event_configuration_event(event).await },
+            Self::process_ton_event_configuration_event,
         );
+
+        bridge.start_listening_events("EthEventContract", eth_events_rx, Self::process_eth_event);
+        bridge.start_listening_events("TonEventContract", ton_events_rx, Self::process_ton_event);
 
         bridge
             .context
             .ton_subscriber
             .add_transactions_subscription([bridge.bridge_account], &bridge.bridge_observer);
 
+        // Initialize
         bridge.get_all_configurations().await?;
         bridge.get_all_events().await?;
 
@@ -86,7 +97,10 @@ impl Bridge {
         Ok(bridge)
     }
 
-    async fn process_bridge_event(self: Arc<Self>, event: BridgeEvent) -> Result<()> {
+    async fn process_bridge_event(
+        self: Arc<Self>,
+        (_, event): (UInt256, BridgeEvent),
+    ) -> Result<()> {
         match event {
             BridgeEvent::ConnectorDeployed(event) => {
                 match self.state.write().connectors.entry(event.connector) {
@@ -128,7 +142,7 @@ impl Bridge {
     }
 
     async fn process_connector_event(
-        self: &Arc<Self>,
+        self: Arc<Self>,
         (connector, event): (UInt256, ConnectorEvent),
     ) -> Result<()> {
         match event {
@@ -137,7 +151,7 @@ impl Bridge {
     }
 
     async fn process_eth_event_configuration_event(
-        self: &Arc<Self>,
+        self: Arc<Self>,
         (account, event): (UInt256, EthEventConfigurationEvent),
     ) -> Result<()> {
         match event {
@@ -160,7 +174,7 @@ impl Bridge {
     }
 
     async fn process_ton_event_configuration_event(
-        self: &Arc<Self>,
+        self: Arc<Self>,
         (account, event): (UInt256, TonEventConfigurationEvent),
     ) -> Result<()> {
         match event {
@@ -180,6 +194,20 @@ impl Bridge {
                 Ok(())
             }
         }
+    }
+
+    async fn process_eth_event(
+        self: Arc<Self>,
+        (account, event): (UInt256, EthEvent),
+    ) -> Result<()> {
+        todo!()
+    }
+
+    async fn process_ton_event(
+        self: Arc<Self>,
+        (account, event): (UInt256, TonEvent),
+    ) -> Result<()> {
+        todo!()
     }
 
     async fn check_connector_contract(&self, connector_account: UInt256) -> Result<()> {
@@ -471,17 +499,6 @@ impl Bridge {
         Ok(())
     }
 
-    fn process_ton_event(&self, account: &UInt256, contract: &ExistingContract) -> Result<()> {
-        let details = TonEventContract(contract).get_details()?;
-        if details.status != EventStatus::Pending {
-            return Ok(());
-        }
-
-        // TODO
-
-        Ok(())
-    }
-
     fn start_ton_event_configurations_gc(self: &Arc<Self>) {
         let bridge = Arc::downgrade(self);
 
@@ -545,15 +562,14 @@ impl Bridge {
         });
     }
 
-    fn start_listening_events<E, F, R>(
+    fn start_listening_events<E, R>(
         self: &Arc<Self>,
         name: &'static str,
         mut events_rx: mpsc::UnboundedReceiver<E>,
-        mut handler: F,
+        mut handler: fn(Arc<Self>, E) -> R,
     ) where
         E: Send + 'static,
-        F: FnMut(Arc<Self>, E) -> R + Send + 'static,
-        R: Future<Output = Result<()>> + Send,
+        R: Future<Output = Result<()>> + Send + 'static,
     {
         let bridge = Arc::downgrade(self);
 
