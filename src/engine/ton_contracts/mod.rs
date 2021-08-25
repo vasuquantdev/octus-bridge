@@ -88,6 +88,12 @@ impl TonEventConfigurationContract<'_> {
 pub struct BridgeContract<'a>(pub &'a ExistingContract);
 
 impl BridgeContract<'_> {
+    pub fn connector_counter(&self) -> Result<u64> {
+        let function = bridge_contract::connector_counter();
+        let counter = self.0.run_local(function, &[])?.unpack_first()?;
+        Ok(counter)
+    }
+
     pub fn bridge_configuration(&self) -> Result<BridgeConfiguration> {
         let function = bridge_contract::bridge_configuration();
         let configuration = self.0.run_local(function, &[])?.unpack_first()?;

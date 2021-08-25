@@ -4,6 +4,17 @@ use once_cell::sync::OnceCell;
 use crate::engine::ton_contracts::*;
 
 /// External function
+pub fn connector_counter() -> &'static ton_abi::Function {
+    static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
+    FUNCTION.get_or_init(|| {
+        FunctionBuilder::new("connectorCounter")
+            .default_headers()
+            .out_arg("counter", ton_abi::ParamType::Uint(64))
+            .build()
+    })
+}
+
+/// External function
 pub fn bridge_configuration() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
     FUNCTION.get_or_init(|| {

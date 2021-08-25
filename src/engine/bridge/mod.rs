@@ -257,23 +257,31 @@ impl Bridge {
             .ok_or(BridgeError::BridgeAccountNotFound)?;
         let bridge = BridgeContract(&contract);
 
+        let connector_count = bridge.connector_counter()?;
+
         let mut state = self.state.write();
 
         // Iterate for all connectors
-        // TODO: get exact number of connectors
-        for id in 0.. {
+        for id in 0..connector_count {
             // Compute next connector address
             let connector_account = bridge.derive_connector_address(id)?;
 
             // Extract details from contract
             let details = match shard_accounts.find_account(&connector_account)? {
-                Some(contract) => ConnectorContract(&contract).get_details()?,
+                Some(contract) => match ConnectorContract(&contract).get_details() {
+                    Ok(details) => details,
+                    Err(e) => {
+                        log::error!(
+                            "Failed to get connector details {}: {:?}",
+                            connector_account.to_hex_string(),
+                            e
+                        );
+                        continue;
+                    }
+                },
                 None => {
-                    log::info!(
-                        "Last connector not found: {}",
-                        connector_account.to_hex_string()
-                    );
-                    break;
+                    log::error!("Connector not found: {}", connector_account.to_hex_string());
+                    continue;
                 }
             };
             log::info!("Found configuration connector {}: {:?}", id, details);
