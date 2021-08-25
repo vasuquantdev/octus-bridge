@@ -386,7 +386,8 @@ impl Bridge {
     ) -> Result<()> {
         let details = EthEventConfigurationContract(contract).get_details()?;
 
-        let topic_hash = get_topic_hash(&details.basic_configuration.event_abi)?;
+        let eth_event_abi = decode_eth_event_abi(&details.basic_configuration.event_abi)?;
+        let topic_hash = get_topic_hash(&eth_event_abi);
         let eth_contract_address = details.network_configuration.event_emitter;
 
         let eth_subscriber = self
