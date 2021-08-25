@@ -254,6 +254,10 @@ impl EthSubscriber {
     async fn save_logs(&self, logs: Vec<StoredEthEvent>) -> Result<Vec<Uuid>> {
         // TODO: use transaction
 
+        if logs.is_empty() {
+            return Ok(Vec::new());
+        }
+
         let connection = self.state.get_connection().await.map(EthState)?;
 
         let len = logs.len();
