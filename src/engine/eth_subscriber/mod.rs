@@ -13,13 +13,12 @@ use web3::api::Namespace;
 use web3::types::{BlockNumber, FilterBuilder, H256, U64};
 use web3::{transports::Http, Transport};
 
-use self::eth_config::EthConfig;
 use self::models::StoredEthEvent;
+use crate::config::*;
 use crate::engine::state::*;
 use crate::filter_log;
 use crate::utils::*;
 
-mod eth_config;
 pub mod models;
 
 pub struct EthSubscriberRegistry {
@@ -28,13 +27,20 @@ pub struct EthSubscriberRegistry {
 }
 
 impl EthSubscriberRegistry {
-    pub fn new(state: Arc<State>) -> Result<Arc<Self>> {
-        // TODO: add config and create subscriber for each chain id
-
-        Ok(Arc::new(Self {
+    pub async fn new<I>(state: Arc<State>, networks: I) -> Result<Arc<Self>>
+    where
+        I: IntoIterator<Item = (u32, EthConfig)>,
+    {
+        let registry = Arc::new(Self {
             state,
             subscribers: Default::default(),
-        }))
+        });
+
+        for (chain_id, config) in networks {
+            registry.new_subscriber(chain_id, config).await?;
+        }
+
+        Ok(registry)
     }
 
     pub async fn new_subscriber(&self, chain_id: u32, config: EthConfig) -> Result<()> {

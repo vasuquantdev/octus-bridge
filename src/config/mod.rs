@@ -1,9 +1,14 @@
+use std::collections::HashMap;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use nekoton_utils::*;
 use serde::{Deserialize, Serialize};
+
+pub use self::eth_config::*;
+
+mod eth_config;
 
 #[derive(Serialize, Deserialize)]
 pub struct RelayConfig {
@@ -20,6 +25,7 @@ pub struct BridgeConfig {
     #[serde(with = "serde_address")]
     pub bridge_address: ton_block::MsgAddressInt,
     pub db_path: PathBuf,
+    pub networks: HashMap<u32, EthConfig>,
 }
 
 impl ConfigExt for RelayConfig {

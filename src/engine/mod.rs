@@ -99,7 +99,8 @@ impl EngineContext {
         )
         .await?;
 
-        let eth_subscribers = EthSubscriberRegistry::new(state.clone())?;
+        let eth_subscribers =
+            EthSubscriberRegistry::new(state.clone(), settings.networks.clone()).await?;
 
         Ok(Arc::new(Self {
             settings,
