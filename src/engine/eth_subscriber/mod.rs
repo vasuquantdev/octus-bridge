@@ -4,13 +4,11 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use dashmap::DashMap;
-use futures::{SinkExt, Stream};
 use parking_lot::RwLock;
 use tiny_adnl::utils::*;
-use tokio::sync::Semaphore;
+use tokio::sync::{mpsc, Semaphore};
 use tokio::time::timeout;
 use ton_types::UInt256;
-use uuid::Uuid;
 use web3::api::Namespace;
 use web3::types::{BlockNumber, FilterBuilder, H256, U64};
 use web3::{transports::Http, Transport};
@@ -87,7 +85,7 @@ impl EthSubscriber {
         let pool = Arc::new(Semaphore::new(config.pool_size));
 
         let current_height = {
-            let conn = state.get_connection().await?;
+            let mut conn = state.get_connection().await?;
             conn.eth_state().get_last_block_number(chain_id)?
         };
 
@@ -159,60 +157,58 @@ impl EthSubscriber {
             .context("No events for tx. Assuming confirmation is fake")
     }
 
-    pub fn run(self: &Arc<Self>) -> impl Stream<Item = Uuid> {
-        // TODO: replace `DB error` with proper handlers
+    pub fn run(self: &Arc<Self>) -> EventsBatchesRx {
+        // TODO: replace `DB ERROR` with proper handlers
 
-        let (mut events_tx, events_rx) = futures::channel::mpsc::unbounded();
-        let this = Arc::downgrade(self);
+        let (events_tx, events_rx) = mpsc::unbounded_channel();
+
+        let api_request_strategy = generate_fixed_timeout_config(
+            self.config.poll_interval,
+            self.config.maximum_failed_responses_time,
+        );
+
+        let subscriber = Arc::downgrade(self);
+
         tokio::spawn(async move {
             loop {
-                let this = match this.upgrade() {
-                    Some(a) => a,
-                    None => {
-                        log::error!("Eth subscriber is dropped.");
-                        return;
-                    }
+                let subscriber = match subscriber.upgrade() {
+                    Some(subscriber) => subscriber,
+                    None => return,
                 };
-                let ethereum_actual_height = match retry(
-                    || this.get_current_height(),
-                    generate_fixed_timeout_config(
-                        this.config.poll_interval,
-                        this.config.maximum_failed_responses_time,
-                    ),
+
+                let current_height = match retry(
+                    || subscriber.get_current_height(),
+                    api_request_strategy,
                     "get actual ethereum height",
                 )
                 .await
                 {
-                    Ok(a) => a,
+                    Ok(height) => height,
+                    Err(e) if is_incomplete_message(&e) => continue,
                     Err(e) => {
-                        if e.to_string().contains("hyper::Error(IncompleteMessage)") {
-                            continue;
-                        }
                         log::error!("Failed getting actual ethereum height: {}", e);
                         continue;
                     }
                 };
 
-                let last_id = this
-                    .use_eth_state(|state| state.get_last_block_number(this.chain_id))
+                let last_height = subscriber
+                    .use_eth_state(|state| state.get_last_block_number(subscriber.chain_id))
                     .await
                     .expect("DB ERROR");
 
-                if last_id == ethereum_actual_height {
-                    tokio::time::sleep(this.config.poll_interval).await;
+                if last_height == current_height {
+                    tokio::time::sleep(subscriber.config.poll_interval).await;
                     continue;
                 }
-                let logs = match retry(
+
+                let events = match retry(
                     || {
                         timeout(
-                            this.config.get_timeout,
-                            this.process_block(last_id, ethereum_actual_height),
+                            subscriber.config.get_timeout,
+                            subscriber.process_block(last_height, current_height),
                         )
                     },
-                    generate_fixed_timeout_config(
-                        this.config.poll_interval,
-                        this.config.maximum_failed_responses_time,
-                    ),
+                    api_request_strategy,
                     "process block",
                 )
                 .await
@@ -220,10 +216,10 @@ impl EthSubscriber {
                     Ok(Ok(a)) => a,
                     Ok(Err(e)) => {
                         log::error!(
-                            "FATAL ERROR. Failed processing eth block: {:#?}. From: {}, To: {}",
+                            "Failed processing eth block: {:?} in time range from {} to {}",
                             e,
-                            last_id,
-                            ethereum_actual_height
+                            last_height,
+                            current_height
                         );
                         continue;
                     }
@@ -233,20 +229,23 @@ impl EthSubscriber {
                     }
                 };
 
-                for uuid in this.save_logs(logs).await.expect("DB ERROR") {
-                    if let Err(e) = events_tx.send(uuid).await {
-                        log::error!("CRITICAL ERROR: failed sending event notify: {}", e);
-                        return;
-                    }
+                if let Err(e) = subscriber.save_events(current_height, &events).await {
+                    log::error!("Failed to save new ETH events: {:?}", e);
+                    continue;
                 }
 
-                this.use_eth_state(|state| {
-                    state.block_processed(ethereum_actual_height, this.chain_id)
-                })
-                .await
-                .expect("DB error");
+                let batch = EventsBatch {
+                    from: last_height,
+                    to: current_height,
+                    events,
+                };
+
+                if events_tx.send(batch).is_err() {
+                    return;
+                }
             }
         });
+
         events_rx
     }
 
@@ -277,21 +276,15 @@ impl EthSubscriber {
         Ok(logs)
     }
 
-    async fn save_logs(&self, logs: Vec<StoredEthEvent>) -> Result<Vec<Uuid>> {
-        // TODO: use transaction
-
-        if logs.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let connection = self.state.get_connection().await.map(EthState)?;
-
-        let len = logs.len();
-        logs.into_iter()
-            .try_fold(Vec::with_capacity(len), |mut uuids, event| {
-                uuids.push(connection.new_event(event)?);
-                Ok(uuids)
-            })
+    async fn save_events(&self, last_block_number: u64, events: &[StoredEthEvent]) -> Result<()> {
+        self.use_eth_state(|mut state| {
+            if events.is_empty() {
+                state.set_last_block_number(self.chain_id, last_block_number)
+            } else {
+                state.save_events(self.chain_id, events, last_block_number)
+            }
+        })
+        .await
     }
 
     async fn get_current_height(&self) -> Result<u64> {
@@ -308,6 +301,15 @@ impl EthSubscriber {
         self.state.get_connection().await.map(EthState).and_then(f)
     }
 }
+
+#[derive(Debug, Clone)]
+pub struct EventsBatch {
+    pub from: u64,
+    pub to: u64,
+    pub events: Vec<StoredEthEvent>,
+}
+
+pub type EventsBatchesRx = mpsc::UnboundedReceiver<EventsBatch>;
 
 #[derive(Default)]
 struct TopicsMap {
@@ -386,3 +388,9 @@ struct TopicsMapEntry {
 }
 
 type EthApi = web3::api::Eth<Http>;
+
+fn is_incomplete_message(error: &anyhow::Error) -> bool {
+    error
+        .to_string()
+        .contains("hyper::Error(IncompleteMessage)")
+}
