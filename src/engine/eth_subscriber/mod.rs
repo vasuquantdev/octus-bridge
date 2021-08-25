@@ -16,14 +16,12 @@ use web3::Web3;
 
 use self::eth_config::EthConfig;
 use self::models::StoredEthEvent;
-use self::utils::*;
 use crate::engine::state::*;
 use crate::filter_log;
 use crate::utils::*;
 
 mod eth_config;
 pub mod models;
-mod utils;
 
 pub struct EthSubscriberRegistry {
     state: Arc<State>,
@@ -70,8 +68,7 @@ pub struct EthSubscriber {
     config: EthConfig,
     web3: Web3<Http>,
     pool: Arc<Semaphore>,
-    topics: DashSet<[u8; 32]>,
-    addresses: DashSet<ethabi::Address>,
+    topics: DashSet<(ethabi::Address, [u8; 32])>,
     current_height: Arc<AtomicU64>,
     state: Arc<State>,
 }
@@ -93,7 +90,6 @@ impl EthSubscriber {
             web3,
             pool,
             topics: Default::default(),
-            addresses: Default::default(),
             current_height: Arc::new(current_height.into()),
             state,
         }))
@@ -122,7 +118,7 @@ impl EthSubscriber {
                 };
                 let ethereum_actual_height = match retry(
                     || this.get_current_height(),
-                    generate_fixed_config(
+                    generate_fixed_timeout_config(
                         this.config.poll_interval,
                         this.config.maximum_failed_responses_time,
                     ),
@@ -156,7 +152,7 @@ impl EthSubscriber {
                             this.process_block(last_id, ethereum_actual_height),
                         )
                     },
-                    generate_fixed_config(
+                    generate_fixed_timeout_config(
                         this.config.poll_interval,
                         this.config.maximum_failed_responses_time,
                     ),
@@ -199,14 +195,13 @@ impl EthSubscriber {
 
     async fn process_block(&self, from: u64, to: u64) -> Result<Vec<StoredEthEvent>> {
         let (addresses, topics): (Vec<_>, Vec<_>) = {
-            (
-                self.addresses.iter().map(|x| *x.key()).collect(),
-                self.topics
-                    .iter()
-                    .map(|x| *x.key())
-                    .map(H256::from)
-                    .collect(),
-            )
+            let mut addresses = Vec::with_capacity(self.topics.len());
+            let mut topics = Vec::with_capacity(self.topics.len());
+            for item in self.topics.iter() {
+                addresses.push(item.key().0);
+                topics.push(H256::from(item.key().1));
+            }
+            (addresses, topics)
         };
 
         if addresses.is_empty() && topics.is_empty() {
@@ -284,28 +279,12 @@ impl EthSubscriber {
             })
     }
 
-    pub fn subscribe_topic(&self, abi: &str) -> Result<()> {
-        let topic_hash = utils::get_topic_hash(abi)?;
-        self.topics.insert(topic_hash);
-        Ok(())
+    pub fn subscribe(&self, topic_hash: [u8; 32], address: ethabi::Address) {
+        self.topics.insert((address, topic_hash));
     }
 
-    pub fn subscribe_address(&self, address: ethabi::Address) {
-        self.addresses.insert(address);
-    }
-
-    pub fn unsubscribe_address(&self, address: &ethabi::Address) {
-        self.addresses.remove(address);
-    }
-
-    pub fn unsubscribe_by_encoded_topic<K: AsRef<[u8]>>(&self, key: K) {
-        self.topics.remove(key.as_ref());
-    }
-
-    pub fn unsubscribe_by_abi(&self, abi: &str) -> Result<()> {
-        let topic_hash = utils::get_topic_hash(abi)?;
-        self.topics.remove(&topic_hash);
-        Ok(())
+    pub fn unsubscribe(&self, address: &ethabi::Address, topic_hash: &[u8; 32]) {
+        self.topics.remove(&(*address, *topic_hash));
     }
 
     async fn get_current_height(&self) -> Result<u64> {

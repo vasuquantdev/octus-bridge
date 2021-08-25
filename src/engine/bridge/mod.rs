@@ -386,6 +386,9 @@ impl Bridge {
     ) -> Result<()> {
         let details = EthEventConfigurationContract(contract).get_details()?;
 
+        let topic_hash = get_topic_hash(&details.basic_configuration.event_abi)?;
+        let eth_contract_address = details.network_configuration.event_emitter;
+
         let eth_subscriber = self
             .context
             .eth_subscribers
@@ -393,8 +396,6 @@ impl Bridge {
             .ok_or(BridgeError::UnknownChainId)?;
 
         // TODO: check current block for chain id
-
-        let eth_contract_address = details.network_configuration.event_emitter;
 
         add_event_code_hash(
             &mut state.event_code_hashes,
@@ -416,7 +417,7 @@ impl Bridge {
             }
         };
 
-        eth_subscriber.subscribe_address(eth_contract_address.into());
+        eth_subscriber.subscribe(topic_hash, eth_contract_address.into());
 
         self.context
             .ton_subscriber

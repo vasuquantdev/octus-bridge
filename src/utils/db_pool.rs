@@ -18,7 +18,7 @@ impl PoolExt for Pool {
     async fn get_connection(&'_ self) -> Result<PooledConnection<'_>> {
         match self.get().await {
             Ok(connection) => Ok(connection),
-            Err(bb8::RunError::User(e)) => Err(e.into()),
+            Err(bb8::RunError::User(e)) => Err(e),
             Err(bb8::RunError::TimedOut) => anyhow::bail!("DB connection timeout"),
         }
     }

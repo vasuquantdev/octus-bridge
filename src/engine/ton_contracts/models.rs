@@ -168,8 +168,8 @@ pub struct TonEventConfigurationDetails {
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi)]
 pub struct BasicConfiguration {
-    #[abi]
-    pub event_abi: Vec<u8>,
+    #[abi(string)]
+    pub event_abi: String,
     #[abi(with = "address_only_hash")]
     pub staking: UInt256,
     #[abi]

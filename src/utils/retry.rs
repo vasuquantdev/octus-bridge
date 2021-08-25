@@ -1,8 +1,9 @@
+use std::convert::TryInto;
 use std::future::Future;
 use std::time::Duration;
 
-use tryhard::backoff_strategies::BackoffStrategy;
-use tryhard::{RetryFutureConfig, RetryPolicy};
+use tryhard::backoff_strategies::{BackoffStrategy, ExponentialBackoff, FixedBackoff};
+use tryhard::{NoOnRetry, RetryFutureConfig, RetryPolicy};
 
 /// Retries future, logging unsuccessful retries with `message`
 pub async fn retry<MakeFutureT, T, E, Fut, BackoffT, OnRetryT>(
@@ -29,6 +30,33 @@ where
     });
     let res = tryhard::retry_fn(producer).with_config(config).await;
     res
+}
+
+#[inline]
+pub fn generate_default_timeout_config(
+    total_time: Duration,
+) -> RetryFutureConfig<ExponentialBackoff, NoOnRetry> {
+    let max_delay = Duration::from_secs(600);
+    let times = crate::utils::calculate_times_from_max_delay(
+        Duration::from_secs(1),
+        2f64,
+        max_delay,
+        total_time,
+    );
+    tryhard::RetryFutureConfig::new(times)
+        .exponential_backoff(Duration::from_secs(1))
+        .max_delay(Duration::from_secs(600))
+}
+
+#[inline]
+pub fn generate_fixed_timeout_config(
+    sleep_time: Duration,
+    total_time: Duration,
+) -> RetryFutureConfig<FixedBackoff, NoOnRetry> {
+    let times = (total_time.as_secs() / sleep_time.as_secs())
+        .try_into()
+        .expect("Overflow");
+    tryhard::RetryFutureConfig::new(times).fixed_backoff(sleep_time)
 }
 
 /// Calculates required number of steps, to get sum of retries ≈ `total_retry_time`.

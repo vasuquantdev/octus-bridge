@@ -1,38 +1,6 @@
-use anyhow::Context;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use ethabi::Contract;
 use serde_json::Value;
-use std::convert::TryInto;
-use std::time::Duration;
-use tryhard::backoff_strategies::{ExponentialBackoff, FixedBackoff};
-use tryhard::{NoOnRetry, RetryFutureConfig};
-
-#[inline]
-pub fn generate_default_timeout_config(
-    total_time: Duration,
-) -> RetryFutureConfig<ExponentialBackoff, NoOnRetry> {
-    let max_delay = Duration::from_secs(600);
-    let times = crate::utils::calculate_times_from_max_delay(
-        Duration::from_secs(1),
-        2f64,
-        max_delay,
-        total_time,
-    );
-    tryhard::RetryFutureConfig::new(times)
-        .exponential_backoff(Duration::from_secs(1))
-        .max_delay(Duration::from_secs(600))
-}
-
-#[inline]
-pub fn generate_fixed_config(
-    sleep_time: Duration,
-    total_time: Duration,
-) -> RetryFutureConfig<FixedBackoff, NoOnRetry> {
-    let times = (total_time.as_secs() / sleep_time.as_secs())
-        .try_into()
-        .expect("Overflow");
-    tryhard::RetryFutureConfig::new(times).fixed_backoff(sleep_time)
-}
 
 pub fn get_topic_hash(abi: &str) -> Result<[u8; 32]> {
     let abi: Value = serde_json::from_str(abi).context("Bad value")?;
@@ -50,7 +18,7 @@ pub fn get_topic_hash(abi: &str) -> Result<[u8; 32]> {
 
 #[cfg(test)]
 mod test {
-    use crate::engine::eth_subscriber::utils::get_topic_hash;
+    use super::*;
 
     const ABI: &str = r#"
   {
