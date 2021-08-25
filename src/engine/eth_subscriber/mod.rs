@@ -3,16 +3,18 @@ use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use dashmap::{DashMap, DashSet};
+use dashmap::DashMap;
 use futures::{SinkExt, Stream};
 use nekoton_utils::TrustMe;
+use parking_lot::RwLock;
+use tiny_adnl::utils::*;
 use tokio::sync::Semaphore;
 use tokio::time::timeout;
+use ton_types::UInt256;
 use uuid::Uuid;
-use web3::transports::Http;
-use web3::types::U64;
-use web3::types::{BlockNumber, FilterBuilder, H256};
-use web3::Web3;
+use web3::api::Namespace;
+use web3::types::{BlockNumber, FilterBuilder, H256, U64};
+use web3::{transports::Http, Transport};
 
 use self::eth_config::EthConfig;
 use self::models::StoredEthEvent;
@@ -62,13 +64,12 @@ impl EthSubscriberRegistry {
     }
 }
 
-#[derive(Clone)]
 pub struct EthSubscriber {
     chain_id: u32,
     config: EthConfig,
-    web3: Web3<Http>,
+    api: EthApi,
     pool: Arc<Semaphore>,
-    topics: DashSet<(ethabi::Address, [u8; 32])>,
+    topics: RwLock<TopicsMap>,
     current_height: Arc<AtomicU64>,
     state: Arc<State>,
 }
@@ -76,7 +77,7 @@ pub struct EthSubscriber {
 impl EthSubscriber {
     async fn new(state: Arc<State>, chain_id: u32, config: EthConfig) -> Result<Arc<Self>> {
         let transport = web3::transports::Http::new(config.endpoint.as_str())?;
-        let web3 = web3::Web3::new(transport);
+        let api = web3::api::Eth::new(transport);
         let pool = Arc::new(Semaphore::new(config.pool_size));
 
         let current_height = {
@@ -87,7 +88,7 @@ impl EthSubscriber {
         Ok(Arc::new(Self {
             chain_id,
             config,
-            web3,
+            api,
             pool,
             topics: Default::default(),
             current_height: Arc::new(current_height.into()),
@@ -194,35 +195,24 @@ impl EthSubscriber {
     }
 
     async fn process_block(&self, from: u64, to: u64) -> Result<Vec<StoredEthEvent>> {
-        let (addresses, topics): (Vec<_>, Vec<_>) = {
-            let mut addresses = Vec::with_capacity(self.topics.len());
-            let mut topics = Vec::with_capacity(self.topics.len());
-            for item in self.topics.iter() {
-                addresses.push(item.key().0);
-                topics.push(H256::from(item.key().1));
-            }
-            (addresses, topics)
+        let filter = match self.topics.read().make_filter(from, to) {
+            Some(filter) => filter,
+            None => return Ok(Vec::new()),
         };
 
-        if addresses.is_empty() && topics.is_empty() {
-            return Err(anyhow::anyhow!("Addresses and topics are empty. Cowardly refusing to process all ethereum transactions"));
-        }
-
-        let filter = FilterBuilder::default()
-            .address(addresses)
-            .topics(Some(topics), None, None, None)
-            .from_block(BlockNumber::Number(U64::from(from)))
-            .to_block(BlockNumber::Number(U64::from(to)))
-            .build();
-
         let _permit = self.pool.acquire().await;
-        let logs = retry(
-            || self.web3.eth().logs(filter.clone()),
+        let logs: Vec<web3::types::Log> = retry(
+            || {
+                let transport = self.api.transport();
+                let request = transport.execute("eth_getLogs", vec![filter.clone()]);
+                web3::helpers::CallFuture::new(request)
+            },
             generate_default_timeout_config(self.config.maximum_failed_responses_time),
             "get contract logs",
         )
         .await
         .context("Failed getting eth logs")?;
+
         let logs = logs
             .into_iter()
             .map(StoredEthEvent::try_from)
@@ -234,12 +224,7 @@ impl EthSubscriber {
     pub async fn check_transaction(&self, hash: H256, event_index: u32) -> Result<StoredEthEvent> {
         let _permission = self.pool.acquire().await;
         let receipt = retry(
-            || {
-                timeout(
-                    self.config.get_timeout,
-                    self.web3.eth().transaction_receipt(hash),
-                )
-            },
+            || timeout(self.config.get_timeout, self.api.transaction_receipt(hash)),
             generate_default_timeout_config(self.config.maximum_failed_responses_time),
             "get transaction receipt",
         )
@@ -279,16 +264,30 @@ impl EthSubscriber {
             })
     }
 
-    pub fn subscribe(&self, topic_hash: [u8; 32], address: ethabi::Address) {
-        self.topics.insert((address, topic_hash));
+    pub fn subscribe(
+        &self,
+        configuration_account: UInt256,
+        address: ethabi::Address,
+        topic_hash: [u8; 32],
+    ) {
+        self.topics
+            .write()
+            .add_entry(configuration_account, address, topic_hash);
     }
 
-    pub fn unsubscribe(&self, address: &ethabi::Address, topic_hash: &[u8; 32]) {
-        self.topics.remove(&(*address, *topic_hash));
+    pub fn unsubscribe(
+        &self,
+        configuration_account: UInt256,
+        address: ethabi::Address,
+        topic_hash: [u8; 32],
+    ) {
+        self.topics
+            .write()
+            .remove_entry(configuration_account, address, topic_hash)
     }
 
     async fn get_current_height(&self) -> Result<u64> {
-        let res = *timeout(self.config.get_timeout, self.web3.eth().block_number())
+        let res = *timeout(self.config.get_timeout, self.api.block_number())
             .await
             .context("Timeout getting height")??
             .0
@@ -297,3 +296,81 @@ impl EthSubscriber {
         Ok(res)
     }
 }
+
+#[derive(Default)]
+struct TopicsMap {
+    entries: FxHashSet<TopicsMapEntry>,
+    unique_addresses: Vec<ethabi::Address>,
+    unique_topics: Vec<H256>,
+}
+
+impl TopicsMap {
+    fn make_filter(&self, from: u64, to: u64) -> Option<serde_json::Value> {
+        if self.unique_addresses.is_empty() || self.unique_topics.is_empty() {
+            return None;
+        }
+
+        let filter = FilterBuilder::default()
+            .address(self.unique_addresses.clone())
+            .topics(Some(self.unique_topics.clone()), None, None, None)
+            .from_block(BlockNumber::Number(U64::from(from)))
+            .to_block(BlockNumber::Number(U64::from(to)))
+            .build();
+        Some(web3::helpers::serialize(&filter))
+    }
+
+    fn add_entry(
+        &mut self,
+        configuration_account: UInt256,
+        address: ethabi::Address,
+        topic_hash: [u8; 32],
+    ) {
+        if self.entries.insert(TopicsMapEntry {
+            configuration_account,
+            address,
+            topic_hash,
+        }) {
+            self.update();
+        }
+    }
+
+    fn remove_entry(
+        &mut self,
+        configuration_account: UInt256,
+        address: ethabi::Address,
+        topic_hash: [u8; 32],
+    ) {
+        if self.entries.remove(&TopicsMapEntry {
+            configuration_account,
+            address,
+            topic_hash,
+        }) {
+            self.update()
+        }
+    }
+
+    fn update(&mut self) {
+        let capacity = self.entries.len();
+
+        let mut unique_addresses =
+            FxHashSet::with_capacity_and_hasher(capacity, Default::default());
+        let mut unique_topics = FxHashSet::with_capacity_and_hasher(capacity, Default::default());
+
+        self.entries.iter().for_each(|item| {
+            unique_addresses.insert(item.address);
+            unique_topics.insert(item.topic_hash);
+        });
+
+        self.unique_addresses = unique_addresses.into_iter().collect();
+        self.unique_topics = unique_topics.into_iter().map(H256).collect();
+    }
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+struct TopicsMapEntry {
+    configuration_account: UInt256,
+    address: ethabi::Address,
+    topic_hash: [u8; 32],
+}
+
+type EthApi = web3::api::Eth<Http>;

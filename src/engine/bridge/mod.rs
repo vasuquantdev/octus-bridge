@@ -417,7 +417,7 @@ impl Bridge {
             }
         };
 
-        eth_subscriber.subscribe(topic_hash, eth_contract_address.into());
+        eth_subscriber.subscribe(*account, eth_contract_address.into(), topic_hash);
 
         self.context
             .ton_subscriber
