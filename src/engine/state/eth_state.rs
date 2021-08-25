@@ -2,6 +2,7 @@ use std::borrow::Borrow;
 
 use anyhow::Result;
 use nekoton_utils::TrustMe;
+use tiny_adnl::utils::FxHashMap;
 use uuid::Uuid;
 
 use crate::engine::eth_subscriber::models::*;
@@ -29,13 +30,34 @@ where
         Ok(())
     }
 
-    pub fn get_last_block_id(&self, chain_id: u32) -> Result<u64> {
+    pub fn get_last_block_number(&self, chain_id: u32) -> Result<u64> {
         let block_number: u64 = self.conn().query_row_in_place(
             "SELECT block_number FROM eth_last_block WHERE chain_id = ?1",
             rusqlite::params![chain_id],
             |row| row.get(0),
         )?;
         Ok(block_number)
+    }
+
+    pub fn get_last_block_numbers(&self) -> Result<FxHashMap<u32, u64>> {
+        fn process_row(row: rusqlite::Result<(u32, u64)>) -> Option<(u32, u64)> {
+            match row {
+                Ok(row) => Some(row),
+                Err(e) => {
+                    log::error!("Failed fetching ETH event from db: {:?}", e);
+                    return None;
+                }
+            }
+        }
+
+        let mut stmt = self
+            .conn()
+            .prepare("SELECT chain_id, block_number FROM eth_last_block")?;
+        let result = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .filter_map(process_row)
+            .collect();
+        Ok(result)
     }
 
     pub fn new_event(&self, event: StoredEthEvent) -> Result<Uuid> {

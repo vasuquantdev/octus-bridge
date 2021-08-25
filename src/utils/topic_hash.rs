@@ -1,7 +1,4 @@
-use std::collections::HashMap;
-
-use anyhow::{Context, Result};
-use ethabi::Contract;
+use anyhow::Result;
 use serde::Deserialize;
 
 pub fn decode_eth_event_abi(abi: &str) -> Result<ethabi::Event> {

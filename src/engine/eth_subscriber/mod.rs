@@ -5,7 +5,6 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use dashmap::DashMap;
 use futures::{SinkExt, Stream};
-use nekoton_utils::TrustMe;
 use parking_lot::RwLock;
 use tiny_adnl::utils::*;
 use tokio::sync::Semaphore;
@@ -62,6 +61,13 @@ impl EthSubscriberRegistry {
         // Not cloning will deadlock
         self.subscribers.get(&chain_id).map(|x| x.clone())
     }
+
+    pub async fn get_last_block_numbers(&self) -> Result<FxHashMap<u32, u64>> {
+        self.state
+            .get_connection()
+            .await
+            .and_then(|conn| EthState(conn).get_last_block_numbers())
+    }
 }
 
 pub struct EthSubscriber {
@@ -82,7 +88,7 @@ impl EthSubscriber {
 
         let current_height = {
             let conn = state.get_connection().await?;
-            conn.eth_state().get_last_block_id(chain_id)?
+            conn.eth_state().get_last_block_number(chain_id)?
         };
 
         Ok(Arc::new(Self {
@@ -96,11 +102,61 @@ impl EthSubscriber {
         }))
     }
 
-    async fn use_eth_state<F, T>(&self, f: F) -> Result<T>
-    where
-        F: FnOnce(EthState<PooledConnection<'_>>) -> Result<T>,
-    {
-        self.state.get_connection().await.map(EthState).and_then(f)
+    pub fn subscribe(
+        &self,
+        configuration_account: UInt256,
+        address: ethabi::Address,
+        topic_hash: [u8; 32],
+    ) {
+        self.topics
+            .write()
+            .add_entry(configuration_account, address, topic_hash);
+    }
+
+    pub fn unsubscribe(
+        &self,
+        configuration_account: UInt256,
+        address: ethabi::Address,
+        topic_hash: [u8; 32],
+    ) {
+        self.topics
+            .write()
+            .remove_entry(configuration_account, address, topic_hash)
+    }
+
+    pub async fn get_last_processed_block(&self) -> Result<u64> {
+        self.use_eth_state(|state| state.get_last_block_number(self.chain_id))
+            .await
+    }
+
+    pub async fn check_transaction(&self, hash: H256, event_index: u32) -> Result<StoredEthEvent> {
+        let _permission = self.pool.acquire().await;
+        let receipt = retry(
+            || timeout(self.config.get_timeout, self.api.transaction_receipt(hash)),
+            generate_default_timeout_config(self.config.maximum_failed_responses_time),
+            "get transaction receipt",
+        )
+        .await
+        .context("Timed out getting receipt")?
+        .context("Failed getting logs")?
+        .with_context(|| format!("No logs found for {}", hex::encode(&hash.0)))?;
+
+        match receipt.status {
+            Some(a) => {
+                if a.as_u64() == 0 {
+                    anyhow::bail!("Tx has failed status")
+                }
+            }
+            None => anyhow::bail!("No status field in eth node answer"),
+        };
+
+        receipt
+            .logs
+            .into_iter()
+            .map(StoredEthEvent::try_from)
+            .filter_map(|x| filter_log!(x, "Failed mapping log to event in receipt logs"))
+            .find(|x| x.tx_hash == hash && x.event_index == event_index)
+            .context("No events for tx. Assuming confirmation is fake")
     }
 
     pub fn run(self: &Arc<Self>) -> impl Stream<Item = Uuid> {
@@ -138,7 +194,7 @@ impl EthSubscriber {
                 };
 
                 let last_id = this
-                    .use_eth_state(|state| state.get_last_block_id(this.chain_id))
+                    .use_eth_state(|state| state.get_last_block_number(this.chain_id))
                     .await
                     .expect("DB ERROR");
 
@@ -221,36 +277,6 @@ impl EthSubscriber {
         Ok(logs)
     }
 
-    pub async fn check_transaction(&self, hash: H256, event_index: u32) -> Result<StoredEthEvent> {
-        let _permission = self.pool.acquire().await;
-        let receipt = retry(
-            || timeout(self.config.get_timeout, self.api.transaction_receipt(hash)),
-            generate_default_timeout_config(self.config.maximum_failed_responses_time),
-            "get transaction receipt",
-        )
-        .await
-        .context("Timed out getting receipt")?
-        .context("Failed getting logs")?
-        .with_context(|| format!("No logs found for {}", hex::encode(&hash.0)))?;
-
-        match receipt.status {
-            Some(a) => {
-                if a.as_u64() == 0 {
-                    anyhow::bail!("Tx has failed status")
-                }
-            }
-            None => anyhow::bail!("No status field in eth node answer"),
-        };
-
-        receipt
-            .logs
-            .into_iter()
-            .map(StoredEthEvent::try_from)
-            .filter_map(|x| filter_log!(x, "Failed mapping log to event in receipt logs"))
-            .find(|x| x.tx_hash == hash && x.event_index == event_index)
-            .context("No events for tx. Assuming confirmation is fake")
-    }
-
     async fn save_logs(&self, logs: Vec<StoredEthEvent>) -> Result<Vec<Uuid>> {
         // TODO: use transaction
 
@@ -268,36 +294,18 @@ impl EthSubscriber {
             })
     }
 
-    pub fn subscribe(
-        &self,
-        configuration_account: UInt256,
-        address: ethabi::Address,
-        topic_hash: [u8; 32],
-    ) {
-        self.topics
-            .write()
-            .add_entry(configuration_account, address, topic_hash);
-    }
-
-    pub fn unsubscribe(
-        &self,
-        configuration_account: UInt256,
-        address: ethabi::Address,
-        topic_hash: [u8; 32],
-    ) {
-        self.topics
-            .write()
-            .remove_entry(configuration_account, address, topic_hash)
-    }
-
     async fn get_current_height(&self) -> Result<u64> {
-        let res = *timeout(self.config.get_timeout, self.api.block_number())
+        let result = timeout(self.config.get_timeout, self.api.block_number())
             .await
-            .context("Timeout getting height")??
-            .0
-            .get(0)
-            .trust_me();
-        Ok(res)
+            .context("Timeout getting height")??;
+        Ok(result.as_u64())
+    }
+
+    async fn use_eth_state<F, T>(&self, f: F) -> Result<T>
+    where
+        F: FnOnce(EthState<PooledConnection<'_>>) -> Result<T>,
+    {
+        self.state.get_connection().await.map(EthState).and_then(f)
     }
 }
 

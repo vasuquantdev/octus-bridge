@@ -92,6 +92,7 @@ impl Bridge {
         bridge.get_all_configurations().await?;
         bridge.get_all_events().await?;
 
+        bridge.start_eth_event_configurations_gc();
         bridge.start_ton_event_configurations_gc();
 
         Ok(bridge)
@@ -386,8 +387,8 @@ impl Bridge {
     ) -> Result<()> {
         let details = EthEventConfigurationContract(contract).get_details()?;
 
-        let eth_event_abi = decode_eth_event_abi(&details.basic_configuration.event_abi)?;
-        let topic_hash = get_topic_hash(&eth_event_abi);
+        let event_abi = decode_eth_event_abi(&details.basic_configuration.event_abi)?;
+        let topic_hash = get_topic_hash(&event_abi);
         let eth_contract_address = details.network_configuration.event_emitter;
 
         let eth_subscriber = self
@@ -396,7 +397,18 @@ impl Bridge {
             .get_subscriber(details.basic_configuration.chain_id)
             .ok_or(BridgeError::UnknownChainId)?;
 
-        // TODO: check current block for chain id
+        // TODO: save last processed blocks in eth_subscriber and access them through mutex
+        //
+        // let last_processed_height = eth_subscriber.get_last_processed_block().await?;
+        // if details.network_configuration.end_block_number < last_processed_height {
+        //     log::warn!(
+        //         "Ignoring ETH event configuration {}: end block number {} is less then current {}",
+        //         account.to_hex_string(),
+        //         details.network_configuration.end_block_number,
+        //         last_processed_height
+        //     );
+        //     return Ok(());
+        // }
 
         add_event_code_hash(
             &mut state.event_code_hashes,
@@ -408,8 +420,9 @@ impl Bridge {
 
         match state.eth_event_configurations.entry(*account) {
             hash_map::Entry::Vacant(entry) => {
-                entry.insert(EventConfigurationState {
+                entry.insert(EthEventConfigurationState {
                     details,
+                    event_abi,
                     observer: observer.clone(),
                 });
             }
@@ -456,7 +469,7 @@ impl Bridge {
 
         match state.ton_event_configurations.entry(*account) {
             hash_map::Entry::Vacant(entry) => {
-                entry.insert(EventConfigurationState {
+                entry.insert(TonEventConfigurationState {
                     details,
                     observer: observer.clone(),
                 });
@@ -507,6 +520,56 @@ impl Bridge {
         }
 
         Ok(())
+    }
+
+    fn start_eth_event_configurations_gc(self: &Arc<Self>) {
+        let bridge = Arc::downgrade(self);
+
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(10)).await;
+
+                let bridge = match bridge.upgrade() {
+                    Some(bridge) => bridge,
+                    None => return,
+                };
+
+                let last_block_heights = match bridge
+                    .context
+                    .eth_subscribers
+                    .get_last_block_numbers()
+                    .await
+                {
+                    Ok(heights) => heights,
+                    Err(e) => {
+                        log::error!("Failed to get last block heights: {:?}", e);
+                        continue;
+                    }
+                };
+
+                let mut state = bridge.state.write();
+                state.eth_event_configurations.retain(|account, state| {
+                    let chain_id = &state.details.basic_configuration.chain_id;
+                    let last_number = match last_block_heights.get(chain_id) {
+                        Some(height) => *height,
+                        None => {
+                            log::warn!("Found unknown chain id: {}", chain_id);
+                            return true;
+                        }
+                    };
+
+                    if (state.details.network_configuration.end_block_number as u64) < last_number {
+                        log::warn!(
+                            "Removing ETH event configuration {}",
+                            account.to_hex_string()
+                        );
+                        false
+                    } else {
+                        true
+                    }
+                });
+            }
+        });
     }
 
     fn start_ton_event_configurations_gc(self: &Arc<Self>) {
@@ -678,9 +741,16 @@ enum ConnectorConfigurationType {
 }
 
 #[derive(Clone)]
-struct EventConfigurationState<T, E> {
-    details: T,
-    observer: Arc<AccountObserver<E>>,
+struct EthEventConfigurationState {
+    details: EthEventConfigurationDetails,
+    event_abi: ethabi::Event,
+    observer: Arc<AccountObserver<EthEventConfigurationEvent>>,
+}
+
+#[derive(Clone)]
+struct TonEventConfigurationState {
+    details: TonEventConfigurationDetails,
+    observer: Arc<AccountObserver<TonEventConfigurationEvent>>,
 }
 
 trait TonEventConfigurationDetailsExt {
@@ -973,14 +1043,8 @@ fn read_external_in_msg(body: &ton_types::SliceData) -> Option<(UInt256, ton_typ
 type DefaultHeaders = (PubkeyHeader, TimeHeader, ExpireHeader);
 
 type ConnectorsMap = FxHashMap<UInt256, ConnectorState>;
-type EthEventConfigurationsMap = FxHashMap<
-    UInt256,
-    EventConfigurationState<EthEventConfigurationDetails, EthEventConfigurationEvent>,
->;
-type TonEventConfigurationsMap = FxHashMap<
-    UInt256,
-    EventConfigurationState<TonEventConfigurationDetails, TonEventConfigurationEvent>,
->;
+type EthEventConfigurationsMap = FxHashMap<UInt256, EthEventConfigurationState>;
+type TonEventConfigurationsMap = FxHashMap<UInt256, TonEventConfigurationState>;
 type EventCodeHashesMap = FxHashMap<UInt256, EventType>;
 
 #[derive(thiserror::Error, Debug)]
