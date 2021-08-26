@@ -24,6 +24,7 @@ pub mod models;
 pub struct EthSubscriberRegistry {
     state: Arc<State>,
     subscribers: DashMap<u32, Arc<EthSubscriber>>,
+    last_block_numbers: Arc<LastBlockNumbersMap>,
 }
 
 impl EthSubscriberRegistry {
@@ -31,9 +32,23 @@ impl EthSubscriberRegistry {
     where
         I: IntoIterator<Item = (u32, EthConfig)>,
     {
+        let last_block_numbers = Arc::new(
+            state
+                .get_connection()
+                .await
+                .and_then(|conn| EthState(conn).get_last_block_numbers())
+                .map(|map| {
+                    let mut result =
+                        FxDashMap::with_capacity_and_hasher(map.len(), Default::default());
+                    result.extend(map);
+                    result
+                })?,
+        );
+
         let registry = Arc::new(Self {
             state,
             subscribers: Default::default(),
+            last_block_numbers,
         });
 
         for (chain_id, config) in networks {
@@ -46,7 +61,13 @@ impl EthSubscriberRegistry {
     pub async fn new_subscriber(&self, chain_id: u32, config: EthConfig) -> Result<()> {
         use dashmap::mapref::entry::Entry;
 
-        let subscriber = EthSubscriber::new(self.state.clone(), chain_id, config).await?;
+        let subscriber = EthSubscriber::new(
+            self.state.clone(),
+            self.last_block_numbers.clone(),
+            chain_id,
+            config,
+        )
+        .await?;
 
         match self.subscribers.entry(chain_id) {
             Entry::Vacant(entry) => {
@@ -66,11 +87,15 @@ impl EthSubscriberRegistry {
         self.subscribers.get(&chain_id).map(|x| x.clone())
     }
 
-    pub async fn get_last_block_numbers(&self) -> Result<FxHashMap<u32, u64>> {
-        self.state
-            .get_connection()
-            .await
-            .and_then(|conn| EthState(conn).get_last_block_numbers())
+    pub fn get_last_block_number(&self, chain_id: u32) -> Result<u64> {
+        self.last_block_numbers
+            .get(&chain_id)
+            .map(|item| *item)
+            .ok_or_else(|| EthSubscriberError::UnknownChainId.into())
+    }
+
+    pub fn get_last_block_numbers(&self) -> &Arc<FxDashMap<u32, u64>> {
+        &self.last_block_numbers
     }
 }
 
@@ -82,10 +107,16 @@ pub struct EthSubscriber {
     topics: RwLock<TopicsMap>,
     current_height: Arc<AtomicU64>,
     state: Arc<State>,
+    last_block_numbers: Arc<LastBlockNumbersMap>,
 }
 
 impl EthSubscriber {
-    async fn new(state: Arc<State>, chain_id: u32, config: EthConfig) -> Result<Arc<Self>> {
+    async fn new(
+        state: Arc<State>,
+        last_block_numbers: Arc<LastBlockNumbersMap>,
+        chain_id: u32,
+        config: EthConfig,
+    ) -> Result<Arc<Self>> {
         let transport = web3::transports::Http::new(config.endpoint.as_str())?;
         let api = web3::api::Eth::new(transport);
         let pool = Arc::new(Semaphore::new(config.pool_size));
@@ -103,6 +134,7 @@ impl EthSubscriber {
             topics: Default::default(),
             current_height: Arc::new(current_height.into()),
             state,
+            last_block_numbers,
         }))
     }
 
@@ -128,9 +160,11 @@ impl EthSubscriber {
             .remove_entry(configuration_account, address, topic_hash)
     }
 
-    pub async fn get_last_processed_block(&self) -> Result<u64> {
-        self.use_eth_state(|state| state.get_last_block_number(self.chain_id))
-            .await
+    pub fn get_last_processed_block(&self) -> Result<u64> {
+        self.last_block_numbers
+            .get(&self.chain_id)
+            .map(|item| *item)
+            .ok_or_else(|| EthSubscriberError::UnknownChainId.into())
     }
 
     pub async fn check_transaction(&self, hash: H256, event_index: u32) -> Result<StoredEthEvent> {
@@ -239,6 +273,9 @@ impl EthSubscriber {
                     log::error!("Failed to save new ETH events: {:?}", e);
                     continue;
                 }
+                subscriber
+                    .last_block_numbers
+                    .insert(subscriber.chain_id, current_height);
 
                 let batch = EventsBatch {
                     from: last_height,
@@ -394,9 +431,16 @@ struct TopicsMapEntry {
 }
 
 type EthApi = web3::api::Eth<Http>;
+type LastBlockNumbersMap = FxDashMap<u32, u64>;
 
 fn is_incomplete_message(error: &anyhow::Error) -> bool {
     error
         .to_string()
         .contains("hyper::Error(IncompleteMessage)")
+}
+
+#[derive(thiserror::Error, Debug)]
+enum EthSubscriberError {
+    #[error("Unknown chain id")]
+    UnknownChainId,
 }

@@ -1,8 +1,8 @@
 use std::borrow::BorrowMut;
+use std::collections::HashMap;
 
 use anyhow::Result;
 use nekoton_utils::TrustMe;
-use tiny_adnl::utils::FxHashMap;
 use uuid::Uuid;
 
 use crate::engine::eth_subscriber::models::*;
@@ -39,7 +39,7 @@ where
         Ok(block_number)
     }
 
-    pub fn get_last_block_numbers(&self) -> Result<FxHashMap<u32, u64>> {
+    pub fn get_last_block_numbers(&self) -> Result<HashMap<u32, u64>> {
         fn process_row(row: rusqlite::Result<(u32, u64)>) -> Option<(u32, u64)> {
             match row {
                 Ok(row) => Some(row),

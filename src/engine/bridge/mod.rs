@@ -24,6 +24,9 @@ pub struct Bridge {
     bridge_observer: Arc<AccountObserver<BridgeEvent>>,
     state: Arc<RwLock<BridgeState>>,
 
+    pending_eth_events: Arc<FxDashMap<UInt256, PendingEthEvent>>,
+    pending_ton_events: Arc<FxDashMap<UInt256, PendingTonEvent>>,
+
     connectors_tx: AccountEventsTx<ConnectorEvent>,
     eth_event_configurations_tx: AccountEventsTx<EthEventConfigurationEvent>,
     ton_event_configurations_tx: AccountEventsTx<TonEventConfigurationEvent>,
@@ -48,6 +51,8 @@ impl Bridge {
             bridge_account,
             bridge_observer: bridge_observer.clone(),
             state: Arc::new(Default::default()),
+            pending_eth_events: Arc::new(Default::default()),
+            pending_ton_events: Arc::new(Default::default()),
             connectors_tx,
             eth_event_configurations_tx,
             ton_event_configurations_tx,
@@ -155,9 +160,28 @@ impl Bridge {
         self: Arc<Self>,
         (account, event): (UInt256, EthEventConfigurationEvent),
     ) -> Result<()> {
+        use dashmap::mapref::entry::Entry;
+
         match event {
-            EthEventConfigurationEvent::EventDeployed { vote_data, address } => {
-                todo!()
+            EthEventConfigurationEvent::EventDeployed { address, .. } => {
+                // TODO: check vote data
+
+                match self.pending_eth_events.entry(address) {
+                    Entry::Vacant(entry) => {
+                        let observer = AccountObserver::new(&self.eth_events_tx);
+                        entry.insert(PendingEthEvent {
+                            observer: observer.clone(),
+                        });
+
+                        self.context
+                            .ton_subscriber
+                            .add_transactions_subscription([address], &observer);
+
+                        Ok(())
+                    }
+                    // Do nothing, because event can be deployed more then once
+                    Entry::Occupied(_) => Ok(()),
+                }
             }
             EthEventConfigurationEvent::SetEndBlockNumber { end_block_number } => {
                 let mut state = self.state.write();
@@ -178,9 +202,28 @@ impl Bridge {
         self: Arc<Self>,
         (account, event): (UInt256, TonEventConfigurationEvent),
     ) -> Result<()> {
+        use dashmap::mapref::entry::Entry;
+
         match event {
-            TonEventConfigurationEvent::EventDeployed { vote_data, address } => {
-                todo!()
+            TonEventConfigurationEvent::EventDeployed { address, .. } => {
+                match self.pending_ton_events.entry(address) {
+                    Entry::Vacant(entry) => {
+                        let observer = AccountObserver::new(&self.ton_events_tx);
+                        entry.insert(PendingTonEvent {
+                            observer: observer.clone(),
+                        });
+
+                        self.context
+                            .ton_subscriber
+                            .add_transactions_subscription([address], &observer);
+
+                        Ok(())
+                    }
+                    Entry::Occupied(_) => {
+                        log::warn!("Got deployment message for pending event: {:x}", address);
+                        Ok(())
+                    }
+                }
             }
             TonEventConfigurationEvent::SetEndTimestamp { end_timestamp } => {
                 let mut state = self.state.write();
@@ -201,7 +244,15 @@ impl Bridge {
         self: Arc<Self>,
         (account, event): (UInt256, EthEvent),
     ) -> Result<()> {
-        todo!()
+        use dashmap::mapref::entry::Entry;
+
+        match self.pending_eth_events.entry(account) {
+            Entry::Occupied(entry) => {
+                todo!()
+            }
+            // Do nothing, because ETH events is only received for registered observers
+            Entry::Vacant(_) => Ok(()),
+        }
     }
 
     async fn process_ton_event(
@@ -397,18 +448,16 @@ impl Bridge {
             .get_subscriber(details.basic_configuration.chain_id)
             .ok_or(BridgeError::UnknownChainId)?;
 
-        // TODO: save last processed blocks in eth_subscriber and access them through mutex
-        //
-        // let last_processed_height = eth_subscriber.get_last_processed_block().await?;
-        // if details.network_configuration.end_block_number < last_processed_height {
-        //     log::warn!(
-        //         "Ignoring ETH event configuration {}: end block number {} is less then current {}",
-        //         account.to_hex_string(),
-        //         details.network_configuration.end_block_number,
-        //         last_processed_height
-        //     );
-        //     return Ok(());
-        // }
+        let last_processed_height = eth_subscriber.get_last_processed_block()?;
+        if (details.network_configuration.end_block_number as u64) < last_processed_height {
+            log::warn!(
+                "Ignoring ETH event configuration {}: end block number {} is less then current {}",
+                account.to_hex_string(),
+                details.network_configuration.end_block_number,
+                last_processed_height
+            );
+            return Ok(());
+        }
 
         add_event_code_hash(
             &mut state.event_code_hashes,
@@ -534,18 +583,7 @@ impl Bridge {
                     None => return,
                 };
 
-                let last_block_heights = match bridge
-                    .context
-                    .eth_subscribers
-                    .get_last_block_numbers()
-                    .await
-                {
-                    Ok(heights) => heights,
-                    Err(e) => {
-                        log::error!("Failed to get last block heights: {:?}", e);
-                        continue;
-                    }
-                };
+                let last_block_heights = bridge.context.eth_subscribers.get_last_block_numbers();
 
                 let mut state = bridge.state.write();
                 state.eth_event_configurations.retain(|account, state| {
@@ -701,21 +739,12 @@ fn add_event_code_hash(
     Ok(())
 }
 
-fn compute_vote_state(
-    public_key: &UInt256,
-    confirms: &[UInt256],
-    rejects: &[UInt256],
-    empty: &[UInt256],
-) -> VoteState {
-    if empty.contains(public_key) {
-        VoteState::Pending
-    } else if confirms.contains(public_key) {
-        VoteState::Confirmed
-    } else if rejects.contains(public_key) {
-        VoteState::Rejected
-    } else {
-        VoteState::NotIncluded
-    }
+struct PendingEthEvent {
+    observer: Arc<AccountObserver<EthEvent>>,
+}
+
+struct PendingTonEvent {
+    observer: Arc<AccountObserver<TonEvent>>,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -724,6 +753,25 @@ enum VoteState {
     Confirmed,
     Rejected,
     NotIncluded,
+}
+
+impl VoteState {
+    fn from_votes(
+        public_key: &UInt256,
+        confirms: &[UInt256],
+        rejects: &[UInt256],
+        empty: &[UInt256],
+    ) -> Self {
+        if empty.contains(public_key) {
+            Self::Pending
+        } else if confirms.contains(public_key) {
+            Self::Confirmed
+        } else if rejects.contains(public_key) {
+            Self::Rejected
+        } else {
+            Self::NotIncluded
+        }
+    }
 }
 
 #[derive(Clone)]
