@@ -211,6 +211,7 @@ impl Bridge {
                         let observer = AccountObserver::new(&self.ton_events_tx);
                         entry.insert(PendingTonEvent {
                             observer: observer.clone(),
+                            state: PendingTonEventState::Uninitialized,
                         });
 
                         self.context
@@ -260,6 +261,75 @@ impl Bridge {
         (account, event): (UInt256, TonEvent),
     ) -> Result<()> {
         todo!()
+    }
+
+    fn update_ton_event(
+        &self,
+        account: UInt256,
+        contract: ExistingContract,
+        pending: &mut PendingTonEvent,
+    ) -> Result<()> {
+        let details = EthEventContract(&contract).get_details()?;
+        if details.status == EventStatus::Initializing {
+            pending.state = PendingTonEventState::WaitingForInitialization;
+            return Ok(());
+        }
+
+        let public_key = Default::default(); // TODO: get from staking
+
+        let status = VoteState::from_votes(
+            &public_key,
+            &details.confirms,
+            &details.rejects,
+            &details.empty,
+        );
+
+        if status != VoteState::Pending {
+            pending.state = PendingTonEventState::Clearing;
+            return Ok(());
+        }
+
+        let decoded_data = match self
+            .state
+            .read()
+            .ton_event_configurations
+            .get(&details.event_init_data.configuration)
+        {
+            Some(configuration) => ton_abi::TokenValue::decode_params(
+                &configuration.event_abi,
+                details.event_init_data.vote_data.event_data.clone().into(),
+                2,
+            )
+            .and_then(map_ton_tokens_to_eth_bytes),
+            None => {
+                log::error!(
+                    "TON event configuration {:x} not found for event {:x}",
+                    details.event_init_data.configuration,
+                    account
+                );
+                pending.state = PendingTonEventState::Clearing;
+                return Ok(());
+            }
+        };
+
+        match decoded_data {
+            Ok(data) => {
+                pending.state = PendingTonEventState::WaitingForConfirm {
+                    public_key,
+                    signature: [0; 64], // TODO: compute signature from `data`
+                }
+            }
+            Err(e) => {
+                log::warn!(
+                    "Failed to compute vote data signature for {:x}: {:?}",
+                    account,
+                    e
+                );
+                pending.state = PendingTonEventState::WaitingForReject { public_key }
+            }
+        }
+
+        Ok(())
     }
 
     async fn check_connector_contract(&self, connector_account: UInt256) -> Result<()> {
@@ -439,7 +509,7 @@ impl Bridge {
         let details = EthEventConfigurationContract(contract).get_details()?;
 
         let event_abi = decode_eth_event_abi(&details.basic_configuration.event_abi)?;
-        let topic_hash = get_topic_hash(&event_abi);
+        let topic_hash = get_eth_topic_hash(&event_abi);
         let eth_contract_address = details.network_configuration.event_emitter;
 
         let eth_subscriber = self
@@ -508,6 +578,8 @@ impl Bridge {
             return Ok(());
         };
 
+        let event_abi = decode_ton_event_abi(&details.basic_configuration.event_abi)?;
+
         add_event_code_hash(
             &mut state.event_code_hashes,
             &details.basic_configuration.event_code,
@@ -520,6 +592,7 @@ impl Bridge {
             hash_map::Entry::Vacant(entry) => {
                 entry.insert(TonEventConfigurationState {
                     details,
+                    event_abi,
                     observer: observer.clone(),
                 });
             }
@@ -542,11 +615,13 @@ impl Bridge {
 
         for (_, accounts) in shard_accounts {
             accounts.iterate_with_keys(|hash, shard_account| {
+                // Get account from shard state
                 let account = match shard_account.read_account()? {
                     ton_block::Account::Account(account) => account,
                     ton_block::Account::AccountNone => return Ok(true),
                 };
 
+                // Try to get its hash
                 let code_hash = match account.storage.state() {
                     ton_block::AccountState::AccountActive(ton_block::StateInit {
                         code: Some(code),
@@ -555,12 +630,31 @@ impl Bridge {
                     _ => return Ok(true),
                 };
 
+                // Filter only known event contracts
                 let event_type = match state.event_code_hashes.get(&code_hash) {
                     Some(event_type) => event_type,
                     None => return Ok(true),
                 };
 
-                log::info!("FOUND EVENT {:?}: {}", event_type, hash.to_hex_string());
+                log::info!("FOUND EVENT {:?}: {:x}", event_type, hash);
+
+                // Extract data
+                let contract = ExistingContract {
+                    account,
+                    last_transaction_id: LastTransactionId::Exact(TransactionId {
+                        lt: shard_account.last_trans_lt(),
+                        hash: *shard_account.last_trans_hash(),
+                    }),
+                };
+
+                match event_type {
+                    EventType::Eth => {
+                        todo!()
+                    }
+                    EventType::Ton => {
+                        todo!()
+                    }
+                }
 
                 // TODO: get details and filter current
 
@@ -745,6 +839,29 @@ struct PendingEthEvent {
 
 struct PendingTonEvent {
     observer: Arc<AccountObserver<TonEvent>>,
+    state: PendingTonEventState,
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+enum PendingTonEventState {
+    Uninitialized,
+    WaitingForInitialization,
+    WaitingForConfirm {
+        public_key: UInt256,
+        signature: [u8; 64],
+    },
+    WaitingForReject {
+        public_key: UInt256,
+    },
+    Clearing,
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+enum EventAction {
+    WaitUntilInitialized,
+    Remove,
+    Confirm,
+    Reject,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -798,6 +915,7 @@ struct EthEventConfigurationState {
 #[derive(Clone)]
 struct TonEventConfigurationState {
     details: TonEventConfigurationDetails,
+    event_abi: Vec<ton_abi::Param>,
     observer: Arc<AccountObserver<TonEventConfigurationEvent>>,
 }
 

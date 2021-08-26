@@ -1,6 +1,26 @@
 use anyhow::Result;
 use ethabi::{ParamType as EthParamType, Token as EthTokenValue};
+use serde::Deserialize;
 use ton_abi::{ParamType as TonParamType, TokenValue as TonTokenValue};
+
+pub fn decode_ton_event_abi(abi: &str) -> Result<Vec<ton_abi::Param>> {
+    let params = serde_json::from_str::<Vec<ton_abi::Param>>(abi)?;
+    Ok(params)
+}
+
+pub fn decode_eth_event_abi(abi: &str) -> Result<ethabi::Event> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    pub enum Operation {
+        Event(ethabi::Event),
+    }
+
+    serde_json::from_str::<Operation>(&abi)
+        .map(|item| match item {
+            Operation::Event(event) => event,
+        })
+        .map_err(anyhow::Error::from)
+}
 
 pub fn map_eth_abi_to_ton(abi: &[EthParamType]) -> Result<Vec<TonParamType>> {
     abi.iter().map(map_eth_abi_param_to_ton).collect()
@@ -36,21 +56,13 @@ fn map_eth_abi_param_to_ton(param: &EthParamType) -> Result<TonParamType> {
 }
 
 /// Maps `Vec<TonTokenValue>` to bytes, which could be signed
-pub fn map_ton_tokens_to_eth_bytes(tokens: Vec<ton_abi::Token>) -> Vec<u8> {
-    let tokens: Vec<_> = tokens
+pub fn map_ton_tokens_to_eth_bytes(tokens: Vec<ton_abi::Token>) -> Result<Vec<u8>> {
+    let tokens = tokens
         .into_iter()
         .map(|token| token.value)
         .map(map_ton_token_to_eth)
-        .filter_map(|x| match x {
-            Ok(a) => Some(a),
-            Err(e) => {
-                log::error!("Failed mapping ton token to eth token: {:?}", e);
-                None
-            }
-        })
-        .collect();
-
-    ethabi::encode(&tokens).to_vec()
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(ethabi::encode(&tokens))
 }
 
 fn map_ton_token_to_eth(token: TonTokenValue) -> Result<EthTokenValue, AbiMappingError> {

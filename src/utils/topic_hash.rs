@@ -1,27 +1,13 @@
-use anyhow::Result;
-use serde::Deserialize;
-
-pub fn decode_eth_event_abi(abi: &str) -> Result<ethabi::Event> {
-    #[derive(Deserialize)]
-    #[serde(untagged)]
-    pub enum Operation {
-        Event(ethabi::Event),
-    }
-
-    serde_json::from_str::<Operation>(&abi)
-        .map(|item| match item {
-            Operation::Event(event) => event,
-        })
-        .map_err(anyhow::Error::from)
-}
-
-pub fn get_topic_hash(event: &ethabi::Event) -> [u8; 32] {
+pub fn get_eth_topic_hash(event: &ethabi::Event) -> [u8; 32] {
     event.signature().to_fixed_bytes()
 }
 
 #[cfg(test)]
 mod test {
+    use serde::Deserialize;
+
     use super::*;
+    use crate::utils::abi_mapping::*;
 
     const ABI: &str = r#"{
     "anonymous": false,
@@ -110,7 +96,7 @@ mod test {
     fn test_abi() {
         let expected = web3::signing::keccak256(b"StateChange(uint256,address)");
         let event = decode_eth_event_abi(ABI).unwrap();
-        assert_eq!(expected, get_topic_hash(&event));
+        assert_eq!(expected, get_eth_topic_hash(&event));
     }
 
     #[test]
