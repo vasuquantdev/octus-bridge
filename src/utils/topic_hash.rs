@@ -4,8 +4,6 @@ pub fn get_eth_topic_hash(event: &ethabi::Event) -> [u8; 32] {
 
 #[cfg(test)]
 mod test {
-    use serde::Deserialize;
-
     use super::*;
     use crate::utils::abi_mapping::*;
 

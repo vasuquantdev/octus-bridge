@@ -84,13 +84,13 @@ fn map_ton_token_to_eth(token: TonTokenValue) -> Result<EthTokenValue, AbiMappin
             EthTokenValue::Int(ethabi::Int::from_little_endian(&bytes))
         }
         TonTokenValue::Bool(a) => EthTokenValue::Bool(a),
-        TonTokenValue::FixedArray(tokens) => EthTokenValue::FixedArray(
+        TonTokenValue::FixedArray(_, tokens) => EthTokenValue::FixedArray(
             tokens
                 .into_iter()
                 .map(map_ton_token_to_eth)
                 .collect::<Result<_, _>>()?,
         ),
-        TonTokenValue::Array(tokens) => EthTokenValue::Array(
+        TonTokenValue::Array(_, tokens) => EthTokenValue::Array(
             tokens
                 .into_iter()
                 .map(map_ton_token_to_eth)

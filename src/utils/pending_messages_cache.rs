@@ -21,12 +21,14 @@ impl PendingMessagesCache {
 
         let mut min_expire_at: u32 = 0;
 
-        let entries = self.entries.lock();
-        entries.retain(|(account, item)| {
-            if !contains_account(account) {}
+        // let entries = self.entries.lock();
+        // entries.retain(|(account, item)| {
+        //     if !contains_account(account) {}
+        //
+        //     true
+        // });
 
-            true
-        });
+        todo!()
     }
 }
 

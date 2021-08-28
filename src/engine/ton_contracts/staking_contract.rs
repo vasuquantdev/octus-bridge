@@ -1,6 +1,8 @@
 use nekoton_abi::*;
 use once_cell::sync::OnceCell;
 
+use super::models::*;
+
 /// External responsible function
 pub fn is_active() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
@@ -53,7 +55,7 @@ pub fn current_relay_round_start_time() -> &'static ton_abi::Function {
     FUNCTION.get_or_init(|| {
         FunctionBuilder::new("currentRelayRoundStartTime")
             .time_header()
-            .out_arg("currentRelayRoundStartTime", ton_abi::ParamType::Uint(32))
+            .out_arg("start_time", ton_abi::ParamType::Uint(32))
             .build()
     })
 }
@@ -65,11 +67,7 @@ pub mod events {
         static EVENT: OnceCell<ton_abi::Event> = OnceCell::new();
         EVENT.get_or_init(|| {
             EventBuilder::new("RelayRoundInitialized")
-                .in_arg("round_num", ton_abi::ParamType::Uint(32))
-                .in_arg("round_start_time", ton_abi::ParamType::Uint(32))
-                .in_arg("round_addr", ton_abi::ParamType::Address)
-                .in_arg("relays_count", ton_abi::ParamType::Uint(32))
-                .in_arg("duplicate", ton_abi::ParamType::Bool)
+                .inputs(RelayRoundInitializedEvent::param_type())
                 .build()
         })
     }

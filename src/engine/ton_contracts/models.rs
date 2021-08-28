@@ -1,7 +1,7 @@
 use nekoton_abi::*;
 use ton_types::UInt256;
 
-#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain)]
+#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
 pub struct EthEventDetails {
     #[abi]
     pub event_init_data: EthEventInitData,
@@ -23,7 +23,7 @@ pub struct EthEventDetails {
     pub required_votes: u32,
 }
 
-#[derive(Debug, Clone, PackAbi, UnpackAbi)]
+#[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct EthEventInitData {
     #[abi]
     pub vote_data: EthEventVoteData,
@@ -35,18 +35,7 @@ pub struct EthEventInitData {
     pub chain_id: u32,
 }
 
-impl EthEventInitData {
-    pub fn make_params_tuple() -> ton_abi::ParamType {
-        TupleBuilder::new()
-            .arg("vote_data", EthEventVoteData::make_params_tuple())
-            .arg("configuration", ton_abi::ParamType::Address)
-            .arg("staking", ton_abi::ParamType::Address)
-            .arg("chain_id", ton_abi::ParamType::Uint(32))
-            .build()
-    }
-}
-
-#[derive(Debug, Clone, PackAbi, UnpackAbi)]
+#[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct EthEventVoteData {
     #[abi(with = "uint256_bytes")]
     pub event_transaction: UInt256,
@@ -60,19 +49,7 @@ pub struct EthEventVoteData {
     pub event_block: UInt256,
 }
 
-impl EthEventVoteData {
-    pub fn make_params_tuple() -> ton_abi::ParamType {
-        TupleBuilder::new()
-            .arg("event_transaction", ton_abi::ParamType::Uint(256))
-            .arg("event_index", ton_abi::ParamType::Uint(32))
-            .arg("event_data", ton_abi::ParamType::Cell)
-            .arg("event_block_number", ton_abi::ParamType::Uint(32))
-            .arg("event_block", ton_abi::ParamType::Uint(256))
-            .build()
-    }
-}
-
-#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain)]
+#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
 pub struct TonEventDetails {
     #[abi]
     pub event_init_data: TonEventInitData,
@@ -96,7 +73,7 @@ pub struct TonEventDetails {
     pub required_votes: u32,
 }
 
-#[derive(Debug, Clone, PackAbi, UnpackAbi)]
+#[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct TonEventInitData {
     #[abi]
     pub vote_data: TonEventVoteData,
@@ -108,18 +85,7 @@ pub struct TonEventInitData {
     pub chain_id: u32,
 }
 
-impl TonEventInitData {
-    pub fn make_params_tuple() -> ton_abi::ParamType {
-        TupleBuilder::new()
-            .arg("vote_data", TonEventVoteData::make_params_tuple())
-            .arg("configuration", ton_abi::ParamType::Address)
-            .arg("staking", ton_abi::ParamType::Address)
-            .arg("chain_id", ton_abi::ParamType::Uint(32))
-            .build()
-    }
-}
-
-#[derive(Debug, Clone, PackAbi, UnpackAbi)]
+#[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct TonEventVoteData {
     #[abi(uint64)]
     pub event_transaction_lt: u64,
@@ -131,18 +97,7 @@ pub struct TonEventVoteData {
     pub event_data: ton_types::Cell,
 }
 
-impl TonEventVoteData {
-    pub fn make_params_tuple() -> ton_abi::ParamType {
-        TupleBuilder::new()
-            .arg("event_transaction_lt", ton_abi::ParamType::Uint(64))
-            .arg("event_timestamp", ton_abi::ParamType::Uint(32))
-            .arg("event_index", ton_abi::ParamType::Uint(32))
-            .arg("event_data", ton_abi::ParamType::Cell)
-            .build()
-    }
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, PackAbi, UnpackAbi)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, PackAbi, UnpackAbi, KnownParamType)]
 pub enum EventStatus {
     Initializing = 0,
     Pending = 1,
@@ -150,7 +105,7 @@ pub enum EventStatus {
     Rejected = 3,
 }
 
-#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain)]
+#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
 pub struct EthEventConfigurationDetails {
     #[abi]
     pub basic_configuration: BasicConfiguration,
@@ -158,7 +113,7 @@ pub struct EthEventConfigurationDetails {
     pub network_configuration: EthEventConfiguration,
 }
 
-#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain)]
+#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
 pub struct TonEventConfigurationDetails {
     #[abi]
     pub basic_configuration: BasicConfiguration,
@@ -166,7 +121,7 @@ pub struct TonEventConfigurationDetails {
     pub network_configuration: TonEventConfiguration,
 }
 
-#[derive(Debug, Clone, PackAbi, UnpackAbi)]
+#[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct BasicConfiguration {
     #[abi(string)]
     pub event_abi: String,
@@ -182,20 +137,7 @@ pub struct BasicConfiguration {
     pub chain_id: u32,
 }
 
-impl BasicConfiguration {
-    pub fn make_params_tuple() -> ton_abi::ParamType {
-        TupleBuilder::new()
-            .arg("event_abi", ton_abi::ParamType::Bytes)
-            .arg("staking", ton_abi::ParamType::Address)
-            .arg("event_initial_balance", ton_abi::ParamType::Uint(64))
-            .arg("event_code", ton_abi::ParamType::Cell)
-            .arg("meta", ton_abi::ParamType::Cell)
-            .arg("chain_id", ton_abi::ParamType::Uint(32))
-            .build()
-    }
-}
-
-#[derive(Debug, Clone, PackAbi, UnpackAbi)]
+#[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct EthEventConfiguration {
     #[abi(with = "uint160_bytes")]
     pub event_emitter: [u8; 20],
@@ -209,19 +151,7 @@ pub struct EthEventConfiguration {
     pub end_block_number: u32,
 }
 
-impl EthEventConfiguration {
-    pub fn make_params_tuple() -> ton_abi::ParamType {
-        TupleBuilder::new()
-            .arg("event_emitter", ton_abi::ParamType::Uint(160))
-            .arg("event_blocks_to_confirm", ton_abi::ParamType::Uint(16))
-            .arg("proxy", ton_abi::ParamType::Address)
-            .arg("start_block_number", ton_abi::ParamType::Uint(32))
-            .arg("end_block_number", ton_abi::ParamType::Uint(32))
-            .build()
-    }
-}
-
-#[derive(Debug, Clone, PackAbi, UnpackAbi)]
+#[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct TonEventConfiguration {
     #[abi(with = "address_only_hash")]
     pub event_emitter: UInt256,
@@ -233,24 +163,13 @@ pub struct TonEventConfiguration {
     pub end_timestamp: u32,
 }
 
-impl TonEventConfiguration {
-    pub fn make_params_tuple() -> ton_abi::ParamType {
-        TupleBuilder::new()
-            .arg("event_emitter", ton_abi::ParamType::Address)
-            .arg("proxy", ton_abi::ParamType::Uint(160))
-            .arg("start_timestamp", ton_abi::ParamType::Uint(32))
-            .arg("end_timestamp", ton_abi::ParamType::Uint(32))
-            .build()
-    }
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, PackAbi, UnpackAbi)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, PackAbi, UnpackAbi, KnownParamType)]
 pub enum EventType {
     Eth = 0,
     Ton = 1,
 }
 
-#[derive(Debug, Clone, PackAbi, UnpackAbi)]
+#[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct BridgeConfiguration {
     #[abi(with = "address_only_hash")]
     pub staking: UInt256,
@@ -262,18 +181,7 @@ pub struct BridgeConfiguration {
     pub connector_deploy_value: u64,
 }
 
-impl BridgeConfiguration {
-    pub fn make_params_tuple() -> ton_abi::ParamType {
-        TupleBuilder::new()
-            .arg("staking", ton_abi::ParamType::Address)
-            .arg("active", ton_abi::ParamType::Bool)
-            .arg("connector_code", ton_abi::ParamType::Cell)
-            .arg("connector_deploy_value", ton_abi::ParamType::Uint(64))
-            .build()
-    }
-}
-
-#[derive(Debug, Copy, Clone, PackAbiPlain, UnpackAbiPlain)]
+#[derive(Debug, Copy, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
 pub struct ConnectorDetails {
     #[abi(uint64)]
     pub id: u64,
@@ -283,7 +191,7 @@ pub struct ConnectorDetails {
     pub enabled: bool,
 }
 
-#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain)]
+#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
 pub struct ConnectorDeployedEvent {
     #[abi(uint64)]
     pub id: u64,
@@ -293,7 +201,7 @@ pub struct ConnectorDeployedEvent {
     pub event_configuration: UInt256,
 }
 
-#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain)]
+#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
 pub struct RelayRoundInitializedEvent {
     #[abi(uint32)]
     pub round_num: u32,
@@ -307,7 +215,7 @@ pub struct RelayRoundInitializedEvent {
     pub duplicate: bool,
 }
 
-#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain)]
+#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
 pub struct RelayKeys {
     #[abi(with = "array_uint256_bytes")]
     pub items: Vec<UInt256>,

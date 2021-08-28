@@ -15,7 +15,6 @@ chrono = "0.4.19"
 clap = "3.0.0-beta.2"
 config = { version = "0.11", default-features = false, features = ["yaml"] }
 dashmap = "4.0"
-external-ip = "4.1"
 futures = "0.3"
 hex = "0.4"
 log = "0.4"
