@@ -1,10 +1,10 @@
 use std::collections::{hash_map, HashMap};
+use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Weak};
 
 use anyhow::{Context, Result};
 use parking_lot::Mutex;
-use tiny_adnl::utils::*;
 use tokio::sync::{mpsc, oneshot, watch, Notify};
 use ton_block::{BinTreeType, Deserializable, HashmapAugType};
 use ton_indexer::utils::{BlockIdExtExtension, BlockProofStuff, BlockStuff, ShardStateStuff};
@@ -12,7 +12,6 @@ use ton_indexer::EngineStatus;
 use ton_types::{HashmapType, UInt256};
 
 use crate::utils::*;
-use std::ops::Deref;
 
 pub struct TonSubscriber {
     ready: AtomicBool,
@@ -404,50 +403,6 @@ enum StateSubscriptionStatus {
     Stopped,
 }
 
-pub type ShardAccountsMap = FxHashMap<ton_block::ShardIdent, ton_block::ShardAccounts>;
-
-/// Helper trait to reduce boilerplate for getting accounts from shards state
-pub trait ShardAccountsMapExt {
-    /// Looks for a suitable shard and tries to extract information about the contract from it
-    fn find_account(&self, account: &UInt256) -> Result<Option<ExistingContract>>;
-}
-
-impl<T> ShardAccountsMapExt for &T
-where
-    T: ShardAccountsMapExt,
-{
-    fn find_account(&self, account: &UInt256) -> Result<Option<ExistingContract>> {
-        T::find_account(self, account)
-    }
-}
-
-impl ShardAccountsMapExt for ShardAccountsMap {
-    fn find_account(&self, account: &UInt256) -> Result<Option<ExistingContract>> {
-        // Search suitable shard for account by prefix.
-        // NOTE: In **most** cases suitable shard will be found
-        let item = self
-            .iter()
-            .find(|(shard_ident, _)| contains_account(shard_ident, account));
-
-        match item {
-            // Search account in shard state
-            Some((_, shard)) => match shard
-                .get(account)
-                .and_then(|account| ExistingContract::from_shard_account_opt(&account))?
-            {
-                // Account found
-                Some(contract) => Ok(Some(contract)),
-                // Account was not found (it never had any transactions) or there is not AccountStuff in it
-                None => Ok(None),
-            },
-            // Exceptional situation when no suitable shard was found
-            None => {
-                Err(TonSubscriberError::InvalidContractAddress).context("No suitable shard found")
-            }
-        }
-    }
-}
-
 pub trait BlockAwaiter: Send + Sync {
     fn handle_block(
         &mut self,
@@ -460,124 +415,7 @@ pub trait TransactionsSubscription: Send + Sync {
     fn handle_transaction(&self, ctx: TxContext<'_>) -> Result<()>;
 }
 
-#[derive(Copy, Clone)]
-pub struct TxContext<'a> {
-    pub shard_accounts: &'a ton_block::ShardAccounts,
-    pub block_info: &'a ton_block::BlockInfo,
-    pub account: &'a UInt256,
-    pub transaction_hash: &'a UInt256,
-    pub transaction_info: &'a ton_block::TransactionDescrOrdinary,
-    pub transaction: &'a ton_block::Transaction,
-}
-
-impl TxContext<'_> {
-    pub fn in_msg(&self) -> Option<ton_block::Message> {
-        match self
-            .transaction
-            .in_msg
-            .as_ref()
-            .map(|message| message.read_struct())
-        {
-            Some(Ok(message)) => Some(message),
-            _ => None,
-        }
-    }
-
-    pub fn in_msg_internal(&self) -> Option<ton_block::Message> {
-        self.in_msg()
-            .filter(|message| matches!(message.header(), ton_block::CommonMsgInfo::IntMsgInfo(_)))
-    }
-
-    pub fn in_msg_external(&self) -> Option<ton_block::Message> {
-        self.in_msg()
-            .filter(|message| matches!(message.header(), ton_block::CommonMsgInfo::ExtInMsgInfo(_)))
-    }
-
-    pub fn find_function_output(
-        &self,
-        function: &ton_abi::Function,
-    ) -> Option<Vec<ton_abi::Token>> {
-        let mut result = None;
-        self.transaction
-            .out_msgs
-            .iterate(|ton_block::InRefValue(message)| {
-                // Skip all messages except external outgoing
-                if !matches!(message.header(), ton_block::CommonMsgInfo::ExtOutMsgInfo(_)) {
-                    return Ok(true);
-                }
-
-                // Handle body if it exists
-                let body = match message.body() {
-                    Some(body) => body,
-                    None => return Ok(true),
-                };
-
-                let function_id = nekoton_abi::read_function_id(&body)?;
-                if function_id != function.output_id {
-                    return Ok(true);
-                }
-
-                Ok(match function.decode_output(body, false) {
-                    Ok(tokens) => {
-                        result = Some(tokens);
-                        false
-                    }
-                    Err(_) => true,
-                })
-            })
-            .ok();
-        result
-    }
-
-    pub fn iterate_events<F>(&self, mut f: F)
-    where
-        F: FnMut(u32, ton_types::SliceData),
-    {
-        self.transaction
-            .out_msgs
-            .iterate(|ton_block::InRefValue(message)| {
-                // Skip all messages except external outgoing
-                if !matches!(message.header(), ton_block::CommonMsgInfo::ExtOutMsgInfo(_)) {
-                    return Ok(true);
-                }
-
-                // Handle body if it exists
-                let body = match message.body() {
-                    Some(body) => body,
-                    None => return Ok(true),
-                };
-
-                // Parse function id
-                if let Ok(function_id) = nekoton_abi::read_function_id(&body) {
-                    f(function_id, body)
-                }
-
-                // Process all messages
-                Ok(true)
-            })
-            .ok();
-    }
-}
-
-pub trait ReadFromTransaction: Sized {
-    fn read_from_transaction(ctx: &TxContext<'_>) -> Option<Self>;
-}
-
-#[derive(Debug, Clone)]
-pub struct LatestShardBlocks {
-    pub current_utime: u32,
-    pub block_ids: ShardsMap,
-}
-
 type ShardAccountTx = watch::Sender<Option<ton_block::ShardAccount>>;
 type ShardAccountRx = watch::Receiver<Option<ton_block::ShardAccount>>;
 
 pub type AccountEventsTx<T> = mpsc::UnboundedSender<(UInt256, T)>;
-
-type ShardsMap = HashMap<ton_block::ShardIdent, ton_block::BlockIdExt>;
-
-#[derive(thiserror::Error, Debug)]
-enum TonSubscriberError {
-    #[error("Invalid contract address")]
-    InvalidContractAddress,
-}

@@ -1,6 +1,62 @@
 use std::borrow::Borrow;
+use std::collections::HashMap;
 
+use anyhow::{Context, Result};
+use tiny_adnl::utils::*;
+use ton_block::HashmapAugType;
 use ton_types::UInt256;
+
+use super::existing_contract::*;
+
+pub type ShardsMap = HashMap<ton_block::ShardIdent, ton_block::BlockIdExt>;
+
+#[derive(Debug, Clone)]
+pub struct LatestShardBlocks {
+    pub current_utime: u32,
+    pub block_ids: ShardsMap,
+}
+
+pub type ShardAccountsMap = FxHashMap<ton_block::ShardIdent, ton_block::ShardAccounts>;
+
+/// Helper trait to reduce boilerplate for getting accounts from shards state
+pub trait ShardAccountsMapExt {
+    /// Looks for a suitable shard and tries to extract information about the contract from it
+    fn find_account(&self, account: &UInt256) -> Result<Option<ExistingContract>>;
+}
+
+impl<T> ShardAccountsMapExt for &T
+where
+    T: ShardAccountsMapExt,
+{
+    fn find_account(&self, account: &UInt256) -> Result<Option<ExistingContract>> {
+        T::find_account(self, account)
+    }
+}
+
+impl ShardAccountsMapExt for ShardAccountsMap {
+    fn find_account(&self, account: &UInt256) -> Result<Option<ExistingContract>> {
+        // Search suitable shard for account by prefix.
+        // NOTE: In **most** cases suitable shard will be found
+        let item = self
+            .iter()
+            .find(|(shard_ident, _)| contains_account(shard_ident, account));
+
+        match item {
+            // Search account in shard state
+            Some((_, shard)) => match shard
+                .get(account)
+                .and_then(|account| ExistingContract::from_shard_account_opt(&account))?
+            {
+                // Account found
+                Some(contract) => Ok(Some(contract)),
+                // Account was not found (it never had any transactions) or there is not AccountStuff in it
+                None => Ok(None),
+            },
+            // Exceptional situation when no suitable shard was found
+            None => Err(ShardUtilsError::InvalidContractAddress).context("No suitable shard found"),
+        }
+    }
+}
 
 pub fn contains_account(shard: &ton_block::ShardIdent, account: &UInt256) -> bool {
     let shard_prefix = shard.shard_prefix_with_tag();
@@ -40,6 +96,12 @@ where
     T: Borrow<ton_block::MsgAddressInt>,
 {
     UInt256::from_be_bytes(&address.borrow().address().get_bytestring(0))
+}
+
+#[derive(thiserror::Error, Debug)]
+enum ShardUtilsError {
+    #[error("Invalid contract address")]
+    InvalidContractAddress,
 }
 
 #[cfg(test)]
