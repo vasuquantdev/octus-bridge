@@ -15,7 +15,6 @@ use self::eth_events_handler::*;
 use self::event_transport::*;
 use self::semaphore::*;
 use self::ton_events_handler::*;
-
 mod eth_events_handler;
 mod event_transport;
 mod semaphore;
@@ -493,10 +492,21 @@ impl Bridge {
             }
         }
 
-        let result_of_check = self
-            .eth_listener
-            .check_transaction(event.event_transaction, event.event_index)
-            .await;
+        let result_of_check = loop {
+            match tokio::time::timeout(
+                Duration::from_secs(20),
+                self.eth_listener
+                    .check_transaction(event.event_transaction, event.event_index),
+            )
+            .await
+            {
+                Ok(a) => break a,
+                Err(_) => {
+                    log::error!("Timed out checking");
+                    continue;
+                }
+            }
+        };
 
         if let Err(e) = {
             match check_event(
