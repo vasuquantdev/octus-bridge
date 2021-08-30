@@ -144,12 +144,15 @@ mod tests {
         UInt256::from(hash)
     }
 
-    #[tokio::test]
-    async fn test_cache_consistency() {
+    fn make_cache() -> PendingMessagesCache {
         let cache = PendingMessagesCache::new(10);
         assert_eq!(cache.min_expire_at.load(Ordering::Acquire), u32::MAX);
+        cache
+    }
 
-        // 1. Normal message flow
+    #[tokio::test]
+    async fn normal_message_flow() {
+        let cache = make_cache();
 
         // Add message
         let rx = cache.add_message(make_hash(0), make_hash(0), 10).unwrap();
@@ -163,8 +166,11 @@ mod tests {
         cache.deliver_message(make_hash(0), make_hash(0));
         assert_eq!(cache.min_expire_at.load(Ordering::Acquire), u32::MAX);
         assert_eq!(rx.await.unwrap(), MessageStatus::Delivered);
+    }
 
-        // 2. Expired message flow
+    #[tokio::test]
+    async fn expired_message_flow() {
+        let cache = make_cache();
 
         // Add message
         let rx = cache.add_message(make_hash(0), make_hash(0), 10).unwrap();
@@ -177,8 +183,11 @@ mod tests {
         cache.update(&ton_block::ShardIdent::masterchain(), 15);
         assert_eq!(cache.min_expire_at.load(Ordering::Acquire), u32::MAX);
         assert_eq!(rx.await.unwrap(), MessageStatus::Expired);
+    }
 
-        // 3. Multiple messages expiration flow
+    #[tokio::test]
+    async fn multiple_messages_expiration_flow() {
+        let cache = make_cache();
 
         // Add messages
         let rx2 = cache.add_message(make_hash(1), make_hash(1), 20).unwrap();
@@ -198,8 +207,11 @@ mod tests {
 
         assert_eq!(rx1.await.unwrap(), MessageStatus::Expired);
         assert_eq!(rx2.await.unwrap(), MessageStatus::Expired);
+    }
 
-        // 4. Multiple message delivery flow
+    #[tokio::test]
+    async fn multiple_messages_deplivery_flow() {
+        let cache = make_cache();
 
         // Add messages
         let rx2 = cache.add_message(make_hash(1), make_hash(1), 20).unwrap();
