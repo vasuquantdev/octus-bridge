@@ -3,45 +3,71 @@ use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use dashmap::{DashMap, DashSet};
-use futures::{SinkExt, Stream};
-use nekoton_utils::TrustMe;
-use tokio::sync::Semaphore;
+use dashmap::DashMap;
+use parking_lot::RwLock;
+use tiny_adnl::utils::*;
+use tokio::sync::{mpsc, Semaphore};
 use tokio::time::timeout;
-use uuid::Uuid;
-use web3::transports::Http;
-use web3::types::U64;
-use web3::types::{BlockNumber, FilterBuilder, H256};
-use web3::Web3;
+use ton_types::UInt256;
+use web3::api::Namespace;
+use web3::types::{BlockNumber, FilterBuilder, H256, U64};
+use web3::{transports::Http, Transport};
 
-use self::eth_config::EthConfig;
 use self::models::StoredEthEvent;
+use crate::config::*;
 use crate::engine::state::*;
 use crate::filter_log;
 use crate::utils::*;
 
-mod eth_config;
 pub mod models;
 
 pub struct EthSubscriberRegistry {
     state: Arc<State>,
     subscribers: DashMap<u32, Arc<EthSubscriber>>,
+    last_block_numbers: Arc<LastBlockNumbersMap>,
 }
 
 impl EthSubscriberRegistry {
-    pub fn new(state: Arc<State>) -> Result<Arc<Self>> {
-        // TODO: add config and create subscriber for each chain id
+    pub async fn new<I>(state: Arc<State>, networks: I) -> Result<Arc<Self>>
+    where
+        I: IntoIterator<Item = (u32, EthConfig)>,
+    {
+        let last_block_numbers = Arc::new(
+            state
+                .get_connection()
+                .await
+                .and_then(|conn| EthState(conn).get_last_block_numbers())
+                .map(|map| {
+                    let mut result =
+                        FxDashMap::with_capacity_and_hasher(map.len(), Default::default());
+                    result.extend(map);
+                    result
+                })?,
+        );
 
-        Ok(Arc::new(Self {
+        let registry = Arc::new(Self {
             state,
             subscribers: Default::default(),
-        }))
+            last_block_numbers,
+        });
+
+        for (chain_id, config) in networks {
+            registry.new_subscriber(chain_id, config).await?;
+        }
+
+        Ok(registry)
     }
 
     pub async fn new_subscriber(&self, chain_id: u32, config: EthConfig) -> Result<()> {
         use dashmap::mapref::entry::Entry;
 
-        let subscriber = EthSubscriber::new(self.state.clone(), chain_id, config).await?;
+        let subscriber = EthSubscriber::new(
+            self.state.clone(),
+            self.last_block_numbers.clone(),
+            chain_id,
+            config,
+        )
+        .await?;
 
         match self.subscribers.entry(chain_id) {
             Entry::Vacant(entry) => {
@@ -60,186 +86,91 @@ impl EthSubscriberRegistry {
         // Not cloning will deadlock
         self.subscribers.get(&chain_id).map(|x| x.clone())
     }
+
+    pub fn get_last_block_number(&self, chain_id: u32) -> Result<u64> {
+        self.last_block_numbers
+            .get(&chain_id)
+            .map(|item| *item)
+            .ok_or_else(|| EthSubscriberError::UnknownChainId.into())
+    }
+
+    pub fn get_last_block_numbers(&self) -> &Arc<FxDashMap<u32, u64>> {
+        &self.last_block_numbers
+    }
 }
 
-#[derive(Clone)]
 pub struct EthSubscriber {
     chain_id: u32,
     config: EthConfig,
-    web3: Web3<Http>,
+    api: EthApi,
     pool: Arc<Semaphore>,
-    topics: DashSet<(ethabi::Address, [u8; 32])>,
+    topics: RwLock<TopicsMap>,
     current_height: Arc<AtomicU64>,
     state: Arc<State>,
+    last_block_numbers: Arc<LastBlockNumbersMap>,
 }
 
 impl EthSubscriber {
-    async fn new(state: Arc<State>, chain_id: u32, config: EthConfig) -> Result<Arc<Self>> {
+    async fn new(
+        state: Arc<State>,
+        last_block_numbers: Arc<LastBlockNumbersMap>,
+        chain_id: u32,
+        config: EthConfig,
+    ) -> Result<Arc<Self>> {
         let transport = web3::transports::Http::new(config.endpoint.as_str())?;
-        let web3 = web3::Web3::new(transport);
+        let api = web3::api::Eth::new(transport);
         let pool = Arc::new(Semaphore::new(config.pool_size));
 
         let current_height = {
-            let conn = state.get_connection().await?;
-            conn.eth_state().get_last_block_id(chain_id)?
+            let mut conn = state.get_connection().await?;
+            conn.eth_state().get_last_block_number(chain_id)?
         };
 
         Ok(Arc::new(Self {
             chain_id,
             config,
-            web3,
+            api,
             pool,
             topics: Default::default(),
             current_height: Arc::new(current_height.into()),
             state,
+            last_block_numbers,
         }))
     }
 
-    async fn use_eth_state<F, T>(&self, f: F) -> Result<T>
-    where
-        F: FnOnce(EthState<PooledConnection<'_>>) -> Result<T>,
-    {
-        self.state.get_connection().await.map(EthState).and_then(f)
+    pub fn subscribe(
+        &self,
+        configuration_account: UInt256,
+        address: ethabi::Address,
+        topic_hash: [u8; 32],
+    ) {
+        self.topics
+            .write()
+            .add_entry(configuration_account, address, topic_hash);
     }
 
-    pub fn run(self: &Arc<Self>) -> impl Stream<Item = Uuid> {
-        // TODO: replace `DB error` with proper handlers
-
-        let (mut events_tx, events_rx) = futures::channel::mpsc::unbounded();
-        let this = Arc::downgrade(self);
-        tokio::spawn(async move {
-            loop {
-                let this = match this.upgrade() {
-                    Some(a) => a,
-                    None => {
-                        log::error!("Eth subscriber is dropped.");
-                        return;
-                    }
-                };
-                let ethereum_actual_height = match retry(
-                    || this.get_current_height(),
-                    generate_fixed_timeout_config(
-                        this.config.poll_interval,
-                        this.config.maximum_failed_responses_time,
-                    ),
-                    "get actual ethereum height",
-                )
-                .await
-                {
-                    Ok(a) => a,
-                    Err(e) => {
-                        if e.to_string().contains("hyper::Error(IncompleteMessage)") {
-                            continue;
-                        }
-                        log::error!("Failed getting actual ethereum height: {}", e);
-                        continue;
-                    }
-                };
-
-                let last_id = this
-                    .use_eth_state(|state| state.get_last_block_id(this.chain_id))
-                    .await
-                    .expect("DB ERROR");
-
-                if last_id == ethereum_actual_height {
-                    tokio::time::sleep(this.config.poll_interval).await;
-                    continue;
-                }
-                let logs = match retry(
-                    || {
-                        timeout(
-                            this.config.get_timeout,
-                            this.process_block(last_id, ethereum_actual_height),
-                        )
-                    },
-                    generate_fixed_timeout_config(
-                        this.config.poll_interval,
-                        this.config.maximum_failed_responses_time,
-                    ),
-                    "process block",
-                )
-                .await
-                {
-                    Ok(Ok(a)) => a,
-                    Ok(Err(e)) => {
-                        log::error!(
-                            "FATAL ERROR. Failed processing eth block: {:#?}. From: {}, To: {}",
-                            e,
-                            last_id,
-                            ethereum_actual_height
-                        );
-                        continue;
-                    }
-                    Err(_) => {
-                        log::warn!("Timed out processing eth blocks.");
-                        continue;
-                    }
-                };
-
-                for uuid in this.save_logs(logs).await.expect("DB ERROR") {
-                    if let Err(e) = events_tx.send(uuid).await {
-                        log::error!("CRITICAL ERROR: failed sending event notify: {}", e);
-                        return;
-                    }
-                }
-
-                this.use_eth_state(|state| {
-                    state.block_processed(ethereum_actual_height, this.chain_id)
-                })
-                .await
-                .expect("DB error");
-            }
-        });
-        events_rx
+    pub fn unsubscribe(
+        &self,
+        configuration_account: UInt256,
+        address: ethabi::Address,
+        topic_hash: [u8; 32],
+    ) {
+        self.topics
+            .write()
+            .remove_entry(configuration_account, address, topic_hash)
     }
 
-    async fn process_block(&self, from: u64, to: u64) -> Result<Vec<StoredEthEvent>> {
-        let (addresses, topics): (Vec<_>, Vec<_>) = {
-            let mut addresses = Vec::with_capacity(self.topics.len());
-            let mut topics = Vec::with_capacity(self.topics.len());
-            for item in self.topics.iter() {
-                addresses.push(item.key().0);
-                topics.push(H256::from(item.key().1));
-            }
-            (addresses, topics)
-        };
-
-        if addresses.is_empty() && topics.is_empty() {
-            return Err(anyhow::anyhow!("Addresses and topics are empty. Cowardly refusing to process all ethereum transactions"));
-        }
-
-        let filter = FilterBuilder::default()
-            .address(addresses)
-            .topics(Some(topics), None, None, None)
-            .from_block(BlockNumber::Number(U64::from(from)))
-            .to_block(BlockNumber::Number(U64::from(to)))
-            .build();
-
-        let _permit = self.pool.acquire().await;
-        let logs = retry(
-            || self.web3.eth().logs(filter.clone()),
-            generate_default_timeout_config(self.config.maximum_failed_responses_time),
-            "get contract logs",
-        )
-        .await
-        .context("Failed getting eth logs")?;
-        let logs = logs
-            .into_iter()
-            .map(StoredEthEvent::try_from)
-            .filter_map(|x| filter_log!(x, "Failed mapping log to event"))
-            .collect();
-        Ok(logs)
+    pub fn get_last_processed_block(&self) -> Result<u64> {
+        self.last_block_numbers
+            .get(&self.chain_id)
+            .map(|item| *item)
+            .ok_or_else(|| EthSubscriberError::UnknownChainId.into())
     }
 
     pub async fn check_transaction(&self, hash: H256, event_index: u32) -> Result<StoredEthEvent> {
         let _permission = self.pool.acquire().await;
         let receipt = retry(
-            || {
-                timeout(
-                    self.config.get_timeout,
-                    self.web3.eth().transaction_receipt(hash),
-                )
-            },
+            || timeout(self.config.get_timeout, self.api.transaction_receipt(hash)),
             generate_default_timeout_config(self.config.maximum_failed_responses_time),
             "get transaction receipt",
         )
@@ -266,34 +197,250 @@ impl EthSubscriber {
             .context("No events for tx. Assuming confirmation is fake")
     }
 
-    async fn save_logs(&self, logs: Vec<StoredEthEvent>) -> Result<Vec<Uuid>> {
-        // TODO: use transaction
+    pub fn run(self: &Arc<Self>) -> EventsBatchesRx {
+        // TODO: replace `DB ERROR` with proper handlers
 
-        let connection = self.state.get_connection().await.map(EthState)?;
+        let (events_tx, events_rx) = mpsc::unbounded_channel();
 
-        let len = logs.len();
-        logs.into_iter()
-            .try_fold(Vec::with_capacity(len), |mut uuids, event| {
-                uuids.push(connection.new_event(event)?);
-                Ok(uuids)
-            })
+        let api_request_strategy = generate_fixed_timeout_config(
+            self.config.poll_interval,
+            self.config.maximum_failed_responses_time,
+        );
+
+        let subscriber = Arc::downgrade(self);
+
+        tokio::spawn(async move {
+            loop {
+                let subscriber = match subscriber.upgrade() {
+                    Some(subscriber) => subscriber,
+                    None => return,
+                };
+
+                let current_height = match retry(
+                    || subscriber.get_current_height(),
+                    api_request_strategy,
+                    "get actual ethereum height",
+                )
+                .await
+                {
+                    Ok(height) => height,
+                    Err(e) if is_incomplete_message(&e) => continue,
+                    Err(e) => {
+                        log::error!("Failed getting actual ethereum height: {}", e);
+                        continue;
+                    }
+                };
+
+                let last_height = subscriber
+                    .use_eth_state(|state| state.get_last_block_number(subscriber.chain_id))
+                    .await
+                    .expect("DB ERROR");
+
+                if last_height == current_height {
+                    tokio::time::sleep(subscriber.config.poll_interval).await;
+                    continue;
+                }
+
+                let events = match retry(
+                    || {
+                        timeout(
+                            subscriber.config.get_timeout,
+                            subscriber.process_block(last_height, current_height),
+                        )
+                    },
+                    api_request_strategy,
+                    "process block",
+                )
+                .await
+                {
+                    Ok(Ok(a)) => a,
+                    Ok(Err(e)) => {
+                        log::error!(
+                            "Failed processing eth block: {:?} in time range from {} to {}",
+                            e,
+                            last_height,
+                            current_height
+                        );
+                        continue;
+                    }
+                    Err(_) => {
+                        log::warn!("Timed out processing eth blocks.");
+                        continue;
+                    }
+                };
+
+                if let Err(e) = subscriber.save_events(current_height, &events).await {
+                    log::error!("Failed to save new ETH events: {:?}", e);
+                    continue;
+                }
+                subscriber
+                    .last_block_numbers
+                    .insert(subscriber.chain_id, current_height);
+
+                let batch = EventsBatch {
+                    from: last_height,
+                    to: current_height,
+                    events,
+                };
+
+                if events_tx.send(batch).is_err() {
+                    return;
+                }
+            }
+        });
+
+        events_rx
     }
 
-    pub fn subscribe(&self, topic_hash: [u8; 32], address: ethabi::Address) {
-        self.topics.insert((address, topic_hash));
+    async fn process_block(&self, from: u64, to: u64) -> Result<Vec<StoredEthEvent>> {
+        let filter = match self.topics.read().make_filter(from, to) {
+            Some(filter) => filter,
+            None => return Ok(Vec::new()),
+        };
+
+        let _permit = self.pool.acquire().await;
+        let logs: Vec<web3::types::Log> = retry(
+            || {
+                let transport = self.api.transport();
+                let request = transport.execute("eth_getLogs", vec![filter.clone()]);
+                web3::helpers::CallFuture::new(request)
+            },
+            generate_default_timeout_config(self.config.maximum_failed_responses_time),
+            "get contract logs",
+        )
+        .await
+        .context("Failed getting eth logs")?;
+
+        let logs = logs
+            .into_iter()
+            .map(StoredEthEvent::try_from)
+            .filter_map(|x| filter_log!(x, "Failed mapping log to event"))
+            .collect();
+        Ok(logs)
     }
 
-    pub fn unsubscribe(&self, address: &ethabi::Address, topic_hash: &[u8; 32]) {
-        self.topics.remove(&(*address, *topic_hash));
+    async fn save_events(&self, last_block_number: u64, events: &[StoredEthEvent]) -> Result<()> {
+        self.use_eth_state(|mut state| {
+            if events.is_empty() {
+                state.set_last_block_number(self.chain_id, last_block_number)
+            } else {
+                state.save_events(self.chain_id, events, last_block_number)
+            }
+        })
+        .await
     }
 
     async fn get_current_height(&self) -> Result<u64> {
-        let res = *timeout(self.config.get_timeout, self.web3.eth().block_number())
+        let result = timeout(self.config.get_timeout, self.api.block_number())
             .await
-            .context("Timeout getting height")??
-            .0
-            .get(0)
-            .trust_me();
-        Ok(res)
+            .context("Timeout getting height")??;
+        Ok(result.as_u64())
     }
+
+    async fn use_eth_state<F, T>(&self, f: F) -> Result<T>
+    where
+        F: FnOnce(EthState<PooledConnection<'_>>) -> Result<T>,
+    {
+        self.state.get_connection().await.map(EthState).and_then(f)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct EventsBatch {
+    pub from: u64,
+    pub to: u64,
+    pub events: Vec<StoredEthEvent>,
+}
+
+pub type EventsBatchesRx = mpsc::UnboundedReceiver<EventsBatch>;
+
+#[derive(Default)]
+struct TopicsMap {
+    entries: FxHashSet<TopicsMapEntry>,
+    unique_addresses: Vec<ethabi::Address>,
+    unique_topics: Vec<H256>,
+}
+
+impl TopicsMap {
+    fn make_filter(&self, from: u64, to: u64) -> Option<serde_json::Value> {
+        if self.unique_addresses.is_empty() || self.unique_topics.is_empty() {
+            return None;
+        }
+
+        let filter = FilterBuilder::default()
+            .address(self.unique_addresses.clone())
+            .topics(Some(self.unique_topics.clone()), None, None, None)
+            .from_block(BlockNumber::Number(U64::from(from)))
+            .to_block(BlockNumber::Number(U64::from(to)))
+            .build();
+        Some(web3::helpers::serialize(&filter))
+    }
+
+    fn add_entry(
+        &mut self,
+        configuration_account: UInt256,
+        address: ethabi::Address,
+        topic_hash: [u8; 32],
+    ) {
+        if self.entries.insert(TopicsMapEntry {
+            configuration_account,
+            address,
+            topic_hash,
+        }) {
+            self.update();
+        }
+    }
+
+    fn remove_entry(
+        &mut self,
+        configuration_account: UInt256,
+        address: ethabi::Address,
+        topic_hash: [u8; 32],
+    ) {
+        if self.entries.remove(&TopicsMapEntry {
+            configuration_account,
+            address,
+            topic_hash,
+        }) {
+            self.update()
+        }
+    }
+
+    fn update(&mut self) {
+        let capacity = self.entries.len();
+
+        let mut unique_addresses =
+            FxHashSet::with_capacity_and_hasher(capacity, Default::default());
+        let mut unique_topics = FxHashSet::with_capacity_and_hasher(capacity, Default::default());
+
+        self.entries.iter().for_each(|item| {
+            unique_addresses.insert(item.address);
+            unique_topics.insert(item.topic_hash);
+        });
+
+        self.unique_addresses = unique_addresses.into_iter().collect();
+        self.unique_topics = unique_topics.into_iter().map(H256).collect();
+    }
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+struct TopicsMapEntry {
+    configuration_account: UInt256,
+    address: ethabi::Address,
+    topic_hash: [u8; 32],
+}
+
+type EthApi = web3::api::Eth<Http>;
+type LastBlockNumbersMap = FxDashMap<u32, u64>;
+
+fn is_incomplete_message(error: &anyhow::Error) -> bool {
+    error
+        .to_string()
+        .contains("hyper::Error(IncompleteMessage)")
+}
+
+#[derive(thiserror::Error, Debug)]
+enum EthSubscriberError {
+    #[error("Unknown chain id")]
+    UnknownChainId,
 }

@@ -1,7 +1,7 @@
 use nekoton_abi::*;
 use once_cell::sync::OnceCell;
 
-use crate::engine::ton_contracts::*;
+use super::models::*;
 
 /// External function
 pub fn connector_counter() -> &'static ton_abi::Function {
@@ -20,7 +20,7 @@ pub fn bridge_configuration() -> &'static ton_abi::Function {
     FUNCTION.get_or_init(|| {
         FunctionBuilder::new("bridgeConfiguration")
             .default_headers()
-            .out_arg("configuration", BridgeConfiguration::make_params_tuple())
+            .out_arg("configuration", BridgeConfiguration::param_type())
             .build()
     })
 }
@@ -44,9 +44,7 @@ pub mod events {
         static EVENT: OnceCell<ton_abi::Event> = OnceCell::new();
         EVENT.get_or_init(|| {
             EventBuilder::new("ConnectorDeployed")
-                .in_arg("id", ton_abi::ParamType::Uint(64))
-                .in_arg("connector", ton_abi::ParamType::Address)
-                .in_arg("event_configuration", ton_abi::ParamType::Address)
+                .inputs(ConnectorDeployedEvent::param_type())
                 .build()
         })
     }

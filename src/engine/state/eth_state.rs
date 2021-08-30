@@ -1,4 +1,5 @@
-use std::borrow::Borrow;
+use std::borrow::BorrowMut;
+use std::collections::HashMap;
 
 use anyhow::Result;
 use nekoton_utils::TrustMe;
@@ -8,7 +9,7 @@ use crate::engine::eth_subscriber::models::*;
 use crate::utils::*;
 
 pub trait EthStateTable: Sized {
-    fn eth_state(&self) -> EthState<&Self> {
+    fn eth_state(&mut self) -> EthState<&mut Self> {
         EthState(self)
     }
 }
@@ -19,17 +20,17 @@ pub struct EthState<T>(pub T);
 
 impl<'a, T> EthState<T>
 where
-    T: Borrow<PooledConnection<'a>>,
+    T: BorrowMut<PooledConnection<'a>>,
 {
-    pub fn block_processed(&self, id: u64, chain_id: u32) -> Result<()> {
+    pub fn set_last_block_number(&self, chain_id: u32, last_block_number: u64) -> Result<()> {
         self.conn().execute_in_place(
             "UPDATE eth_last_block SET block_number=?1 WHERE chain_id=?2",
-            rusqlite::params![id, chain_id],
+            rusqlite::params![last_block_number, chain_id],
         )?;
         Ok(())
     }
 
-    pub fn get_last_block_id(&self, chain_id: u32) -> Result<u64> {
+    pub fn get_last_block_number(&self, chain_id: u32) -> Result<u64> {
         let block_number: u64 = self.conn().query_row_in_place(
             "SELECT block_number FROM eth_last_block WHERE chain_id = ?1",
             rusqlite::params![chain_id],
@@ -38,15 +39,54 @@ where
         Ok(block_number)
     }
 
-    pub fn new_event(&self, event: StoredEthEvent) -> Result<Uuid> {
-        let id = Uuid::new_v4();
-        let encoded = bincode::serialize(&event).trust_me();
+    pub fn get_last_block_numbers(&self) -> Result<HashMap<u32, u64>> {
+        fn process_row(row: rusqlite::Result<(u32, u64)>) -> Option<(u32, u64)> {
+            match row {
+                Ok(row) => Some(row),
+                Err(e) => {
+                    log::error!("Failed fetching ETH event from db: {:?}", e);
+                    return None;
+                }
+            }
+        }
 
-        self.conn().execute_in_place(
-            "INSERT INTO eth_events (entry_id, event_data) VALUES (?1,?2)",
-            rusqlite::params![id, encoded],
+        let mut stmt = self
+            .conn()
+            .prepare("SELECT chain_id, block_number FROM eth_last_block")?;
+        let result = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .filter_map(process_row)
+            .collect();
+        Ok(result)
+    }
+
+    pub fn save_events(
+        &mut self,
+        chain_id: u32,
+        events: &[StoredEthEvent],
+        last_block_number: u64,
+    ) -> Result<()> {
+        let mut tx = self.0.borrow_mut().transaction()?;
+
+        let mut stmt =
+            tx.prepare("INSERT INTO eth_events (entry_id, event_data) VALUES (?1,?2)")?;
+
+        for event in events {
+            let id = Uuid::new_v4();
+            let encoded = bincode::serialize(&event).trust_me();
+            stmt.execute(rusqlite::params![id, encoded])?;
+        }
+
+        stmt.finalize()?;
+
+        tx.execute(
+            "UPDATE eth_last_block SET block_number=?1 WHERE chain_id=?2",
+            rusqlite::params![last_block_number, chain_id],
         )?;
-        Ok(id)
+
+        tokio::task::block_in_place(|| tx.commit())?;
+
+        Ok(())
     }
 
     pub fn get_event(&self, id: &Uuid) -> Result<StoredEthEvent> {
@@ -58,7 +98,7 @@ where
         Ok(bincode::deserialize(&result)?)
     }
 
-    pub fn commit_event_processed(&self, id: &Uuid) -> Result<()> {
+    pub fn remove_event(&self, id: &Uuid) -> Result<()> {
         self.conn().execute_in_place(
             "DELETE FROM eth_events WHERE entry_id = ?1",
             rusqlite::params![id],
