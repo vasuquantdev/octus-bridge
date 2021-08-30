@@ -60,6 +60,8 @@ ton-indexer = { git = "https://github.com/broxus/ton-indexer.git" }
 [dev-dependencies]
 cargo-husky = { version = "1", features = ["default", "run-cargo-fmt", "run-cargo-check"] }
 pretty_assertions = "0.7.2"
+tempfile = "3.2.0"
+
 
 [features]
 default = []

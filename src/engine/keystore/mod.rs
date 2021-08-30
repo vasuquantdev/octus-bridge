@@ -149,10 +149,10 @@ pub struct StoredData {
 }
 
 impl StoredData {
-    pub fn generate(
+    pub fn new(
         password: &str,
-        eth_secret_key: &secp256k1::SecretKey,
-        ton_secret_key: &ed25519_dalek::SecretKey,
+        eth_secret_key: secp256k1::SecretKey,
+        ton_secret_key: ed25519_dalek::SecretKey,
     ) -> Result<Self> {
         fn gen_part(
             enc: &ChaCha20Poly1305,
@@ -198,5 +198,55 @@ impl StoredData {
         let crypto_config = File::create(path)?;
         serde_json::to_writer_pretty(crypto_config, self)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tst {
+    use super::*;
+    use std::io::Write;
+    use std::path::PathBuf;
+    use tempfile::TempDir;
+
+    #[test]
+    fn init() {
+        let ton = ed25519_dalek::SecretKey::from_bytes(&[0; 32]).unwrap();
+        let eth = secp256k1::SecretKey::from_slice(&[1; 32]).unwrap();
+        let data = StoredData::new("lol", eth, ton).unwrap();
+        data.save("kek.json").unwrap();
+    }
+
+    const JSON: &str = r#"{
+        "salt": "chBVmBqLz5SMqmhjIInNCNpO48E=",
+        "eth_encrypted_secret_key": "9pC/Z0iyqH0nbW7fsht62+5bRqjApRg3zjhgy/P7In/rTZ4+3IaDdB0Wtr4zcJJP",
+        "eth_nonce": "ed88d2fe388cd5e59a674d6f",
+        "ton_encrypted_secret_key": "XKRZpapEnk07jTkxhzVTYsUaFF4tRwH+InUoxWhjZ50tv8wlhmR1d3GE7KSNpN35",
+        "ton_nonce": "90f70cfc10ffdce3b390b5fd"
+    }"#;
+
+    #[test]
+    fn check_ok_passwd() {
+        let (dir, path) = create_file();
+        let store = KeyStore::from_file(path, "lol").unwrap();
+        assert_eq!(store.ton.pair.secret.to_bytes(), [0; 32]);
+        assert_eq!(store.eth.secret_key.as_ref(), &[1; 32]);
+    }
+
+    #[test]
+    fn check_bad_password() {
+        let (dir, path) = create_file();
+        assert!(KeyStore::from_file(path, "kek").is_err())
+    }
+
+    fn create_file() -> (TempDir, PathBuf) {
+        let mut dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("data.json");
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(&path)
+            .unwrap();
+        file.write_all(JSON.as_bytes()).unwrap();
+        (dir, path)
     }
 }
