@@ -16,6 +16,7 @@ use crate::utils::*;
 
 mod bridge;
 mod eth_subscriber;
+mod keystore;
 mod staking;
 mod state;
 mod ton_contracts;
