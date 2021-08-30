@@ -9,12 +9,12 @@ use ton_types::UInt256;
 
 use super::shard_utils::*;
 
-pub struct PendingMessagesCache {
+pub struct PendingMessagesQueue {
     min_expire_at: AtomicU32,
     entries: Mutex<FxHashMap<PendingMessageId, PendingMessage>>,
 }
 
-impl PendingMessagesCache {
+impl PendingMessagesQueue {
     pub fn new(capacity: usize) -> Self {
         Self {
             min_expire_at: AtomicU32::new(u32::MAX),
@@ -48,7 +48,7 @@ impl PendingMessagesCache {
 
                 Ok(rx)
             }
-            hash_map::Entry::Occupied(_) => Err(PendingMessagesCacheError::AlreadyExists.into()),
+            hash_map::Entry::Occupied(_) => Err(PendingMessagesQueueError::AlreadyExists.into()),
         }
     }
 
@@ -129,7 +129,7 @@ type MessageStatusTx = oneshot::Sender<MessageStatus>;
 type MessageStatusRx = oneshot::Receiver<MessageStatus>;
 
 #[derive(thiserror::Error, Debug)]
-enum PendingMessagesCacheError {
+enum PendingMessagesQueueError {
     #[error("Already exists")]
     AlreadyExists,
 }
@@ -144,66 +144,66 @@ mod tests {
         UInt256::from(hash)
     }
 
-    fn make_cache() -> PendingMessagesCache {
-        let cache = PendingMessagesCache::new(10);
-        assert_eq!(cache.min_expire_at.load(Ordering::Acquire), u32::MAX);
-        cache
+    fn make_queue() -> PendingMessagesQueue {
+        let queue = PendingMessagesQueue::new(10);
+        assert_eq!(queue.min_expire_at.load(Ordering::Acquire), u32::MAX);
+        queue
     }
 
     #[tokio::test]
     async fn normal_message_flow() {
-        let cache = make_cache();
+        let queue = make_queue();
 
         // Add message
-        let rx = cache.add_message(make_hash(0), make_hash(0), 10).unwrap();
+        let rx = queue.add_message(make_hash(0), make_hash(0), 10).unwrap();
 
         // (Adding same message should fail)
-        assert!(cache.add_message(make_hash(0), make_hash(0), 20).is_err());
+        assert!(queue.add_message(make_hash(0), make_hash(0), 20).is_err());
         // Adding new message must update expiration
-        assert_eq!(cache.min_expire_at.load(Ordering::Acquire), 10);
+        assert_eq!(queue.min_expire_at.load(Ordering::Acquire), 10);
 
         // Deliver message
-        cache.deliver_message(make_hash(0), make_hash(0));
-        assert_eq!(cache.min_expire_at.load(Ordering::Acquire), u32::MAX);
+        queue.deliver_message(make_hash(0), make_hash(0));
+        assert_eq!(queue.min_expire_at.load(Ordering::Acquire), u32::MAX);
         assert_eq!(rx.await.unwrap(), MessageStatus::Delivered);
     }
 
     #[tokio::test]
     async fn expired_message_flow() {
-        let cache = make_cache();
+        let queue = make_queue();
 
         // Add message
-        let rx = cache.add_message(make_hash(0), make_hash(0), 10).unwrap();
+        let rx = queue.add_message(make_hash(0), make_hash(0), 10).unwrap();
 
         // Update before expiration time must not do anything
-        cache.update(&ton_block::ShardIdent::masterchain(), 5);
-        assert_eq!(cache.min_expire_at.load(Ordering::Acquire), 10);
+        queue.update(&ton_block::ShardIdent::masterchain(), 5);
+        assert_eq!(queue.min_expire_at.load(Ordering::Acquire), 10);
 
         // Update after expiration time must remove message
-        cache.update(&ton_block::ShardIdent::masterchain(), 15);
-        assert_eq!(cache.min_expire_at.load(Ordering::Acquire), u32::MAX);
+        queue.update(&ton_block::ShardIdent::masterchain(), 15);
+        assert_eq!(queue.min_expire_at.load(Ordering::Acquire), u32::MAX);
         assert_eq!(rx.await.unwrap(), MessageStatus::Expired);
     }
 
     #[tokio::test]
     async fn multiple_messages_expiration_flow() {
-        let cache = make_cache();
+        let queue = make_queue();
 
         // Add messages
-        let rx2 = cache.add_message(make_hash(1), make_hash(1), 20).unwrap();
-        let rx1 = cache.add_message(make_hash(0), make_hash(0), 10).unwrap();
+        let rx2 = queue.add_message(make_hash(1), make_hash(1), 20).unwrap();
+        let rx1 = queue.add_message(make_hash(0), make_hash(0), 10).unwrap();
 
-        cache.update(&ton_block::ShardIdent::masterchain(), 5);
-        assert_eq!(cache.min_expire_at.load(Ordering::Acquire), 10);
+        queue.update(&ton_block::ShardIdent::masterchain(), 5);
+        assert_eq!(queue.min_expire_at.load(Ordering::Acquire), 10);
 
-        cache.update(&ton_block::ShardIdent::masterchain(), 10);
-        assert_eq!(cache.min_expire_at.load(Ordering::Acquire), 10);
+        queue.update(&ton_block::ShardIdent::masterchain(), 10);
+        assert_eq!(queue.min_expire_at.load(Ordering::Acquire), 10);
 
-        cache.update(&ton_block::ShardIdent::masterchain(), 15);
-        assert_eq!(cache.min_expire_at.load(Ordering::Acquire), 20);
+        queue.update(&ton_block::ShardIdent::masterchain(), 15);
+        assert_eq!(queue.min_expire_at.load(Ordering::Acquire), 20);
 
-        cache.update(&ton_block::ShardIdent::masterchain(), 25);
-        assert_eq!(cache.min_expire_at.load(Ordering::Acquire), u32::MAX);
+        queue.update(&ton_block::ShardIdent::masterchain(), 25);
+        assert_eq!(queue.min_expire_at.load(Ordering::Acquire), u32::MAX);
 
         assert_eq!(rx1.await.unwrap(), MessageStatus::Expired);
         assert_eq!(rx2.await.unwrap(), MessageStatus::Expired);
@@ -211,33 +211,33 @@ mod tests {
 
     #[tokio::test]
     async fn multiple_messages_deplivery_flow() {
-        let cache = make_cache();
+        let queue = make_queue();
 
         // Add messages
-        let rx2 = cache.add_message(make_hash(1), make_hash(1), 20).unwrap();
-        let rx1 = cache.add_message(make_hash(0), make_hash(0), 10).unwrap();
+        let rx2 = queue.add_message(make_hash(1), make_hash(1), 20).unwrap();
+        let rx1 = queue.add_message(make_hash(0), make_hash(0), 10).unwrap();
 
-        cache.update(&ton_block::ShardIdent::masterchain(), 5);
-        assert_eq!(cache.min_expire_at.load(Ordering::Acquire), 10);
+        queue.update(&ton_block::ShardIdent::masterchain(), 5);
+        assert_eq!(queue.min_expire_at.load(Ordering::Acquire), 10);
 
-        cache.deliver_message(make_hash(1), make_hash(1));
-        assert_eq!(cache.min_expire_at.load(Ordering::Acquire), 10);
+        queue.deliver_message(make_hash(1), make_hash(1));
+        assert_eq!(queue.min_expire_at.load(Ordering::Acquire), 10);
 
-        cache.update(&ton_block::ShardIdent::masterchain(), 15);
-        assert_eq!(cache.min_expire_at.load(Ordering::Acquire), u32::MAX);
+        queue.update(&ton_block::ShardIdent::masterchain(), 15);
+        assert_eq!(queue.min_expire_at.load(Ordering::Acquire), u32::MAX);
 
         assert_eq!(rx1.await.unwrap(), MessageStatus::Expired);
         assert_eq!(rx2.await.unwrap(), MessageStatus::Delivered);
 
         // Add messages
-        let rx1 = cache.add_message(make_hash(0), make_hash(0), 10).unwrap();
-        let rx2 = cache.add_message(make_hash(1), make_hash(1), 20).unwrap();
+        let rx1 = queue.add_message(make_hash(0), make_hash(0), 10).unwrap();
+        let rx2 = queue.add_message(make_hash(1), make_hash(1), 20).unwrap();
 
-        cache.deliver_message(make_hash(0), make_hash(0));
-        assert_eq!(cache.min_expire_at.load(Ordering::Acquire), 20);
+        queue.deliver_message(make_hash(0), make_hash(0));
+        assert_eq!(queue.min_expire_at.load(Ordering::Acquire), 20);
 
-        cache.deliver_message(make_hash(1), make_hash(1));
-        assert_eq!(cache.min_expire_at.load(Ordering::Acquire), u32::MAX);
+        queue.deliver_message(make_hash(1), make_hash(1));
+        assert_eq!(queue.min_expire_at.load(Ordering::Acquire), u32::MAX);
 
         assert_eq!(rx1.await.unwrap(), MessageStatus::Delivered);
         assert_eq!(rx2.await.unwrap(), MessageStatus::Delivered);

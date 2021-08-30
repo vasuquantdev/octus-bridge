@@ -1105,7 +1105,7 @@ enum EthEvent {
 
 impl ReadFromTransaction for EthEvent {
     fn read_from_transaction(ctx: &TxContext<'_>) -> Option<Self> {
-        let in_msg = ctx.in_msg()?;
+        let in_msg = ctx.in_msg;
         match in_msg.header() {
             ton_block::CommonMsgInfo::ExtInMsgInfo(_) => {
                 let (public_key, body) = read_external_in_msg(&in_msg.body()?)?;
@@ -1156,7 +1156,7 @@ enum TonEvent {
 
 impl ReadFromTransaction for TonEvent {
     fn read_from_transaction(ctx: &TxContext<'_>) -> Option<Self> {
-        let in_msg = ctx.in_msg()?;
+        let in_msg = ctx.in_msg;
         match in_msg.header() {
             ton_block::CommonMsgInfo::ExtInMsgInfo(_) => {
                 let (public_key, body) = read_external_in_msg(&in_msg.body()?)?;

@@ -19,16 +19,18 @@ pub struct TonSubscriber {
     current_utime: AtomicU32,
     state_subscriptions: Mutex<HashMap<UInt256, StateSubscription>>,
     mc_block_awaiters: Mutex<Vec<Box<dyn BlockAwaiter>>>,
+    messages_queue: Arc<PendingMessagesQueue>,
 }
 
 impl TonSubscriber {
-    pub fn new() -> Arc<Self> {
+    pub fn new(messages_queue: Arc<PendingMessagesQueue>) -> Arc<Self> {
         Arc::new(Self {
             ready: AtomicBool::new(false),
             ready_signal: Notify::new(),
             current_utime: AtomicU32::new(0),
             state_subscriptions: Mutex::new(HashMap::new()),
             mc_block_awaiters: Mutex::new(Vec::with_capacity(4)),
+            messages_queue,
         })
     }
 
@@ -215,43 +217,55 @@ impl TonSubscriber {
         let account_blocks = extra.read_account_blocks()?;
         let shard_accounts = shard_state.read_accounts()?;
 
-        let mut blocks = self.state_subscriptions.lock();
-
-        blocks.retain(|account, subscription| {
-            let subscription_status = subscription.update_status();
-            if subscription_status == StateSubscriptionStatus::Stopped {
-                return false;
-            }
-
-            if !contains_account(block_info.shard(), account) {
-                return true;
-            }
-
-            if let Err(e) =
-                subscription.handle_block(&shard_accounts, &block_info, &account_blocks, account)
-            {
-                log::error!("Failed to handle block: {:?}", e);
-            }
-
-            let mut keep = true;
-
-            if subscription_status == StateSubscriptionStatus::Alive {
-                let account = match shard_accounts.get(account) {
-                    Ok(account) => account,
-                    Err(e) => {
-                        log::error!("Failed to get account {}: {:?}", account.to_hex_string(), e);
-                        return true;
-                    }
-                };
-
-                if subscription.state_tx.send(account).is_err() {
-                    log::error!("Shard subscription somehow dropped");
-                    keep = false;
+        {
+            let mut subscriptions = self.state_subscriptions.lock();
+            subscriptions.retain(|account, subscription| {
+                let subscription_status = subscription.update_status();
+                if subscription_status == StateSubscriptionStatus::Stopped {
+                    return false;
                 }
-            }
 
-            keep
-        });
+                if !contains_account(block_info.shard(), account) {
+                    return true;
+                }
+
+                if let Err(e) = subscription.handle_block(
+                    &self.messages_queue,
+                    &shard_accounts,
+                    &block_info,
+                    &account_blocks,
+                    account,
+                ) {
+                    log::error!("Failed to handle block: {:?}", e);
+                }
+
+                let mut keep = true;
+
+                if subscription_status == StateSubscriptionStatus::Alive {
+                    let account = match shard_accounts.get(account) {
+                        Ok(account) => account,
+                        Err(e) => {
+                            log::error!(
+                                "Failed to get account {}: {:?}",
+                                account.to_hex_string(),
+                                e
+                            );
+                            return true;
+                        }
+                    };
+
+                    if subscription.state_tx.send(account).is_err() {
+                        log::error!("Shard subscription somehow dropped");
+                        keep = false;
+                    }
+                }
+
+                keep
+            });
+        }
+
+        self.messages_queue
+            .update(block_info.shard(), block_info.gen_utime().0);
 
         Ok(())
     }
@@ -316,6 +330,7 @@ impl StateSubscription {
 
     fn handle_block(
         &self,
+        messages_queue: &PendingMessagesQueue,
         shard_accounts: &ton_block::ShardAccounts,
         block_info: &ton_block::BlockInfo,
         account_blocks: &ton_block::ShardAccountBlocks,
@@ -361,6 +376,20 @@ impl StateSubscription {
                 _ => continue,
             };
 
+            let in_msg = match transaction
+                .in_msg
+                .as_ref()
+                .map(|message| (message, message.read_struct()))
+            {
+                Some((message_cell, Ok(message))) => {
+                    if matches!(message.header(), ton_block::CommonMsgInfo::ExtInMsgInfo(_)) {
+                        messages_queue.deliver_message(*account, message_cell.hash());
+                    }
+                    message
+                }
+                _ => continue,
+            };
+
             let ctx = TxContext {
                 shard_accounts,
                 block_info,
@@ -368,6 +397,7 @@ impl StateSubscription {
                 transaction_hash: &hash,
                 transaction_info: &transaction_info,
                 transaction: &transaction,
+                in_msg: &in_msg,
             };
 
             // Handle transaction

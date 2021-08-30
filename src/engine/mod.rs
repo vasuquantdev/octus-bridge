@@ -79,6 +79,7 @@ pub struct EngineContext {
     pub ton_engine: Arc<ton_indexer::Engine>,
     pub ton_subscriber: Arc<TonSubscriber>,
     pub eth_subscribers: Arc<EthSubscriberRegistry>,
+    pub messages_queue: Arc<PendingMessagesQueue>,
 }
 
 impl EngineContext {
@@ -88,10 +89,12 @@ impl EngineContext {
     ) -> Result<Arc<Self>> {
         let settings = config.bridge_settings;
 
+        let messages_queue = Arc::new(PendingMessagesQueue::new(16));
+
         let state = State::new(&settings.db_path).await?;
         state.apply_migrations().await?;
 
-        let ton_subscriber = TonSubscriber::new();
+        let ton_subscriber = TonSubscriber::new(messages_queue.clone());
         let ton_engine = ton_indexer::Engine::new(
             config.node_settings,
             global_config,
@@ -108,6 +111,7 @@ impl EngineContext {
             ton_engine,
             ton_subscriber,
             eth_subscribers,
+            messages_queue,
         }))
     }
 
@@ -131,7 +135,12 @@ impl EngineContext {
         Ok(shard_accounts)
     }
 
-    pub async fn send_ton_message(&self, message: &ton_block::Message) -> Result<()> {
+    pub async fn send_ton_message(
+        &self,
+        account: &ton_types::UInt256,
+        message: &ton_block::Message,
+        expire_at: u32,
+    ) -> Result<MessageStatus> {
         let to = match message.header() {
             ton_block::CommonMsgInfo::ExtInMsgInfo(header) => {
                 ton_block::AccountIdPrefixFull::prefix(&header.dst)?
@@ -142,9 +151,16 @@ impl EngineContext {
         let cells = message.write_to_new_cell()?.into();
         let serialized = ton_types::serialize_toc(&cells)?;
 
+        let rx = self
+            .messages_queue
+            .add_message(*account, cells.repr_hash(), expire_at)?;
+
         self.ton_engine
             .broadcast_external_message(&to, &serialized)
-            .await
+            .await?;
+
+        let status = rx.await?;
+        Ok(status)
     }
 }
 

@@ -12,29 +12,30 @@ pub struct TxContext<'a> {
     pub transaction_hash: &'a UInt256,
     pub transaction_info: &'a ton_block::TransactionDescrOrdinary,
     pub transaction: &'a ton_block::Transaction,
+    pub in_msg: &'a ton_block::Message,
 }
 
 impl TxContext<'_> {
-    pub fn in_msg(&self) -> Option<ton_block::Message> {
-        match self
-            .transaction
-            .in_msg
-            .as_ref()
-            .map(|message| message.read_struct())
-        {
-            Some(Ok(message)) => Some(message),
-            _ => None,
+    pub fn in_msg_internal(&self) -> Option<&ton_block::Message> {
+        if matches!(
+            self.in_msg.header(),
+            ton_block::CommonMsgInfo::IntMsgInfo(_)
+        ) {
+            Some(self.in_msg)
+        } else {
+            None
         }
     }
 
-    pub fn in_msg_internal(&self) -> Option<ton_block::Message> {
-        self.in_msg()
-            .filter(|message| matches!(message.header(), ton_block::CommonMsgInfo::IntMsgInfo(_)))
-    }
-
-    pub fn in_msg_external(&self) -> Option<ton_block::Message> {
-        self.in_msg()
-            .filter(|message| matches!(message.header(), ton_block::CommonMsgInfo::ExtInMsgInfo(_)))
+    pub fn in_msg_external(&self) -> Option<&ton_block::Message> {
+        if matches!(
+            self.in_msg.header(),
+            ton_block::CommonMsgInfo::ExtInMsgInfo(_)
+        ) {
+            Some(self.in_msg)
+        } else {
+            None
+        }
     }
 
     pub fn find_function_output(
