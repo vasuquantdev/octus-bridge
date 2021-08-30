@@ -58,6 +58,7 @@ nekoton-utils = { git = "https://github.com/broxus/nekoton.git", features = ["en
 ton-indexer = { git = "https://github.com/broxus/ton-indexer.git" }
 
 [dev-dependencies]
+cargo-husky = { version = "1", features = ["default", "run-cargo-fmt", "run-cargo-check"] }
 pretty_assertions = "0.7.2"
 
 [features]
