@@ -9,7 +9,7 @@ pub fn connector_counter() -> &'static ton_abi::Function {
     FUNCTION.get_or_init(|| {
         FunctionBuilder::new("connectorCounter")
             .default_headers()
-            .out_arg("counter", ton_abi::ParamType::Uint(64))
+            .output("counter", ton_abi::ParamType::Uint(64))
             .build()
     })
 }
@@ -20,7 +20,7 @@ pub fn bridge_configuration() -> &'static ton_abi::Function {
     FUNCTION.get_or_init(|| {
         FunctionBuilder::new("bridgeConfiguration")
             .default_headers()
-            .out_arg("configuration", BridgeConfiguration::param_type())
+            .output("configuration", BridgeConfiguration::param_type())
             .build()
     })
 }
@@ -31,8 +31,8 @@ pub fn derive_connector_address() -> &'static ton_abi::Function {
     FUNCTION.get_or_init(|| {
         FunctionBuilder::new("deriveConnectorAddress")
             .default_headers()
-            .in_arg("id", ton_abi::ParamType::Uint(64))
-            .out_arg("connector", ton_abi::ParamType::Address)
+            .input("id", ton_abi::ParamType::Uint(64))
+            .output("connector", ton_abi::ParamType::Address)
             .build()
     })
 }

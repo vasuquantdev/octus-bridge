@@ -7,7 +7,7 @@ pub fn get_type() -> &'static ton_abi::Function {
         FunctionBuilder::new_responsible("getType")
             .time_header()
             .expire_header()
-            .out_arg("type", ton_abi::ParamType::Uint(8))
+            .output("type", ton_abi::ParamType::Uint(8))
             .build()
     })
 }

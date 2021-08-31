@@ -9,7 +9,7 @@ pub fn is_active() -> &'static ton_abi::Function {
     FUNCTION.get_or_init(|| {
         FunctionBuilder::new_responsible("isActive")
             .time_header()
-            .out_arg("is_active", ton_abi::ParamType::Bool)
+            .output("is_active", ton_abi::ParamType::Bool)
             .build()
     })
 }
@@ -20,7 +20,7 @@ pub fn current_relay_round() -> &'static ton_abi::Function {
     FUNCTION.get_or_init(|| {
         FunctionBuilder::new("currentRelayRound")
             .time_header()
-            .out_arg("round", ton_abi::ParamType::Uint(32))
+            .output("round", ton_abi::ParamType::Uint(32))
             .build()
     })
 }
@@ -31,8 +31,8 @@ pub fn get_relay_round_address() -> &'static ton_abi::Function {
     FUNCTION.get_or_init(|| {
         FunctionBuilder::new_responsible("getRelayRoundAddress")
             .time_header()
-            .in_arg("round_num", ton_abi::ParamType::Uint(32))
-            .out_arg("address", ton_abi::ParamType::Address)
+            .input("round_num", ton_abi::ParamType::Uint(32))
+            .output("address", ton_abi::ParamType::Address)
             .build()
     })
 }
@@ -43,8 +43,8 @@ pub fn get_relay_round_address_from_timestamp() -> &'static ton_abi::Function {
     FUNCTION.get_or_init(|| {
         FunctionBuilder::new_responsible("getRelayRoundAddressFromTimestamp")
             .time_header()
-            .in_arg("time", ton_abi::ParamType::Uint(32))
-            .out_arg("address", ton_abi::ParamType::Address)
+            .input("time", ton_abi::ParamType::Uint(32))
+            .output("address", ton_abi::ParamType::Address)
             .build()
     })
 }
@@ -55,7 +55,7 @@ pub fn current_relay_round_start_time() -> &'static ton_abi::Function {
     FUNCTION.get_or_init(|| {
         FunctionBuilder::new("currentRelayRoundStartTime")
             .time_header()
-            .out_arg("start_time", ton_abi::ParamType::Uint(32))
+            .output("start_time", ton_abi::ParamType::Uint(32))
             .build()
     })
 }
@@ -76,7 +76,7 @@ pub mod events {
         static EVENT: OnceCell<ton_abi::Event> = OnceCell::new();
         EVENT.get_or_init(|| {
             EventBuilder::new("BridgeUpdated")
-                .in_arg("new_bridge", ton_abi::ParamType::Address)
+                .input("new_bridge", ton_abi::ParamType::Address)
                 .build()
         })
     }

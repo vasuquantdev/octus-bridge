@@ -22,8 +22,8 @@ pub fn derive_event_address() -> &'static ton_abi::Function {
         FunctionBuilder::new_responsible("deriveEventAddress")
             .time_header()
             .expire_header()
-            .in_arg("vote_data", TonEventVoteData::param_type())
-            .out_arg("event_address", ton_abi::ParamType::Address)
+            .input("vote_data", TonEventVoteData::param_type())
+            .output("event_address", ton_abi::ParamType::Address)
             .build()
     })
 }
@@ -33,7 +33,7 @@ pub fn set_end_timestamp() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
     FUNCTION.get_or_init(|| {
         FunctionBuilder::new("setEndTimestamp")
-            .in_arg("end_timestamp", ton_abi::ParamType::Uint(32))
+            .input("end_timestamp", ton_abi::ParamType::Uint(32))
             .build()
     })
 }
@@ -43,8 +43,8 @@ pub fn deploy_event() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
     FUNCTION.get_or_init(|| {
         FunctionBuilder::new("deployEvent")
-            .in_arg("vote_data", TonEventVoteData::param_type())
-            .out_arg("event_address", ton_abi::ParamType::Address)
+            .input("vote_data", TonEventVoteData::param_type())
+            .output("event_address", ton_abi::ParamType::Address)
             .build()
     })
 }

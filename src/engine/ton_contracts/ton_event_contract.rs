@@ -19,7 +19,7 @@ pub fn receive_round_relays() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
     FUNCTION.get_or_init(|| {
         FunctionBuilder::new("receiveRoundRelays")
-            .in_arg(
+            .input(
                 "keys",
                 ton_abi::ParamType::Array(Box::new(ton_abi::ParamType::Uint(256))),
             )
@@ -33,7 +33,7 @@ pub fn confirm() -> &'static ton_abi::Function {
     FUNCTION.get_or_init(|| {
         FunctionBuilder::new("confirm")
             .default_headers()
-            .in_arg("signature", ton_abi::ParamType::Bytes)
+            .input("signature", ton_abi::ParamType::Bytes)
             .build()
     })
 }
