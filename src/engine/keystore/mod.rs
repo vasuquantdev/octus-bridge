@@ -211,10 +211,11 @@ mod tst {
 
     #[test]
     fn init() {
+        let (dir, path) = create_file();
         let ton = ed25519_dalek::SecretKey::from_bytes(&[0; 32]).unwrap();
         let eth = secp256k1::SecretKey::from_slice(&[1; 32]).unwrap();
         let data = StoredData::new("lol", eth, ton).unwrap();
-        data.save("kek.json").unwrap();
+        data.save(path).unwrap();
     }
 
     const JSON: &str = r#"{
