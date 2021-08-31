@@ -49,13 +49,13 @@ impl FromPhraseAndPath for UnencryptedEthData {
         struct PrintedUnencryptedEthData<'a> {
             phrase: &'a str,
             path: &'a str,
-            address: String,
+            address: EthAddressWrapper<'a>,
         }
 
         serde_json::to_value(PrintedUnencryptedEthData {
             phrase: self.phrase.unsecure(),
             path: self.path.unsecure(),
-            address: format!("0x{}", hex::encode(self.address.as_bytes())),
+            address: EthAddressWrapper(&self.address),
         })
         .trust_me()
     }

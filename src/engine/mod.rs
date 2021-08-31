@@ -44,6 +44,16 @@ impl Engine {
     }
 
     pub async fn start(&self) -> Result<()> {
+        // Print ETH address and TON public key
+        log::warn!(
+            "Using ETH address: {}",
+            EthAddressWrapper(self.context.keystore.eth.address())
+        );
+        log::warn!(
+            "Using TON public key: {}",
+            hex::encode(self.context.keystore.ton.public_key().as_bytes())
+        );
+
         // Sync node and subscribers
         self.context.start().await?;
 
