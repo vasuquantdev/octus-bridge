@@ -220,12 +220,12 @@ mod test {
         assert_eq!(got, expected);
     }
 
-    fn test_int(size: u16, number: u128) {
-        let ton_token = TonTokenValue::Int(ton_abi::Int::new(number as i128, size as usize));
+    fn test_int(size: u16, number: i128) {
+        let ton_token = TonTokenValue::Int(ton_abi::Int::new(number, size as usize));
         let eth_token = map_ton_token_to_eth(ton_token).unwrap();
         match eth_token {
             EthTokenValue::Int(a) => {
-                assert_eq!(a.as_u128(), number);
+                assert_eq!(a.to_string(), number.to_string());
             }
             _ => unreachable!(),
         }
@@ -258,8 +258,8 @@ mod test {
     fn test_ton_eth_int() {
         let mut i = 1;
         loop {
-            test_int(128, i as u128);
-            if i >= u128::MAX / 2 {
+            test_int(128, i);
+            if i >= i128::MAX / 2 {
                 break;
             }
             i *= 2;
