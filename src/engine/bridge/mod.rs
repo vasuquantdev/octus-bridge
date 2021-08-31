@@ -11,6 +11,7 @@ use tokio::sync::mpsc;
 use ton_block::HashmapAugType;
 use ton_types::UInt256;
 
+use crate::engine::keystore::*;
 use crate::engine::ton_contracts::*;
 use crate::engine::ton_subscriber::*;
 use crate::engine::EngineContext;
@@ -25,7 +26,7 @@ pub struct Bridge {
     state: Arc<RwLock<BridgeState>>,
 
     pending_eth_events: Arc<FxDashMap<UInt256, PendingEthEvent>>,
-    pending_ton_events: Arc<FxDashMap<UInt256, PendingTonEvent>>,
+    pending_ton_events: Arc<FxDashMap<UInt256, Arc<AccountObserver<TonEvent>>>>,
 
     connectors_tx: AccountEventsTx<ConnectorEvent>,
     eth_event_configurations_tx: AccountEventsTx<EthEventConfigurationEvent>,
@@ -164,13 +165,12 @@ impl Bridge {
 
         match event {
             EthEventConfigurationEvent::EventDeployed { address, .. } => {
-                // TODO: check vote data
-
                 match self.pending_eth_events.entry(address) {
                     Entry::Vacant(entry) => {
                         let observer = AccountObserver::new(&self.eth_events_tx);
                         entry.insert(PendingEthEvent {
                             observer: observer.clone(),
+                            state: PendingEthEventState::Uninitialized,
                         });
 
                         self.context
@@ -202,29 +202,12 @@ impl Bridge {
         self: Arc<Self>,
         (account, event): (UInt256, TonEventConfigurationEvent),
     ) -> Result<()> {
-        use dashmap::mapref::entry::Entry;
-
         match event {
             TonEventConfigurationEvent::EventDeployed { address, .. } => {
-                match self.pending_ton_events.entry(address) {
-                    Entry::Vacant(entry) => {
-                        let observer = AccountObserver::new(&self.ton_events_tx);
-                        entry.insert(PendingTonEvent {
-                            observer: observer.clone(),
-                            state: PendingTonEventState::Uninitialized,
-                        });
-
-                        self.context
-                            .ton_subscriber
-                            .add_transactions_subscription([address], &observer);
-
-                        Ok(())
-                    }
-                    Entry::Occupied(_) => {
-                        log::warn!("Got deployment message for pending event: {:x}", address);
-                        Ok(())
-                    }
+                if !self.add_pending_ton_event(address) {
+                    log::warn!("Got deployment message for pending event: {:x}", account);
                 }
+                Ok(())
             }
             TonEventConfigurationEvent::SetEndTimestamp { end_timestamp } => {
                 let mut state = self.state.write();
@@ -247,90 +230,143 @@ impl Bridge {
     ) -> Result<()> {
         use dashmap::mapref::entry::Entry;
 
-        match self.pending_eth_events.entry(account) {
-            Entry::Occupied(entry) => {
-                todo!()
+        let our_public_key = self.context.keystore.ton.public_key();
+
+        if let Entry::Occupied(entry) = self.pending_eth_events.entry(account) {
+            match event {
+                EthEvent::ReceiveRoundRelays { keys } => {
+                    // Check if event contains our key
+                    if !keys.contains(our_public_key) {
+                        entry.remove();
+                        return Ok(());
+                    }
+
+                    // tokio::spawn(async move {
+                    //     if let Err(e) = self.update_eth_event(account) {
+                    //         log::error!("Failed to update ETH event: {:?}", e);
+                    //     }
+                    // });
+                    todo!()
+                }
+                // Handle our confirmation or rejection
+                EthEvent::Confirm { public_key } | EthEvent::Reject { public_key }
+                    if public_key == our_public_key =>
+                {
+                    entry.remove();
+                }
+                _ => { /* Ignore other votes */ }
             }
-            // Do nothing, because ETH events is only received for registered observers
-            Entry::Vacant(_) => Ok(()),
         }
+
+        Ok(())
     }
 
     async fn process_ton_event(
         self: Arc<Self>,
         (account, event): (UInt256, TonEvent),
     ) -> Result<()> {
-        todo!()
+        use dashmap::mapref::entry::Entry;
+
+        let our_public_key = self.context.keystore.ton.public_key();
+
+        if let Entry::Occupied(entry) = self.pending_ton_events.entry(account) {
+            match event {
+                // Handle received keys
+                TonEvent::ReceiveRoundRelays { keys } => {
+                    // Check if event contains our key
+                    if !keys.contains(our_public_key) {
+                        entry.remove();
+                        return Ok(());
+                    }
+
+                    self.spawn_background_task(
+                        "update TON event",
+                        self.clone().update_ton_event(account),
+                    );
+                }
+                // Handle our confirmation or rejection
+                TonEvent::Confirm { public_key, .. } | TonEvent::Reject { public_key }
+                    if public_key == our_public_key =>
+                {
+                    entry.remove();
+                }
+                _ => { /* Ignore other votes */ }
+            }
+        }
+
+        Ok(())
     }
 
-    fn update_ton_event(
-        &self,
-        account: UInt256,
-        contract: ExistingContract,
-        pending: &mut PendingTonEvent,
-    ) -> Result<()> {
-        let details = EthEventContract(&contract).get_details()?;
-        if details.status == EventStatus::Initializing {
-            pending.state = PendingTonEventState::WaitingForInitialization;
-            return Ok(());
-        }
-
+    async fn update_ton_event(self: Arc<Self>, account: UInt256) -> Result<()> {
         let keystore = &self.context.keystore;
+        let ton_subscriber = &self.context.ton_subscriber;
 
-        let public_key = *keystore.ton.public_key();
+        let contract = ton_subscriber.wait_contract_state(account).await?;
 
-        let status = VoteState::from_votes(
-            &public_key,
-            &details.confirms,
-            &details.rejects,
-            &details.empty,
-        );
+        // Get event details
+        let details = TonEventContract(&contract).get_details()?;
 
-        if status != VoteState::Pending {
-            pending.state = PendingTonEventState::Clearing;
-            return Ok(());
+        // Check further steps based on event statuses
+        match details.process(keystore.ton.public_key()) {
+            EventAction::Nop => return Ok(()),
+            EventAction::Remove => {
+                self.pending_ton_events.remove(&account);
+                return Ok(());
+            }
+            EventAction::Vote => { /* continue voting */ }
         }
 
-        let decoded_data = match self
-            .state
-            .read()
-            .ton_event_configurations
-            .get(&details.event_init_data.configuration)
-        {
-            Some(configuration) => ton_abi::TokenValue::decode_params(
-                &configuration.event_abi,
-                details.event_init_data.vote_data.event_data.clone().into(),
-                2,
-            )
-            .and_then(map_ton_tokens_to_eth_bytes),
-            None => {
-                log::error!(
-                    "TON event configuration {:x} not found for event {:x}",
-                    details.event_init_data.configuration,
-                    account
-                );
-                pending.state = PendingTonEventState::Clearing;
-                return Ok(());
+        // Find suitable configuration
+        let decoded_data = {
+            // NOTE: be sure to drop `self.state` before removing pending ton event.
+            // It may deadlock otherwise!
+            let data = self
+                .state
+                .read()
+                .ton_event_configurations
+                .get(&details.event_init_data.configuration)
+                .map(|configuration| {
+                    ton_abi::TokenValue::decode_params(
+                        &configuration.event_abi,
+                        details.event_init_data.vote_data.event_data.clone().into(),
+                        2,
+                    )
+                });
+
+            match data {
+                // Decode event data with event abi from configuration
+                Some(data) => data.and_then(map_ton_tokens_to_eth_bytes),
+                // Do nothing when configuration was not found
+                None => {
+                    log::error!(
+                        "TON event configuration {:x} not found for event {:x}",
+                        details.event_init_data.configuration,
+                        account
+                    );
+                    self.pending_ton_events.remove(&account);
+                    return Ok(());
+                }
             }
         };
 
-        match decoded_data {
-            Ok(data) => {
-                let signature = keystore.eth.sign(&data);
+        let message = match decoded_data {
+            // Confirm with signature
+            Ok(data) => UnsignedMessage::new(ton_event_contract::confirm(), account)
+                .arg(keystore.eth.sign(&data).to_vec()),
 
-                pending.state = PendingTonEventState::WaitingForConfirm {
-                    public_key,
-                    signature,
-                }
-            }
+            // Reject if event data is invalid
             Err(e) => {
                 log::warn!(
                     "Failed to compute vote data signature for {:x}: {:?}",
                     account,
                     e
                 );
-                pending.state = PendingTonEventState::WaitingForReject { public_key }
+                UnsignedMessage::new(ton_event_contract::reject(), account)
             }
+        };
+
+        if let Some(entry) = self.pending_ton_events.get(&account) {
+            self.deliver_message(entry.value(), message);
         }
 
         Ok(())
@@ -510,20 +546,25 @@ impl Bridge {
         account: &UInt256,
         contract: &ExistingContract,
     ) -> Result<()> {
+        // Get configuration details
         let details = EthEventConfigurationContract(contract).get_details()?;
 
+        // Verify and prepare abi
         let event_abi = decode_eth_event_abi(&details.basic_configuration.event_abi)?;
         let topic_hash = get_eth_topic_hash(&event_abi);
         let eth_contract_address = details.network_configuration.event_emitter;
 
+        // Get suitable ETH subscriber for specified chain id
         let eth_subscriber = self
             .context
             .eth_subscribers
             .get_subscriber(details.basic_configuration.chain_id)
             .ok_or(BridgeError::UnknownChainId)?;
 
+        // Check if configuration is expired
         let last_processed_height = eth_subscriber.get_last_processed_block()?;
         if (details.network_configuration.end_block_number as u64) < last_processed_height {
+            // Do nothing in that case
             log::warn!(
                 "Ignoring ETH event configuration {}: end block number {} is less then current {}",
                 account.to_hex_string(),
@@ -533,14 +574,15 @@ impl Bridge {
             return Ok(());
         }
 
+        // Add unique event hash
         add_event_code_hash(
             &mut state.event_code_hashes,
             &details.basic_configuration.event_code,
             EventType::Eth,
         )?;
 
+        // Add configuration entry
         let observer = AccountObserver::new(&self.eth_event_configurations_tx);
-
         match state.eth_event_configurations.entry(*account) {
             hash_map::Entry::Vacant(entry) => {
                 entry.insert(EthEventConfigurationState {
@@ -554,12 +596,15 @@ impl Bridge {
             }
         };
 
+        // Subscribe to ETH events
         eth_subscriber.subscribe(*account, eth_contract_address.into(), topic_hash);
 
+        // Subscribe to TON events
         self.context
             .ton_subscriber
             .add_transactions_subscription([*account], &observer);
 
+        // Done
         Ok(())
     }
 
@@ -569,10 +614,13 @@ impl Bridge {
         account: &UInt256,
         contract: &ExistingContract,
     ) -> Result<()> {
+        // Get configuration details
         let details = TonEventConfigurationContract(contract).get_details()?;
 
+        // Check if configuration is expired
         let current_timestamp = self.context.ton_subscriber.current_utime();
         if details.is_expired(current_timestamp) {
+            // Do nothing in that case
             log::warn!(
                 "Ignoring TON event configuration {}: end timestamp {} is less then current {}",
                 account.to_hex_string(),
@@ -582,16 +630,18 @@ impl Bridge {
             return Ok(());
         };
 
+        // Verify and prepare abi
         let event_abi = decode_ton_event_abi(&details.basic_configuration.event_abi)?;
 
+        // Add unique event hash
         add_event_code_hash(
             &mut state.event_code_hashes,
             &details.basic_configuration.event_code,
             EventType::Ton,
         )?;
 
+        // Add configuration entry
         let observer = AccountObserver::new(&self.ton_event_configurations_tx);
-
         match state.ton_event_configurations.entry(*account) {
             hash_map::Entry::Vacant(entry) => {
                 entry.insert(TonEventConfigurationState {
@@ -605,15 +655,21 @@ impl Bridge {
             }
         };
 
+        // Subscribe to TON events
         self.context
             .ton_subscriber
             .add_transactions_subscription([*account], &observer);
 
+        // Done
         Ok(())
     }
 
-    async fn get_all_events(&self) -> Result<()> {
+    async fn get_all_events(self: &Arc<Self>) -> Result<()> {
+        use dashmap::mapref::entry::Entry;
+
         let shard_accounts = self.context.get_all_shard_accounts().await?;
+
+        let our_public_key = self.context.keystore.ton.public_key();
 
         let state = self.state.read();
 
@@ -655,12 +711,23 @@ impl Bridge {
                     EventType::Eth => {
                         todo!()
                     }
-                    EventType::Ton => {
-                        todo!()
-                    }
+                    EventType::Ton => match TonEventContract(&contract).get_details() {
+                        Ok(details) => match details.process(&our_public_key) {
+                            EventAction::Nop | EventAction::Vote => {
+                                if self.add_pending_ton_event(hash) {
+                                    self.spawn_background_task(
+                                        "initial update TON event",
+                                        self.clone().update_ton_event(hash),
+                                    );
+                                }
+                            }
+                            EventAction::Remove => { /* do nothing */ }
+                        },
+                        Err(e) => {
+                            log::error!("Failed to get TON event details: {:?}", e);
+                        }
+                    },
                 }
-
-                // TODO: get details and filter current
 
                 Ok(true)
             })?;
@@ -771,11 +838,81 @@ impl Bridge {
         });
     }
 
+    fn deliver_message<T>(
+        self: &Arc<Self>,
+        observer: &Arc<AccountObserver<T>>,
+        unsigned_message: UnsignedMessage,
+    ) {
+        let bridge = Arc::downgrade(self);
+        let observer = Arc::downgrade(self);
+
+        tokio::spawn(async move {
+            loop {
+                let (bridge, _observer) = match (bridge.upgrade(), observer.upgrade()) {
+                    (Some(bridge), Some(observer)) => (bridge, observer),
+                    _ => return,
+                };
+                let context = &bridge.context;
+
+                let message = match context.keystore.ton.sign(&unsigned_message) {
+                    Ok(message) => message,
+                    Err(e) => {
+                        log::error!("Failed to send message: {:?}", e);
+                        return;
+                    }
+                };
+
+                match context
+                    .send_ton_message(&message.account, &message.message, message.expire_at)
+                    .await
+                {
+                    Ok(MessageStatus::Expired) => {
+                        log::info!("Message to account {:x} expired", message.account);
+                    }
+                    Ok(MessageStatus::Delivered) => {
+                        log::info!("Successfully sent message to account {:x}", message.account);
+                        return;
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to send message: {:?}", e);
+                        return;
+                    }
+                }
+            }
+        });
+    }
+
+    fn add_pending_ton_event(&self, account: UInt256) -> bool {
+        use dashmap::mapref::entry::Entry;
+
+        if let Entry::Vacant(entry) = self.pending_ton_events.entry(account) {
+            let observer = AccountObserver::new(&self.ton_events_tx);
+            entry.insert(observer.clone());
+            self.context
+                .ton_subscriber
+                .add_transactions_subscription([account], &observer);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn spawn_background_task<F>(self: &Arc<Self>, name: &'static str, fut: F)
+    where
+        F: Future<Output = Result<()>> + Send + 'static,
+    {
+        tokio::spawn(async move {
+            if let Err(e) = fut.await {
+                log::error!("Failed to {}: {:?}", name, e);
+            }
+        });
+    }
+
     fn start_listening_events<E, R>(
         self: &Arc<Self>,
         name: &'static str,
         mut events_rx: mpsc::UnboundedReceiver<E>,
-        mut handler: fn(Arc<Self>, E) -> R,
+        handler: fn(Arc<Self>, E) -> R,
     ) where
         E: Send + 'static,
         R: Future<Output = Result<()>> + Send + 'static,
@@ -839,60 +976,42 @@ fn add_event_code_hash(
 
 struct PendingEthEvent {
     observer: Arc<AccountObserver<EthEvent>>,
+    state: PendingEthEventState,
 }
 
-struct PendingTonEvent {
-    observer: Arc<AccountObserver<TonEvent>>,
-    state: PendingTonEventState,
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-enum PendingTonEventState {
+#[derive(Debug, Clone, Eq, PartialEq)]
+enum PendingEthEventState {
+    /// The event has just been received
     Uninitialized,
+    /// Waiting for event with relay keys
     WaitingForInitialization,
-    WaitingForConfirm {
-        public_key: UInt256,
-        signature: [u8; 65],
-    },
-    WaitingForReject {
-        public_key: UInt256,
-    },
+    /// Waiting verification result from ETH subscription
+    WaitingForVerification {},
+    /// Event was correct and we should send confirmation message
+    WaitingForConfirm,
+    /// Event was invalid and we should send rejection message
+    WaitingForReject,
+    /// Event is processed
     Clearing,
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-enum EventAction {
-    WaitUntilInitialized,
-    Remove,
-    Confirm,
-    Reject,
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-enum VoteState {
-    Pending,
-    Confirmed,
-    Rejected,
-    NotIncluded,
-}
-
-impl VoteState {
-    fn from_votes(
-        public_key: &UInt256,
-        confirms: &[UInt256],
-        rejects: &[UInt256],
-        empty: &[UInt256],
-    ) -> Self {
-        if empty.contains(public_key) {
-            Self::Pending
-        } else if confirms.contains(public_key) {
-            Self::Confirmed
-        } else if rejects.contains(public_key) {
-            Self::Rejected
-        } else {
-            Self::NotIncluded
+impl TonEventDetails {
+    fn process(&self, public_key: &UInt256) -> EventAction {
+        match self.status {
+            // If it is still initializing - postpone processing until relay keys are received
+            EventStatus::Initializing => EventAction::Nop,
+            // The only status in which we can vote
+            EventStatus::Pending if self.empty.contains(public_key) => EventAction::Vote,
+            // Discard event in other cases
+            _ => EventAction::Remove,
         }
     }
+}
+
+enum EventAction {
+    Nop,
+    Remove,
+    Vote,
 }
 
 #[derive(Clone)]

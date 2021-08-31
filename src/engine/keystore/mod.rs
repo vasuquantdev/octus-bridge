@@ -1,7 +1,10 @@
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::Result;
+use nekoton_abi::*;
+use nekoton_utils::TrustMe;
 use secstr::SecUtf8;
 use ton_types::UInt256;
 
@@ -128,12 +131,84 @@ impl TonSigner {
         &self.pair.public
     }
 
-    pub fn sign(&self, data: &[u8]) -> [u8; ed25519_dalek::SIGNATURE_LENGTH] {
-        use ed25519_dalek::Signer;
+    pub fn sign(&self, unsigned_message: &UnsignedMessage) -> Result<SignedMessage> {
+        let time = chrono::Utc::now().timestamp_millis() as u64;
+        let expire_at = (time / 1000) as u32 + MESSAGE_TTL_SEC;
 
-        self.pair.sign(data).to_bytes()
+        let headers = default_headers(time, expire_at, &self.pair.public);
+        let body = unsigned_message.function.encode_input(
+            &headers,
+            &unsigned_message.inputs,
+            false,
+            Some(&self.pair),
+        )?;
+
+        let message = ton_block::Message::with_ext_in_header_and_body(
+            ton_block::ExternalInboundMessageHeader {
+                dst: unsigned_message.dst.clone(),
+                ..Default::default()
+            },
+            body.into(),
+        );
+
+        Ok(SignedMessage {
+            account: unsigned_message.account,
+            message,
+            expire_at,
+        })
     }
 }
+
+pub struct UnsignedMessage {
+    function: &'static ton_abi::Function,
+    inputs: Vec<ton_abi::Token>,
+    account: UInt256,
+    dst: ton_block::MsgAddressInt,
+}
+
+impl UnsignedMessage {
+    pub fn new(function: &'static ton_abi::Function, account: UInt256) -> Self {
+        let dst = ton_block::MsgAddressInt::with_standart(None, 0, account.into()).trust_me();
+
+        Self {
+            function,
+            inputs: Vec::with_capacity(function.inputs.len()),
+            account,
+            dst,
+        }
+    }
+
+    pub fn arg<T>(mut self, arg: T) -> Self
+    where
+        T: BuildTokenValue,
+    {
+        let arg_name = self.function.inputs[self.inputs.len()].name.clone();
+        self.inputs.push(arg.token_value().named(arg_name));
+        self
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SignedMessage {
+    pub account: UInt256,
+    pub message: ton_block::Message,
+    pub expire_at: u32,
+}
+
+fn default_headers(time: u64, expire_at: u32, public_key: &ed25519_dalek::PublicKey) -> HeadersMap {
+    let mut header = HashMap::with_capacity(3);
+    header.insert("time".to_string(), ton_abi::TokenValue::Time(time));
+    header.insert("expire".to_string(), ton_abi::TokenValue::Expire(expire_at));
+    header.insert(
+        "pubkey".to_string(),
+        ton_abi::TokenValue::PublicKey(Some(*public_key)),
+    );
+    header
+}
+
+type HeadersMap = HashMap<String, ton_abi::TokenValue>;
+
+const MESSAGE_TTL_SEC: u32 = 60;
 
 #[cfg(test)]
 mod tst {
@@ -150,7 +225,7 @@ mod tst {
 
     #[test]
     fn init() {
-        let (dir, path) = create_file();
+        let (_dir, path) = create_file();
 
         let eth = UnencryptedEthData::from_phrase(
             TEST_PHRASE.into(),
@@ -183,7 +258,7 @@ mod tst {
 
     #[test]
     fn check_ok_passwd() {
-        let (dir, path) = create_file();
+        let (_dir, path) = create_file();
         let store = KeyStore::new(path, "lol".into()).unwrap();
 
         let expected_ton_key =
@@ -199,7 +274,7 @@ mod tst {
 
     #[test]
     fn check_bad_password() {
-        let (dir, path) = create_file();
+        let (_dir, path) = create_file();
         assert!(KeyStore::new(path, "kek".into()).is_err())
     }
 

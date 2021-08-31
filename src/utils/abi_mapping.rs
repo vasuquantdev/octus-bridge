@@ -1,6 +1,6 @@
-use anyhow::{Context, Result};
-use ethabi::{ParamType as EthParamType, Token as EthTokenValue, Token};
-use num_bigint::{BigInt, BigUint, Sign};
+use anyhow::Result;
+use ethabi::{ParamType as EthParamType, Token as EthTokenValue};
+use num_bigint::{BigInt, BigUint};
 use serde::Deserialize;
 use ton_abi::{ParamType as TonParamType, TokenValue as TonTokenValue};
 
