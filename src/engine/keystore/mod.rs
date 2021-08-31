@@ -241,7 +241,7 @@ mod tst {
     }
 
     fn create_file() -> (TempDir, PathBuf) {
-        let mut dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("data.json");
         let mut file = std::fs::OpenOptions::new()
             .create(true)
@@ -273,7 +273,6 @@ mod tst {
         let message_text = b"hello_world1";
 
         let (private_key, _) = default_keys();
-        let curve = secp256k1::Secp256k1::new();
         let signer = EthSigner::new(private_key);
         let res = signer.sign(message_text);
         let expected = hex::decode("ff244ad5573d02bc6ead270d5ff48c490b0113225dd61617791ba6610ed1e56a007ec790f8fca53243907b888e6b33ad15c52fed3bc6a7ee5da2fa287ea4f8211b").unwrap();
