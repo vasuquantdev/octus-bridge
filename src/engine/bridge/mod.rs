@@ -275,7 +275,9 @@ impl Bridge {
             return Ok(());
         }
 
-        let public_key = Default::default(); // TODO: get from staking
+        let keystore = &self.context.keystore;
+
+        let public_key = *keystore.ton.public_key();
 
         let status = VoteState::from_votes(
             &public_key,
@@ -314,9 +316,11 @@ impl Bridge {
 
         match decoded_data {
             Ok(data) => {
+                let signature = keystore.eth.sign(&data);
+
                 pending.state = PendingTonEventState::WaitingForConfirm {
                     public_key,
-                    signature: [0; 64], // TODO: compute signature from `data`
+                    signature,
                 }
             }
             Err(e) => {
@@ -848,7 +852,7 @@ enum PendingTonEventState {
     WaitingForInitialization,
     WaitingForConfirm {
         public_key: UInt256,
-        signature: [u8; 64],
+        signature: [u8; 65],
     },
     WaitingForReject {
         public_key: UInt256,

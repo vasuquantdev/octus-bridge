@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use secstr::SecUtf8;
+use ton_types::UInt256;
 
 use crate::config::{FromPhraseAndPath, StoredKeysData, UnencryptedEthData, UnencryptedTonData};
 use crate::utils::*;
@@ -65,8 +66,8 @@ impl EthSigner {
         }
     }
 
-    /// signs data according to https://eips.ethereum.org/EIPS/eip-191
-    pub fn sign(&self, data: &[u8]) -> Vec<u8> {
+    /// Signs data according to https://eips.ethereum.org/EIPS/eip-191
+    pub fn sign(&self, data: &[u8]) -> [u8; 65] {
         // 1. Calculate prefixed hash
         let data_hash = web3::signing::keccak256(data);
         let mut eth_data: Vec<u8> = "\x19Ethereum Signed Message:\n32".into();
@@ -83,9 +84,10 @@ impl EthSigner {
             .serialize_compact();
 
         // 4. Prepare for ETH
-        let mut ex_sign = Vec::with_capacity(65);
-        ex_sign.extend_from_slice(&signature);
-        ex_sign.push(id.to_i32() as u8 + 27); // recovery id with eth specific offset
+        let mut ex_sign = [0u8; 65];
+        ex_sign[..64].copy_from_slice(&signature);
+        // recovery id with eth specific offset
+        ex_sign[64] = id.to_i32() as u8 + 27;
 
         // Done
         ex_sign
@@ -102,6 +104,7 @@ impl EthSigner {
 
 pub struct TonSigner {
     pair: ed25519_dalek::Keypair,
+    public_key_bytes: UInt256,
 }
 
 impl TonSigner {
@@ -113,10 +116,15 @@ impl TonSigner {
                 secret: secret_key,
                 public: public_key,
             },
+            public_key_bytes: UInt256::from(public_key.to_bytes()),
         }
     }
 
-    pub fn public_key(&self) -> &ed25519_dalek::PublicKey {
+    pub fn public_key(&self) -> &UInt256 {
+        &self.public_key_bytes
+    }
+
+    pub fn raw_public_key(&self) -> &ed25519_dalek::PublicKey {
         &self.pair.public
     }
 

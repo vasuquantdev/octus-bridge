@@ -51,7 +51,7 @@ impl Engine {
         );
         log::warn!(
             "Using TON public key: {}",
-            hex::encode(self.context.keystore.ton.public_key().as_bytes())
+            self.context.keystore.ton.public_key().to_hex_string()
         );
 
         // Sync node and subscribers
