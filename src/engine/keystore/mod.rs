@@ -129,41 +129,70 @@ impl TonSigner {
 
 #[cfg(test)]
 mod tst {
-    use super::*;
     use std::io::Write;
     use std::path::PathBuf;
     use std::str::FromStr;
+
     use tempfile::TempDir;
+
+    use super::*;
+
+    const TEST_PHRASE: &'static str =
+        "spy taste penalty add aware trim crouch denial dinner arrest magic young";
 
     #[test]
     fn init() {
         let (dir, path) = create_file();
-        let ton = ed25519_dalek::SecretKey::from_bytes(&[0; 32]).unwrap();
-        let eth = secp256k1::SecretKey::from_slice(&[1; 32]).unwrap();
+
+        let eth = UnencryptedEthData::from_phrase(
+            TEST_PHRASE.into(),
+            UnencryptedEthData::DEFAULT_PATH.into(),
+        )
+        .unwrap();
+        let ton = UnencryptedTonData::from_phrase(
+            TEST_PHRASE.into(),
+            UnencryptedTonData::DEFAULT_PATH.into(),
+        )
+        .unwrap();
+
         let data = StoredKeysData::new("lol", eth, ton).unwrap();
         data.save(path).unwrap();
     }
 
     const JSON: &str = r#"{
-        "salt": "chBVmBqLz5SMqmhjIInNCNpO48E=",
-        "eth_encrypted_secret_key": "9pC/Z0iyqH0nbW7fsht62+5bRqjApRg3zjhgy/P7In/rTZ4+3IaDdB0Wtr4zcJJP",
-        "eth_nonce": "ed88d2fe388cd5e59a674d6f",
-        "ton_encrypted_secret_key": "XKRZpapEnk07jTkxhzVTYsUaFF4tRwH+InUoxWhjZ50tv8wlhmR1d3GE7KSNpN35",
-        "ton_nonce": "90f70cfc10ffdce3b390b5fd"
+        "salt": "G+g0tWMEE0RkAKZq5MMuJOLT5Yw=",
+        "eth": {
+            "encrypted_seed_phrase": "qZ+9nriQ/HMWcIPL2nFDGYmDT12y/Z4SasoKK/86iqellvPrDjIqss1+5Hr26cVJtRMAieWqzwvyxa9ryXQ/zE/HY38lhXLfDNRplW7IxuUAwS5jp/npeA==",
+            "encrypted_derivation_path": "t8DwiuveuTdUf8OJmyAAXUyzmmGAQBz3ykWpD2moS28=",
+            "nonce": "db4f2c4b6a0abca6f77427e1"
+        },
+        "ton": {
+            "encrypted_seed_phrase": "J0Mg2qJE6+Q0DJq/O2kqsVyJAkzeWVhqj9GkJrOBGE/uzg777q4zSzfDTfsqGYc4kHITaQdJBIu6DCVmo9ePpYJEoUBuew1zKAVe+kVMczebcQKXqrTEwA==",
+            "encrypted_derivation_path": "ORxtzvEKq6lnC8Xqcid26hUXNpvckrijIEP+8YMgaVx8",
+            "nonce": "dafbcbf23f77131d1e62a80b"
+        }
     }"#;
 
     #[test]
     fn check_ok_passwd() {
         let (dir, path) = create_file();
-        let store = KeyStore::from_file(path, "lol").unwrap();
-        assert_eq!(store.ton.pair.secret.to_bytes(), [0; 32]);
-        assert_eq!(store.eth.secret_key.as_ref(), &[1; 32]);
+        let store = KeyStore::new(path, "lol".into()).unwrap();
+
+        let expected_ton_key =
+            hex::decode("6be37687497f5b54ffc9fec5c17e24be08e6cbcf8e240155b1735aa6da634183")
+                .unwrap();
+        let expected_eth_key =
+            hex::decode("89d0fdd4e8ad43c60e5130741febe7c070e0e19223b011d99254fd2f0d206489")
+                .unwrap();
+
+        assert_eq!(store.ton.pair.secret.as_ref(), &expected_ton_key);
+        assert_eq!(&store.eth.secret_key.as_ref()[..], &expected_eth_key);
     }
 
     #[test]
     fn check_bad_password() {
         let (dir, path) = create_file();
-        assert!(KeyStore::from_file(path, "kek").is_err())
+        assert!(KeyStore::new(path, "kek".into()).is_err())
     }
 
     fn create_file() -> (TempDir, PathBuf) {

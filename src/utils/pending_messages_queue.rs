@@ -145,7 +145,7 @@ mod tests {
         UInt256::from(hash)
     }
 
-    fn make_queue() -> PendingMessagesQueue {
+    fn make_queue() -> Arc<PendingMessagesQueue> {
         let queue = PendingMessagesQueue::new(10);
         assert_eq!(queue.min_expire_at.load(Ordering::Acquire), u32::MAX);
         queue
