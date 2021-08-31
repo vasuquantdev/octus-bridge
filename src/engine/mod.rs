@@ -7,6 +7,7 @@ use ton_block::Serializable;
 
 use self::bridge::*;
 use self::eth_subscriber::*;
+use self::keystore::*;
 use self::staking::*;
 use self::ton_contracts::*;
 use self::ton_subscriber::*;
@@ -30,7 +31,7 @@ pub struct Engine {
 
 impl Engine {
     pub async fn new(
-        config: RelayConfig,
+        config: AppConfig,
         global_config: ton_indexer::GlobalConfig,
     ) -> Result<Arc<Self>> {
         let context = EngineContext::new(config, global_config).await?;
@@ -75,25 +76,25 @@ impl Engine {
 }
 
 pub struct EngineContext {
-    pub settings: BridgeConfig,
+    pub settings: RelayConfig,
+    pub keystore: Arc<KeyStore>,
     pub state: Arc<State>,
-    pub ton_engine: Arc<ton_indexer::Engine>,
-    pub ton_subscriber: Arc<TonSubscriber>,
-    pub eth_subscribers: Arc<EthSubscriberRegistry>,
     pub messages_queue: Arc<PendingMessagesQueue>,
+    pub ton_subscriber: Arc<TonSubscriber>,
+    pub ton_engine: Arc<ton_indexer::Engine>,
+    pub eth_subscribers: Arc<EthSubscriberRegistry>,
 }
 
 impl EngineContext {
-    async fn new(
-        config: RelayConfig,
-        global_config: ton_indexer::GlobalConfig,
-    ) -> Result<Arc<Self>> {
-        let settings = config.bridge_settings;
+    async fn new(config: AppConfig, global_config: ton_indexer::GlobalConfig) -> Result<Arc<Self>> {
+        let settings = config.relay_settings;
 
-        let messages_queue = Arc::new(PendingMessagesQueue::new(16));
+        let keystore = KeyStore::new(&settings.keys_path, config.master_password)?;
 
         let state = State::new(&settings.db_path).await?;
         state.apply_migrations().await?;
+
+        let messages_queue = PendingMessagesQueue::new(16);
 
         let ton_subscriber = TonSubscriber::new(messages_queue.clone());
         let ton_engine = ton_indexer::Engine::new(
@@ -109,10 +110,11 @@ impl EngineContext {
         Ok(Arc::new(Self {
             settings,
             state,
-            ton_engine,
-            ton_subscriber,
-            eth_subscribers,
+            keystore,
             messages_queue,
+            ton_subscriber,
+            ton_engine,
+            eth_subscribers,
         }))
     }
 

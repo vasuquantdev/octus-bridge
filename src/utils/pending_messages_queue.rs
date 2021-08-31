@@ -1,5 +1,6 @@
 use std::collections::hash_map;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 
 use anyhow::Result;
 use parking_lot::Mutex;
@@ -15,14 +16,14 @@ pub struct PendingMessagesQueue {
 }
 
 impl PendingMessagesQueue {
-    pub fn new(capacity: usize) -> Self {
-        Self {
+    pub fn new(capacity: usize) -> Arc<Self> {
+        Arc::new(Self {
             min_expire_at: AtomicU32::new(u32::MAX),
             entries: Mutex::new(FxHashMap::with_capacity_and_hasher(
                 capacity,
                 Default::default(),
             )),
-        }
+        })
     }
 
     pub fn add_message(

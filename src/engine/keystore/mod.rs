@@ -1,12 +1,11 @@
-use std::fs::File;
 use std::path::Path;
+use std::sync::Arc;
 
 use anyhow::Result;
-use chacha20poly1305::aead::NewAead;
-use chacha20poly1305::{ChaCha20Poly1305, Nonce};
-use nekoton_utils::*;
-use rand::prelude::*;
-use serde::{Deserialize, Serialize};
+use secstr::SecUtf8;
+
+use crate::config::{FromPhraseAndPath, StoredKeysData, UnencryptedEthData, UnencryptedTonData};
+use crate::utils::*;
 
 pub struct KeyStore {
     pub eth: EthSigner,
@@ -14,32 +13,34 @@ pub struct KeyStore {
 }
 
 impl KeyStore {
-    pub fn from_file<T>(path: T, password: &str) -> Result<Self>
+    pub fn new<P>(keys_path: P, password: SecUtf8) -> Result<Arc<Self>>
     where
-        T: AsRef<Path>,
+        P: AsRef<Path>,
     {
-        let file = File::open(&path)?;
-        let crypto_data: StoredData = serde_json::from_reader(&file)?;
+        let keys_path = keys_path.as_ref();
+        let stored_data = if keys_path.exists() {
+            log::info!("Using existing keys");
+            StoredKeysData::load(keys_path)?
+        } else {
+            log::info!("Generating new keys");
+            let data = StoredKeysData::new(
+                password.unsecure(),
+                UnencryptedEthData::generate()?,
+                UnencryptedTonData::generate()?,
+            )?;
+            data.save(keys_path)?;
+            data
+        };
 
-        let key = symmetric_key_from_password(password, &*crypto_data.salt);
-        let decrypter = ChaCha20Poly1305::new(&key);
+        let (eth_secret_key, ton_secret_key) =
+            stored_data.decrypt_only_keys(password.unsecure())?;
+        let eth_secret_key = secp256k1::SecretKey::from_slice(&eth_secret_key)?;
+        let ton_secret_key = ed25519_dalek::SecretKey::from_bytes(&ton_secret_key)?;
 
-        let eth_secret_key = secp256k1::SecretKey::from_slice(&decrypt(
-            &decrypter,
-            &crypto_data.eth_nonce,
-            &crypto_data.eth_encrypted_secret_key,
-        )?)?;
-
-        let ton_secret_key = ed25519_dalek::SecretKey::from_bytes(&decrypt(
-            &decrypter,
-            &crypto_data.ton_nonce,
-            &crypto_data.ton_encrypted_secret_key,
-        )?)?;
-
-        Ok(Self {
+        Ok(Arc::new(Self {
             eth: EthSigner::new(eth_secret_key),
             ton: TonSigner::new(ton_secret_key),
-        })
+        }))
     }
 }
 
@@ -54,12 +55,7 @@ impl EthSigner {
     fn new(secret_key: secp256k1::SecretKey) -> Self {
         let secp256k1 = secp256k1::Secp256k1::new();
         let public_key = secp256k1::PublicKey::from_secret_key(&secp256k1, &secret_key);
-
-        // Get address according to https://github.com/ethereumbook/ethereumbook/blob/develop/04keys-addresses.asciidoc#public-keys
-        let address = {
-            let pub_key = &public_key.serialize_uncompressed()[1..];
-            ethabi::Address::from_slice(&web3::signing::keccak256(pub_key)[32 - 20..])
-        };
+        let address = compute_eth_address(&public_key);
 
         Self {
             secp256k1,
@@ -131,76 +127,6 @@ impl TonSigner {
     }
 }
 
-/// Data, stored on disk in `encrypted_data` filed of config.
-#[derive(Serialize, Deserialize)]
-pub struct StoredData {
-    #[serde(with = "serde_bytes_base64")]
-    salt: Vec<u8>,
-
-    #[serde(with = "serde_bytes_base64")]
-    eth_encrypted_secret_key: Vec<u8>,
-    #[serde(with = "serde_nonce")]
-    eth_nonce: Nonce,
-
-    #[serde(with = "serde_bytes_base64")]
-    ton_encrypted_secret_key: Vec<u8>,
-    #[serde(with = "serde_nonce")]
-    ton_nonce: Nonce,
-}
-
-impl StoredData {
-    pub fn new(
-        password: &str,
-        eth_secret_key: secp256k1::SecretKey,
-        ton_secret_key: ed25519_dalek::SecretKey,
-    ) -> Result<Self> {
-        fn gen_part(
-            enc: &ChaCha20Poly1305,
-            rng: &mut impl Rng,
-            data: &[u8],
-        ) -> Result<(Vec<u8>, Nonce)> {
-            use chacha20poly1305::aead::generic_array::sequence::GenericSequence;
-
-            let nonce = Nonce::generate(|_| rng.gen());
-            let data = encrypt(enc, &nonce, data)?;
-            Ok((data, nonce))
-        }
-
-        let mut rng = rand::rngs::OsRng;
-
-        let salt: [u8; 20] = rng.gen();
-
-        let key = symmetric_key_from_password(password, &salt);
-        let encryptor = ChaCha20Poly1305::new(&key);
-
-        // Encrypt ETH part
-        let (eth_encrypted_secret_key, eth_nonce) =
-            gen_part(&encryptor, &mut rng, eth_secret_key.as_ref())?;
-
-        // Encrypt TON part
-        let (ton_encrypted_secret_key, ton_nonce) =
-            gen_part(&encryptor, &mut rng, ton_secret_key.as_bytes())?;
-
-        // Done
-        Ok(Self {
-            salt: salt.to_vec(),
-            eth_encrypted_secret_key,
-            eth_nonce,
-            ton_encrypted_secret_key,
-            ton_nonce,
-        })
-    }
-
-    pub fn save<T>(&self, path: T) -> Result<()>
-    where
-        T: AsRef<Path>,
-    {
-        let crypto_config = File::create(path)?;
-        serde_json::to_writer_pretty(crypto_config, self)?;
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 mod tst {
     use super::*;
@@ -214,7 +140,7 @@ mod tst {
         let (dir, path) = create_file();
         let ton = ed25519_dalek::SecretKey::from_bytes(&[0; 32]).unwrap();
         let eth = secp256k1::SecretKey::from_slice(&[1; 32]).unwrap();
-        let data = StoredData::new("lol", eth, ton).unwrap();
+        let data = StoredKeysData::new("lol", eth, ton).unwrap();
         data.save(path).unwrap();
     }
 

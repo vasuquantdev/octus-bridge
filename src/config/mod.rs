@@ -4,31 +4,40 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use nekoton_utils::*;
+use secstr::SecUtf8;
 use serde::{Deserialize, Serialize};
 
 pub use self::eth_config::*;
+pub use self::stored_keys::*;
 
 mod eth_config;
+mod stored_keys;
 
 #[derive(Serialize, Deserialize)]
-pub struct RelayConfig {
-    pub bridge_settings: BridgeConfig,
-
+pub struct AppConfig {
+    pub master_password: SecUtf8,
+    pub relay_settings: RelayConfig,
     pub node_settings: ton_indexer::NodeConfig,
-
     #[serde(default = "default_logger_settings")]
     pub logger_settings: serde_yaml::Value,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct BriefAppConfig {
+    #[serde(default)]
+    pub master_password: Option<SecUtf8>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BridgeConfig {
+pub struct RelayConfig {
+    pub keys_path: PathBuf,
     #[serde(with = "serde_address")]
     pub bridge_address: ton_block::MsgAddressInt,
     pub db_path: PathBuf,
     pub networks: HashMap<u32, EthConfig>,
 }
 
-impl ConfigExt for RelayConfig {
+impl ConfigExt for AppConfig {
     fn from_file<P>(path: &P) -> Result<Self>
     where
         P: AsRef<Path>,
