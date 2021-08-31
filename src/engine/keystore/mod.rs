@@ -206,6 +206,7 @@ mod tst {
     use super::*;
     use std::io::Write;
     use std::path::PathBuf;
+    use std::str::FromStr;
     use tempfile::TempDir;
 
     #[test]
@@ -248,5 +249,44 @@ mod tst {
             .unwrap();
         file.write_all(JSON.as_bytes()).unwrap();
         (dir, path)
+    }
+
+    fn default_keys() -> (secp256k1::SecretKey, ed25519_dalek::SecretKey) {
+        let eth_private_key = secp256k1::SecretKey::from_slice(
+            &hex::decode("416ddb82736d0ddf80cc50eda0639a2dd9f104aef121fb9c8af647ad8944a8b1")
+                .unwrap(),
+        )
+        .unwrap();
+
+        let ton_private_key = ed25519_dalek::SecretKey::from_bytes(
+            &hex::decode("e371ef1d7266fc47b30d49dc886861598f09e2e6294d7f0520fe9aa460114e51")
+                .unwrap(),
+        )
+        .unwrap();
+
+        (eth_private_key, ton_private_key)
+    }
+
+    #[test]
+    fn test_sign() {
+        let message_text = b"hello_world1";
+
+        let (private_key, _) = default_keys();
+        let curve = secp256k1::Secp256k1::new();
+        let signer = EthSigner::new(private_key);
+        let res = signer.sign(message_text);
+        let expected = hex::decode("ff244ad5573d02bc6ead270d5ff48c490b0113225dd61617791ba6610ed1e56a007ec790f8fca53243907b888e6b33ad15c52fed3bc6a7ee5da2fa287ea4f8211b").unwrap();
+        assert_eq!(expected.len(), res.len());
+        assert_eq!(res, expected.as_slice());
+    }
+
+    #[test]
+    fn test_address_derive() {
+        let (key, _) = default_keys();
+        let signer = EthSigner::new(key);
+        let address = signer.address();
+        let expected =
+            ethabi::Address::from_str("9c5a095ae311cad1b09bc36ac8635f4ed4765dcf").unwrap();
+        assert_eq!(address, &expected);
     }
 }
