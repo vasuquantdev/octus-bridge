@@ -161,41 +161,21 @@ impl Bridge {
         self: Arc<Self>,
         (account, event): (UInt256, EthEventConfigurationEvent),
     ) -> Result<()> {
-        use dashmap::mapref::entry::Entry;
-
         match event {
             EthEventConfigurationEvent::EventDeployed { address, .. } => {
-                match self.pending_eth_events.entry(address) {
-                    Entry::Vacant(entry) => {
-                        let observer = AccountObserver::new(&self.eth_events_tx);
-                        entry.insert(PendingEthEvent {
-                            observer: observer.clone(),
-                            state: PendingEthEventState::Uninitialized,
-                        });
-
-                        self.context
-                            .ton_subscriber
-                            .add_transactions_subscription([address], &observer);
-
-                        Ok(())
-                    }
-                    // Do nothing, because event can be deployed more then once
-                    Entry::Occupied(_) => Ok(()),
-                }
+                // TODO: check if vote data already exist somewhere
+                self.add_pending_eth_event(address);
             }
             EthEventConfigurationEvent::SetEndBlockNumber { end_block_number } => {
                 let mut state = self.state.write();
-
                 let configuration = state
                     .eth_event_configurations
                     .get_mut(&account)
                     .ok_or(BridgeError::UnknownConfiguration)?;
-
                 configuration.details.network_configuration.end_block_number = end_block_number;
-
-                Ok(())
             }
         }
+        Ok(())
     }
 
     async fn process_ton_event_configuration_event(
@@ -207,21 +187,17 @@ impl Bridge {
                 if !self.add_pending_ton_event(address) {
                     log::warn!("Got deployment message for pending event: {:x}", account);
                 }
-                Ok(())
             }
             TonEventConfigurationEvent::SetEndTimestamp { end_timestamp } => {
                 let mut state = self.state.write();
-
                 let configuration = state
                     .ton_event_configurations
                     .get_mut(&account)
                     .ok_or(BridgeError::UnknownConfiguration)?;
-
                 configuration.details.network_configuration.end_timestamp = end_timestamp;
-
-                Ok(())
             }
         }
+        Ok(())
     }
 
     async fn process_eth_event(
@@ -295,6 +271,28 @@ impl Bridge {
         }
 
         Ok(())
+    }
+
+    async fn update_eth_event(self: Arc<Self>, account: UInt256) -> Result<()> {
+        let keystore = &self.context.keystore;
+        let ton_subscriber = &self.context.ton_subscriber;
+
+        let contract = ton_subscriber.wait_contract_state(account).await?;
+
+        let details = EthEventContract(&contract).get_details()?;
+
+        match details.process(keystore.ton.public_key()) {
+            EventAction::Nop => return Ok(()),
+            EventAction::Remove => {
+                self.pending_eth_events.remove(&account);
+                return Ok(());
+            }
+            EventAction::Vote => { /* continue voting */ }
+        }
+
+        // TODO: check eth event here
+
+        todo!()
     }
 
     async fn update_ton_event(self: Arc<Self>, account: UInt256) -> Result<()> {
@@ -665,8 +663,6 @@ impl Bridge {
     }
 
     async fn get_all_events(self: &Arc<Self>) -> Result<()> {
-        use dashmap::mapref::entry::Entry;
-
         let shard_accounts = self.context.get_all_shard_accounts().await?;
 
         let our_public_key = self.context.keystore.ton.public_key();
@@ -706,6 +702,8 @@ impl Bridge {
                         hash: *shard_account.last_trans_hash(),
                     }),
                 };
+
+                // TODO: replace duplicate code with generics
 
                 match event_type {
                     EventType::Eth => {
@@ -882,6 +880,26 @@ impl Bridge {
         });
     }
 
+    fn add_pending_eth_event(&self, account: UInt256) -> bool {
+        use dashmap::mapref::entry::Entry;
+
+        if let Entry::Vacant(entry) = self.pending_eth_events.entry(account) {
+            let observer = AccountObserver::new(&self.eth_events_tx);
+            entry.insert(PendingEthEvent {
+                observer: observer.clone(),
+                state: PendingEthEventState::Uninitialized,
+            });
+
+            self.context
+                .ton_subscriber
+                .add_transactions_subscription([account], &observer);
+
+            true
+        } else {
+            false
+        }
+    }
+
     fn add_pending_ton_event(&self, account: UInt256) -> bool {
         use dashmap::mapref::entry::Entry;
 
@@ -995,16 +1013,39 @@ enum PendingEthEventState {
     Clearing,
 }
 
-impl TonEventDetails {
+trait EventDetailsExt {
+    fn status(&self) -> EventStatus;
+    fn empty(&self) -> &[UInt256];
+
     fn process(&self, public_key: &UInt256) -> EventAction {
-        match self.status {
+        match self.status() {
             // If it is still initializing - postpone processing until relay keys are received
             EventStatus::Initializing => EventAction::Nop,
             // The only status in which we can vote
-            EventStatus::Pending if self.empty.contains(public_key) => EventAction::Vote,
+            EventStatus::Pending if self.empty().contains(public_key) => EventAction::Vote,
             // Discard event in other cases
             _ => EventAction::Remove,
         }
+    }
+}
+
+impl EventDetailsExt for EthEventDetails {
+    fn status(&self) -> EventStatus {
+        self.status
+    }
+
+    fn empty(&self) -> &[UInt256] {
+        &self.empty
+    }
+}
+
+impl EventDetailsExt for TonEventDetails {
+    fn status(&self) -> EventStatus {
+        self.status
+    }
+
+    fn empty(&self) -> &[UInt256] {
+        &self.empty
     }
 }
 
