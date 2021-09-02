@@ -551,6 +551,7 @@ impl Bridge {
         let event_abi = decode_eth_event_abi(&details.basic_configuration.event_abi)?;
         let topic_hash = get_eth_topic_hash(&event_abi);
         let eth_contract_address = details.network_configuration.event_emitter;
+        let blocks_to_confirm = details.network_configuration.event_blocks_to_confirm;
 
         // Get suitable ETH subscriber for specified chain id
         let eth_subscriber = self
@@ -595,7 +596,12 @@ impl Bridge {
         };
 
         // Subscribe to ETH events
-        eth_subscriber.subscribe(*account, eth_contract_address.into(), topic_hash);
+        eth_subscriber.subscribe(
+            *account,
+            eth_contract_address.into(),
+            topic_hash,
+            blocks_to_confirm,
+        );
 
         // Subscribe to TON events
         self.context

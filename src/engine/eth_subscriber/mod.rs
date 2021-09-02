@@ -13,9 +13,10 @@ use web3::api::Namespace;
 use web3::types::{BlockNumber, FilterBuilder, H256, U64};
 use web3::{transports::Http, Transport};
 
-use self::models::StoredEthEvent;
+use self::models::ReceivedEthEvent;
 use crate::config::*;
 use crate::engine::state::*;
+use crate::engine::ton_contracts::*;
 use crate::filter_log;
 use crate::utils::*;
 
@@ -143,10 +144,14 @@ impl EthSubscriber {
         configuration_account: UInt256,
         address: ethabi::Address,
         topic_hash: [u8; 32],
+        blocks_to_confirm: u16,
     ) {
-        self.topics
-            .write()
-            .add_entry(configuration_account, address, topic_hash);
+        self.topics.write().add_entry(
+            configuration_account,
+            address,
+            topic_hash,
+            blocks_to_confirm,
+        );
     }
 
     pub fn unsubscribe(
@@ -167,7 +172,33 @@ impl EthSubscriber {
             .ok_or_else(|| EthSubscriberError::UnknownChainId.into())
     }
 
-    pub async fn check_transaction(&self, hash: H256, event_index: u32) -> Result<StoredEthEvent> {
+    pub fn send_message(
+        &self,
+        from: ethabi::Address,
+        to: ethabi::Address,
+        data: Vec<u8>,
+    ) -> Result<()> {
+        let request = web3::types::TransactionRequest {
+            from,
+            to: Some(to),
+            data: Some(web3::types::Bytes(data.clone())),
+            ..Default::default()
+        };
+
+        let hash: H256 = retry(
+            || self.api.send_transaction(request.clone()).await,
+            generate_default_timeout_config(self.config.maximum_failed_responses_time),
+            "send transaction",
+        )
+        .await
+        .context("Failed sending ETH transaction")?;
+
+        log::warn!("Sent ETH transaction: {:?}", hash);
+
+        Ok(())
+    }
+
+    pub async fn check_transaction(&self, vote_data: EthEventVoteData) -> Result<ReceivedEthEvent> {
         let _permission = self.pool.acquire().await;
         let receipt = retry(
             || timeout(self.config.get_timeout, self.api.transaction_receipt(hash)),
@@ -191,9 +222,9 @@ impl EthSubscriber {
         receipt
             .logs
             .into_iter()
-            .map(StoredEthEvent::try_from)
+            .map(ReceivedEthEvent::try_from)
             .filter_map(|x| filter_log!(x, "Failed mapping log to event in receipt logs"))
-            .find(|x| x.tx_hash == hash && x.event_index == event_index)
+            .find(|x| x.transaction_hash == hash && x.event_index == event_index)
             .context("No events for tx. Assuming confirmation is fake")
     }
 
@@ -253,7 +284,15 @@ impl EthSubscriber {
                 )
                 .await
                 {
-                    Ok(Ok(a)) => a,
+                    Ok(Ok(events)) => events.into_iter().map(|event| {
+                        let target_event_block = event.block_number + 12;
+
+                        StoredEthEvent {
+                            event,
+                            target_event_block: 0,
+                            status: StoredEthEventStatus::InProgress,
+                        }
+                    }),
                     Ok(Err(e)) => {
                         log::error!(
                             "Failed processing eth block: {:?} in time range from {} to {}",
@@ -292,7 +331,7 @@ impl EthSubscriber {
         events_rx
     }
 
-    async fn process_block(&self, from: u64, to: u64) -> Result<Vec<StoredEthEvent>> {
+    async fn process_block(&self, from: u64, to: u64) -> Result<Vec<ReceivedEthEvent>> {
         let filter = match self.topics.read().make_filter(from, to) {
             Some(filter) => filter,
             None => return Ok(Vec::new()),
@@ -313,13 +352,13 @@ impl EthSubscriber {
 
         let logs = logs
             .into_iter()
-            .map(StoredEthEvent::try_from)
+            .map(ReceivedEthEvent::try_from)
             .filter_map(|x| filter_log!(x, "Failed mapping log to event"))
             .collect();
         Ok(logs)
     }
 
-    async fn save_events(&self, last_block_number: u64, events: &[StoredEthEvent]) -> Result<()> {
+    async fn save_events(&self, last_block_number: u64, events: &[ReceivedEthEvent]) -> Result<()> {
         self.use_eth_state(|mut state| {
             if events.is_empty() {
                 state.set_last_block_number(self.chain_id, last_block_number)
@@ -349,14 +388,14 @@ impl EthSubscriber {
 pub struct EventsBatch {
     pub from: u64,
     pub to: u64,
-    pub events: Vec<StoredEthEvent>,
+    pub events: Vec<ReceivedEthEvent>,
 }
 
 pub type EventsBatchesRx = mpsc::UnboundedReceiver<EventsBatch>;
 
 #[derive(Default)]
 struct TopicsMap {
-    entries: FxHashSet<TopicsMapEntry>,
+    entries: FxHashMap<TopicsMapEntry, u16>,
     unique_addresses: Vec<ethabi::Address>,
     unique_topics: Vec<H256>,
 }
@@ -381,12 +420,16 @@ impl TopicsMap {
         configuration_account: UInt256,
         address: ethabi::Address,
         topic_hash: [u8; 32],
+        blocks_to_confirm: u16,
     ) {
-        if self.entries.insert(TopicsMapEntry {
-            configuration_account,
-            address,
-            topic_hash,
-        }) {
+        if self.entries.insert(
+            TopicsMapEntry {
+                configuration_account,
+                address,
+                topic_hash,
+            },
+            blocks_to_confirm,
+        ) {
             self.update();
         }
     }
