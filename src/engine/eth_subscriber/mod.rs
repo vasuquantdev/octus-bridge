@@ -10,7 +10,7 @@ use tokio::sync::{mpsc, Semaphore};
 use tokio::time::timeout;
 use ton_types::UInt256;
 use web3::api::Namespace;
-use web3::types::{BlockNumber, FilterBuilder, H256, U64};
+use web3::types::{BlockNumber, FilterBuilder, H256, U256, U64};
 use web3::{transports::Http, Transport};
 
 use self::models::ReceivedEthEvent;
@@ -19,7 +19,11 @@ use crate::engine::state::*;
 use crate::engine::ton_contracts::*;
 use crate::filter_log;
 use crate::utils::*;
+use std::time::Duration;
+use ton_block::{MsgAddressInt, Serializable};
+use web3::contract::Options;
 
+mod contracts;
 pub mod models;
 
 pub struct EthSubscriberRegistry {
@@ -101,6 +105,7 @@ impl EthSubscriberRegistry {
 }
 
 pub struct EthSubscriber {
+    staking_account: Option<ethabi::Address>,
     chain_id: u32,
     config: EthConfig,
     api: EthApi,
@@ -137,6 +142,50 @@ impl EthSubscriber {
             state,
             last_block_numbers,
         }))
+    }
+
+    async fn account_is_ready(&self, ton_address: MsgAddressInt) -> Result<()> {
+        const GWEI: u64 = 1000000000;
+        let account = self
+            .staking_account
+            .as_ref()
+            .context("Account is not set")?;
+        loop {
+            let balance = retry(
+                || self.clone().get_balance(account.clone()),
+                crate::utils::generate_default_timeout_config(Duration::from_secs(60)),
+                "Failed getting balance",
+            )
+            .await?;
+            // 0.05 ETH
+            if balance >= U256::from(50000000 * GWEI) {
+                break;
+            }
+        }
+        let contract = contracts::staking_contract(self.api.clone(), account.clone())?;
+        let workchain_id = ethabi::Token::Int(U256::from(ton_address.workchain_id()));
+        let address_body = ethabi::Token::Uint(U256::from_big_endian(
+            &ton_address.address().write_to_bytes()?,
+        ));
+        contract.call(
+            "verify_relay_staker_address",
+            [workchain_id, address_body],
+            account.clone(),
+            Options {
+                gas: Some((U256::from(200 * GWEI))),
+                gas_price: None,
+                value: None,
+                nonce: None,
+                condition: None,
+                transaction_type: None,
+                access_list: None,
+            },
+        );
+        Ok(())
+    }
+
+    async fn get_balance(&self, address: ethabi::Address) -> Result<U256> {
+        Ok(self.api.balance(address, None).await?)
     }
 
     pub fn subscribe(
