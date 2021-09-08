@@ -91,8 +91,6 @@ pub struct TonEventVoteData {
     pub event_transaction_lt: u64,
     #[abi(uint32)]
     pub event_timestamp: u32,
-    #[abi(uint32)]
-    pub event_index: u32,
     #[abi(cell)]
     pub event_data: ton_types::Cell,
 }
@@ -169,16 +167,18 @@ pub enum EventType {
     Ton = 1,
 }
 
-#[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
-pub struct BridgeConfiguration {
-    #[abi(with = "address_only_hash")]
-    pub staking: UInt256,
-    #[abi(bool)]
-    pub active: bool,
+#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
+pub struct BridgeDetails {
     #[abi(cell)]
     pub connector_code: ton_types::Cell,
     #[abi(uint64)]
     pub connector_deploy_value: u64,
+    #[abi(uint64)]
+    pub connector_counter: u64,
+    #[abi(with = "address_only_hash")]
+    pub staking: UInt256,
+    #[abi(bool)]
+    pub active: bool,
 }
 
 #[derive(Debug, Copy, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]

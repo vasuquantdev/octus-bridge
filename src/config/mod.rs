@@ -33,7 +33,6 @@ pub struct RelayConfig {
     pub keys_path: PathBuf,
     #[serde(with = "serde_address")]
     pub bridge_address: ton_block::MsgAddressInt,
-    pub db_path: PathBuf,
     pub networks: HashMap<u32, EthConfig>,
 }
 

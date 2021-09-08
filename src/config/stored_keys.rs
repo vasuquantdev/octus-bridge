@@ -227,8 +227,8 @@ pub struct StoredKeysDataPart {
 
 impl StoredKeysDataPart {
     fn decrypt_secret_key(&self, decrypter: &ChaCha20Poly1305) -> Result<[u8; 32]> {
-        let seed_phrase = decrypt_secure_str(&decrypter, &self.nonce, &self.encrypted_seed_phrase)?;
-        let path = decrypt_secure_str(&decrypter, &self.nonce, &self.encrypted_derivation_path)?;
+        let seed_phrase = decrypt_secure_str(decrypter, &self.nonce, &self.encrypted_seed_phrase)?;
+        let path = decrypt_secure_str(decrypter, &self.nonce, &self.encrypted_derivation_path)?;
         derive_secret_from_phrase(seed_phrase.unsecure(), path.unsecure())
     }
 }
