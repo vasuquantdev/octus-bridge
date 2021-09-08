@@ -68,14 +68,14 @@ impl Engine {
             None => return Err(EngineError::BridgeAccountNotFound.into()),
         };
 
-        let bridge_configuration = BridgeContract(&bridge_contract).bridge_configuration()?;
+        let bridge_details = BridgeContract(&bridge_contract).get_details()?;
 
         // Initialize bridge
         let bridge = Bridge::new(self.context.clone(), bridge_account).await?;
         *self.bridge.lock() = Some(bridge);
 
         // Initialize staking
-        let staking = Staking::new(self.context.clone(), bridge_configuration.staking).await?;
+        let staking = Staking::new(self.context.clone(), bridge_details.staking).await?;
         *self.staking.lock() = Some(staking);
 
         // Done
