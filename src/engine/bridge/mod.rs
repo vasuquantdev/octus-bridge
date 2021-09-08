@@ -11,6 +11,7 @@ use tokio::sync::mpsc;
 use ton_block::HashmapAugType;
 use ton_types::UInt256;
 
+use crate::engine::eth_subscriber::*;
 use crate::engine::keystore::*;
 use crate::engine::ton_contracts::*;
 use crate::engine::ton_subscriber::*;
@@ -26,7 +27,7 @@ pub struct Bridge {
     state: Arc<RwLock<BridgeState>>,
 
     pending_eth_events: Arc<FxDashMap<UInt256, PendingEthEvent>>,
-    pending_ton_events: Arc<FxDashMap<UInt256, Arc<AccountObserver<TonEvent>>>>,
+    pending_ton_events: Arc<FxDashMap<UInt256, PendingTonEvent>>,
 
     connectors_tx: AccountEventsTx<ConnectorEvent>,
     eth_event_configurations_tx: AccountEventsTx<EthEventConfigurationEvent>,
@@ -217,12 +218,10 @@ impl Bridge {
                         return Ok(());
                     }
 
-                    // tokio::spawn(async move {
-                    //     if let Err(e) = self.update_eth_event(account) {
-                    //         log::error!("Failed to update ETH event: {:?}", e);
-                    //     }
-                    // });
-                    todo!()
+                    self.spawn_background_task(
+                        "update ETH event",
+                        self.clone().update_eth_event(account),
+                    );
                 }
                 // Handle our confirmation or rejection
                 EthEvent::Confirm { public_key } | EthEvent::Reject { public_key }
@@ -276,6 +275,7 @@ impl Bridge {
     async fn update_eth_event(self: Arc<Self>, account: UInt256) -> Result<()> {
         let keystore = &self.context.keystore;
         let ton_subscriber = &self.context.ton_subscriber;
+        let eth_subscribers = &self.context.eth_subscribers;
 
         let contract = ton_subscriber.wait_contract_state(account).await?;
 
@@ -290,9 +290,74 @@ impl Bridge {
             EventAction::Vote => { /* continue voting */ }
         }
 
-        // TODO: check eth event here
+        let data = self
+            .state
+            .read()
+            .eth_event_configurations
+            .get(&details.event_init_data.configuration)
+            .map(|configuration| {
+                (
+                    configuration.details.basic_configuration.chain_id,
+                    configuration.event_abi.clone(),
+                    configuration
+                        .details
+                        .network_configuration
+                        .event_blocks_to_confirm,
+                )
+            });
 
-        todo!()
+        let (eth_subscriber, event_abi, blocks_to_confirm) = match data {
+            Some((chain_id, abi, blocks_to_confirm)) => {
+                match eth_subscribers.get_subscriber(chain_id) {
+                    Some(subscriber) => (subscriber, abi, blocks_to_confirm),
+                    None => {
+                        log::error!(
+                            "ETH subscriber with chain id  {} was not found for event {:x}",
+                            chain_id,
+                            account
+                        );
+                        self.pending_eth_events.remove(&account);
+                        return Ok(());
+                    }
+                }
+            }
+            None => {
+                log::error!(
+                    "ETH event configuration {:x} not found for event {:x}",
+                    details.event_init_data.configuration,
+                    account
+                );
+                self.pending_eth_events.remove(&account);
+                return Ok(());
+            }
+        };
+
+        let message = match eth_subscriber
+            .verify(
+                details.event_init_data.vote_data,
+                event_abi,
+                blocks_to_confirm,
+            )
+            .await
+        {
+            Ok(VerificationStatus::Exists) => {
+                UnsignedMessage::new(eth_event_contract::confirm(), account)
+            }
+            Ok(VerificationStatus::NotExists) => {
+                UnsignedMessage::new(eth_event_contract::reject(), account)
+            }
+            Err(e) => {
+                log::error!("Failed to verify ETH event {:x}: {:?}", account, e);
+                self.pending_eth_events.remove(&account);
+                return Ok(());
+            }
+        };
+
+        if let Some(entry) = self.pending_eth_events.get(&account) {
+            self.deliver_message(entry.value(), message);
+        }
+
+        Ok(())
     }
 
     async fn update_ton_event(self: Arc<Self>, account: UInt256) -> Result<()> {
@@ -315,35 +380,33 @@ impl Bridge {
         }
 
         // Find suitable configuration
-        let decoded_data = {
-            // NOTE: be sure to drop `self.state` before removing pending ton event.
-            // It may deadlock otherwise!
-            let data = self
-                .state
-                .read()
-                .ton_event_configurations
-                .get(&details.event_init_data.configuration)
-                .map(|configuration| {
-                    ton_abi::TokenValue::decode_params(
-                        &configuration.event_abi,
-                        details.event_init_data.vote_data.event_data.clone().into(),
-                        2,
-                    )
-                });
+        // NOTE: be sure to drop `self.state` before removing pending ton event.
+        // It may deadlock otherwise!
+        let data = self
+            .state
+            .read()
+            .ton_event_configurations
+            .get(&details.event_init_data.configuration)
+            .map(|configuration| {
+                ton_abi::TokenValue::decode_params(
+                    &configuration.event_abi,
+                    details.event_init_data.vote_data.event_data.clone().into(),
+                    2,
+                )
+            });
 
-            match data {
-                // Decode event data with event abi from configuration
-                Some(data) => data.and_then(map_ton_tokens_to_eth_bytes),
-                // Do nothing when configuration was not found
-                None => {
-                    log::error!(
-                        "TON event configuration {:x} not found for event {:x}",
-                        details.event_init_data.configuration,
-                        account
-                    );
-                    self.pending_ton_events.remove(&account);
-                    return Ok(());
-                }
+        let decoded_data = match data {
+            // Decode event data with event abi from configuration
+            Some(data) => data.and_then(map_ton_tokens_to_eth_bytes),
+            // Do nothing when configuration was not found
+            None => {
+                log::error!(
+                    "TON event configuration {:x} not found for event {:x}",
+                    details.event_init_data.configuration,
+                    account
+                );
+                self.pending_ton_events.remove(&account);
+                return Ok(());
             }
         };
 
@@ -548,10 +611,9 @@ impl Bridge {
         let details = EthEventConfigurationContract(contract).get_details()?;
 
         // Verify and prepare abi
-        let event_abi = decode_eth_event_abi(&details.basic_configuration.event_abi)?;
-        let topic_hash = get_eth_topic_hash(&event_abi);
+        let event_abi = Arc::new(EthEventAbi::new(&details.basic_configuration.event_abi)?);
+        let topic_hash = event_abi.get_eth_topic_hash();
         let eth_contract_address = details.network_configuration.event_emitter;
-        let blocks_to_confirm = details.network_configuration.event_blocks_to_confirm;
 
         // Get suitable ETH subscriber for specified chain id
         let eth_subscriber = self
@@ -561,7 +623,7 @@ impl Bridge {
             .ok_or(BridgeError::UnknownChainId)?;
 
         // Check if configuration is expired
-        let last_processed_height = eth_subscriber.get_last_processed_block()?;
+        let last_processed_height = eth_subscriber.get_last_processed_block();
         if (details.network_configuration.end_block_number as u64) < last_processed_height {
             // Do nothing in that case
             log::warn!(
@@ -587,6 +649,7 @@ impl Bridge {
                 entry.insert(EthEventConfigurationState {
                     details,
                     event_abi,
+                    topic_hash,
                     observer: observer.clone(),
                 });
             }
@@ -596,12 +659,7 @@ impl Bridge {
         };
 
         // Subscribe to ETH events
-        eth_subscriber.subscribe(
-            *account,
-            eth_contract_address.into(),
-            topic_hash,
-            blocks_to_confirm,
-        );
+        eth_subscriber.subscribe(eth_contract_address.into(), topic_hash, *account);
 
         // Subscribe to TON events
         self.context
@@ -712,11 +770,24 @@ impl Bridge {
                 // TODO: replace duplicate code with generics
 
                 match event_type {
-                    EventType::Eth => {
-                        todo!()
-                    }
+                    EventType::Eth => match EthEventContract(&contract).get_details() {
+                        Ok(details) => match details.process(our_public_key) {
+                            EventAction::Nop | EventAction::Vote => {
+                                if self.add_pending_eth_event(hash) {
+                                    self.spawn_background_task(
+                                        "initial update ETH event",
+                                        self.clone().update_eth_event(hash),
+                                    );
+                                }
+                            }
+                            EventAction::Remove => { /* do nothing */ }
+                        },
+                        Err(e) => {
+                            log::error!("Failed to get ETH event details: {:?}", e);
+                        }
+                    },
                     EventType::Ton => match TonEventContract(&contract).get_details() {
-                        Ok(details) => match details.process(&our_public_key) {
+                        Ok(details) => match details.process(our_public_key) {
                             EventAction::Nop | EventAction::Vote => {
                                 if self.add_pending_ton_event(hash) {
                                     self.spawn_background_task(
@@ -754,27 +825,52 @@ impl Bridge {
 
                 let last_block_heights = bridge.context.eth_subscribers.get_last_block_numbers();
 
-                let mut state = bridge.state.write();
-                state.eth_event_configurations.retain(|account, state| {
-                    let chain_id = &state.details.basic_configuration.chain_id;
-                    let last_number = match last_block_heights.get(chain_id) {
-                        Some(height) => *height,
-                        None => {
-                            log::warn!("Found unknown chain id: {}", chain_id);
-                            return true;
-                        }
-                    };
+                let subscriptions_to_remove = {
+                    let mut to_remove = FxHashMap::default();
 
-                    if (state.details.network_configuration.end_block_number as u64) < last_number {
-                        log::warn!(
-                            "Removing ETH event configuration {}",
-                            account.to_hex_string()
-                        );
-                        false
-                    } else {
-                        true
-                    }
-                });
+                    let mut state = bridge.state.write();
+                    state.eth_event_configurations.retain(|account, state| {
+                        let chain_id = state.details.basic_configuration.chain_id;
+                        let last_number = match last_block_heights.get(&chain_id) {
+                            Some(height) => *height,
+                            None => {
+                                log::warn!("Found unknown chain id: {}", chain_id);
+                                return true;
+                            }
+                        };
+
+                        let network_configuration = &state.details.network_configuration;
+
+                        if (network_configuration.end_block_number as u64) < last_number {
+                            log::warn!(
+                                "Removing ETH event configuration {}",
+                                account.to_hex_string()
+                            );
+
+                            to_remove
+                                .entry(chain_id)
+                                .or_insert_with(|| Vec::with_capacity(1))
+                                .push((
+                                    ethabi::Address::from(network_configuration.event_emitter),
+                                    state.topic_hash,
+                                    *account,
+                                ));
+                            false
+                        } else {
+                            true
+                        }
+                    });
+
+                    to_remove
+                };
+
+                for (chain_id, subscriptions) in subscriptions_to_remove {
+                    let subscriber = match bridge.context.eth_subscribers.get_subscriber(chain_id) {
+                        Some(subscriber) => subscriber,
+                        None => continue,
+                    };
+                    subscriber.unsubscribe(subscriptions);
+                }
             }
         });
     }
@@ -846,9 +942,11 @@ impl Bridge {
         self: &Arc<Self>,
         observer: &Arc<AccountObserver<T>>,
         unsigned_message: UnsignedMessage,
-    ) {
+    ) where
+        T: Send + 'static,
+    {
         let bridge = Arc::downgrade(self);
-        let observer = Arc::downgrade(self);
+        let observer = Arc::downgrade(observer);
 
         tokio::spawn(async move {
             loop {
@@ -891,10 +989,7 @@ impl Bridge {
 
         if let Entry::Vacant(entry) = self.pending_eth_events.entry(account) {
             let observer = AccountObserver::new(&self.eth_events_tx);
-            entry.insert(PendingEthEvent {
-                observer: observer.clone(),
-                state: PendingEthEventState::Uninitialized,
-            });
+            entry.insert(observer.clone());
 
             self.context
                 .ton_subscriber
@@ -998,26 +1093,8 @@ fn add_event_code_hash(
     Ok(())
 }
 
-struct PendingEthEvent {
-    observer: Arc<AccountObserver<EthEvent>>,
-    state: PendingEthEventState,
-}
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-enum PendingEthEventState {
-    /// The event has just been received
-    Uninitialized,
-    /// Waiting for event with relay keys
-    WaitingForInitialization,
-    /// Waiting verification result from ETH subscription
-    WaitingForVerification {},
-    /// Event was correct and we should send confirmation message
-    WaitingForConfirm,
-    /// Event was invalid and we should send rejection message
-    WaitingForReject,
-    /// Event is processed
-    Clearing,
-}
+type PendingEthEvent = Arc<AccountObserver<EthEvent>>;
+type PendingTonEvent = Arc<AccountObserver<TonEvent>>;
 
 trait EventDetailsExt {
     fn status(&self) -> EventStatus;
@@ -1078,7 +1155,8 @@ enum ConnectorConfigurationType {
 #[derive(Clone)]
 struct EthEventConfigurationState {
     details: EthEventConfigurationDetails,
-    event_abi: ethabi::Event,
+    event_abi: Arc<EthEventAbi>,
+    topic_hash: [u8; 32],
     observer: Arc<AccountObserver<EthEventConfigurationEvent>>,
 }
 

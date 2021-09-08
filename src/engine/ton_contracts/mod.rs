@@ -20,7 +20,7 @@ mod models;
 pub struct EthEventContract<'a>(pub &'a ExistingContract);
 
 impl EthEventContract<'_> {
-    pub fn get_details(&self) -> Result<TonEventDetails> {
+    pub fn get_details(&self) -> Result<EthEventDetails> {
         let function = eth_event_contract::get_details();
         let result = self.0.run_local(function, &[answer_id()])?.unpack()?;
         Ok(result)

@@ -4,6 +4,28 @@ use num_bigint::{BigInt, BigUint};
 use serde::Deserialize;
 use ton_abi::{ParamType as TonParamType, TokenValue as TonTokenValue};
 
+pub struct EthEventAbi {
+    event: ethabi::Event,
+    params: Vec<EthParamType>,
+}
+
+impl EthEventAbi {
+    pub fn new(abi: &str) -> Result<Self> {
+        let event = decode_eth_event_abi(abi)?;
+        let params = event.inputs.iter().map(|item| item.kind.clone()).collect();
+        Ok(Self { event, params })
+    }
+
+    pub fn get_eth_topic_hash(&self) -> [u8; 32] {
+        self.event.signature().to_fixed_bytes()
+    }
+
+    pub fn decode_and_map(&self, data: &[u8]) -> Result<ton_types::Cell> {
+        let tokens = ethabi::decode(&self.params, data)?;
+        map_eth_tokens_to_ton_cell(tokens, &self.params)
+    }
+}
+
 pub fn decode_ton_event_abi(abi: &str) -> Result<Vec<ton_abi::Param>> {
     let params = serde_json::from_str::<Vec<ton_abi::Param>>(abi)?;
     Ok(params)
@@ -16,15 +38,18 @@ pub fn decode_eth_event_abi(abi: &str) -> Result<ethabi::Event> {
         Event(ethabi::Event),
     }
 
-    serde_json::from_str::<Operation>(&abi)
+    serde_json::from_str::<Operation>(abi)
         .map(|item| match item {
             Operation::Event(event) => event,
         })
         .map_err(anyhow::Error::from)
 }
 
-pub fn map_eth_abi_to_ton(abi: &[EthParamType]) -> Result<Vec<TonParamType>> {
-    abi.iter().map(map_eth_abi_param_to_ton).collect()
+pub fn map_eth_abi_to_ton<'a, I>(abi: I) -> Result<Vec<TonParamType>>
+where
+    I: Iterator<Item = &'a EthParamType>,
+{
+    abi.map(map_eth_abi_param_to_ton).collect()
 }
 
 fn map_eth_abi_param_to_ton(param: &EthParamType) -> Result<TonParamType> {
@@ -66,11 +91,23 @@ pub fn map_ton_tokens_to_eth_bytes(tokens: Vec<ton_abi::Token>) -> Result<Vec<u8
     Ok(ethabi::encode(&tokens))
 }
 
-pub fn map_eth_to_ton_with_abi(
-    eth: EthTokenValue,
-    eth_param_abi: &EthParamType,
-) -> Result<TonTokenValue> {
-    Ok(match (eth, eth_param_abi) {
+pub fn map_eth_tokens_to_ton_cell(
+    tokens: Vec<EthTokenValue>,
+    abi: &[EthParamType],
+) -> Result<ton_types::Cell> {
+    let tokens = tokens
+        .into_iter()
+        .zip(abi.iter())
+        .map(|(token, param)| map_eth_token_to_ton(token, param))
+        .collect::<Result<Vec<TonTokenValue>>>()?;
+
+    let cells = Vec::with_capacity(tokens.len());
+    ton_abi::TokenValue::pack_token_values_into_chain(&tokens, cells, 2)
+        .and_then(|builder| builder.into_cell())
+}
+
+pub fn map_eth_token_to_ton(token: EthTokenValue, param: &EthParamType) -> Result<TonTokenValue> {
+    Ok(match (token, param) {
         (EthTokenValue::FixedBytes(x), _) => TonTokenValue::FixedBytes(x.to_vec()),
         (EthTokenValue::Bytes(x), _) => TonTokenValue::Bytes(x.to_vec()),
         (EthTokenValue::Uint(x), &EthParamType::Uint(size)) => {
@@ -91,34 +128,32 @@ pub fn map_eth_to_ton_with_abi(
         (EthTokenValue::FixedArray(a), EthParamType::FixedArray(abi, _)) => {
             let param_type = match *abi.clone() {
                 EthParamType::Array(arr) => {
-                    let mut mapped = map_eth_abi_to_ton(&[*arr])?;
+                    let mut mapped = map_eth_abi_to_ton(std::iter::once(arr.as_ref()))?;
                     anyhow::ensure!(!mapped.is_empty(), "No types");
                     mapped.remove(0)
                 }
                 _ => anyhow::bail!("Bad abi"),
-            }
-            .clone();
+            };
             TonTokenValue::FixedArray(
                 param_type,
                 a.into_iter()
-                    .map(|value| map_eth_to_ton_with_abi(value, abi))
+                    .map(|value| map_eth_token_to_ton(value, abi))
                     .collect::<Result<Vec<_>, _>>()?,
             )
         }
         (EthTokenValue::Array(a), EthParamType::Array(abi)) => {
             let param_type = match *abi.clone() {
                 EthParamType::Array(arr) => {
-                    let mut mapped = map_eth_abi_to_ton(&[*arr])?;
+                    let mut mapped = map_eth_abi_to_ton(std::iter::once(arr.as_ref()))?;
                     anyhow::ensure!(!mapped.is_empty(), "No types");
                     mapped.remove(0)
                 }
                 _ => anyhow::bail!("Bad abi"),
-            }
-            .clone();
+            };
             TonTokenValue::Array(
                 param_type,
                 a.into_iter()
-                    .map(|value| map_eth_to_ton_with_abi(value, abi))
+                    .map(|value| map_eth_token_to_ton(value, abi))
                     .collect::<Result<Vec<_>, _>>()?,
             )
         }
@@ -126,7 +161,7 @@ pub fn map_eth_to_ton_with_abi(
             a.into_iter()
                 .zip(abi.iter())
                 .map(|(value, abi)| {
-                    map_eth_to_ton_with_abi(value, abi).map(|x| ton_abi::Token::new("", x))
+                    map_eth_token_to_ton(value, abi).map(|x| ton_abi::Token::new("", x))
                 })
                 .collect::<Result<Vec<_>, _>>()?,
         ),
@@ -190,7 +225,7 @@ mod test {
     use super::EthTokenValue;
     use super::TonParamType;
     use super::TonTokenValue;
-    use crate::utils::map_eth_to_ton_with_abi;
+    use crate::utils::{map_eth_token_to_ton, EthEventAbi};
     use pretty_assertions::assert_eq;
 
     #[test]
@@ -201,7 +236,7 @@ mod test {
             EthParamType::Int(128),
             EthParamType::Tuple(vec![EthParamType::Bool, EthParamType::Bytes]),
         ];
-        let got = super::map_eth_abi_to_ton(&types).unwrap();
+        let got = super::map_eth_abi_to_ton(types.iter()).unwrap();
         let expected = vec![
             TonParamType::Bytes,
             TonParamType::Bytes,
@@ -285,7 +320,7 @@ mod test {
         let eth = EthTokenValue::Tuple(vec![eth_token_uint, eth_token_bytes]);
         let ton_expected = TonTokenValue::Tuple(vec![ton_token_uint, ton_token_bytes]);
         assert_eq!(
-            map_eth_to_ton_with_abi(
+            map_eth_token_to_ton(
                 eth,
                 &ethabi::ParamType::Tuple(vec![
                     ethabi::ParamType::Uint(256),
@@ -295,5 +330,105 @@ mod test {
             .unwrap(),
             ton_expected
         );
+    }
+
+    const ABI: &str = r#"{
+    "anonymous": false,
+    "inputs": [
+        {
+            "indexed": false,
+            "name": "state",
+            "type": "uint256"
+        },
+        {
+            "indexed": false,
+            "name": "author",
+            "type": "address"
+        }
+    ],
+    "outputs": [],
+    "name": "StateChange"
+}"#;
+
+    const ABI2: &str = r#"{
+    "inputs": [
+        {
+            "name": "a",
+            "type": "address",
+            "indexed": true
+        },
+        {
+            "components": [
+                {
+                    "internalType": "address",
+                    "name": "to",
+                    "type": "address"
+                },
+                {
+                    "internalType": "uint256",
+                    "name": "value",
+                    "type": "uint256"
+                },
+                {
+                    "internalType": "bytes",
+                    "name": "data",
+                    "type": "bytes"
+                }
+            ],
+            "indexed": false,
+            "internalType": "struct Action[]",
+            "name": "b",
+            "type": "tuple[]"
+        }
+    ],
+    "name": "E",
+    "outputs": [],
+    "anonymous": false
+}"#;
+
+    const ABI3: &str = r#"{
+    "name": "TokenLock",
+    "anonymous": false,
+    "inputs": [
+        {
+            "name": "amount",
+            "type": "uint128"
+        },
+        {
+            "name": "wid",
+            "type": "int8"
+        },
+        {
+            "name": "addr",
+            "type": "uint256"
+        },
+        {
+            "name": "pubkey",
+            "type": "uint256"
+        }
+    ],
+    "outputs": []
+}"#;
+
+    #[test]
+    fn test_bad_abi() {
+        assert!(EthEventAbi::new("lol").is_err());
+    }
+
+    #[test]
+    fn test_abi() {
+        let expected = web3::signing::keccak256(b"StateChange(uint256,address)");
+        let abi = EthEventAbi::new(ABI).unwrap();
+        assert_eq!(expected, abi.get_eth_topic_hash());
+    }
+
+    #[test]
+    fn test_abi2() {
+        EthEventAbi::new(ABI2).unwrap();
+    }
+
+    #[test]
+    fn test_abi3() {
+        EthEventAbi::new(ABI3).unwrap();
     }
 }

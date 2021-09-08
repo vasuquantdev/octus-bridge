@@ -1,45 +1,69 @@
 use std::convert::TryFrom;
 
 use serde::{Deserialize, Serialize};
-use web3::types::Log;
+use web3::types::{Log, H256};
 
-/// Topics: `Keccak256("Method_Signature")`
-#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct ReceivedEthEvent {
-    pub address: ethabi::Address,
-    pub data: Vec<u8>,
-    pub transaction_hash: web3::types::H256,
-    pub event_index: u32,
-    pub block_number: u64,
-    pub block_hash: web3::types::H256,
+pub type EventId = (H256, u32);
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ParsedEthEvent {
+    Removed(RemovedEthEvent),
+    Received(ReceivedEthEvent),
 }
 
-impl TryFrom<Log> for ReceivedEthEvent {
+impl ParsedEthEvent {
+    pub fn event_id(&self) -> EventId {
+        match self {
+            Self::Removed(event) => (event.transaction_hash, event.event_index),
+            Self::Received(event) => (event.transaction_hash, event.event_index),
+        }
+    }
+
+    pub fn transaction_hash(&self) -> &H256 {
+        match self {
+            Self::Removed(event) => &event.transaction_hash,
+            Self::Received(event) => &event.transaction_hash,
+        }
+    }
+
+    pub fn event_index(&self) -> u32 {
+        match self {
+            Self::Removed(event) => event.event_index,
+            Self::Received(event) => event.event_index,
+        }
+    }
+}
+
+impl TryFrom<Log> for ParsedEthEvent {
     type Error = anyhow::Error;
 
     fn try_from(log: Log) -> Result<Self, Self::Error> {
-        if let Some(true) = log.removed {
-            return Ok();
-        }
-
-        let data = log.data.0;
         let transaction_hash = log
             .transaction_hash
-            .ok_or(ReceivedEthEventError::TransactionHashNotFound)?;
-
-        let block_number = log
-            .block_number
-            .map(|x| x.as_u64())
-            .ok_or(ReceivedEthEventError::BlockNumberNotFound)?;
-
-        let block_hash = log
-            .block_hash
-            .ok_or(ReceivedEthEventError::BlockHashNotFound)?;
+            .ok_or(ParsedEthEventError::TransactionHashNotFound)?;
 
         let event_index = log
             .log_index
             .map(|x| x.as_u32())
-            .ok_or(ReceivedEthEventError::EventIndexNotFound)?;
+            .ok_or(ParsedEthEventError::EventIndexNotFound)?;
+
+        if let Some(true) = log.removed {
+            return Ok(ParsedEthEvent::Removed(RemovedEthEvent {
+                transaction_hash,
+                event_index,
+            }));
+        }
+
+        let block_number = log
+            .block_number
+            .map(|x| x.as_u64())
+            .ok_or(ParsedEthEventError::BlockNumberNotFound)?;
+
+        let block_hash = log
+            .block_hash
+            .ok_or(ParsedEthEventError::BlockHashNotFound)?;
+
+        let data = log.data.0;
 
         log::debug!(
             "Received logs from block {} with hash {}",
@@ -47,19 +71,34 @@ impl TryFrom<Log> for ReceivedEthEvent {
             transaction_hash
         );
 
-        Ok(ReceivedEthEvent {
-            address: log.address,
+        Ok(ParsedEthEvent::Received(ReceivedEthEvent {
             data,
             transaction_hash,
             event_index,
             block_number,
             block_hash,
-        })
+        }))
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemovedEthEvent {
+    pub transaction_hash: H256,
+    pub event_index: u32,
+}
+
+/// Topics: `Keccak256("Method_Signature")`
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReceivedEthEvent {
+    pub transaction_hash: H256,
+    pub event_index: u32,
+    pub block_number: u64,
+    pub block_hash: H256,
+    pub data: Vec<u8>,
+}
+
 #[derive(thiserror::Error, Debug)]
-enum ReceivedEthEventError {
+enum ParsedEthEventError {
     #[error("Transaction hash was not found in event")]
     TransactionHashNotFound,
     #[error("Block number was not found in event")]
