@@ -14,13 +14,13 @@ pub fn connector_counter() -> &'static ton_abi::Function {
     })
 }
 
-/// External function
-pub fn bridge_configuration() -> &'static ton_abi::Function {
+/// External responsible function
+pub fn get_details() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
     FUNCTION.get_or_init(|| {
-        FunctionBuilder::new("bridgeConfiguration")
+        FunctionBuilder::new_responsible("getDetails")
             .default_headers()
-            .output("configuration", BridgeConfiguration::param_type())
+            .outputs(BridgeDetails::param_type())
             .build()
     })
 }

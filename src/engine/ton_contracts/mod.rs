@@ -20,7 +20,7 @@ mod models;
 pub struct EthEventContract<'a>(pub &'a ExistingContract);
 
 impl EthEventContract<'_> {
-    pub fn get_details(&self) -> Result<TonEventDetails> {
+    pub fn get_details(&self) -> Result<EthEventDetails> {
         let function = eth_event_contract::get_details();
         let result = self.0.run_local(function, &[answer_id()])?.unpack()?;
         Ok(result)
@@ -94,9 +94,10 @@ impl BridgeContract<'_> {
         Ok(counter)
     }
 
-    pub fn bridge_configuration(&self) -> Result<BridgeConfiguration> {
-        let function = bridge_contract::bridge_configuration();
-        let configuration = self.0.run_local(function, &[])?.unpack_first()?;
+    pub fn get_details(&self) -> Result<BridgeDetails> {
+        let function = bridge_contract::get_details();
+        let input = [answer_id()];
+        let configuration = self.0.run_local(function, &input)?.unpack()?;
         Ok(configuration)
     }
 

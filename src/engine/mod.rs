@@ -12,14 +12,12 @@ use self::staking::*;
 use self::ton_contracts::*;
 use self::ton_subscriber::*;
 use crate::config::*;
-use crate::engine::state::State;
 use crate::utils::*;
 
 mod bridge;
 mod eth_subscriber;
 mod keystore;
 mod staking;
-mod state;
 mod ton_contracts;
 mod ton_subscriber;
 
@@ -70,14 +68,14 @@ impl Engine {
             None => return Err(EngineError::BridgeAccountNotFound.into()),
         };
 
-        let bridge_configuration = BridgeContract(&bridge_contract).bridge_configuration()?;
+        let bridge_details = BridgeContract(&bridge_contract).get_details()?;
 
         // Initialize bridge
         let bridge = Bridge::new(self.context.clone(), bridge_account).await?;
         *self.bridge.lock() = Some(bridge);
 
         // Initialize staking
-        let staking = Staking::new(self.context.clone(), bridge_configuration.staking).await?;
+        let staking = Staking::new(self.context.clone(), bridge_details.staking).await?;
         *self.staking.lock() = Some(staking);
 
         // Done
@@ -88,7 +86,6 @@ impl Engine {
 pub struct EngineContext {
     pub settings: RelayConfig,
     pub keystore: Arc<KeyStore>,
-    pub state: Arc<State>,
     pub messages_queue: Arc<PendingMessagesQueue>,
     pub ton_subscriber: Arc<TonSubscriber>,
     pub ton_engine: Arc<ton_indexer::Engine>,
@@ -101,9 +98,6 @@ impl EngineContext {
 
         let keystore = KeyStore::new(&settings.keys_path, config.master_password)?;
 
-        let state = State::new(&settings.db_path).await?;
-        state.apply_migrations().await?;
-
         let messages_queue = PendingMessagesQueue::new(16);
 
         let ton_subscriber = TonSubscriber::new(messages_queue.clone());
@@ -114,12 +108,10 @@ impl EngineContext {
         )
         .await?;
 
-        let eth_subscribers =
-            EthSubscriberRegistry::new(state.clone(), settings.networks.clone()).await?;
+        let eth_subscribers = EthSubscriberRegistry::new(settings.networks.clone()).await?;
 
         Ok(Arc::new(Self {
             settings,
-            state,
             keystore,
             messages_queue,
             ton_subscriber,

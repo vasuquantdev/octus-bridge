@@ -9,7 +9,7 @@ pub fn get_details() -> &'static ton_abi::Function {
     FUNCTION.get_or_init(|| {
         FunctionBuilder::new_responsible("getDetails")
             .default_headers()
-            .outputs(TonEventDetails::param_type())
+            .outputs(EthEventDetails::param_type())
             .build()
     })
 }
