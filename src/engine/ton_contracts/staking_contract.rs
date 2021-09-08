@@ -1,6 +1,6 @@
 use nekoton_abi::FunctionBuilder;
 use once_cell::sync::OnceCell;
-use ton_abi::{Function, Param, ParamType};
+use ton_abi::{Function, ParamType};
 
 use super::models::*;
 

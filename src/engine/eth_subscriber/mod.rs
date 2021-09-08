@@ -42,7 +42,8 @@ impl EthSubscriberRegistry {
         });
 
         for (chain_id, config) in networks {
-            registry.new_subscriber(chain_id, config).await?;
+            todo!();
+            // registry.new_subscriber(chain_id, config).await?;
         }
 
         Ok(registry)
@@ -70,11 +71,21 @@ impl EthSubscriberRegistry {
         &self.last_block_numbers
     }
 
-    async fn new_subscriber(&self, chain_id: u32, config: EthConfig) -> Result<()> {
+    async fn new_subscriber(
+        &self,
+        chain_id: u32,
+        config: EthConfig,
+        staking_account: ethabi::Address,
+    ) -> Result<()> {
         use dashmap::mapref::entry::Entry;
 
-        let subscriber =
-            EthSubscriber::new(self.last_block_numbers.clone(), chain_id, config).await?;
+        let subscriber = EthSubscriber::new(
+            self.last_block_numbers.clone(),
+            chain_id,
+            config,
+            staking_account,
+        )
+        .await?;
 
         match self.subscribers.entry(chain_id) {
             Entry::Vacant(entry) => {
@@ -91,7 +102,7 @@ impl EthSubscriberRegistry {
 }
 
 pub struct EthSubscriber {
-    staking_account: Option<ethabi::Address>,
+    staking_account: ethabi::Address,
     chain_id: u32,
     config: EthConfig,
     api: EthApi,
@@ -107,12 +118,14 @@ impl EthSubscriber {
         last_block_numbers: Arc<LastBlockNumbersMap>,
         chain_id: u32,
         config: EthConfig,
+        staking_account: ethabi::Address,
     ) -> Result<Arc<Self>> {
         let transport = web3::transports::Http::new(config.endpoint.as_str())?;
         let api = web3::api::Eth::new(transport);
         let pool = Arc::new(Semaphore::new(config.pool_size));
 
         let subscriber = Arc::new(Self {
+            staking_account,
             chain_id,
             config,
             api,
@@ -136,10 +149,7 @@ impl EthSubscriber {
 
     async fn account_is_ready(&self, ton_address: MsgAddressInt) -> Result<()> {
         const GWEI: u64 = 1000000000;
-        let account = self
-            .staking_account
-            .as_ref()
-            .context("Account is not set")?;
+        let account = self.staking_account;
         loop {
             let balance = retry(
                 || self.clone().get_balance(account.clone()),
@@ -157,20 +167,22 @@ impl EthSubscriber {
         let address_body = ethabi::Token::Uint(U256::from_big_endian(
             &ton_address.address().write_to_bytes()?,
         ));
-        contract.call(
-            "verify_relay_staker_address",
-            [workchain_id, address_body],
-            account.clone(),
-            Options {
-                gas: Some((U256::from(200 * GWEI))),
-                gas_price: None,
-                value: None,
-                nonce: None,
-                condition: None,
-                transaction_type: None,
-                access_list: None,
-            },
-        );
+        contract
+            .call(
+                "verify_relay_staker_address",
+                [workchain_id, address_body],
+                account.clone(),
+                Options {
+                    gas: Some(U256::from(200 * GWEI)),
+                    gas_price: None,
+                    value: None,
+                    nonce: None,
+                    condition: None,
+                    transaction_type: None,
+                    access_list: None,
+                },
+            )
+            .await?;
         Ok(())
     }
 
