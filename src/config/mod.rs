@@ -15,6 +15,8 @@ mod stored_keys;
 #[derive(Serialize, Deserialize)]
 pub struct AppConfig {
     pub master_password: SecUtf8,
+    #[serde(with = "serde_address")]
+    pub staker_address: ton_block::MsgAddressInt,
     pub relay_settings: RelayConfig,
     pub node_settings: ton_indexer::NodeConfig,
     #[serde(default = "default_logger_settings")]

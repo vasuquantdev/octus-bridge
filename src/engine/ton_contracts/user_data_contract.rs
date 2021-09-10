@@ -5,12 +5,20 @@ use super::models::*;
 
 pub fn confirm_ton_account() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
-    FUNCTION.get_or_init(|| FunctionBuilder::new("confirmTonAccount").build())
+    FUNCTION.get_or_init(|| {
+        FunctionBuilder::new("confirmTonAccount")
+            .default_headers()
+            .build()
+    })
 }
 
 pub fn become_relay_next_round() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
-    FUNCTION.get_or_init(|| FunctionBuilder::new("becomeRelayNextRound").build())
+    FUNCTION.get_or_init(|| {
+        FunctionBuilder::new("becomeRelayNextRound")
+            .default_headers()
+            .build()
+    })
 }
 
 pub mod events {

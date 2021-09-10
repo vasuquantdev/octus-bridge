@@ -293,9 +293,7 @@ impl Bridge {
 
         let contract = ton_subscriber.wait_contract_state(account).await?;
 
-        let details = EthEventContract(&contract).get_details()?;
-
-        match details.process(keystore.ton.public_key()) {
+        match EventBaseContract(&contract).process(keystore.ton.public_key())? {
             EventAction::Nop => return Ok(()),
             EventAction::Remove => {
                 self.pending_eth_events.remove(&account);
@@ -304,14 +302,16 @@ impl Bridge {
             EventAction::Vote => { /* continue voting */ }
         }
 
+        let event_init_data = EthEventContract(&contract).event_init_data()?;
+
         let data = self
             .state
             .read()
             .eth_event_configurations
-            .get(&details.event_init_data.configuration)
+            .get(&event_init_data.configuration)
             .map(|configuration| {
                 (
-                    configuration.details.basic_configuration.chain_id,
+                    configuration.details.network_configuration.chain_id,
                     configuration.event_abi.clone(),
                     configuration
                         .details
@@ -338,7 +338,7 @@ impl Bridge {
             None => {
                 log::error!(
                     "ETH event configuration {:x} not found for event {:x}",
-                    details.event_init_data.configuration,
+                    event_init_data.configuration,
                     account
                 );
                 self.pending_eth_events.remove(&account);
@@ -347,11 +347,7 @@ impl Bridge {
         };
 
         let message = match eth_subscriber
-            .verify(
-                details.event_init_data.vote_data,
-                event_abi,
-                blocks_to_confirm,
-            )
+            .verify(event_init_data.vote_data, event_abi, blocks_to_confirm)
             .await
         {
             Ok(VerificationStatus::Exists) => {
@@ -380,11 +376,8 @@ impl Bridge {
 
         let contract = ton_subscriber.wait_contract_state(account).await?;
 
-        // Get event details
-        let details = TonEventContract(&contract).get_details()?;
-
         // Check further steps based on event statuses
-        match details.process(keystore.ton.public_key()) {
+        match EventBaseContract(&contract).process(keystore.ton.public_key())? {
             EventAction::Nop => return Ok(()),
             EventAction::Remove => {
                 self.pending_ton_events.remove(&account);
@@ -393,6 +386,9 @@ impl Bridge {
             EventAction::Vote => { /* continue voting */ }
         }
 
+        // Get event details
+        let event_init_data = TonEventContract(&contract).event_init_data()?;
+
         // Find suitable configuration
         // NOTE: be sure to drop `self.state` before removing pending ton event.
         // It may deadlock otherwise!
@@ -400,11 +396,11 @@ impl Bridge {
             .state
             .read()
             .ton_event_configurations
-            .get(&details.event_init_data.configuration)
+            .get(&event_init_data.configuration)
             .map(|configuration| {
                 ton_abi::TokenValue::decode_params(
                     &configuration.event_abi,
-                    details.event_init_data.vote_data.event_data.clone().into(),
+                    event_init_data.vote_data.event_data.clone().into(),
                     2,
                 )
             });
@@ -416,7 +412,7 @@ impl Bridge {
             None => {
                 log::error!(
                     "TON event configuration {:x} not found for event {:x}",
-                    details.event_init_data.configuration,
+                    event_init_data.configuration,
                     account
                 );
                 self.pending_ton_events.remove(&account);
@@ -633,12 +629,12 @@ impl Bridge {
         let eth_subscriber = self
             .context
             .eth_subscribers
-            .get_subscriber(details.basic_configuration.chain_id)
+            .get_subscriber(details.network_configuration.chain_id)
             .ok_or(BridgeError::UnknownChainId)?;
 
         // Check if configuration is expired
         let last_processed_height = eth_subscriber.get_last_processed_block();
-        if (details.network_configuration.end_block_number as u64) < last_processed_height {
+        if details.is_expired(last_processed_height) {
             // Do nothing in that case
             log::warn!(
                 "Ignoring ETH event configuration {}: end block number {} is less then current {}",
@@ -781,41 +777,29 @@ impl Bridge {
                     }),
                 };
 
-                // TODO: replace duplicate code with generics
-
-                match event_type {
-                    EventType::Eth => match EthEventContract(&contract).get_details() {
-                        Ok(details) => match details.process(our_public_key) {
-                            EventAction::Nop | EventAction::Vote => {
-                                if self.add_pending_eth_event(hash) {
-                                    self.spawn_background_task(
-                                        "initial update ETH event",
-                                        self.clone().update_eth_event(hash),
-                                    );
-                                }
+                match EventBaseContract(&contract).process(our_public_key) {
+                    Ok(EventAction::Nop | EventAction::Vote) => match event_type {
+                        EventType::Eth => {
+                            if self.add_pending_eth_event(hash) {
+                                self.spawn_background_task(
+                                    "initial update ETH event",
+                                    self.clone().update_eth_event(hash),
+                                );
                             }
-                            EventAction::Remove => { /* do nothing */ }
-                        },
-                        Err(e) => {
-                            log::error!("Failed to get ETH event details: {:?}", e);
+                        }
+                        EventType::Ton => {
+                            if self.add_pending_ton_event(hash) {
+                                self.spawn_background_task(
+                                    "initial update TON event",
+                                    self.clone().update_ton_event(hash),
+                                );
+                            }
                         }
                     },
-                    EventType::Ton => match TonEventContract(&contract).get_details() {
-                        Ok(details) => match details.process(our_public_key) {
-                            EventAction::Nop | EventAction::Vote => {
-                                if self.add_pending_ton_event(hash) {
-                                    self.spawn_background_task(
-                                        "initial update TON event",
-                                        self.clone().update_ton_event(hash),
-                                    );
-                                }
-                            }
-                            EventAction::Remove => { /* do nothing */ }
-                        },
-                        Err(e) => {
-                            log::error!("Failed to get TON event details: {:?}", e);
-                        }
-                    },
+                    Ok(EventAction::Remove) => { /* do nothing */ }
+                    Err(e) => {
+                        log::error!("Failed to get {} event details: {:?}", event_type, e);
+                    }
                 }
 
                 Ok(true)
@@ -844,7 +828,9 @@ impl Bridge {
 
                     let mut state = bridge.state.write();
                     state.eth_event_configurations.retain(|account, state| {
-                        let chain_id = state.details.basic_configuration.chain_id;
+                        let network_configuration = &state.details.network_configuration;
+
+                        let chain_id = network_configuration.chain_id;
                         let last_number = match last_block_heights.get(&chain_id) {
                             Some(height) => *height,
                             None => {
@@ -853,9 +839,7 @@ impl Bridge {
                             }
                         };
 
-                        let network_configuration = &state.details.network_configuration;
-
-                        if (network_configuration.end_block_number as u64) < last_number {
+                        if state.details.is_expired(last_number) {
                             log::warn!(
                                 "Removing ETH event configuration {}",
                                 account.to_hex_string()
@@ -1036,39 +1020,18 @@ fn add_event_code_hash(
 type PendingEthEvent = Arc<AccountObserver<EthEvent>>;
 type PendingTonEvent = Arc<AccountObserver<TonEvent>>;
 
-trait EventDetailsExt {
-    fn status(&self) -> EventStatus;
-    fn empty(&self) -> &[UInt256];
-
-    fn process(&self, public_key: &UInt256) -> EventAction {
-        match self.status() {
+impl EventBaseContract<'_> {
+    fn process(&self, public_key: &UInt256) -> Result<EventAction> {
+        Ok(match self.status()? {
             // If it is still initializing - postpone processing until relay keys are received
             EventStatus::Initializing => EventAction::Nop,
             // The only status in which we can vote
-            EventStatus::Pending if self.empty().contains(public_key) => EventAction::Vote,
+            EventStatus::Pending if self.get_voters(EventVote::Empty)?.contains(public_key) => {
+                EventAction::Vote
+            }
             // Discard event in other cases
             _ => EventAction::Remove,
-        }
-    }
-}
-
-impl EventDetailsExt for EthEventDetails {
-    fn status(&self) -> EventStatus {
-        self.status
-    }
-
-    fn empty(&self) -> &[UInt256] {
-        &self.empty
-    }
-}
-
-impl EventDetailsExt for TonEventDetails {
-    fn status(&self) -> EventStatus {
-        self.status
-    }
-
-    fn empty(&self) -> &[UInt256] {
-        &self.empty
+        })
     }
 }
 
@@ -1100,6 +1063,12 @@ struct EthEventConfigurationState {
     observer: Arc<AccountObserver<EthEventConfigurationEvent>>,
 }
 
+impl EthEventConfigurationDetails {
+    fn is_expired(&self, end_block_number: u64) -> bool {
+        (1..end_block_number).contains(&(self.network_configuration.end_block_number as u64))
+    }
+}
+
 #[derive(Clone)]
 struct TonEventConfigurationState {
     details: TonEventConfigurationDetails,
@@ -1107,11 +1076,7 @@ struct TonEventConfigurationState {
     observer: Arc<AccountObserver<TonEventConfigurationEvent>>,
 }
 
-trait TonEventConfigurationDetailsExt {
-    fn is_expired(&self, current_timestamp: u32) -> bool;
-}
-
-impl TonEventConfigurationDetailsExt for TonEventConfigurationDetails {
+impl TonEventConfigurationDetails {
     fn is_expired(&self, current_timestamp: u32) -> bool {
         (1..current_timestamp).contains(&self.network_configuration.end_timestamp)
     }
@@ -1280,8 +1245,8 @@ impl ReadFromTransaction for EthEvent {
                 let body = in_msg.body()?;
 
                 match read_function_id(&body) {
-                    Ok(id) if id == eth_event_contract::receive_round_relays().input_id => {
-                        let RelayKeys { items } = eth_event_contract::receive_round_relays()
+                    Ok(id) if id == base_event_contract::receive_round_relays().input_id => {
+                        let RelayKeys { items } = base_event_contract::receive_round_relays()
                             .decode_input(body, true)
                             .and_then(|tokens| tokens.unpack().map_err(anyhow::Error::from))
                             .ok()?;
@@ -1339,8 +1304,8 @@ impl ReadFromTransaction for TonEvent {
                 let body = in_msg.body()?;
 
                 match read_function_id(&body) {
-                    Ok(id) if id == ton_event_contract::receive_round_relays().input_id => {
-                        let RelayKeys { items } = ton_event_contract::receive_round_relays()
+                    Ok(id) if id == base_event_contract::receive_round_relays().input_id => {
+                        let RelayKeys { items } = base_event_contract::receive_round_relays()
                             .decode_input(body, true)
                             .and_then(|tokens| tokens.unpack().map_err(anyhow::Error::from))
                             .ok()?;

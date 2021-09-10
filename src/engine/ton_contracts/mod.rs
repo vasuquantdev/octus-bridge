@@ -6,6 +6,7 @@ pub use self::models::*;
 use crate::utils::*;
 
 pub mod base_event_configuration_contract;
+pub mod base_event_contract;
 pub mod bridge_contract;
 pub mod connector_contract;
 pub mod eth_event_configuration_contract;
@@ -18,23 +19,36 @@ pub mod user_data_contract;
 
 mod models;
 
+pub struct EventBaseContract<'a>(pub &'a ExistingContract);
+
+impl EventBaseContract<'_> {
+    pub fn status(&self) -> Result<EventStatus> {
+        let function = base_event_contract::status();
+        let result = self.0.run_local(function, &[])?.unpack_first()?;
+        Ok(result)
+    }
+
+    pub fn get_voters(&self, vote: EventVote) -> Result<Vec<UInt256>> {
+        let function = base_event_contract::get_voters();
+        let inputs = [answer_id(), vote.token_value().named("vote")];
+        let RelayKeys { items } = self.0.run_local(function, &inputs)?.unpack()?;
+        Ok(items)
+    }
+}
+
 pub struct EthEventContract<'a>(pub &'a ExistingContract);
 
 impl EthEventContract<'_> {
-    pub fn get_details(&self) -> Result<EthEventDetails> {
-        let function = eth_event_contract::get_details();
-        let result = self.0.run_local(function, &[answer_id()])?.unpack()?;
-        Ok(result)
+    pub fn event_init_data(&self) -> Result<EthEventInitData> {
+        todo!()
     }
 }
 
 pub struct TonEventContract<'a>(pub &'a ExistingContract);
 
 impl TonEventContract<'_> {
-    pub fn get_details(&self) -> Result<TonEventDetails> {
-        let function = ton_event_contract::get_details();
-        let result = self.0.run_local(function, &[answer_id()])?.unpack()?;
-        Ok(result)
+    pub fn event_init_data(&self) -> Result<TonEventInitData> {
+        todo!()
     }
 }
 
@@ -125,6 +139,13 @@ impl ConnectorContract<'_> {
 pub struct StakingContract<'a>(pub &'a ExistingContract);
 
 impl StakingContract<'_> {
+    pub fn get_details(&self) -> Result<StakingDetails> {
+        let function = staking_contract::get_details();
+        let input = [answer_id()];
+        let details = self.0.run_local(function, &input)?.unpack_first()?;
+        Ok(details)
+    }
+
     pub fn get_relay_round_address(&self, round_num: u32) -> Result<UInt256> {
         let function = staking_contract::get_relay_round_address();
         let input = [answer_id(), round_num.token_value().named("round_num")];
