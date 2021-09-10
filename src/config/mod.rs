@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 
@@ -33,7 +32,7 @@ pub struct RelayConfig {
     pub keys_path: PathBuf,
     #[serde(with = "serde_address")]
     pub bridge_address: ton_block::MsgAddressInt,
-    pub networks: HashMap<u32, EthConfig>,
+    pub networks: Vec<EthConfig>,
 }
 
 impl ConfigExt for AppConfig {

@@ -2,6 +2,7 @@ use std::collections::hash_map;
 use std::convert::TryFrom;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use dashmap::DashMap;
@@ -30,15 +31,15 @@ pub struct EthSubscriberRegistry {
 impl EthSubscriberRegistry {
     pub async fn new<I>(networks: I) -> Result<Arc<Self>>
     where
-        I: IntoIterator<Item = (u32, EthConfig)>,
+        I: IntoIterator<Item = EthConfig>,
     {
         let registry = Arc::new(Self {
             subscribers: Default::default(),
             last_block_numbers: Arc::new(LastBlockNumbersMap::default()),
         });
 
-        for (chain_id, config) in networks {
-            registry.new_subscriber(chain_id, config).await?;
+        for config in networks {
+            registry.new_subscriber(config).await?;
         }
 
         Ok(registry)
@@ -66,11 +67,11 @@ impl EthSubscriberRegistry {
         &self.last_block_numbers
     }
 
-    async fn new_subscriber(&self, chain_id: u32, config: EthConfig) -> Result<()> {
+    async fn new_subscriber(&self, config: EthConfig) -> Result<()> {
         use dashmap::mapref::entry::Entry;
 
-        let subscriber =
-            EthSubscriber::new(self.last_block_numbers.clone(), chain_id, config).await?;
+        let chain_id = config.chain_id;
+        let subscriber = EthSubscriber::new(self.last_block_numbers.clone(), config).await?;
 
         match self.subscribers.entry(chain_id) {
             Entry::Vacant(entry) => {
@@ -100,9 +101,9 @@ pub struct EthSubscriber {
 impl EthSubscriber {
     async fn new(
         last_block_numbers: Arc<LastBlockNumbersMap>,
-        chain_id: u32,
         config: EthConfig,
     ) -> Result<Arc<Self>> {
+        let chain_id = config.chain_id;
         let transport = web3::transports::Http::new(config.endpoint.as_str())?;
         let api = web3::api::Eth::new(transport);
         let pool = Arc::new(Semaphore::new(config.pool_size));
@@ -202,7 +203,9 @@ impl EthSubscriber {
 
         let hash: H256 = retry(
             || self.api.send_transaction(request.clone()),
-            generate_default_timeout_config(self.config.maximum_failed_responses_time),
+            generate_default_timeout_config(Duration::from_secs(
+                self.config.maximum_failed_responses_time_sec,
+            )),
             "send transaction",
         )
         .await
@@ -232,8 +235,8 @@ impl EthSubscriber {
 
     async fn update(&self) -> Result<()> {
         let api_request_strategy = generate_fixed_timeout_config(
-            self.config.poll_interval,
-            self.config.maximum_failed_responses_time,
+            Duration::from_secs(self.config.poll_interval_sec),
+            Duration::from_secs(self.config.maximum_failed_responses_time_sec),
         );
 
         let current_block = match retry(
@@ -250,14 +253,14 @@ impl EthSubscriber {
 
         let last_processed_block = self.last_processed_block.load(Ordering::Acquire);
         if last_processed_block == current_block {
-            tokio::time::sleep(self.config.poll_interval).await;
+            tokio::time::sleep(Duration::from_secs(self.config.poll_interval_sec)).await;
             return Ok(());
         }
 
         let events = match retry(
             || {
                 timeout(
-                    self.config.get_timeout,
+                    Duration::from_secs(self.config.get_timeout_sec),
                     self.process_block(last_processed_block, current_block),
                 )
             },
@@ -373,7 +376,9 @@ impl EthSubscriber {
                     let request = transport.execute("eth_getLogs", vec![filter.clone()]);
                     web3::helpers::CallFuture::new(request)
                 },
-                generate_default_timeout_config(self.config.maximum_failed_responses_time),
+                generate_default_timeout_config(Duration::from_secs(
+                    self.config.maximum_failed_responses_time_sec,
+                )),
                 "get contract logs",
             )
             .await
@@ -393,11 +398,13 @@ impl EthSubscriber {
             retry(
                 || {
                     timeout(
-                        self.config.get_timeout,
+                        Duration::from_secs(self.config.get_timeout_sec),
                         self.api.transaction_receipt(*transaction_hash),
                     )
                 },
-                generate_default_timeout_config(self.config.maximum_failed_responses_time),
+                generate_default_timeout_config(Duration::from_secs(
+                    self.config.maximum_failed_responses_time_sec,
+                )),
                 "get transaction receipt",
             )
             .await
@@ -418,9 +425,12 @@ impl EthSubscriber {
     }
 
     async fn get_current_block_number(&self) -> Result<u64> {
-        let result = timeout(self.config.get_timeout, self.api.block_number())
-            .await
-            .context("Timeout getting height")??;
+        let result = timeout(
+            Duration::from_secs(self.config.get_timeout_sec),
+            self.api.block_number(),
+        )
+        .await
+        .context("Timeout getting height")??;
         Ok(result.as_u64())
     }
 }
