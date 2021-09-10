@@ -14,6 +14,7 @@ pub mod relay_round_contract;
 pub mod staking_contract;
 pub mod ton_event_configuration_contract;
 pub mod ton_event_contract;
+pub mod user_data_contract;
 
 mod models;
 
@@ -124,27 +125,13 @@ impl ConnectorContract<'_> {
 pub struct StakingContract<'a>(pub &'a ExistingContract);
 
 impl StakingContract<'_> {
-    pub fn current_relay_round(&self) -> Result<u128> {
-        let function = staking_contract::current_relay_round();
-        let current_relay_round: u128 = self.0.run_local(function, &[])?.unpack_first()?;
-        Ok(current_relay_round)
-    }
-
-    pub fn get_relay_round_address(&self, round_num: u128) -> Result<UInt256> {
+    pub fn get_relay_round_address(&self, round_num: u32) -> Result<UInt256> {
         let function = staking_contract::get_relay_round_address();
-        let input = [round_num.token_value().named("round_num")];
-        let relay_round_address: ton_block::MsgAddrStd =
+        let input = [answer_id(), round_num.token_value().named("round_num")];
+        let ton_block::MsgAddrStd { address, .. } =
             self.0.run_local(function, &input)?.unpack_first()?;
 
-        Ok(UInt256::from_be_bytes(
-            &relay_round_address.address.get_bytestring(0),
-        ))
-    }
-
-    pub fn current_relay_round_start_time(&self) -> Result<u128> {
-        let function = staking_contract::current_relay_round_start_time();
-        let prev_relay_round_end_time: u128 = self.0.run_local(function, &[])?.unpack_first()?;
-        Ok(prev_relay_round_end_time)
+        Ok(UInt256::from_be_bytes(&address.get_bytestring(0)))
     }
 }
 

@@ -445,6 +445,67 @@ pub trait TransactionsSubscription: Send + Sync {
     fn handle_transaction(&self, ctx: TxContext<'_>) -> Result<()>;
 }
 
+/// Generic listener for transactions
+pub struct AccountObserver<T>(AccountEventsTx<T>);
+
+impl<T> AccountObserver<T> {
+    pub fn new(tx: &AccountEventsTx<T>) -> Arc<Self> {
+        Arc::new(Self(tx.clone()))
+    }
+}
+
+impl<T> TransactionsSubscription for AccountObserver<T>
+where
+    T: ReadFromTransaction + std::fmt::Debug + Send + Sync,
+{
+    fn handle_transaction(&self, ctx: TxContext<'_>) -> Result<()> {
+        let event = T::read_from_transaction(&ctx);
+
+        log::info!(
+            "Got transaction on account {}: {:?}",
+            ctx.account.to_hex_string(),
+            event
+        );
+
+        // Send event to event manager if it exist
+        if let Some(event) = event {
+            self.0.send((*ctx.account, event)).ok();
+        }
+
+        // Done
+        Ok(())
+    }
+}
+
+pub fn start_listening_events<S, E, R>(
+    service: &Arc<S>,
+    name: &'static str,
+    mut events_rx: mpsc::UnboundedReceiver<E>,
+    handler: fn(Arc<S>, E) -> R,
+) where
+    S: Send + Sync + 'static,
+    E: Send + 'static,
+    R: futures::Future<Output = Result<()>> + Send + 'static,
+{
+    let service = Arc::downgrade(service);
+
+    tokio::spawn(async move {
+        while let Some(event) = events_rx.recv().await {
+            let service = match service.upgrade() {
+                Some(service) => service,
+                None => break,
+            };
+
+            if let Err(e) = handler(service, event).await {
+                log::error!("{}: Failed to handle event: {:?}", name, e);
+            }
+        }
+
+        events_rx.close();
+        while events_rx.recv().await.is_some() {}
+    });
+}
+
 type ShardAccountTx = watch::Sender<Option<ton_block::ShardAccount>>;
 type ShardAccountRx = watch::Receiver<Option<ton_block::ShardAccount>>;
 

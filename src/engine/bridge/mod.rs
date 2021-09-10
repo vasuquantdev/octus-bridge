@@ -63,32 +63,46 @@ impl Bridge {
         });
 
         // Prepare listeners
-        bridge.start_listening_events(
+        start_listening_events(
+            &bridge,
             "BridgeContract",
             bridge_events_rx,
             Self::process_bridge_event,
         );
 
-        bridge.start_listening_events(
+        start_listening_events(
+            &bridge,
             "ConnectorContract",
             connectors_rx,
             Self::process_connector_event,
         );
 
-        bridge.start_listening_events(
+        start_listening_events(
+            &bridge,
             "EthEventConfigurationContract",
             eth_event_configurations_rx,
             Self::process_eth_event_configuration_event,
         );
 
-        bridge.start_listening_events(
+        start_listening_events(
+            &bridge,
             "TonEventConfigurationContract",
             ton_event_configurations_rx,
             Self::process_ton_event_configuration_event,
         );
 
-        bridge.start_listening_events("EthEventContract", eth_events_rx, Self::process_eth_event);
-        bridge.start_listening_events("TonEventContract", ton_events_rx, Self::process_ton_event);
+        start_listening_events(
+            &bridge,
+            "EthEventContract",
+            eth_events_rx,
+            Self::process_eth_event,
+        );
+        start_listening_events(
+            &bridge,
+            "TonEventContract",
+            ton_events_rx,
+            Self::process_ton_event,
+        );
 
         bridge
             .context
@@ -354,7 +368,7 @@ impl Bridge {
         };
 
         if let Some(entry) = self.pending_eth_events.get(&account) {
-            self.deliver_message(entry.value(), message);
+            self.context.deliver_message(entry.value().clone(), message);
         }
 
         Ok(())
@@ -427,7 +441,7 @@ impl Bridge {
         };
 
         if let Some(entry) = self.pending_ton_events.get(&account) {
-            self.deliver_message(entry.value(), message);
+            self.context.deliver_message(entry.value().clone(), message);
         }
 
         Ok(())
@@ -938,52 +952,6 @@ impl Bridge {
         });
     }
 
-    fn deliver_message<T>(
-        self: &Arc<Self>,
-        observer: &Arc<AccountObserver<T>>,
-        unsigned_message: UnsignedMessage,
-    ) where
-        T: Send + 'static,
-    {
-        let bridge = Arc::downgrade(self);
-        let observer = Arc::downgrade(observer);
-
-        tokio::spawn(async move {
-            loop {
-                let (bridge, _observer) = match (bridge.upgrade(), observer.upgrade()) {
-                    (Some(bridge), Some(observer)) => (bridge, observer),
-                    _ => return,
-                };
-                let context = &bridge.context;
-
-                let message = match context.keystore.ton.sign(&unsigned_message) {
-                    Ok(message) => message,
-                    Err(e) => {
-                        log::error!("Failed to send message: {:?}", e);
-                        return;
-                    }
-                };
-
-                match context
-                    .send_ton_message(&message.account, &message.message, message.expire_at)
-                    .await
-                {
-                    Ok(MessageStatus::Expired) => {
-                        log::info!("Message to account {:x} expired", message.account);
-                    }
-                    Ok(MessageStatus::Delivered) => {
-                        log::info!("Successfully sent message to account {:x}", message.account);
-                        return;
-                    }
-                    Err(e) => {
-                        log::warn!("Failed to send message: {:?}", e);
-                        return;
-                    }
-                }
-            }
-        });
-    }
-
     fn add_pending_eth_event(&self, account: UInt256) -> bool {
         use dashmap::mapref::entry::Entry;
 
@@ -1024,34 +992,6 @@ impl Bridge {
             if let Err(e) = fut.await {
                 log::error!("Failed to {}: {:?}", name, e);
             }
-        });
-    }
-
-    fn start_listening_events<E, R>(
-        self: &Arc<Self>,
-        name: &'static str,
-        mut events_rx: mpsc::UnboundedReceiver<E>,
-        handler: fn(Arc<Self>, E) -> R,
-    ) where
-        E: Send + 'static,
-        R: Future<Output = Result<()>> + Send + 'static,
-    {
-        let bridge = Arc::downgrade(self);
-
-        tokio::spawn(async move {
-            while let Some(event) = events_rx.recv().await {
-                let bridge = match bridge.upgrade() {
-                    Some(bridge) => bridge,
-                    None => break,
-                };
-
-                if let Err(e) = handler(bridge, event).await {
-                    log::error!("{}: Failed to handle event: {:?}", name, e);
-                }
-            }
-
-            events_rx.close();
-            while events_rx.recv().await.is_some() {}
         });
     }
 }
@@ -1174,38 +1114,6 @@ trait TonEventConfigurationDetailsExt {
 impl TonEventConfigurationDetailsExt for TonEventConfigurationDetails {
     fn is_expired(&self, current_timestamp: u32) -> bool {
         (1..current_timestamp).contains(&self.network_configuration.end_timestamp)
-    }
-}
-
-/// Generic listener for transactions
-struct AccountObserver<T>(AccountEventsTx<T>);
-
-impl<T> AccountObserver<T> {
-    fn new(tx: &AccountEventsTx<T>) -> Arc<Self> {
-        Arc::new(Self(tx.clone()))
-    }
-}
-
-impl<T> TransactionsSubscription for AccountObserver<T>
-where
-    T: ReadFromTransaction + std::fmt::Debug + Send + Sync,
-{
-    fn handle_transaction(&self, ctx: TxContext<'_>) -> Result<()> {
-        let event = T::read_from_transaction(&ctx);
-
-        log::info!(
-            "Got transaction on account {}: {:?}",
-            ctx.account.to_hex_string(),
-            event
-        );
-
-        // Send event to event manager if it exist
-        if let Some(event) = event {
-            self.0.send((*ctx.account, event)).ok();
-        }
-
-        // Done
-        Ok(())
     }
 }
 

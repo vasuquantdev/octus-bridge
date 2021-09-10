@@ -13,7 +13,7 @@ use tokio::sync::{oneshot, Semaphore};
 use tokio::time::timeout;
 use ton_types::UInt256;
 use web3::api::Namespace;
-use web3::types::{BlockNumber, FilterBuilder, H256, U64};
+use web3::types::{BlockNumber, FilterBuilder, H256, U256, U64};
 use web3::{transports::Http, Transport};
 
 use self::models::*;
@@ -21,6 +21,7 @@ use crate::config::*;
 use crate::engine::ton_contracts::*;
 use crate::utils::*;
 
+mod contracts;
 mod models;
 
 pub struct EthSubscriberRegistry {
@@ -130,6 +131,60 @@ impl EthSubscriber {
         Ok(subscriber)
     }
 
+    pub async fn verify_relay_staker_address(
+        &self,
+        relay_address: &ethabi::Address,
+        staker_address: ton_block::MsgAddressInt,
+        verifier_address: &ethabi::Address,
+    ) -> Result<()> {
+        const GWEI: u64 = 1000000000;
+
+        let min_balance: U256 = U256::from(50000000 * GWEI);
+        let attached_gas: U256 = U256::from(200 * GWEI);
+
+        let verifier_contract =
+            contracts::staking_contract(self.api.clone(), verifier_address.clone())?;
+        let workchain_id = ethabi::Token::Int(U256::from(staker_address.workchain_id()));
+        let address_body = ethabi::Token::Uint(U256::from_big_endian(
+            &staker_address.address().get_bytestring(0),
+        ));
+
+        loop {
+            let balance = retry(
+                || self.clone().get_balance(relay_address.clone()),
+                crate::utils::generate_default_timeout_config(Duration::from_secs(60)),
+                "Failed getting balance",
+            )
+            .await?;
+
+            // 0.05 ETH
+            if balance < min_balance {
+                log::info!("Insufficient balance");
+                tokio::time::sleep(Duration::from_secs(10)).await;
+            } else {
+                break;
+            }
+        }
+
+        verifier_contract
+            .call(
+                "verify_relay_staker_address",
+                [workchain_id, address_body],
+                relay_address.clone(),
+                web3::contract::Options {
+                    gas: Some(attached_gas),
+                    gas_price: None,
+                    value: None,
+                    nonce: None,
+                    condition: None,
+                    transaction_type: None,
+                    access_list: None,
+                },
+            )
+            .await?;
+        Ok(())
+    }
+
     pub fn subscribe(
         &self,
         address: ethabi::Address,
@@ -186,34 +241,6 @@ impl EthSubscriber {
 
         let status = rx.await?;
         Ok(status)
-    }
-
-    pub async fn send_message(
-        &self,
-        from: ethabi::Address,
-        to: ethabi::Address,
-        data: Vec<u8>,
-    ) -> Result<()> {
-        let request = web3::types::TransactionRequest {
-            from,
-            to: Some(to),
-            data: Some(web3::types::Bytes(data.clone())),
-            ..Default::default()
-        };
-
-        let hash: H256 = retry(
-            || self.api.send_transaction(request.clone()),
-            generate_default_timeout_config(Duration::from_secs(
-                self.config.maximum_failed_responses_time_sec,
-            )),
-            "send transaction",
-        )
-        .await
-        .context("Failed sending ETH transaction")?;
-
-        log::warn!("Sent ETH transaction: {:?}", hash);
-
-        Ok(())
     }
 
     fn start(self: &Arc<Self>) {
@@ -422,6 +449,10 @@ impl EthSubscriber {
                 None
             }
         }))
+    }
+
+    async fn get_balance(&self, address: ethabi::Address) -> Result<U256> {
+        Ok(self.api.balance(address, None).await?)
     }
 
     async fn get_current_block_number(&self) -> Result<u64> {
