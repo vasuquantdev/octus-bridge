@@ -16,6 +16,7 @@ pub mod ton_event_configuration_contract;
 pub mod ton_event_contract;
 
 mod models;
+pub mod user_data;
 
 pub struct EthEventContract<'a>(pub &'a ExistingContract);
 

@@ -79,6 +79,7 @@ pub mod events {
     use ton_abi::Event;
 
     use super::*;
+    use ethabi::Param;
 
     pub fn relay_round_initialized() -> &'static Event {
         static EVENT: OnceCell<Event> = OnceCell::new();
@@ -94,6 +95,26 @@ pub mod events {
         EVENT.get_or_init(|| {
             EventBuilder::new("BridgeUpdated")
                 .input("new_bridge", ParamType::Address)
+                .build()
+        })
+    }
+
+    pub fn election_ended() -> &'static ton_abi::Event {
+        static EVENT: OnceCell<ton_abi::Event> = OnceCell::new();
+        EVENT.get_or_init(|| {
+            EventBuilder::new("ElectionEnded")
+                .input("round_num", ParamType::Uint(128))
+                .build()
+        })
+    }
+
+    pub fn election_started() -> &'static ton_abi::Event {
+        static EVENT: OnceCell<ton_abi::Event> = OnceCell::new();
+        EVENT.get_or_init(|| {
+            EventBuilder::new("ElectionStarted")
+                .input("round_num", ParamType::Uint(128))
+                .input("election_start_time", ParamType::Uint(128))
+                .input("election_addr", ParamType::Address)
                 .build()
         })
     }

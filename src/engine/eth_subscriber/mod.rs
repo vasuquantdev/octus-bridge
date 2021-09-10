@@ -42,7 +42,7 @@ impl EthSubscriberRegistry {
         });
 
         for (chain_id, config) in networks {
-            todo!();
+            // todo!();
             // registry.new_subscriber(chain_id, config).await?;
         }
 

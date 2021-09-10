@@ -1,11 +1,16 @@
 use std::sync::Arc;
 
-use anyhow::Result;
-use nekoton_abi::*;
+use anyhow::{Context, Result};
+use nekoton_abi::UnpackAbiPlain;
 use parking_lot::RwLock;
 use tokio::sync::mpsc;
 use ton_types::UInt256;
 
+use crate::engine::keystore::UnsignedMessage;
+use crate::engine::ton_contracts::staking_contract::events::{
+    election_ended, election_started, relay_round_initialized,
+};
+use crate::engine::ton_contracts::user_data::become_relay_next_round;
 use crate::engine::ton_contracts::*;
 use crate::engine::ton_subscriber::*;
 use crate::engine::EngineContext;
@@ -13,7 +18,7 @@ use crate::utils::*;
 
 pub struct Staking {
     context: Arc<EngineContext>,
-    staking_observer: Arc<StakingObserver>,
+    staking_observer: Arc<StakingObserver<StakingEvents>>,
     vote_state: Arc<RwLock<VoteState>>,
 }
 
@@ -32,39 +37,33 @@ impl Staking {
         todo!()
     }
 
-    fn start_listening_staking_events(self: &Arc<Self>, mut staking_events_rx: StakingEventsRx) {
+    fn start_listening_staking_events(
+        self: &Arc<Self>,
+        mut staking_events_rx: StakingEventsRx<StakingEvents>,
+    ) {
         let staking = Arc::downgrade(self);
-
+        let user_data = todo!();
+        let pubkey = todo!();
         tokio::spawn(async move {
             while let Some(event) = staking_events_rx.recv().await {
                 let staking = match staking.upgrade() {
                     Some(staking) => staking,
                     None => break,
                 };
-
-                // let shard_accounts = match staking.get_all_shard_accounts().await {
-                //     Ok(shard_accounts) => shard_accounts,
-                //     Err(e) => {
-                //         log::error!("Failed to get shard accounts: {:?}", e);
-                //         continue;
-                //     }
-                // };
-                //
-                // if let Err(e) = update_vote_state(
-                //     &shard_accounts,
-                //     &event.round_addr,
-                //     &mut staking.vote_state.write().new_round,
-                // ) {
-                //     log::error!("Failed to update vote state: {:?}", e);
-                //     continue;
-                // }
-                //
-                // let vote_state = staking.vote_state.clone();
-                // let deadline = Instant::now()
-                //     + Duration::from_secs(
-                //         (event.round_start_time - Utc::now().timestamp() as u32) as u64,
-                //     );
-                // run_vote_state_timer(deadline, vote_state);
+                let shard_accounts = match staking.context.get_all_shard_accounts().await {
+                    Ok(shard_accounts) => shard_accounts,
+                    Err(e) => {
+                        log::error!("Failed to get shard accounts: {:?}", e);
+                        continue;
+                    }
+                };
+                match event {
+                    StakingEvents::ElectionStarted(a) => {
+                        let message = UnsignedMessage::new(become_relay_next_round(), user_data);
+                        staking.context.deliver_message(message);
+                    }
+                    StakingEvents::RelayRoundInitialized(a) => {}
+                }
             }
 
             staking_events_rx.close();
@@ -72,79 +71,25 @@ impl Staking {
         });
     }
 
-    // async fn init_vote_state(&self) -> Result<()> {
-    //     let shard_accounts = self.get_all_shard_accounts().await?;
-    //
-    //     let contract = shard_accounts
-    //         .find_account(&self.staking_account)?
-    //         .ok_or(EngineError::StakingAccountNotFound)?;
-    //     let staking = StakingContract(&contract);
-    //
-    //     let round_num = staking.current_relay_round()?;
-    //     let current_time = Utc::now().timestamp() as u128;
-    //     let current_relay_round_start_time = staking.current_relay_round_start_time()?;
-    //
-    //     let current_relay_round_addr;
-    //     if current_time < current_relay_round_start_time {
-    //         current_relay_round_addr = staking.get_relay_round_address(round_num - 1)?;
-    //
-    //         let new_relay_round_addr = staking.get_relay_round_address(round_num)?;
-    //         update_vote_state(
-    //             &shard_accounts,
-    //             &new_relay_round_addr,
-    //             &mut self.vote_state.write().new_round,
-    //         )?;
-    //
-    //         let vote_state = self.vote_state.clone();
-    //         let deadline = Instant::now()
-    //             + Duration::from_secs((current_relay_round_start_time - current_time) as u64);
-    //         run_vote_state_timer(deadline, vote_state);
-    //     } else {
-    //         current_relay_round_addr = staking.get_relay_round_address(round_num)?;
-    //     }
-    //     update_vote_state(
-    //         &shard_accounts,
-    //         &current_relay_round_addr,
-    //         &mut self.vote_state.write().current_round,
-    //     )?;
-    //
-    //     Ok(())
-    // }
-}
+    fn update_vote_state(
+        &self,
+        pubkey: &UInt256,
+        shard_accounts: &ShardAccountsMap,
+        addr: &UInt256,
+    ) -> Result<()> {
+        let contract = shard_accounts.find_account(addr)?.context("lol")?;
+        let relay_round = RelayRoundContract(&contract);
 
-// /// Timer task that switch round state
-// fn run_vote_state_timer(deadline: Instant, vote_state: Arc<RwLock<VoteState>>) {
-//     tokio::spawn(async move {
-//         sleep_until(deadline).await;
-//
-//         vote_state.write().current_round = vote_state.read().new_round;
-//         vote_state.write().new_round = VoteStateType::None;
-//     });
-// }
-//
-// fn update_vote_state(
-//     shard_accounts: &ShardAccountsMap,
-//     addr: &UInt256,
-//     vote_state: &mut VoteStateType,
-// ) -> Result<()> {
-//     // Test key
-//     let relay_pubkey =
-//         UInt256::from_str("e4e82dd4c0df20b0467b1cf48320f4921796c6c8f76ff5999f91ad9175186635")
-//             .unwrap();
-//
-//     let contract = shard_accounts
-//         .find_account(addr)?
-//         .ok_or(EngineError::RelayRoundAccountNotFound)?;
-//     let relay_round = RelayRoundContract(&contract);
-//
-//     if relay_round.relay_keys()?.items.contains(&relay_pubkey) {
-//         *vote_state = VoteStateType::InRound;
-//     } else {
-//         *vote_state = VoteStateType::NotInRound;
-//     }
-//
-//     Ok(())
-// }
+        let mut vote_state = self.vote_state.write().new_round;
+        if relay_round.relay_keys()?.items.contains(&pubkey) {
+            vote_state = VoteStateType::InRound;
+        } else {
+            vote_state = VoteStateType::NotInRound;
+        }
+
+        Ok(())
+    }
+}
 
 /// Whether Relay is able to vote in each of round
 #[derive(Debug, Copy, Clone, Default)]
@@ -169,39 +114,101 @@ impl Default for VoteStateType {
 /// Listener for staking transactions
 ///
 /// **Registered only for staking account**
-struct StakingObserver(StakingEventsTx);
+struct StakingObserver<T>(StakingEventsTx<T>);
 
-impl TransactionsSubscription for StakingObserver {
+enum StakingEvents {
+    ElectionStarted(ElectionStartedEvent),
+    ElectionEnded(ElectionEndedEvent),
+    RelayRoundInitialized(RelayRoundInitializedEvent),
+}
+
+impl<T> TransactionsSubscription for StakingObserver<T>
+where
+    T: ReadFromTransaction + std::fmt::Debug + Send + Sync,
+{
     fn handle_transaction(&self, ctx: TxContext<'_>) -> Result<()> {
-        let relay_round_initialized = staking_contract::events::relay_round_initialized();
+        let event = T::read_from_transaction(&ctx);
 
-        // Parse all outgoing messages and search proper event
-        let mut event: Option<RelayRoundInitializedEvent> = None;
-        ctx.iterate_events(|id, body| {
-            if id == relay_round_initialized.id {
-                match relay_round_initialized
-                    .decode_input(body)
-                    .and_then(|tokens| tokens.unpack().map_err(anyhow::Error::from))
-                {
-                    Ok(parsed) => event = Some(parsed),
-                    Err(e) => {
-                        log::error!("Failed to parse staking event: {:?}", e);
-                    }
-                }
-            }
-        });
-
-        log::info!("Got transaction on staking: {:?}", event);
+        log::info!(
+            "Got transaction on account {}: {:?}",
+            ctx.account.to_hex_string(),
+            event
+        );
 
         // Send event to event manager if it exist
         if let Some(event) = event {
-            self.0.send(event).ok();
+            self.0.send((*ctx.account, event)).ok();
         }
 
-        // Done
         Ok(())
     }
 }
 
-type StakingEventsTx = mpsc::UnboundedSender<RelayRoundInitializedEvent>;
-type StakingEventsRx = mpsc::UnboundedReceiver<RelayRoundInitializedEvent>;
+macro_rules! impl_read_from {
+    ($contract:expr, $id:ty) => {
+        impl ReadFromTransaction for $id {
+            fn read_from_transaction(ctx: &TxContext<'_>) -> Option<Self> {
+                let event = $contract;
+                let mut res = None;
+                ctx.iterate_events(|id, body| {
+                    if id == event.id {
+                        res = match event
+                            .decode_input(body)
+                            .and_then(|tokens| tokens.unpack().map_err(anyhow::Error::from))
+                        {
+                            Ok(parsed) => Some(parsed),
+                            Err(e) => {
+                                log::error!("Failed to parse staking event: {:?}", e);
+                                None
+                            }
+                        };
+                        return;
+                    }
+                });
+                res
+            }
+        }
+    };
+}
+
+macro_rules! parse_tokens {
+    ($res:expr,$fun:expr, $body:expr, $matched:expr) => {
+        $res = match $fun
+            .decode_input($body)
+            .and_then(|tokens| tokens.unpack().map_err(anyhow::Error::from))
+        {
+            Ok(parsed) => Some($matched(parsed)),
+            Err(e) => {
+                log::error!("Failed to parse staking event: {:?}", e);
+                None
+            }
+        };
+        return;
+    };
+}
+
+impl ReadFromTransaction for StakingEvents {
+    fn read_from_transaction(ctx: &TxContext<'_>) -> Option<Self> {
+        let start = election_started();
+        let end = election_ended();
+        let round_init = relay_round_initialized();
+        let mut res = None;
+        ctx.iterate_events(|id, body| {
+            if id == start.id {
+                parse_tokens!(res, start, body, StakingEvents::ElectionStarted);
+            } else if id == end.id {
+                parse_tokens!(res, end, body, StakingEvents::ElectionEnded);
+            } else if id == round_init.id {
+                parse_tokens!(res, end, body, StakingEvents::RelayRoundInitialized);
+            }
+        });
+        res
+    }
+}
+
+impl_read_from!(
+    super::ton_contracts::user_data::relay_membership_requested_event(),
+    RelayMembershipRequestedEvent
+);
+type StakingEventsTx<T> = mpsc::UnboundedSender<T>;
+type StakingEventsRx<T> = mpsc::UnboundedReceiver<T>;

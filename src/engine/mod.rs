@@ -167,6 +167,44 @@ impl EngineContext {
         let status = rx.await?;
         Ok(status)
     }
+
+    pub fn deliver_message(self: &Arc<Self>, unsigned_message: UnsignedMessage) {
+        let context = Arc::downgrade(self);
+
+        tokio::spawn(async move {
+            loop {
+                let context = match context.upgrade() {
+                    Some(context) => (context),
+                    _ => return,
+                };
+
+                let message = match context.keystore.ton.sign(&unsigned_message) {
+                    Ok(message) => message,
+                    Err(e) => {
+                        log::error!("Failed to sign message: {:?}", e);
+                        return;
+                    }
+                };
+
+                match context
+                    .send_ton_message(&message.account, &message.message, message.expire_at)
+                    .await
+                {
+                    Ok(MessageStatus::Expired) => {
+                        log::info!("Message to account {:x} expired", message.account);
+                    }
+                    Ok(MessageStatus::Delivered) => {
+                        log::info!("Successfully sent message to account {:x}", message.account);
+                        return;
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to send message: {:?}", e);
+                        return;
+                    }
+                }
+            }
+        });
+    }
 }
 
 #[derive(thiserror::Error, Debug)]

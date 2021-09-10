@@ -354,7 +354,7 @@ impl Bridge {
         };
 
         if let Some(entry) = self.pending_eth_events.get(&account) {
-            self.deliver_message(entry.value(), message);
+            self.context.deliver_message(message);
         }
 
         Ok(())
@@ -427,7 +427,7 @@ impl Bridge {
         };
 
         if let Some(entry) = self.pending_ton_events.get(&account) {
-            self.deliver_message(entry.value(), message);
+            self.context.deliver_message(message);
         }
 
         Ok(())
@@ -934,52 +934,6 @@ impl Bridge {
                         true
                     }
                 });
-            }
-        });
-    }
-
-    fn deliver_message<T>(
-        self: &Arc<Self>,
-        observer: &Arc<AccountObserver<T>>,
-        unsigned_message: UnsignedMessage,
-    ) where
-        T: Send + 'static,
-    {
-        let bridge = Arc::downgrade(self);
-        let observer = Arc::downgrade(observer);
-
-        tokio::spawn(async move {
-            loop {
-                let (bridge, _observer) = match (bridge.upgrade(), observer.upgrade()) {
-                    (Some(bridge), Some(observer)) => (bridge, observer),
-                    _ => return,
-                };
-                let context = &bridge.context;
-
-                let message = match context.keystore.ton.sign(&unsigned_message) {
-                    Ok(message) => message,
-                    Err(e) => {
-                        log::error!("Failed to send message: {:?}", e);
-                        return;
-                    }
-                };
-
-                match context
-                    .send_ton_message(&message.account, &message.message, message.expire_at)
-                    .await
-                {
-                    Ok(MessageStatus::Expired) => {
-                        log::info!("Message to account {:x} expired", message.account);
-                    }
-                    Ok(MessageStatus::Delivered) => {
-                        log::info!("Successfully sent message to account {:x}", message.account);
-                        return;
-                    }
-                    Err(e) => {
-                        log::warn!("Failed to send message: {:?}", e);
-                        return;
-                    }
-                }
             }
         });
     }

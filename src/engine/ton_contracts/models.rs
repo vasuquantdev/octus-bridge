@@ -220,3 +220,35 @@ pub struct RelayKeys {
     #[abi(with = "array_uint256_bytes")]
     pub items: Vec<UInt256>,
 }
+
+#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
+pub struct ElectionEndedEvent {
+    #[abi]
+    pub round_num: u32,
+}
+
+#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
+pub struct ElectionStartedEvent {
+    #[abi]
+    pub round_num: u32,
+    #[abi]
+    pub election_start_time: u32,
+    #[abi]
+    pub election_addr: ton_block::MsgAddressInt,
+}
+
+#[derive(Debug, Clone, PackAbi, UnpackAbi)]
+pub struct RelayMembershipRequestedEvent {
+    #[abi]
+    pub round_num: u32,
+    #[abi]
+    pub tokens: u128,
+    #[abi]
+    #[abi(with = "uint256_bytes")]
+    pub ton_pubkey: ton_types::UInt256,
+    #[abi]
+    #[abi(with = "uint256_bytes")]
+    pub eth_address: ton_types::UInt256,
+    #[abi]
+    pub lock_until: u32,
+}
