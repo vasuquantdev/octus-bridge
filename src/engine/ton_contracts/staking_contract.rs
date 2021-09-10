@@ -45,8 +45,22 @@ pub fn get_relay_round_address_from_timestamp() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
     FUNCTION.get_or_init(|| {
         FunctionBuilder::new_responsible("getRelayRoundAddressFromTimestamp")
+            .pubkey_header()
             .time_header()
             .input("time", ton_abi::ParamType::Uint(32))
+            .output("address", ton_abi::ParamType::Address)
+            .build()
+    })
+}
+
+/// External responsible function
+pub fn get_user_data_address() -> &'static ton_abi::Function {
+    static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
+    FUNCTION.get_or_init(|| {
+        FunctionBuilder::new_responsible("getUserDataAddress")
+            .pubkey_header()
+            .time_header()
+            .input("user", ton_abi::ParamType::Address)
             .output("address", ton_abi::ParamType::Address)
             .build()
     })

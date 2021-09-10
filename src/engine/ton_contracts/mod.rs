@@ -154,6 +154,20 @@ impl StakingContract<'_> {
 
         Ok(UInt256::from_be_bytes(&address.get_bytestring(0)))
     }
+
+    pub fn get_user_data_address(&self, user: &UInt256) -> Result<UInt256> {
+        let function = staking_contract::get_user_data_address();
+        let input = [
+            answer_id(),
+            ton_block::MsgAddrStd::with_address(None, 0, user.into())
+                .token_value()
+                .named("user"),
+        ];
+        let ton_block::MsgAddrStd { address, .. } =
+            self.0.run_local(function, &input)?.unpack_first()?;
+
+        Ok(UInt256::from_be_bytes(&address.get_bytestring(0)))
+    }
 }
 
 pub struct RelayRoundContract<'a>(pub &'a ExistingContract);

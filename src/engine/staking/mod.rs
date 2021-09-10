@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use nekoton_abi::UnpackAbiPlain;
@@ -16,20 +17,24 @@ pub struct Staking {
     context: Arc<EngineContext>,
 
     staking_account: UInt256,
-
     staking_observer: Arc<AccountObserver<StakingEvent>>,
+
+    user_data_events_tx: AccountEventsTx<UserDataEvent>,
     user_data_observer: Mutex<Option<Arc<AccountObserver<UserDataEvent>>>>,
+
     vote_state: Arc<RwLock<VoteState>>,
 }
 
 impl Staking {
     pub async fn new(context: Arc<EngineContext>, staking_account: UInt256) -> Result<Arc<Self>> {
         let (staking_events_tx, staking_events_rx) = mpsc::unbounded_channel();
+        let (user_data_events_tx, user_data_events_rx) = mpsc::unbounded_channel();
 
         let staking = Arc::new(Self {
             context,
             staking_account,
             staking_observer: AccountObserver::new(&staking_events_tx),
+            user_data_events_tx,
             user_data_observer: Default::default(),
             vote_state: Arc::new(Default::default()),
         });
@@ -40,8 +45,56 @@ impl Staking {
             staking_events_rx,
             Self::process_staking_event,
         );
+        start_listening_events(
+            &staking,
+            "UserDataContract",
+            user_data_events_rx,
+            Self::process_user_data_event,
+        );
+
+        staking.clone().start_searching_user_data().await?;
 
         Ok(staking)
+    }
+
+    async fn start_searching_user_data(self: Arc<Self>) -> Result<()> {
+        let staking_contract = self
+            .context
+            .ton_subscriber
+            .wait_contract_state(self.staking_account)
+            .await?;
+
+        let user_data_account = StakingContract(&staking_contract)
+            .get_user_data_address(&self.context.staker_address)?;
+        log::info!("UserData account: {:x}", user_data_account);
+
+        let staking = Arc::downgrade(&self);
+
+        tokio::spawn(async move {
+            log::info!("Searching UserData...");
+            loop {
+                let staking = match staking.upgrade() {
+                    Some(staking) => staking,
+                    None => return,
+                };
+                let ton_subscriber = &staking.context.ton_subscriber;
+
+                let user_data_state =
+                    match ton_subscriber.wait_contract_state(user_data_account).await {
+                        Ok(contract) => contract,
+                        Err(e) => {
+                            log::error!("Failed to find UserData: {:?}", e);
+                            tokio::time::sleep(Duration::from_secs(1)).await;
+                            continue;
+                        }
+                    };
+
+                log::info!("Found UserData");
+
+                break;
+            }
+        });
+        Ok(())
     }
 
     async fn process_staking_event(
@@ -70,6 +123,17 @@ impl Staking {
             }
         }
         Ok(())
+    }
+
+    async fn process_user_data_event(
+        self: Arc<Self>,
+        (_, event): (UInt256, UserDataEvent),
+    ) -> Result<()> {
+        match event {
+            UserDataEvent::RelayMembershipRequested(_) => {
+                todo!()
+            }
+        }
     }
 
     fn update_vote_state(
