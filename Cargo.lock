@@ -2463,7 +2463,7 @@ dependencies = [
 [[package]]
 name = "tiny-adnl"
 version = "0.1.0"
-source = "git+https://github.com/broxus/tiny-adnl#d04491d5ee022f0a5c2594f11d5213e9f7b5b72a"
+source = "git+https://github.com/broxus/tiny-adnl#518881f0440917659072e57ec39107170c4f81a0"
 dependencies = [
  "aes",
  "anyhow",
@@ -2622,7 +2622,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#368adc699a3d63de136522bc32a7533167df6674"
+source = "git+https://github.com/broxus/ton-indexer.git#80b37a3a086441439764a11f1fdb4d643bc0a28d"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2659,7 +2659,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer-alloc"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#368adc699a3d63de136522bc32a7533167df6674"
+source = "git+https://github.com/broxus/ton-indexer.git#80b37a3a086441439764a11f1fdb4d643bc0a28d"
 dependencies = [
  "errno",
  "log",

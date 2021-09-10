@@ -92,6 +92,12 @@ pub struct EngineContext {
     pub eth_subscribers: Arc<EthSubscriberRegistry>,
 }
 
+impl Drop for EngineContext {
+    fn drop(&mut self) {
+        self.ton_engine.shutdown();
+    }
+}
+
 impl EngineContext {
     async fn new(config: AppConfig, global_config: ton_indexer::GlobalConfig) -> Result<Arc<Self>> {
         let settings = config.relay_settings;
