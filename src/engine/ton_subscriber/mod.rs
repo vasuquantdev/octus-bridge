@@ -236,6 +236,26 @@ impl TonSubscriber {
                     return true;
                 }
 
+                let mut keep = true;
+
+                if subscription_status == StateSubscriptionStatus::Alive {
+                    match shard_accounts.get(account) {
+                        Ok(account) => {
+                            if subscription.state_tx.send(account).is_err() {
+                                log::error!("Shard subscription somehow dropped");
+                                keep = false;
+                            }
+                        }
+                        Err(e) => {
+                            log::error!(
+                                "Failed to get account {}: {:?}",
+                                account.to_hex_string(),
+                                e
+                            );
+                        }
+                    };
+                }
+
                 if let Err(e) = subscription.handle_block(
                     &self.messages_queue,
                     &shard_accounts,
@@ -244,27 +264,6 @@ impl TonSubscriber {
                     account,
                 ) {
                     log::error!("Failed to handle block: {:?}", e);
-                }
-
-                let mut keep = true;
-
-                if subscription_status == StateSubscriptionStatus::Alive {
-                    let account = match shard_accounts.get(account) {
-                        Ok(account) => account,
-                        Err(e) => {
-                            log::error!(
-                                "Failed to get account {}: {:?}",
-                                account.to_hex_string(),
-                                e
-                            );
-                            return true;
-                        }
-                    };
-
-                    if subscription.state_tx.send(account).is_err() {
-                        log::error!("Shard subscription somehow dropped");
-                        keep = false;
-                    }
                 }
 
                 keep

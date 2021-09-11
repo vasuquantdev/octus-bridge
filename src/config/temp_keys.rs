@@ -10,7 +10,7 @@ impl TempKeys {
     where
         P: AsRef<Path>,
     {
-        let mut file = std::fs::OpenOptions::new()
+        let file = std::fs::OpenOptions::new()
             .create(true)
             .write(true)
             .read(true)
