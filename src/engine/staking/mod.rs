@@ -36,25 +36,23 @@ impl Staking {
             .await?;
         let staking_contract = StakingContract(&staking_contract);
 
+        // Get bridge ETH event configuration
+        let bridge_event_configuration = staking_contract
+            .get_eth_bridge_configuration_details(&context)
+            .await?;
+        log::info!(
+            "Bridge event configuration: {:?}",
+            bridge_event_configuration
+        );
+
         // Initialize user data
         let user_data_account = staking_contract.get_user_data_address(&context.staker_address)?;
         log::info!("Waiting user data account: {:x}", user_data_account);
-        loop {
-            let _user_data_state = match context
-                .ton_subscriber
-                .wait_contract_state(user_data_account)
-                .await
-            {
-                Ok(_contract) => { /* TODO: check ETH address and TON public key */ }
-                Err(e) => {
-                    log::error!("Failed to find UserData: {:?}", e);
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-                    continue;
-                }
-            };
-            log::info!("Found user data");
-            break;
-        }
+        let user_data_contract = context
+            .ton_subscriber
+            .wait_contract_state(user_data_account)
+            .await?;
+
         let user_data_observer = AccountObserver::new(&user_data_events_tx);
 
         // Initialize relay round
@@ -185,13 +183,16 @@ impl Staking {
             self.user_data_account,
         );
 
-        let fut = self
+        // NOTE: Create `notified` future beforehand
+        let notification_fut = self.elections_end_notify.notified();
+
+        let message_fut = self
             .context
             .deliver_message(self.user_data_observer.clone(), message);
 
         tokio::select! {
-            result = fut => result,
-            _ = self.elections_end_notify.notified() => {
+            result = message_fut => result,
+            _ = notification_fut => {
                 log::warn!("Early exit from become_relay_next_round due to the elections end");
                 Ok(())
             }
@@ -211,10 +212,19 @@ impl Staking {
 }
 
 impl StakingContract<'_> {
-    async fn collect_relay_round_state(&self, context: &EngineContext) -> Result<RoundState> {
-        let staking_details = self.get_details()?;
-        log::info!("Staking details: {:?}", staking_details);
+    async fn get_eth_bridge_configuration_details(
+        &self,
+        context: &EngineContext,
+    ) -> Result<EthEventConfigurationDetails> {
+        let details = self.get_details()?;
+        let configuration_contract = context
+            .ton_subscriber
+            .wait_contract_state(details.bridge_event_config_eth_ton)
+            .await?;
+        EthEventConfigurationContract(&configuration_contract).get_details()
+    }
 
+    async fn collect_relay_round_state(&self, context: &EngineContext) -> Result<RoundState> {
         let relay_rounds_details = self.get_relay_rounds_details()?;
         log::info!("Relay round details: {:?}", relay_rounds_details);
 

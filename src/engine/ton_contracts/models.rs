@@ -199,6 +199,32 @@ pub struct RelayKeys {
 }
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
+pub struct UserDataDetails {
+    #[abi(uint128)]
+    pub token_balance: u128,
+    #[abi(uint32)]
+    pub relay_lock_until: u32,
+    #[abi(array)]
+    pub reward_rounds: Vec<UserDataRewardRound>,
+    #[abi(with = "uint160_bytes")]
+    pub relay_eth_address: [u8; 20],
+    #[abi(bool)]
+    pub eth_address_confirmed: bool,
+    #[abi(with = "uint256_bytes")]
+    pub relay_ton_pubkey: UInt256,
+    #[abi(bool)]
+    pub ton_pubkey_confirmed: bool,
+}
+
+#[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
+pub struct UserDataRewardRound {
+    #[abi(uint128)]
+    pub reward_balance: u128,
+    #[abi(uint128)]
+    pub reward_debt: u128,
+}
+
+#[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct StakingDetails {
     #[abi(with = "address_only_hash")]
     pub dao_root: UInt256,

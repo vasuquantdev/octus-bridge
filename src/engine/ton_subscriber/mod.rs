@@ -158,7 +158,7 @@ impl TonSubscriber {
         };
 
         state_rx.changed().await?;
-        let account = state_rx.borrow();
+        let account = state_rx.borrow_and_update();
         ExistingContract::from_shard_account_opt(account.deref())
     }
 
@@ -181,7 +181,7 @@ impl TonSubscriber {
         loop {
             state_rx.changed().await?;
 
-            let shard_account = match state_rx.borrow().deref() {
+            let shard_account = match state_rx.borrow_and_update().deref() {
                 Some(shard_account) => ExistingContract::from_shard_account(shard_account)?,
                 None => continue,
             };
@@ -469,7 +469,9 @@ where
 
         // Send event to event manager if it exist
         if let Some(event) = event {
-            self.0.send((*ctx.account, event)).ok();
+            if self.0.send((*ctx.account, event)).is_err() {
+                log::error!("Failed to send event: channel is dropped");
+            }
         }
 
         // Done
@@ -500,6 +502,8 @@ pub fn start_listening_events<S, E, R>(
                 log::error!("{}: Failed to handle event: {:?}", name, e);
             }
         }
+
+        log::warn!("{}: Stopped listening for events", name);
 
         events_rx.close();
         while events_rx.recv().await.is_some() {}

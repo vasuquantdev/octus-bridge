@@ -465,6 +465,7 @@ impl Bridge {
 
             // Extract details
             let connector_details = ConnectorContract(&contract).get_details()?;
+            log::info!("Got connector details: {:?}", connector_details);
 
             // Do nothing if it is disabled
             if !connector_details.enabled {
@@ -477,6 +478,7 @@ impl Bridge {
         let contract = ton_subscriber
             .wait_contract_state(event_configuration)
             .await?;
+        log::info!("Got configuration contract");
 
         // Extract and process info from contract
         let mut state = self.state.write();
@@ -596,6 +598,7 @@ impl Bridge {
     ) -> Result<()> {
         // Get event type using base contract abi
         let event_type = EventConfigurationBaseContract(configuration_contract).get_type()?;
+        log::info!("Found configuration of type: {}", event_type);
 
         match state.connectors.get_mut(connector_account) {
             Some(connector) => connector.event_type = ConnectorConfigurationType::Known(event_type),
@@ -666,6 +669,8 @@ impl Bridge {
         let observer = AccountObserver::new(&self.eth_event_configurations_tx);
         match state.eth_event_configurations.entry(*account) {
             hash_map::Entry::Vacant(entry) => {
+                log::info!("Added new ETH event configuration: {:?}", details);
+
                 entry.insert(EthEventConfigurationState {
                     details,
                     event_abi,
@@ -674,7 +679,8 @@ impl Bridge {
                 });
             }
             hash_map::Entry::Occupied(_) => {
-                return Err(BridgeError::EventConfigurationAlreadyExists.into())
+                log::info!("ETH event configuration already exists: {:x}", account);
+                return Err(BridgeError::EventConfigurationAlreadyExists.into());
             }
         };
 
@@ -726,6 +732,8 @@ impl Bridge {
         let observer = AccountObserver::new(&self.ton_event_configurations_tx);
         match state.ton_event_configurations.entry(*account) {
             hash_map::Entry::Vacant(entry) => {
+                log::info!("Added new TON event configuration: {:?}", details);
+
                 entry.insert(TonEventConfigurationState {
                     details,
                     event_abi,
@@ -733,7 +741,8 @@ impl Bridge {
                 });
             }
             hash_map::Entry::Occupied(_) => {
-                return Err(BridgeError::EventConfigurationAlreadyExists.into())
+                log::info!("TON event configuration already exists: {:x}", account);
+                return Err(BridgeError::EventConfigurationAlreadyExists.into());
             }
         };
 
