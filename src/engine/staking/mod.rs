@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -5,9 +6,11 @@ use anyhow::{Context, Result};
 use nekoton_abi::UnpackAbiPlain;
 use parking_lot::{Mutex, RwLock};
 use tokio::sync::mpsc;
+use tokio::sync::Notify;
 use ton_types::UInt256;
 
 use crate::engine::keystore::*;
+use crate::engine::ton_contracts::staking_contract::get_relay_round_address;
 use crate::engine::ton_contracts::*;
 use crate::engine::ton_subscriber::*;
 use crate::engine::EngineContext;
@@ -21,8 +24,57 @@ pub struct Staking {
 
     user_data_events_tx: AccountEventsTx<UserDataEvent>,
     user_data_observer: Mutex<Option<Arc<AccountObserver<UserDataEvent>>>>,
-
+    user_data: UserData,
     vote_state: Arc<RwLock<VoteState>>,
+}
+
+macro_rules! impl_waiter {
+    ($name:ident, $ty:ident) => {
+        #[derive(Default)]
+        struct $name {
+            inner: Mutex<$ty>,
+            waker: Notify,
+            flag: AtomicBool,
+        }
+
+        impl UserData {
+            fn init(&self, address: UInt256) {
+                *self.inner.lock() = address;
+                self.waker.notify_one();
+                self.flag.store(true, Ordering::Release);
+            }
+            async fn get(&self) -> UInt256 {
+                if self.flag.load(Ordering::Acquire) {
+                    *self.inner.lock()
+                } else {
+                    self.waker.notified().await;
+                    *self.inner.lock()
+                }
+            }
+        }
+    };
+}
+
+#[derive(Default)]
+struct UserData {
+    inner: Mutex<UInt256>,
+    waker: Notify,
+    flag: AtomicBool,
+}
+impl UserData {
+    fn init(&self, address: UInt256) {
+        *self.inner.lock() = address;
+        self.waker.notify_one();
+        self.flag.store(true, Ordering::Release);
+    }
+    async fn get(&self) -> UInt256 {
+        if self.flag.load(Ordering::Acquire) {
+            *self.inner.lock()
+        } else {
+            self.waker.notified().await;
+            *self.inner.lock()
+        }
+    }
 }
 
 impl Staking {
@@ -36,6 +88,7 @@ impl Staking {
             staking_observer: AccountObserver::new(&staking_events_tx),
             user_data_events_tx,
             user_data_observer: Default::default(),
+            user_data: Default::default(),
             vote_state: Arc::new(Default::default()),
         });
 
@@ -90,7 +143,7 @@ impl Staking {
                     };
 
                 log::info!("Found UserData");
-
+                staking.user_data.init(user_data_account);
                 break;
             }
         });
@@ -103,12 +156,12 @@ impl Staking {
     ) -> Result<()> {
         match event {
             StakingEvent::ElectionStarted(event) => {
+                let user_data = self.user_data.get().await;
                 let message =
-                    UnsignedMessage::new(user_data_contract::become_relay_next_round(), todo!());
+                    UnsignedMessage::new(user_data_contract::become_relay_next_round(), user_data);
 
                 let staking = self.clone();
                 tokio::spawn(async move {
-                    // TODO: replace with user data
                     staking
                         .context
                         .deliver_message(staking.staking_observer.clone(), message);
@@ -116,6 +169,10 @@ impl Staking {
             }
             StakingEvent::ElectionEnded(event) => {
                 log::warn!("Election ended: {:?}", event);
+                self.update_vote_state(
+                    self.context.keystore.ton.public_key(),
+                    &self.context.get_all_shard_accounts().await?,
+                );
             }
             StakingEvent::RelayRoundInitialized(event) => {
                 log::warn!("Relay round initialized: {:?}", event);
@@ -125,24 +182,32 @@ impl Staking {
         Ok(())
     }
 
+    async fn get_relay_round_address(&self, round: u32) -> Result<UInt256> {
+        let getter = get_relay_round_address();
+        let shard_map = self.context.get_all_shard_accounts().await?;
+        let staking_account: ExistingContract = shard_map
+            .find_account(&self.staking_account)?
+            .context("Staking account not found")?;
+        let staking_account = StakingContract(&staking_account);
+        staking_account.get_relay_round_address(round)
+    }
+
     async fn process_user_data_event(
         self: Arc<Self>,
         (_, event): (UInt256, UserDataEvent),
     ) -> Result<()> {
         match event {
-            UserDataEvent::RelayMembershipRequested(_) => {
-                todo!()
+            UserDataEvent::RelayMembershipRequested(data) => {
+                self.staking_state.applied_round(data.round_num);
             }
         }
+        Ok(())
     }
 
-    fn update_vote_state(
-        &self,
-        pubkey: &UInt256,
-        shard_accounts: &ShardAccountsMap,
-        addr: &UInt256,
-    ) -> Result<()> {
-        let contract = shard_accounts.find_account(addr)?.context("lol")?;
+    fn update_vote_state(&self, pubkey: &UInt256, shard_accounts: &ShardAccountsMap) -> Result<()> {
+        let contract = shard_accounts
+            .find_account(self)?
+            .context("Failed getting relay round contract")?;
         let relay_round = RelayRoundContract(&contract);
 
         let mut vote_state = self.vote_state.write().new_round;
