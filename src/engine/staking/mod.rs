@@ -1,16 +1,13 @@
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use nekoton_abi::UnpackAbiPlain;
-use parking_lot::{Mutex, RwLock};
 use tokio::sync::mpsc;
 use tokio::sync::Notify;
 use ton_types::UInt256;
 
 use crate::engine::keystore::*;
-use crate::engine::ton_contracts::staking_contract::get_relay_round_address;
 use crate::engine::ton_contracts::*;
 use crate::engine::ton_subscriber::*;
 use crate::engine::EngineContext;
@@ -19,62 +16,13 @@ use crate::utils::*;
 pub struct Staking {
     context: Arc<EngineContext>,
 
+    current_relay_round: tokio::sync::Mutex<RoundState>,
+    elections_end_notify: Notify,
+
     staking_account: UInt256,
     staking_observer: Arc<AccountObserver<StakingEvent>>,
-
-    user_data_events_tx: AccountEventsTx<UserDataEvent>,
-    user_data_observer: Mutex<Option<Arc<AccountObserver<UserDataEvent>>>>,
-    user_data: UserData,
-    vote_state: Arc<RwLock<VoteState>>,
-}
-
-macro_rules! impl_waiter {
-    ($name:ident, $ty:ident) => {
-        #[derive(Default)]
-        struct $name {
-            inner: Mutex<$ty>,
-            waker: Notify,
-            flag: AtomicBool,
-        }
-
-        impl UserData {
-            fn init(&self, address: UInt256) {
-                *self.inner.lock() = address;
-                self.waker.notify_one();
-                self.flag.store(true, Ordering::Release);
-            }
-            async fn get(&self) -> UInt256 {
-                if self.flag.load(Ordering::Acquire) {
-                    *self.inner.lock()
-                } else {
-                    self.waker.notified().await;
-                    *self.inner.lock()
-                }
-            }
-        }
-    };
-}
-
-#[derive(Default)]
-struct UserData {
-    inner: Mutex<UInt256>,
-    waker: Notify,
-    flag: AtomicBool,
-}
-impl UserData {
-    fn init(&self, address: UInt256) {
-        *self.inner.lock() = address;
-        self.waker.notify_one();
-        self.flag.store(true, Ordering::Release);
-    }
-    async fn get(&self) -> UInt256 {
-        if self.flag.load(Ordering::Acquire) {
-            *self.inner.lock()
-        } else {
-            self.waker.notified().await;
-            *self.inner.lock()
-        }
-    }
+    user_data_account: UInt256,
+    user_data_observer: Arc<AccountObserver<UserDataEvent>>,
 }
 
 impl Staking {
@@ -82,14 +30,47 @@ impl Staking {
         let (staking_events_tx, staking_events_rx) = mpsc::unbounded_channel();
         let (user_data_events_tx, user_data_events_rx) = mpsc::unbounded_channel();
 
+        let staking_contract = context
+            .ton_subscriber
+            .wait_contract_state(staking_account)
+            .await?;
+        let staking_contract = StakingContract(&staking_contract);
+
+        // Initialize user data
+        let user_data_account = staking_contract.get_user_data_address(&context.staker_address)?;
+        log::info!("Waiting user data account: {:x}", user_data_account);
+        loop {
+            let _user_data_state = match context
+                .ton_subscriber
+                .wait_contract_state(user_data_account)
+                .await
+            {
+                Ok(_contract) => { /* TODO: check ETH address and TON public key */ }
+                Err(e) => {
+                    log::error!("Failed to find UserData: {:?}", e);
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    continue;
+                }
+            };
+            log::info!("Found user data");
+            break;
+        }
+        let user_data_observer = AccountObserver::new(&user_data_events_tx);
+
+        // Initialize relay round
+        let current_relay_round = staking_contract.collect_relay_round_state(&context).await?;
+
+        let should_vote = current_relay_round.elections_started && !current_relay_round.elected;
+
+        //
         let staking = Arc::new(Self {
             context,
+            current_relay_round: tokio::sync::Mutex::new(current_relay_round),
+            elections_end_notify: Default::default(),
             staking_account,
             staking_observer: AccountObserver::new(&staking_events_tx),
-            user_data_events_tx,
-            user_data_observer: Default::default(),
-            user_data: Default::default(),
-            vote_state: Arc::new(Default::default()),
+            user_data_account,
+            user_data_observer,
         });
 
         start_listening_events(
@@ -105,91 +86,84 @@ impl Staking {
             Self::process_user_data_event,
         );
 
-        staking.clone().start_searching_user_data().await?;
+        let context = &staking.context;
+        context
+            .ton_subscriber
+            .add_transactions_subscription([staking_account], &staking.staking_observer);
+        context
+            .ton_subscriber
+            .add_transactions_subscription([user_data_account], &staking.user_data_observer);
+
+        if should_vote {
+            staking.become_relay_next_round().await?;
+        }
 
         Ok(staking)
-    }
-
-    async fn start_searching_user_data(self: Arc<Self>) -> Result<()> {
-        let staking_contract = self
-            .context
-            .ton_subscriber
-            .wait_contract_state(self.staking_account)
-            .await?;
-
-        let user_data_account = StakingContract(&staking_contract)
-            .get_user_data_address(&self.context.staker_address)?;
-        log::info!("UserData account: {:x}", user_data_account);
-
-        let staking = Arc::downgrade(&self);
-
-        tokio::spawn(async move {
-            log::info!("Searching UserData...");
-            loop {
-                let staking = match staking.upgrade() {
-                    Some(staking) => staking,
-                    None => return,
-                };
-                let ton_subscriber = &staking.context.ton_subscriber;
-
-                let user_data_state =
-                    match ton_subscriber.wait_contract_state(user_data_account).await {
-                        Ok(contract) => contract,
-                        Err(e) => {
-                            log::error!("Failed to find UserData: {:?}", e);
-                            tokio::time::sleep(Duration::from_secs(1)).await;
-                            continue;
-                        }
-                    };
-
-                log::info!("Found UserData");
-                staking.user_data.init(user_data_account);
-                break;
-            }
-        });
-        Ok(())
     }
 
     async fn process_staking_event(
         self: Arc<Self>,
         (_, event): (UInt256, StakingEvent),
     ) -> Result<()> {
-        match event {
-            StakingEvent::ElectionStarted(event) => {
-                let user_data = self.user_data.get().await;
-                let message =
-                    UnsignedMessage::new(user_data_contract::become_relay_next_round(), user_data);
+        let staking = self;
 
-                let staking = self.clone();
-                tokio::spawn(async move {
-                    staking
-                        .context
-                        .deliver_message(staking.staking_observer.clone(), message);
-                });
+        tokio::spawn(async move {
+            match event {
+                StakingEvent::ElectionStarted(_) => {
+                    if let Err(e) = staking.on_election_started().await {
+                        log::error!("Failed to handle election started event: {:?}", e);
+                    }
+                }
+                StakingEvent::ElectionEnded(_) => {
+                    if let Err(e) = staking.on_election_ended().await {
+                        log::error!("Failed to handle election started event: {:?}", e);
+                    }
+                }
+                StakingEvent::RelayRoundInitialized(event) => {
+                    log::warn!("Relay round initialized: {:?}", event);
+                    // TODO: collect reward
+                }
             }
-            StakingEvent::ElectionEnded(event) => {
-                log::warn!("Election ended: {:?}", event);
-                self.update_vote_state(
-                    self.context.keystore.ton.public_key(),
-                    &self.context.get_all_shard_accounts().await?,
-                );
+        });
+
+        Ok(())
+    }
+
+    async fn on_election_started(self: &Arc<Self>) -> Result<()> {
+        let mut current_relay_round = self.current_relay_round.lock().await;
+
+        // Update state
+        *current_relay_round = self.collect_relay_round_state().await?;
+
+        // Spawn election voting
+        let staking = self.clone();
+        tokio::spawn(async move {
+            if let Err(e) = staking.become_relay_next_round().await {
+                log::error!("Failed to become relay next round: {:?}", e);
             }
-            StakingEvent::RelayRoundInitialized(event) => {
-                log::warn!("Relay round initialized: {:?}", event);
-                // TODO: handle
-            }
-        }
+        });
+
+        Ok(())
+    }
+
+    async fn on_election_ended(&self) -> Result<()> {
+        let mut current_relay_round = self.current_relay_round.lock().await;
+
+        // Stop pending election messages
+        self.elections_end_notify.notify_waiters();
+
+        // Update state
+        *current_relay_round = self.collect_relay_round_state().await?;
         Ok(())
     }
 
     async fn get_relay_round_address(&self, round: u32) -> Result<UInt256> {
-        let getter = get_relay_round_address();
-        let shard_map = self.context.get_all_shard_accounts().await?;
-        let staking_account: ExistingContract = shard_map
-            .find_account(&self.staking_account)?
-            .context("Staking account not found")?;
-        let staking_account = StakingContract(&staking_account);
-        staking_account.get_relay_round_address(round)
+        let staking_contract = self
+            .context
+            .ton_subscriber
+            .wait_contract_state(self.staking_account)
+            .await?;
+        StakingContract(&staking_contract).get_relay_round_address(round)
     }
 
     async fn process_user_data_event(
@@ -197,48 +171,97 @@ impl Staking {
         (_, event): (UInt256, UserDataEvent),
     ) -> Result<()> {
         match event {
-            UserDataEvent::RelayMembershipRequested(data) => {
-                self.staking_state.applied_round(data.round_num);
+            UserDataEvent::RelayMembershipRequested(_data) => {
+                //self.staking_state.applied_round(data.round_num);
+                // TODO: confirm address and pubkey
             }
         }
         Ok(())
     }
 
-    fn update_vote_state(&self, pubkey: &UInt256, shard_accounts: &ShardAccountsMap) -> Result<()> {
-        let contract = shard_accounts
-            .find_account(self)?
-            .context("Failed getting relay round contract")?;
-        let relay_round = RelayRoundContract(&contract);
+    async fn become_relay_next_round(&self) -> Result<()> {
+        let message = UnsignedMessage::new(
+            user_data_contract::become_relay_next_round(),
+            self.user_data_account,
+        );
 
-        let mut vote_state = self.vote_state.write().new_round;
-        if relay_round.relay_keys()?.items.contains(&pubkey) {
-            vote_state = VoteStateType::InRound;
-        } else {
-            vote_state = VoteStateType::NotInRound;
+        let fut = self
+            .context
+            .deliver_message(self.user_data_observer.clone(), message);
+
+        tokio::select! {
+            result = fut => result,
+            _ = self.elections_end_notify.notified() => {
+                log::warn!("Early exit from become_relay_next_round due to the elections end");
+                Ok(())
+            }
         }
+    }
 
-        Ok(())
+    async fn collect_relay_round_state(&self) -> Result<RoundState> {
+        let context = &self.context;
+        let staking_contract = context
+            .ton_subscriber
+            .wait_contract_state(self.staking_account)
+            .await?;
+        StakingContract(&staking_contract)
+            .collect_relay_round_state(context)
+            .await
     }
 }
 
-/// Whether Relay is able to vote in each of round
-#[derive(Debug, Copy, Clone, Default)]
-struct VoteState {
-    current_round: VoteStateType,
-    new_round: VoteStateType,
+impl StakingContract<'_> {
+    async fn collect_relay_round_state(&self, context: &EngineContext) -> Result<RoundState> {
+        let staking_details = self.get_details()?;
+        log::info!("Staking details: {:?}", staking_details);
+
+        let relay_rounds_details = self.get_relay_rounds_details()?;
+        log::info!("Relay round details: {:?}", relay_rounds_details);
+
+        let next_elections_account =
+            self.get_election_address(relay_rounds_details.current_relay_round + 1)?;
+
+        let now = chrono::Utc::now().timestamp() as u32;
+        let (elections_started, elected) = match relay_rounds_details.current_election_start_time {
+            0 => {
+                log::info!("Elections were not started yet");
+                (false, false)
+            }
+            start_time => {
+                log::info!("Elections already started");
+                if start_time > now {
+                    log::info!("Waiting elections");
+                    tokio::time::sleep(
+                        Duration::from_secs(start_time as u64)
+                            .saturating_sub(Duration::from_secs(now as u64)),
+                    )
+                    .await;
+                }
+
+                let elections_contract = context
+                    .ton_subscriber
+                    .wait_contract_state(next_elections_account)
+                    .await?;
+                let elected = ElectionsContract(&elections_contract)
+                    .staker_addrs()?
+                    .contains(&context.staker_address);
+                (true, elected)
+            }
+        };
+
+        Ok(RoundState {
+            number: relay_rounds_details.current_relay_round,
+            elections_started,
+            elected,
+        })
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
-enum VoteStateType {
-    None,
-    InRound,
-    NotInRound,
-}
-
-impl Default for VoteStateType {
-    fn default() -> Self {
-        VoteStateType::None
-    }
+struct RoundState {
+    number: u32,
+    elections_started: bool,
+    elected: bool,
 }
 
 macro_rules! parse_tokens {
@@ -255,6 +278,7 @@ macro_rules! parse_tokens {
     };
 }
 
+#[derive(Debug)]
 enum StakingEvent {
     ElectionStarted(ElectionStartedEvent),
     ElectionEnded(ElectionEndedEvent),
@@ -281,6 +305,7 @@ impl ReadFromTransaction for StakingEvent {
     }
 }
 
+#[derive(Debug)]
 enum UserDataEvent {
     RelayMembershipRequested(RelayMembershipRequestedEvent),
 }
@@ -303,6 +328,3 @@ impl ReadFromTransaction for UserDataEvent {
         res
     }
 }
-
-type StakingEventsTx<T> = mpsc::UnboundedSender<T>;
-type StakingEventsRx<T> = mpsc::UnboundedReceiver<T>;

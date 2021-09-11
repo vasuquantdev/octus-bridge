@@ -187,6 +187,12 @@ pub struct RelayRoundInitializedEvent {
 }
 
 #[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
+pub struct StakerAddresses {
+    #[abi(with = "array_address_only_hash")]
+    pub items: Vec<UInt256>,
+}
+
+#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
 pub struct RelayKeys {
     #[abi(with = "array_uint256_bytes")]
     pub items: Vec<UInt256>,
@@ -218,6 +224,22 @@ pub struct StakingDetails {
     pub last_reward_time: u32,
     #[abi(array)]
     pub reward_rounds: Vec<RewardRound>,
+}
+
+#[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
+pub struct RelayRoundsDetails {
+    #[abi(bool)]
+    pub origin_relay_round_initialized: bool,
+    #[abi(uint32)]
+    pub current_relay_round: u32,
+    #[abi(uint32)]
+    pub current_relay_round_start_time: u32,
+    #[abi(uint32)]
+    pub current_election_start_time: u32,
+    #[abi(uint32)]
+    pub prev_relay_round_end_time: u32,
+    #[abi(uint32)]
+    pub pending_relay_round: u32,
 }
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
@@ -260,8 +282,8 @@ pub struct RelayMembershipRequestedEvent {
     pub tokens: u128,
     #[abi(with = "uint256_bytes")]
     pub ton_pubkey: UInt256,
-    #[abi(with = "uint256_bytes")]
-    pub eth_address: UInt256,
+    #[abi(with = "uint160_bytes")]
+    pub eth_address: [u8; 20],
     #[abi(uint32)]
     pub lock_until: u32,
 }

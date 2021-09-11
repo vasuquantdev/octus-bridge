@@ -10,7 +10,7 @@ pub fn is_active() -> &'static ton_abi::Function {
         FunctionBuilder::new_responsible("isActive")
             .pubkey_header()
             .time_header()
-            .output("is_active", ton_abi::ParamType::Bool)
+            .output("is_active", bool::param_type())
             .build()
     })
 }
@@ -28,26 +28,38 @@ pub fn get_details() -> &'static ton_abi::Function {
 }
 
 /// External responsible function
-pub fn get_relay_round_address() -> &'static ton_abi::Function {
+pub fn get_relay_rounds_details() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
     FUNCTION.get_or_init(|| {
-        FunctionBuilder::new_responsible("getRelayRoundAddress")
+        FunctionBuilder::new_responsible("getRelayRoundsDetails")
             .pubkey_header()
             .time_header()
-            .input("round_num", ton_abi::ParamType::Uint(32))
+            .output("details", RelayRoundsDetails::param_type())
+            .build()
+    })
+}
+
+/// External responsible function
+pub fn get_election_address() -> &'static ton_abi::Function {
+    static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
+    FUNCTION.get_or_init(|| {
+        FunctionBuilder::new_responsible("getElectionAddress")
+            .pubkey_header()
+            .time_header()
+            .input("round_num", u32::param_type())
             .output("address", ton_abi::ParamType::Address)
             .build()
     })
 }
 
 /// External responsible function
-pub fn get_relay_round_address_from_timestamp() -> &'static ton_abi::Function {
+pub fn get_relay_round_address() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
     FUNCTION.get_or_init(|| {
-        FunctionBuilder::new_responsible("getRelayRoundAddressFromTimestamp")
+        FunctionBuilder::new_responsible("getRelayRoundAddress")
             .pubkey_header()
             .time_header()
-            .input("time", ton_abi::ParamType::Uint(32))
+            .input("round_num", u32::param_type())
             .output("address", ton_abi::ParamType::Address)
             .build()
     })

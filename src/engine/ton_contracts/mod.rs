@@ -9,6 +9,7 @@ pub mod base_event_configuration_contract;
 pub mod base_event_contract;
 pub mod bridge_contract;
 pub mod connector_contract;
+pub mod elections_contract;
 pub mod eth_event_configuration_contract;
 pub mod eth_event_contract;
 pub mod relay_round_contract;
@@ -40,7 +41,10 @@ pub struct EthEventContract<'a>(pub &'a ExistingContract);
 
 impl EthEventContract<'_> {
     pub fn event_init_data(&self) -> Result<EthEventInitData> {
-        todo!()
+        let function = eth_event_contract::get_event_init_data();
+        let inputs = [answer_id()];
+        let event_init_data = self.0.run_local(function, &inputs)?.unpack_first()?;
+        Ok(event_init_data)
     }
 }
 
@@ -48,7 +52,10 @@ pub struct TonEventContract<'a>(pub &'a ExistingContract);
 
 impl TonEventContract<'_> {
     pub fn event_init_data(&self) -> Result<TonEventInitData> {
-        todo!()
+        let function = ton_event_contract::get_event_init_data();
+        let inputs = [answer_id()];
+        let event_init_data = self.0.run_local(function, &inputs)?.unpack_first()?;
+        Ok(event_init_data)
     }
 }
 
@@ -70,15 +77,6 @@ impl EthEventConfigurationContract<'_> {
         let details = self.0.run_local(function, &[answer_id()])?.unpack()?;
         Ok(details)
     }
-
-    pub fn derive_event_address(&self, vote_data: EthEventVoteData) -> Result<UInt256> {
-        let function = eth_event_configuration_contract::derive_event_address();
-        let input = [answer_id(), vote_data.token_value().named("vote_data")];
-        let ton_block::MsgAddrStd { address, .. } =
-            self.0.run_local(function, &input)?.unpack_first()?;
-
-        Ok(UInt256::from_be_bytes(&address.get_bytestring(0)))
-    }
 }
 
 pub struct TonEventConfigurationContract<'a>(pub &'a ExistingContract);
@@ -88,15 +86,6 @@ impl TonEventConfigurationContract<'_> {
         let function = ton_event_configuration_contract::get_details();
         let details = self.0.run_local(function, &[answer_id()])?.unpack()?;
         Ok(details)
-    }
-
-    pub fn derive_event_address(&self, vote_data: TonEventVoteData) -> Result<UInt256> {
-        let function = ton_event_configuration_contract::derive_event_address();
-        let input = [answer_id(), vote_data.token_value().named("vote_data")];
-        let ton_block::MsgAddrStd { address, .. } =
-            self.0.run_local(function, &input)?.unpack_first()?;
-
-        Ok(UInt256::from_be_bytes(&address.get_bytestring(0)))
     }
 }
 
@@ -146,8 +135,24 @@ impl StakingContract<'_> {
         Ok(details)
     }
 
+    pub fn get_relay_rounds_details(&self) -> Result<RelayRoundsDetails> {
+        let function = staking_contract::get_relay_rounds_details();
+        let input = [answer_id()];
+        let details = self.0.run_local(function, &input)?.unpack_first()?;
+        Ok(details)
+    }
+
     pub fn get_relay_round_address(&self, round_num: u32) -> Result<UInt256> {
         let function = staking_contract::get_relay_round_address();
+        let input = [answer_id(), round_num.token_value().named("round_num")];
+        let ton_block::MsgAddrStd { address, .. } =
+            self.0.run_local(function, &input)?.unpack_first()?;
+
+        Ok(UInt256::from_be_bytes(&address.get_bytestring(0)))
+    }
+
+    pub fn get_election_address(&self, round_num: u32) -> Result<UInt256> {
+        let function = staking_contract::get_election_address();
         let input = [answer_id(), round_num.token_value().named("round_num")];
         let ton_block::MsgAddrStd { address, .. } =
             self.0.run_local(function, &input)?.unpack_first()?;
@@ -170,12 +175,22 @@ impl StakingContract<'_> {
     }
 }
 
+pub struct ElectionsContract<'a>(pub &'a ExistingContract);
+
+impl ElectionsContract<'_> {
+    pub fn staker_addrs(&self) -> Result<Vec<UInt256>> {
+        let function = elections_contract::staker_addrs();
+        let StakerAddresses { items } = self.0.run_local(function, &[])?.unpack()?;
+        Ok(items)
+    }
+}
+
 pub struct RelayRoundContract<'a>(pub &'a ExistingContract);
 
 impl RelayRoundContract<'_> {
-    pub fn relay_keys(&self) -> Result<RelayKeys> {
+    pub fn relay_keys(&self) -> Result<Vec<UInt256>> {
         let function = relay_round_contract::relay_keys();
-        let relay_keys = self.0.run_local(function, &[])?.unpack()?;
-        Ok(relay_keys)
+        let RelayKeys { items } = self.0.run_local(function, &[])?.unpack()?;
+        Ok(items)
     }
 }

@@ -21,6 +21,16 @@ pub fn become_relay_next_round() -> &'static ton_abi::Function {
     })
 }
 
+pub fn get_reward_for_relay_round() -> &'static ton_abi::Function {
+    static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
+    FUNCTION.get_or_init(|| {
+        FunctionBuilder::new("getRewardForRound")
+            .default_headers()
+            .input("round_num", u32::param_type())
+            .build()
+    })
+}
+
 pub mod events {
     use super::*;
 

@@ -178,52 +178,32 @@ impl EngineContext {
         Ok(status)
     }
 
-    fn deliver_message<T>(
+    async fn deliver_message<T>(
         self: &Arc<Self>,
         observer: Arc<AccountObserver<T>>,
         unsigned_message: UnsignedMessage,
-    ) where
+    ) -> Result<()>
+    where
         T: Send + 'static,
     {
-        let context = Arc::downgrade(self);
-
-        tokio::spawn(async move {
-            loop {
-                // Observer must be alive
-                let context = match context.upgrade() {
-                    Some(bridge) => bridge,
-                    _ => break,
-                };
-
-                let message = match context.keystore.ton.sign(&unsigned_message) {
-                    Ok(message) => message,
-                    Err(e) => {
-                        log::error!("Failed to send message: {:?}", e);
-                        break;
-                    }
-                };
-
-                match context
-                    .send_ton_message(&message.account, &message.message, message.expire_at)
-                    .await
-                {
-                    Ok(MessageStatus::Expired) => {
-                        log::info!("Message to account {:x} expired", message.account);
-                    }
-                    Ok(MessageStatus::Delivered) => {
-                        log::info!("Successfully sent message to account {:x}", message.account);
-                        break;
-                    }
-                    Err(e) => {
-                        log::warn!("Failed to send message: {:?}", e);
-                        break;
-                    }
+        loop {
+            let message = self.keystore.ton.sign(&unsigned_message)?;
+            match self
+                .send_ton_message(&message.account, &message.message, message.expire_at)
+                .await?
+            {
+                MessageStatus::Expired => {
+                    log::info!("Message to account {:x} expired", message.account);
+                }
+                MessageStatus::Delivered => {
+                    log::info!("Successfully sent message to account {:x}", message.account);
+                    break;
                 }
             }
+        }
 
-            // Must be dropped here to ensure observer will live enough
-            drop(observer);
-        });
+        drop(observer);
+        Ok(())
     }
 }
 

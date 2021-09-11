@@ -142,8 +142,7 @@ impl EthSubscriber {
         let min_balance: U256 = U256::from(50000000 * GWEI);
         let attached_gas: U256 = U256::from(200 * GWEI);
 
-        let verifier_contract =
-            contracts::staking_contract(self.api.clone(), verifier_address.clone())?;
+        let verifier_contract = contracts::staking_contract(self.api.clone(), *verifier_address)?;
         let workchain_id = ethabi::Token::Int(U256::from(staker_address.workchain_id()));
         let address_body = ethabi::Token::Uint(U256::from_big_endian(
             &staker_address.address().get_bytestring(0),
@@ -151,7 +150,7 @@ impl EthSubscriber {
 
         loop {
             let balance = retry(
-                || self.clone().get_balance(relay_address.clone()),
+                || self.get_balance(*relay_address),
                 crate::utils::generate_default_timeout_config(Duration::from_secs(60)),
                 "Failed getting balance",
             )
@@ -170,7 +169,7 @@ impl EthSubscriber {
             .call(
                 "verify_relay_staker_address",
                 [workchain_id, address_body],
-                relay_address.clone(),
+                *relay_address,
                 web3::contract::Options {
                     gas: Some(attached_gas),
                     gas_price: None,

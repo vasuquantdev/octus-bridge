@@ -15,19 +15,6 @@ pub fn get_details() -> &'static ton_abi::Function {
     })
 }
 
-/// External function
-pub fn derive_event_address() -> &'static ton_abi::Function {
-    static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
-    FUNCTION.get_or_init(|| {
-        FunctionBuilder::new_responsible("deriveEventAddress")
-            .time_header()
-            .expire_header()
-            .input("vote_data", TonEventVoteData::param_type())
-            .output("event_address", ton_abi::ParamType::Address)
-            .build()
-    })
-}
-
 /// Internal function
 pub fn set_end_timestamp() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();

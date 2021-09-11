@@ -1368,7 +1368,7 @@ dependencies = [
 [[package]]
 name = "nekoton-abi"
 version = "0.6.0"
-source = "git+https://github.com/broxus/nekoton.git#1ae1c50ab3566f641ee4178582864b1b71aed729"
+source = "git+https://github.com/broxus/nekoton.git#6dd6f0839c58cda6e5274e9d746d4e618a4e40c7"
 dependencies = [
  "anyhow",
  "base64",
@@ -1394,7 +1394,7 @@ dependencies = [
 [[package]]
 name = "nekoton-derive"
 version = "0.6.0"
-source = "git+https://github.com/broxus/nekoton.git#1ae1c50ab3566f641ee4178582864b1b71aed729"
+source = "git+https://github.com/broxus/nekoton.git#6dd6f0839c58cda6e5274e9d746d4e618a4e40c7"
 dependencies = [
  "either",
  "proc-macro2 1.0.29",
@@ -1405,7 +1405,7 @@ dependencies = [
 [[package]]
 name = "nekoton-utils"
 version = "0.6.0"
-source = "git+https://github.com/broxus/nekoton.git#1ae1c50ab3566f641ee4178582864b1b71aed729"
+source = "git+https://github.com/broxus/nekoton.git#6dd6f0839c58cda6e5274e9d746d4e618a4e40c7"
 dependencies = [
  "anyhow",
  "base64",
@@ -1597,9 +1597,9 @@ checksum = "30fceb411f9a12ff9222c5f824026be368ff15dc2f13468d850c7d3f502205d6"
 
 [[package]]
 name = "parity-scale-codec"
-version = "2.2.0"
+version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8975095a2a03bbbdc70a74ab11a4f76a6d0b84680d87c68d722531b0ac28e8a9"
+checksum = "e11263a97373b43da4b426edbb52ef99a7b51e2d9752ef56a7f8b356f48495a5"
 dependencies = [
  "arrayvec 0.7.1",
  "bitvec 0.20.4",
@@ -1611,9 +1611,9 @@ dependencies = [
 
 [[package]]
 name = "parity-scale-codec-derive"
-version = "2.2.0"
+version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "40dbbfef7f0a1143c5b06e0d76a6278e25dac0bc1af4be51a0fbb73f07e7ad09"
+checksum = "b157dc92b3db2bae522afb31b3843e91ae097eb01d66c72dda66a2e86bc3ca14"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2 1.0.29",

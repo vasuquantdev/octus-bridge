@@ -363,9 +363,14 @@ impl Bridge {
             }
         };
 
-        if let Some(entry) = self.pending_eth_events.get(&account) {
-            self.context.deliver_message(entry.value().clone(), message);
-        }
+        let eth_event_observer = match self.pending_eth_events.get(&account) {
+            Some(observer) => observer.clone(),
+            None => return Ok(()),
+        };
+
+        self.context
+            .deliver_message(eth_event_observer, message)
+            .await?;
 
         Ok(())
     }
@@ -436,9 +441,14 @@ impl Bridge {
             }
         };
 
-        if let Some(entry) = self.pending_ton_events.get(&account) {
-            self.context.deliver_message(entry.value().clone(), message);
-        }
+        let ton_event_observer = match self.pending_ton_events.get(&account) {
+            Some(observer) => observer.clone(),
+            None => return Ok(()),
+        };
+
+        self.context
+            .deliver_message(ton_event_observer, message)
+            .await?;
 
         Ok(())
     }
