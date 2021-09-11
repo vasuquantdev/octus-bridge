@@ -111,7 +111,7 @@ impl EngineContext {
 
         let ton_subscriber = TonSubscriber::new(messages_queue.clone());
         let ton_engine = ton_indexer::Engine::new(
-            config.node_settings,
+            config.node_settings.build_indexer_config().await?,
             global_config,
             vec![ton_subscriber.clone() as Arc<dyn ton_indexer::Subscriber>],
         )

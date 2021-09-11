@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use argh::FromArgs;
 use dialoguer::{Confirm, Input, Password};
 use relay::config::*;
@@ -54,14 +54,17 @@ struct CmdRun {
 
 impl CmdRun {
     async fn execute(self, config: AppConfig) -> Result<()> {
-        let global_config = ton_indexer::GlobalConfig::from_file(&self.global_config)?;
+        let global_config = ton_indexer::GlobalConfig::from_file(&self.global_config)
+            .context("Failed to open global config")?;
 
-        init_logger(&config.logger_settings)?;
+        init_logger(&config.logger_settings).context("Failed to init logger")?;
 
         log::info!("Initializing relay...");
 
-        let engine = Engine::new(config, global_config).await?;
-        engine.start().await?;
+        let engine = Engine::new(config, global_config)
+            .await
+            .context("Failed to create engine")?;
+        engine.start().await.context("Failed to start engine")?;
 
         log::info!("Initialized relay");
 
