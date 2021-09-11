@@ -186,8 +186,15 @@ impl TonSubscriber {
                 None => continue,
             };
 
-            if let Some(shard_account) = shard_account {
-                return Ok(shard_account);
+            match shard_account {
+                Some(account) => match &account.account.storage.state {
+                    ton_block::AccountState::AccountActive(_) => return Ok(account),
+                    ton_block::AccountState::AccountFrozen(_) => {
+                        return Err(TonSubscriberError::AccountIsFrozen.into())
+                    }
+                    ton_block::AccountState::AccountUninit => continue,
+                },
+                _ => continue,
             }
         }
     }
@@ -514,3 +521,9 @@ type ShardAccountTx = watch::Sender<Option<ton_block::ShardAccount>>;
 type ShardAccountRx = watch::Receiver<Option<ton_block::ShardAccount>>;
 
 pub type AccountEventsTx<T> = mpsc::UnboundedSender<(UInt256, T)>;
+
+#[derive(thiserror::Error, Debug)]
+enum TonSubscriberError {
+    #[error("Account is frozen")]
+    AccountIsFrozen,
+}
