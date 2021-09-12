@@ -78,6 +78,8 @@ impl Engine {
         let staking = Staking::new(self.context.clone(), bridge_details.staking).await?;
         *self.staking.lock() = Some(staking);
 
+        self.context.eth_subscribers.start();
+
         // Done
         Ok(())
     }

@@ -260,6 +260,8 @@ impl EthSubscriber {
     }
 
     async fn update(&self) -> Result<()> {
+        log::info!("Updating ETH subscriber");
+
         let api_request_strategy = generate_fixed_timeout_config(
             Duration::from_secs(self.config.poll_interval_sec),
             Duration::from_secs(self.config.maximum_failed_responses_time_sec),
@@ -276,6 +278,8 @@ impl EthSubscriber {
             Err(e) if is_incomplete_message(&e) => return Ok(()),
             Err(e) => return Err(e).context("Failed to get  actual ethereum height"),
         };
+
+        log::info!("Current ETH block: {}", current_block);
 
         let last_processed_block = self.last_processed_block.load(Ordering::Acquire);
         if last_processed_block == current_block {
@@ -312,12 +316,16 @@ impl EthSubscriber {
 
         let mut pending_confirmations = self.pending_confirmations.lock().await;
         for event in events {
+            log::info!("Got ETH log: {:?}", event);
+
             if let Some(confirmation) = pending_confirmations.get_mut(&event.event_id()) {
                 match event {
                     ParsedEthEvent::Removed(_) => {
+                        log::info!("Log removed");
                         confirmation.status = PendingConfirmationStatus::Invalid
                     }
                     ParsedEthEvent::Received(event) => {
+                        log::info!("Log received");
                         confirmation.status = confirmation.check(event).into();
                     }
                 }
@@ -330,8 +338,11 @@ impl EthSubscriber {
                 return true;
             }
 
+            log::info!("Found pending confirmation to resolve");
+
             let status = match confirmation.status {
                 PendingConfirmationStatus::InProcess => {
+                    log::info!("Confirmation in process");
                     events_to_check.push(async move {
                         let result = self.find_event(&event_id).await;
                         (event_id, result)
@@ -341,6 +352,8 @@ impl EthSubscriber {
                 PendingConfirmationStatus::Valid => VerificationStatus::Exists,
                 PendingConfirmationStatus::Invalid => VerificationStatus::NotExists,
             };
+
+            log::info!("Confirmation status: {:?}", status);
 
             if let Some(tx) = confirmation.status_tx.take() {
                 tx.send(status).ok();
@@ -352,6 +365,8 @@ impl EthSubscriber {
         let events_to_check = events_to_check
             .collect::<Vec<(EventId, Result<Option<ParsedEthEvent>>)>>()
             .await;
+
+        log::info!("Events to check: {:?}", events_to_check);
 
         for (event_id, result) in events_to_check {
             if let hash_map::Entry::Occupied(mut entry) = pending_confirmations.entry(event_id) {
@@ -573,6 +588,7 @@ impl PendingConfirmation {
     }
 }
 
+#[derive(Debug)]
 enum PendingConfirmationStatus {
     InProcess,
     Valid,
