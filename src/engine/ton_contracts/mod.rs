@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use nekoton_abi::*;
 use ton_types::UInt256;
 
@@ -180,14 +180,7 @@ pub struct ElectionsContract<'a>(pub &'a ExistingContract);
 impl ElectionsContract<'_> {
     pub fn staker_addrs(&self) -> Result<Vec<UInt256>> {
         let function = elections_contract::staker_addrs();
-
-        let tokens = self
-            .0
-            .run_local(function, &[])
-            .context("Failed to run local method")?;
-
-        log::info!("TOKENS: {:?}", tokens);
-        let StakerAddresses { items } = tokens.unpack().context("Failed to upack tokens")?;
+        let StakerAddresses { items } = self.0.run_local(function, &[])?.unpack()?;
         Ok(items)
     }
 }

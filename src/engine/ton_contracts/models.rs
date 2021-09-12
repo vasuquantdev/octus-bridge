@@ -188,8 +188,53 @@ pub struct RelayRoundInitializedEvent {
 
 #[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
 pub struct StakerAddresses {
-    #[abi(with = "array_address_only_hash")]
+    #[abi(with = "array_address_only_nonzero_hash")]
     pub items: Vec<UInt256>,
+}
+
+pub mod array_address_only_nonzero_hash {
+    use super::*;
+
+    pub fn pack(value: Vec<UInt256>) -> ton_abi::TokenValue {
+        ton_abi::TokenValue::Array(
+            param_type(),
+            value
+                .into_iter()
+                .map(|value| {
+                    ton_abi::TokenValue::Address(ton_block::MsgAddress::AddrStd(
+                        ton_block::MsgAddrStd {
+                            anycast: None,
+                            workchain_id: 0,
+                            address: value.into(),
+                        },
+                    ))
+                })
+                .collect(),
+        )
+    }
+
+    pub fn unpack(value: &ton_abi::TokenValue) -> UnpackerResult<Vec<UInt256>> {
+        match value {
+            ton_abi::TokenValue::Array(_, values) => {
+                let mut result = Vec::with_capacity(values.len());
+                for value in values {
+                    match value {
+                        ton_abi::TokenValue::Address(ton_block::MsgAddress::AddrStd(
+                            ton_block::MsgAddrStd { address, .. },
+                        )) => result.push(UInt256::from_be_bytes(&address.get_bytestring(0))),
+                        ton_abi::TokenValue::Address(ton_block::MsgAddress::AddrNone) => continue,
+                        _ => return Err(UnpackerError::InvalidAbi),
+                    }
+                }
+                Ok(result)
+            }
+            _ => Err(UnpackerError::InvalidAbi),
+        }
+    }
+
+    pub fn param_type() -> ton_abi::ParamType {
+        ton_abi::ParamType::Array(Box::new(ton_abi::ParamType::Address))
+    }
 }
 
 #[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
