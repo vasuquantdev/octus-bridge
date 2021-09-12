@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use nekoton_abi::UnpackAbiPlain;
 use tokio::sync::mpsc;
 use tokio::sync::Notify;
@@ -114,7 +114,7 @@ impl Staking {
                 }
                 StakingEvent::ElectionEnded(_) => {
                     if let Err(e) = staking.on_election_ended().await {
-                        log::error!("Failed to handle election started event: {:?}", e);
+                        log::error!("Failed to handle election ended event: {:?}", e);
                     }
                 }
                 StakingEvent::RelayRoundInitialized(event) => {
@@ -225,11 +225,14 @@ impl StakingContract<'_> {
     }
 
     async fn collect_relay_round_state(&self, context: &EngineContext) -> Result<RoundState> {
-        let relay_rounds_details = self.get_relay_rounds_details()?;
+        let relay_rounds_details = self
+            .get_relay_rounds_details()
+            .context("Failed to get relay_rounds_details")?;
         log::info!("Relay round details: {:?}", relay_rounds_details);
 
-        let next_elections_account =
-            self.get_election_address(relay_rounds_details.current_relay_round + 1)?;
+        let next_elections_account = self
+            .get_election_address(relay_rounds_details.current_relay_round + 1)
+            .context("Failed to get election address")?;
 
         let now = chrono::Utc::now().timestamp() as u32;
         let (elections_started, elected) = match relay_rounds_details.current_election_start_time {
@@ -253,7 +256,8 @@ impl StakingContract<'_> {
                     .wait_contract_state(next_elections_account)
                     .await?;
                 let elected = ElectionsContract(&elections_contract)
-                    .staker_addrs()?
+                    .staker_addrs()
+                    .context("Failed to get staker addresses")?
                     .contains(&context.staker_address);
                 (true, elected)
             }
