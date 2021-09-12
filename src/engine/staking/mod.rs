@@ -233,6 +233,7 @@ impl StakingContract<'_> {
         let next_elections_account = self
             .get_election_address(relay_rounds_details.current_relay_round + 1)
             .context("Failed to get election address")?;
+        log::info!("next_elections_account: {:x}", next_elections_account);
 
         let now = chrono::Utc::now().timestamp() as u32;
         let (elections_started, elected) = match relay_rounds_details.current_election_start_time {
