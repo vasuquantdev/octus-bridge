@@ -188,7 +188,10 @@ impl TonSubscriber {
 
             match shard_account {
                 Some(account) => match &account.account.storage.state {
-                    ton_block::AccountState::AccountActive(_) => return Ok(account),
+                    ton_block::AccountState::AccountActive(state) => {
+                        log::info!("Last transaction id: {:?}", account.last_transaction_id);
+                        return Ok(account);
+                    }
                     ton_block::AccountState::AccountFrozen(_) => {
                         return Err(TonSubscriberError::AccountIsFrozen.into())
                     }
@@ -254,6 +257,8 @@ impl TonSubscriber {
                             );
                         }
                     };
+                } else {
+                    subscription.state_rx.borrow_and_update();
                 }
 
                 if let Err(e) = subscription.handle_block(
