@@ -103,26 +103,27 @@ impl Staking {
         self: Arc<Self>,
         (_, event): (UInt256, StakingEvent),
     ) -> Result<()> {
-        let staking = self;
-
-        tokio::spawn(async move {
-            match event {
-                StakingEvent::ElectionStarted(_) => {
+        match event {
+            StakingEvent::ElectionStarted(_) => {
+                let staking = self;
+                tokio::spawn(async move {
                     if let Err(e) = staking.on_election_started().await {
                         log::error!("Failed to handle election started event: {:?}", e);
                     }
-                }
-                StakingEvent::ElectionEnded(_) => {
-                    if let Err(e) = staking.on_election_ended().await {
-                        log::error!("Failed to handle election ended event: {:?}", e);
-                    }
-                }
-                StakingEvent::RelayRoundInitialized(event) => {
-                    log::warn!("Relay round initialized: {:?}", event);
-                    // TODO: collect reward
-                }
+                });
             }
-        });
+            StakingEvent::ElectionEnded(_) => {
+                self.elections_end_notify.notify_waiters();
+            }
+            StakingEvent::RelayRoundInitialized(event) => {
+                let staking = self;
+                tokio::spawn(async move {
+                    if let Err(e) = staking.on_round_initialized().await {
+                        log::error!("Failed to handle round initialization event: {:?}", e);
+                    }
+                });
+            }
+        }
 
         Ok(())
     }
@@ -144,7 +145,7 @@ impl Staking {
         Ok(())
     }
 
-    async fn on_election_ended(&self) -> Result<()> {
+    async fn on_round_initialized(&self) -> Result<()> {
         let mut current_relay_round = self.current_relay_round.lock().await;
 
         // Stop pending election messages
