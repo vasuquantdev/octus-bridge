@@ -12,6 +12,15 @@ pub fn confirm_ton_account() -> &'static ton_abi::Function {
     })
 }
 
+pub fn get_details() -> &'static ton_abi::Function {
+    static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
+    FUNCTION.get_or_init(|| {
+        FunctionBuilder::new_responsible("getDetails")
+            .default_headers()
+            .output("details", UserDataDetails::param_type())
+            .build()
+    })
+}
 pub fn become_relay_next_round() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
     FUNCTION.get_or_init(|| {
