@@ -105,6 +105,8 @@ impl Staking {
             staking.become_relay_next_round().await?;
         }
 
+        // TODO: get all shard states and collect reward
+
         staking.start_managing_elections();
 
         Ok(staking)
@@ -143,6 +145,25 @@ impl Staking {
             StakingEvent::RelayRoundInitialized(event) => {
                 self.relay_round_started_notify.notify_waiters();
                 *current_relay_round = self.collect_relay_round_state().await?;
+
+                let staking = self.clone();
+                tokio::spawn(async move {
+                    const ROUND_OFFSET: u64 = 10; // seconds
+
+                    let now = chrono::Utc::now().timestamp() as u64;
+                    tokio::time::sleep(Duration::from_secs(
+                        (event.round_end_time as u64).wrapping_sub(now) + ROUND_OFFSET,
+                    ))
+                    .await;
+
+                    if let Err(e) = staking.get_reward_for_relay_round(event.round_num).await {
+                        log::error!(
+                            "Failed to collect reward for round {}: {:?}",
+                            event.round_num,
+                            e
+                        );
+                    }
+                });
             }
             StakingEvent::RelayConfigUpdated(event) => {
                 self.election_timings_changed_notify.notify_waiters();
@@ -281,6 +302,20 @@ impl Staking {
                     user_data_contract::become_relay_next_round(),
                     self.user_data_account,
                 ),
+                true,
+            )
+            .await
+    }
+
+    async fn get_reward_for_relay_round(&self, relay_round: u32) -> Result<()> {
+        self.context
+            .deliver_message(
+                self.user_data_observer.clone(),
+                UnsignedMessage::new(
+                    user_data_contract::get_reward_for_relay_round(),
+                    self.user_data_account,
+                )
+                .arg(relay_round),
                 true,
             )
             .await
