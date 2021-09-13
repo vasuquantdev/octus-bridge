@@ -8,6 +8,7 @@ use tokio::sync::Notify;
 use ton_types::UInt256;
 
 use crate::engine::keystore::*;
+use crate::engine::ton_contracts::user_data_contract::confirm_ton_account;
 use crate::engine::ton_contracts::*;
 use crate::engine::ton_subscriber::*;
 use crate::engine::EngineContext;
@@ -56,8 +57,20 @@ impl Staking {
             .wait_contract_state(user_data_account)
             .await?;
 
-        let user_data_observer = AccountObserver::new(&user_data_events_tx);
+        let user_data_contract = UserDataContract(&user_data_contract);
+        let details = user_data_contract.get_details()?;
 
+        let user_data_observer = AccountObserver::new(&user_data_events_tx);
+        if !details.ton_pubkey_confirmed {
+            context
+                .deliver_message(
+                    user_data_observer.clone(),
+                    UnsignedMessage::new(confirm_ton_account(), user_data_account),
+                    true,
+                )
+                .await
+                .context("Failed confirming ton account")?;
+        }
         // Initialize relay round
         let current_relay_round = staking_contract.collect_relay_round_state(&context).await?;
 

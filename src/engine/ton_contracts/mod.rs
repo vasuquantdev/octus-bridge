@@ -201,3 +201,12 @@ impl RelayRoundContract<'_> {
         Ok(items)
     }
 }
+
+pub struct UserDataContract<'a>(pub &'a ExistingContract);
+
+impl UserDataContract<'_> {
+    pub fn get_details(&self) -> Result<UserDataDetails> {
+        let function = user_data_contract::get_details();
+        Ok(self.0.run_local(function, &[])?.unpack_first()?)
+    }
+}
