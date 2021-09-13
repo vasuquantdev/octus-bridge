@@ -245,7 +245,7 @@ pub struct RelayKeys {
     pub items: Vec<UInt256>,
 }
 
-#[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamTypePlain)]
+#[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct UserDataDetails {
     #[abi(uint128)]
     pub token_balance: u128,

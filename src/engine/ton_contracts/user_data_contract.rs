@@ -17,7 +17,7 @@ pub fn get_details() -> &'static ton_abi::Function {
     FUNCTION.get_or_init(|| {
         FunctionBuilder::new_responsible("getDetails")
             .default_headers()
-            .outputs(UserDataDetails::param_type())
+            .output("details", UserDataDetails::param_type())
             .build()
     })
 }
