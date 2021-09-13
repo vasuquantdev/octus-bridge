@@ -17,7 +17,10 @@ pub struct Staking {
     context: Arc<EngineContext>,
 
     current_relay_round: tokio::sync::Mutex<RoundState>,
+    relay_round_started_notify: Notify,
+    elections_start_notify: Notify,
     elections_end_notify: Notify,
+    election_timings_changed_notify: Notify,
 
     staking_account: UInt256,
     staking_observer: Arc<AccountObserver<StakingEvent>>,
@@ -58,13 +61,19 @@ impl Staking {
         // Initialize relay round
         let current_relay_round = staking_contract.collect_relay_round_state(&context).await?;
 
-        let should_vote = current_relay_round.elections_started && !current_relay_round.elected;
+        let should_vote = matches!(
+            current_relay_round.elections_state,
+            ElectionsState::Started { .. }
+        ) && !current_relay_round.elected;
 
         //
         let staking = Arc::new(Self {
             context,
             current_relay_round: tokio::sync::Mutex::new(current_relay_round),
+            relay_round_started_notify: Default::default(),
+            elections_start_notify: Default::default(),
             elections_end_notify: Default::default(),
+            election_timings_changed_notify: Default::default(),
             staking_account,
             staking_observer: AccountObserver::new(&staking_events_tx),
             user_data_account,
@@ -96,6 +105,8 @@ impl Staking {
             staking.become_relay_next_round().await?;
         }
 
+        staking.start_managing_elections();
+
         Ok(staking)
     }
 
@@ -103,56 +114,55 @@ impl Staking {
         self: Arc<Self>,
         (_, event): (UInt256, StakingEvent),
     ) -> Result<()> {
+        let mut current_relay_round = self.current_relay_round.lock().await;
+
         match event {
             StakingEvent::ElectionStarted(_) => {
-                let staking = self;
+                self.elections_start_notify.notify_waiters();
+                *current_relay_round = self.collect_relay_round_state().await?;
+
+                let staking = self.clone();
                 tokio::spawn(async move {
-                    if let Err(e) = staking.on_election_started().await {
-                        log::error!("Failed to handle election started event: {:?}", e);
+                    let notify_fut = staking.elections_end_notify.notified();
+                    tokio::select! {
+                        result = staking.become_relay_next_round() => {
+                            if let Err(e) = result {
+                                log::error!("Failed to become relay next round: {:?}", e);
+                            }
+                        },
+                        _ = notify_fut => {
+                            log::warn!("Early exit from become_relay_next_round due to the elections end");
+                        }
                     }
                 });
             }
             StakingEvent::ElectionEnded(_) => {
                 self.elections_end_notify.notify_waiters();
+                *current_relay_round = self.collect_relay_round_state().await?;
             }
             StakingEvent::RelayRoundInitialized(event) => {
-                let staking = self;
-                tokio::spawn(async move {
-                    if let Err(e) = staking.on_round_initialized().await {
-                        log::error!("Failed to handle round initialization event: {:?}", e);
+                self.relay_round_started_notify.notify_waiters();
+                *current_relay_round = self.collect_relay_round_state().await?;
+            }
+            StakingEvent::RelayConfigUpdated(event) => {
+                self.election_timings_changed_notify.notify_waiters();
+
+                let round_start_time = current_relay_round.round_start_time;
+                match &mut current_relay_round.elections_state {
+                    ElectionsState::NotStarted { start_time } => {
+                        *start_time = round_start_time + event.time_before_election;
                     }
-                });
+                    ElectionsState::Started {
+                        start_time,
+                        end_time,
+                    } => {
+                        *end_time = *start_time + event.election_time;
+                    }
+                    ElectionsState::Finished => { /* do nothing */ }
+                }
             }
         }
 
-        Ok(())
-    }
-
-    async fn on_election_started(self: &Arc<Self>) -> Result<()> {
-        let mut current_relay_round = self.current_relay_round.lock().await;
-
-        // Update state
-        *current_relay_round = self.collect_relay_round_state().await?;
-
-        // Spawn election voting
-        let staking = self.clone();
-        tokio::spawn(async move {
-            if let Err(e) = staking.become_relay_next_round().await {
-                log::error!("Failed to become relay next round: {:?}", e);
-            }
-        });
-
-        Ok(())
-    }
-
-    async fn on_round_initialized(&self) -> Result<()> {
-        let mut current_relay_round = self.current_relay_round.lock().await;
-
-        // Stop pending election messages
-        self.elections_end_notify.notify_waiters();
-
-        // Update state
-        *current_relay_round = self.collect_relay_round_state().await?;
         Ok(())
     }
 
@@ -178,26 +188,125 @@ impl Staking {
         Ok(())
     }
 
-    async fn become_relay_next_round(&self) -> Result<()> {
-        let message = UnsignedMessage::new(
-            user_data_contract::become_relay_next_round(),
-            self.user_data_account,
-        );
+    fn start_managing_elections(self: &Arc<Self>) {
+        let staking = Arc::downgrade(self);
 
-        // NOTE: Create `notified` future beforehand
-        let notification_fut = self.elections_end_notify.notified();
+        tokio::spawn(async move {
+            loop {
+                let staking = match staking.upgrade() {
+                    Some(staking) => staking,
+                    None => return,
+                };
 
-        let message_fut = self
-            .context
-            .deliver_message(self.user_data_observer.clone(), message);
+                let (
+                    elections_state,
+                    new_round_fut,
+                    elections_start_fut,
+                    elections_end_fut,
+                    timings_changed_fut,
+                ) = {
+                    let current_relay_round = staking.current_relay_round.lock().await;
+                    (
+                        current_relay_round.elections_state,
+                        staking.relay_round_started_notify.notified(),
+                        staking.elections_start_notify.notified(),
+                        staking.elections_end_notify.notified(),
+                        staking.election_timings_changed_notify.notified(),
+                    )
+                };
 
-        tokio::select! {
-            result = message_fut => result,
-            _ = notification_fut => {
-                log::warn!("Early exit from become_relay_next_round due to the elections end");
-                Ok(())
+                let now = chrono::Utc::now().timestamp() as u64;
+
+                match elections_state {
+                    ElectionsState::NotStarted { start_time } => {
+                        let staking = staking.clone();
+                        let action = async move {
+                            tokio::time::sleep(Duration::from_secs(
+                                (start_time as u64).wrapping_sub(now),
+                            ))
+                            .await;
+
+                            if let Err(e) = staking.start_election().await {
+                                log::error!("Failed to start election: {:?}", e);
+                            }
+                        };
+
+                        tokio::select! {
+                            _ = action => continue,
+                            _ = elections_start_fut => {
+                                log::warn!("Elections loop: cancelling elections start. Already started");
+                            }
+                            _ = timings_changed_fut => {
+                                log::warn!("Elections loop: cancelling elections start. Timings changed");
+                            }
+                        }
+                    }
+                    ElectionsState::Started { end_time, .. } => {
+                        let staking = staking.clone();
+                        let action = async move {
+                            tokio::time::sleep(Duration::from_secs(
+                                (end_time as u64).wrapping_sub(now),
+                            ))
+                            .await;
+
+                            if let Err(e) = staking.end_election().await {
+                                log::error!("Failed to end election: {:?}", e);
+                            }
+                        };
+
+                        tokio::select! {
+                            _ = action => continue,
+                            _ = elections_end_fut => {
+                                log::warn!("Elections loop: cancelling elections ending. Already ended");
+                            }
+                            _ = timings_changed_fut => {
+                                log::warn!("Elections loop: cancelling elections ending. Timings changed");
+                            }
+                        }
+                    }
+                    ElectionsState::Finished => {
+                        log::info!("Elections loop: waiting new round");
+                        new_round_fut.await
+                    }
+                }
             }
-        }
+        });
+    }
+
+    async fn become_relay_next_round(&self) -> Result<()> {
+        self.context
+            .deliver_message(
+                self.user_data_observer.clone(),
+                UnsignedMessage::new(
+                    user_data_contract::become_relay_next_round(),
+                    self.user_data_account,
+                ),
+                true,
+            )
+            .await
+    }
+
+    async fn start_election(&self) -> Result<()> {
+        self.context
+            .deliver_message(
+                self.staking_observer.clone(),
+                UnsignedMessage::new(
+                    staking_contract::start_election_on_new_round(),
+                    self.staking_account,
+                ),
+                false,
+            )
+            .await
+    }
+
+    async fn end_election(&self) -> Result<()> {
+        self.context
+            .deliver_message(
+                self.staking_observer.clone(),
+                UnsignedMessage::new(staking_contract::end_election(), self.staking_account),
+                false,
+            )
+            .await
     }
 
     async fn collect_relay_round_state(&self) -> Result<RoundState> {
@@ -226,6 +335,10 @@ impl StakingContract<'_> {
     }
 
     async fn collect_relay_round_state(&self, context: &EngineContext) -> Result<RoundState> {
+        let relay_config = self
+            .get_relay_config()
+            .context("Failed to get relay config")?;
+
         let relay_rounds_details = self
             .get_relay_rounds_details()
             .context("Failed to get relay_rounds_details")?;
@@ -237,10 +350,16 @@ impl StakingContract<'_> {
         log::info!("next_elections_account: {:x}", next_elections_account);
 
         let now = chrono::Utc::now().timestamp() as u32;
-        let (elections_started, elected) = match relay_rounds_details.current_election_start_time {
+        let (elections_state, elected) = match relay_rounds_details.current_election_start_time {
             0 => {
                 log::info!("Elections were not started yet");
-                (false, false)
+                (
+                    ElectionsState::NotStarted {
+                        start_time: relay_rounds_details.current_relay_round_start_time
+                            + relay_config.time_before_election,
+                    },
+                    false,
+                )
             }
             start_time => {
                 log::info!("Elections already started");
@@ -261,23 +380,43 @@ impl StakingContract<'_> {
                     .staker_addrs()
                     .context("Failed to get staker addresses")?
                     .contains(&context.staker_address);
-                (true, elected)
+                (
+                    ElectionsState::Started {
+                        start_time,
+                        end_time: start_time + relay_config.election_time,
+                    },
+                    elected,
+                )
             }
         };
 
         Ok(RoundState {
             number: relay_rounds_details.current_relay_round,
-            elections_started,
+            round_start_time: relay_rounds_details.current_relay_round_start_time,
+            round_end_time: relay_rounds_details.current_relay_round_start_time
+                + relay_config.relay_round_time,
+            elections_state,
             elected,
+            relay_config,
         })
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 struct RoundState {
     number: u32,
-    elections_started: bool,
+    round_start_time: u32,
+    round_end_time: u32,
+    elections_state: ElectionsState,
     elected: bool,
+    relay_config: RelayConfigDetails,
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+enum ElectionsState {
+    NotStarted { start_time: u32 },
+    Started { start_time: u32, end_time: u32 },
+    Finished,
 }
 
 macro_rules! parse_tokens {
@@ -299,6 +438,7 @@ enum StakingEvent {
     ElectionStarted(ElectionStartedEvent),
     ElectionEnded(ElectionEndedEvent),
     RelayRoundInitialized(RelayRoundInitializedEvent),
+    RelayConfigUpdated(RelayConfigUpdatedEvent),
 }
 
 impl ReadFromTransaction for StakingEvent {
@@ -306,6 +446,7 @@ impl ReadFromTransaction for StakingEvent {
         let start = staking_contract::events::election_started();
         let end = staking_contract::events::election_ended();
         let round_init = staking_contract::events::relay_round_initialized();
+        let config_updated = staking_contract::events::relay_config_updated();
 
         let mut res = None;
         ctx.iterate_events(|id, body| {
@@ -315,6 +456,8 @@ impl ReadFromTransaction for StakingEvent {
                 parse_tokens!(res, end, body, StakingEvent::ElectionEnded);
             } else if id == round_init.id {
                 parse_tokens!(res, round_init, body, StakingEvent::RelayRoundInitialized);
+            } else if id == config_updated.id {
+                parse_tokens!(res, config_updated, body, StakingEvent::RelayConfigUpdated);
             }
         });
         res

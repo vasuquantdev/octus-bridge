@@ -3,6 +3,26 @@ use once_cell::sync::OnceCell;
 
 use super::models::*;
 
+pub fn start_election_on_new_round() -> &'static ton_abi::Function {
+    static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
+    FUNCTION.get_or_init(|| {
+        FunctionBuilder::new("startElectionOnNewRound")
+            .pubkey_header()
+            .time_header()
+            .build()
+    })
+}
+
+pub fn end_election() -> &'static ton_abi::Function {
+    static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
+    FUNCTION.get_or_init(|| {
+        FunctionBuilder::new("endElection")
+            .pubkey_header()
+            .time_header()
+            .build()
+    })
+}
+
 /// External responsible function
 pub fn is_active() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
@@ -35,6 +55,18 @@ pub fn get_relay_rounds_details() -> &'static ton_abi::Function {
             .pubkey_header()
             .time_header()
             .output("details", RelayRoundsDetails::param_type())
+            .build()
+    })
+}
+
+/// External responsible function
+pub fn get_relay_config() -> &'static ton_abi::Function {
+    static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
+    FUNCTION.get_or_init(|| {
+        FunctionBuilder::new_responsible("getRelayConfig")
+            .pubkey_header()
+            .time_header()
+            .output("details", RelayConfigDetails::param_type())
             .build()
     })
 }
@@ -104,6 +136,15 @@ pub mod events {
         EVENT.get_or_init(|| {
             EventBuilder::new("RelayRoundInitialized")
                 .inputs(RelayRoundInitializedEvent::param_type())
+                .build()
+        })
+    }
+
+    pub fn relay_config_updated() -> &'static ton_abi::Event {
+        static EVENT: OnceCell<ton_abi::Event> = OnceCell::new();
+        EVENT.get_or_init(|| {
+            EventBuilder::new("RelayConfigUpdated")
+                .inputs(RelayConfigUpdatedEvent::param_type())
                 .build()
         })
     }

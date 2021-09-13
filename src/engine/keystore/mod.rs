@@ -186,6 +186,30 @@ impl UnsignedMessage {
         self.inputs.push(arg.token_value().named(arg_name));
         self
     }
+
+    pub fn build_without_signature(&self) -> Result<SignedMessage> {
+        let time = chrono::Utc::now().timestamp_millis() as u64;
+        let expire_at = (time / 1000) as u32 + MESSAGE_TTL_SEC;
+
+        let headers = default_headers(time, expire_at, &Default::default());
+        let body = self
+            .function
+            .encode_input(&headers, &self.inputs, false, None)?;
+
+        let message = ton_block::Message::with_ext_in_header_and_body(
+            ton_block::ExternalInboundMessageHeader {
+                dst: self.dst.clone(),
+                ..Default::default()
+            },
+            body.into(),
+        );
+
+        Ok(SignedMessage {
+            account: self.account,
+            message,
+            expire_at,
+        })
+    }
 }
 
 #[derive(Debug, Clone)]

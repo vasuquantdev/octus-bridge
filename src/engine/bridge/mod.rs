@@ -369,7 +369,7 @@ impl Bridge {
         };
 
         self.context
-            .deliver_message(eth_event_observer, message)
+            .deliver_message(eth_event_observer, message, true)
             .await?;
 
         Ok(())
@@ -447,7 +447,7 @@ impl Bridge {
         };
 
         self.context
-            .deliver_message(ton_event_observer, message)
+            .deliver_message(ton_event_observer, message, true)
             .await?;
 
         Ok(())

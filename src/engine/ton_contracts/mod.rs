@@ -142,6 +142,13 @@ impl StakingContract<'_> {
         Ok(details)
     }
 
+    pub fn get_relay_config(&self) -> Result<RelayConfigDetails> {
+        let function = staking_contract::get_relay_config();
+        let input = [answer_id()];
+        let details = self.0.run_local(function, &input)?.unpack_first()?;
+        Ok(details)
+    }
+
     pub fn get_relay_round_address(&self, round_num: u32) -> Result<UInt256> {
         let function = staking_contract::get_relay_round_address();
         let input = [answer_id(), round_num.token_value().named("round_num")];

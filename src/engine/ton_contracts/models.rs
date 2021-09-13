@@ -178,6 +178,8 @@ pub struct RelayRoundInitializedEvent {
     pub round_num: u32,
     #[abi(uint32)]
     pub round_start_time: u32,
+    #[abi(uint32)]
+    pub round_end_time: u32,
     #[abi(with = "address_only_hash")]
     pub round_addr: UInt256,
     #[abi(uint32)]
@@ -295,6 +297,46 @@ pub struct StakingDetails {
     pub last_reward_time: u32,
     #[abi(array)]
     pub reward_rounds: Vec<RewardRound>,
+}
+
+#[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
+pub struct RelayConfigDetails {
+    #[abi(uint32)]
+    pub relay_lock_time: u32,
+    #[abi(uint32)]
+    pub relay_round_time: u32,
+    #[abi(uint32)]
+    pub election_time: u32,
+    #[abi(uint32)]
+    pub time_before_election: u32,
+    #[abi(uint32)]
+    pub relays_count: u32,
+    #[abi(uint32)]
+    pub min_relay_count: u32,
+    #[abi(uint128)]
+    pub min_relay_deposit: u128,
+    #[abi(uint128)]
+    pub relay_initial_deposit: u128,
+}
+
+#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
+pub struct RelayConfigUpdatedEvent {
+    #[abi(uint32)]
+    pub relay_lock_time: u32,
+    #[abi(uint32)]
+    pub relay_round_time: u32,
+    #[abi(uint32)]
+    pub election_time: u32,
+    #[abi(uint32)]
+    pub time_before_election: u32,
+    #[abi(uint32)]
+    pub relays_count: u32,
+    #[abi(uint32)]
+    pub min_relay_count: u32,
+    #[abi(uint128)]
+    pub min_relay_deposit: u128,
+    #[abi(uint128)]
+    pub relay_initial_deposit: u128,
 }
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
