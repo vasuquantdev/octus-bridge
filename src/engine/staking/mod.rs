@@ -59,6 +59,12 @@ impl Staking {
 
         let user_data_contract = UserDataContract(&user_data_contract);
         let details = user_data_contract.get_details()?;
+        if &details.relay_eth_address != context.keystore.eth.address().as_fixed_bytes() {
+            return Err(StakingError::UserDataEthAddressMismatch.into());
+        }
+        if details.relay_ton_pubkey != context.keystore.ton.public_key() {
+            return Err(StakingError::UserDataTonPublicKeyMismatch.into());
+        }
 
         let user_data_observer = AccountObserver::new(&user_data_events_tx);
         if !details.ton_pubkey_confirmed {
@@ -72,26 +78,23 @@ impl Staking {
                 .context("Failed confirming ton account")?;
             log::info!("Confirmed ton address");
         }
-
         if !details.eth_address_confirmed {
-            let config = context
-                .settings
-                .networks
-                .first()
-                .expect("It's started, yep?");
             let subscriber = context
                 .eth_subscribers
-                .get_subscriber(config.chain_id)
-                .context("Failed getting eth subscriber")?;
-            let address = crate::utils::account_to_address(context.staker_address);
+                .get_subscriber(bridge_event_configuration.network_configuration.chain_id)
+                .ok_or(StakingError::RequiredEthNetworkNotFound)?;
             subscriber
                 .verify_relay_staker_address(
-                    &config.staker_address,
-                    address,
-                    &config.verifier_address,
+                    context.keystore.eth.address(),
+                    context.staker_address,
+                    &bridge_event_configuration
+                        .network_configuration
+                        .event_emitter
+                        .into(),
                 )
                 .await?;
         }
+
         // Initialize relay round
         let current_relay_round = staking_contract.collect_relay_round_state(&context).await?;
 
@@ -219,15 +222,6 @@ impl Staking {
         }
 
         Ok(())
-    }
-
-    async fn get_relay_round_address(&self, round: u32) -> Result<UInt256> {
-        let staking_contract = self
-            .context
-            .ton_subscriber
-            .wait_contract_state(self.staking_account)
-            .await?;
-        StakingContract(&staking_contract).get_relay_round_address(round)
     }
 
     async fn process_user_data_event(
@@ -568,4 +562,14 @@ impl ReadFromTransaction for UserDataEvent {
         });
         res
     }
+}
+
+#[derive(thiserror::Error, Debug)]
+enum StakingError {
+    #[error("Required ETH network not found")]
+    RequiredEthNetworkNotFound,
+    #[error("UserData ETH address mismatch")]
+    UserDataEthAddressMismatch,
+    #[error("UserData TON public key mismatch")]
+    UserDataTonPublicKeyMismatch,
 }

@@ -22,17 +22,6 @@ pub fn end_election() -> &'static ton_abi::Function {
 }
 
 /// External responsible function
-pub fn is_active() -> &'static ton_abi::Function {
-    static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
-    FUNCTION.get_or_init(|| {
-        FunctionBuilder::new_responsible("isActive")
-            .default_headers()
-            .output("is_active", bool::param_type())
-            .build()
-    })
-}
-
-/// External responsible function
 pub fn get_details() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
     FUNCTION.get_or_init(|| {
