@@ -70,6 +70,27 @@ impl Staking {
                 )
                 .await
                 .context("Failed confirming ton account")?;
+            log::info!("Confirmed ton address");
+        }
+
+        if !details.eth_address_confirmed {
+            let config = context
+                .settings
+                .networks
+                .first()
+                .expect("It's started, yep?");
+            let subscriber = context
+                .eth_subscribers
+                .get_subscriber(config.chain_id)
+                .context("Failed getting eth subscriber")?;
+            let address = crate::utils::account_to_address(context.staker_address);
+            subscriber
+                .verify_relay_staker_address(
+                    &config.staker_address,
+                    address,
+                    &config.verifier_address,
+                )
+                .await?;
         }
         // Initialize relay round
         let current_relay_round = staking_contract.collect_relay_round_state(&context).await?;

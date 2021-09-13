@@ -3,8 +3,8 @@ use std::collections::HashMap;
 
 use anyhow::{Context, Result};
 use tiny_adnl::utils::*;
-use ton_block::HashmapAugType;
-use ton_types::UInt256;
+use ton_block::{HashmapAugType, MsgAddrStd, MsgAddressInt};
+use ton_types::{AccountId, UInt256};
 
 use super::existing_contract::*;
 
@@ -102,6 +102,14 @@ where
 enum ShardUtilsError {
     #[error("Invalid contract address")]
     InvalidContractAddress,
+}
+
+pub fn account_to_address(account: UInt256) -> MsgAddressInt {
+    MsgAddressInt::AddrStd(MsgAddrStd::with_address(
+        None,
+        0,
+        AccountId::new(account.as_slice().to_vec()),
+    ))
 }
 
 #[cfg(test)]
