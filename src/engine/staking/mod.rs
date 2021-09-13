@@ -165,19 +165,19 @@ impl Staking {
                     }
                 });
             }
-            StakingEvent::RelayConfigUpdated(event) => {
+            StakingEvent::RelayConfigUpdated(RelayConfigUpdatedEvent { config }) => {
                 self.election_timings_changed_notify.notify_waiters();
 
                 let round_start_time = current_relay_round.round_start_time;
                 match &mut current_relay_round.elections_state {
                     ElectionsState::NotStarted { start_time } => {
-                        *start_time = round_start_time + event.time_before_election;
+                        *start_time = round_start_time + config.time_before_election;
                     }
                     ElectionsState::Started {
                         start_time,
                         end_time,
                     } => {
-                        *end_time = *start_time + event.election_time;
+                        *end_time = *start_time + config.election_time;
                     }
                     ElectionsState::Finished => { /* do nothing */ }
                 }
@@ -370,6 +370,21 @@ impl StakingContract<'_> {
     }
 
     async fn collect_relay_round_state(&self, context: &EngineContext) -> Result<RoundState> {
+        async fn check_is_elected(
+            context: &EngineContext,
+            elections_account: UInt256,
+        ) -> Result<bool> {
+            let elections_contract = context
+                .ton_subscriber
+                .wait_contract_state(elections_account)
+                .await?;
+            let elected = ElectionsContract(&elections_contract)
+                .staker_addrs()
+                .context("Failed to get staker addresses")?
+                .contains(&context.staker_address);
+            Ok(elected)
+        }
+
         let relay_config = self
             .get_relay_config()
             .context("Failed to get relay config")?;
@@ -386,6 +401,13 @@ impl StakingContract<'_> {
 
         let now = chrono::Utc::now().timestamp() as u32;
         let (elections_state, elected) = match relay_rounds_details.current_election_start_time {
+            0 if relay_rounds_details.current_election_ended => {
+                log::info!("Elections were already finished");
+                (
+                    ElectionsState::Finished,
+                    check_is_elected(context, next_elections_account).await?,
+                )
+            }
             0 => {
                 log::info!("Elections were not started yet");
                 (
@@ -407,20 +429,12 @@ impl StakingContract<'_> {
                     .await;
                 }
 
-                let elections_contract = context
-                    .ton_subscriber
-                    .wait_contract_state(next_elections_account)
-                    .await?;
-                let elected = ElectionsContract(&elections_contract)
-                    .staker_addrs()
-                    .context("Failed to get staker addresses")?
-                    .contains(&context.staker_address);
                 (
                     ElectionsState::Started {
                         start_time,
                         end_time: start_time + relay_config.election_time,
                     },
-                    elected,
+                    check_is_elected(context, next_elections_account).await?,
                 )
             }
         };
@@ -428,8 +442,7 @@ impl StakingContract<'_> {
         Ok(RoundState {
             number: relay_rounds_details.current_relay_round,
             round_start_time: relay_rounds_details.current_relay_round_start_time,
-            round_end_time: relay_rounds_details.current_relay_round_start_time
-                + relay_config.relay_round_time,
+            round_end_time: relay_rounds_details.current_relay_round_end_time,
             elections_state,
             elected,
             relay_config,

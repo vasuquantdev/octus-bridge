@@ -309,10 +309,10 @@ pub struct RelayConfigDetails {
     pub election_time: u32,
     #[abi(uint32)]
     pub time_before_election: u32,
-    #[abi(uint32)]
-    pub relays_count: u32,
-    #[abi(uint32)]
-    pub min_relay_count: u32,
+    #[abi(uint16)]
+    pub relays_count: u16,
+    #[abi(uint16)]
+    pub min_relay_count: u16,
     #[abi(uint128)]
     pub min_relay_deposit: u128,
     #[abi(uint128)]
@@ -321,38 +321,26 @@ pub struct RelayConfigDetails {
 
 #[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
 pub struct RelayConfigUpdatedEvent {
-    #[abi(uint32)]
-    pub relay_lock_time: u32,
-    #[abi(uint32)]
-    pub relay_round_time: u32,
-    #[abi(uint32)]
-    pub election_time: u32,
-    #[abi(uint32)]
-    pub time_before_election: u32,
-    #[abi(uint32)]
-    pub relays_count: u32,
-    #[abi(uint32)]
-    pub min_relay_count: u32,
-    #[abi(uint128)]
-    pub min_relay_deposit: u128,
-    #[abi(uint128)]
-    pub relay_initial_deposit: u128,
+    #[abi]
+    pub config: RelayConfigDetails,
 }
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct RelayRoundsDetails {
-    #[abi(bool)]
-    pub origin_relay_round_initialized: bool,
     #[abi(uint32)]
     pub current_relay_round: u32,
     #[abi(uint32)]
     pub current_relay_round_start_time: u32,
+    #[abi(uint32)]
+    pub current_relay_round_end_time: u32,
     #[abi(uint32)]
     pub current_election_start_time: u32,
     #[abi(uint32)]
     pub prev_relay_round_end_time: u32,
     #[abi(uint32)]
     pub pending_relay_round: u32,
+    #[abi(bool)]
+    pub current_election_ended: bool,
 }
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
@@ -373,6 +361,8 @@ pub struct ElectionStartedEvent {
     pub round_num: u32,
     #[abi(uint32)]
     pub election_start_time: u32,
+    #[abi(bool)]
+    pub election_end_time: bool,
     #[abi(with = "address_only_hash")]
     pub election_addr: UInt256,
 }

@@ -7,8 +7,7 @@ pub fn start_election_on_new_round() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
     FUNCTION.get_or_init(|| {
         FunctionBuilder::new("startElectionOnNewRound")
-            .pubkey_header()
-            .time_header()
+            .default_headers()
             .build()
     })
 }
@@ -17,8 +16,7 @@ pub fn end_election() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
     FUNCTION.get_or_init(|| {
         FunctionBuilder::new("endElection")
-            .pubkey_header()
-            .time_header()
+            .default_headers()
             .build()
     })
 }
@@ -28,8 +26,7 @@ pub fn is_active() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
     FUNCTION.get_or_init(|| {
         FunctionBuilder::new_responsible("isActive")
-            .pubkey_header()
-            .time_header()
+            .default_headers()
             .output("is_active", bool::param_type())
             .build()
     })
@@ -40,8 +37,7 @@ pub fn get_details() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
     FUNCTION.get_or_init(|| {
         FunctionBuilder::new_responsible("getDetails")
-            .pubkey_header()
-            .time_header()
+            .default_headers()
             .output("details", StakingDetails::param_type())
             .build()
     })
@@ -52,8 +48,7 @@ pub fn get_relay_rounds_details() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
     FUNCTION.get_or_init(|| {
         FunctionBuilder::new_responsible("getRelayRoundsDetails")
-            .pubkey_header()
-            .time_header()
+            .default_headers()
             .output("details", RelayRoundsDetails::param_type())
             .build()
     })
@@ -64,8 +59,7 @@ pub fn get_relay_config() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
     FUNCTION.get_or_init(|| {
         FunctionBuilder::new_responsible("getRelayConfig")
-            .pubkey_header()
-            .time_header()
+            .default_headers()
             .output("details", RelayConfigDetails::param_type())
             .build()
     })
@@ -76,8 +70,7 @@ pub fn get_election_address() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
     FUNCTION.get_or_init(|| {
         FunctionBuilder::new_responsible("getElectionAddress")
-            .pubkey_header()
-            .time_header()
+            .default_headers()
             .input("round_num", u32::param_type())
             .output("address", ton_abi::ParamType::Address)
             .build()
@@ -89,8 +82,7 @@ pub fn get_relay_round_address() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
     FUNCTION.get_or_init(|| {
         FunctionBuilder::new_responsible("getRelayRoundAddress")
-            .pubkey_header()
-            .time_header()
+            .default_headers()
             .input("round_num", u32::param_type())
             .output("address", ton_abi::ParamType::Address)
             .build()
@@ -102,8 +94,7 @@ pub fn get_user_data_address() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
     FUNCTION.get_or_init(|| {
         FunctionBuilder::new_responsible("getUserDataAddress")
-            .pubkey_header()
-            .time_header()
+            .default_headers()
             .input("user", ton_abi::ParamType::Address)
             .output("address", ton_abi::ParamType::Address)
             .build()

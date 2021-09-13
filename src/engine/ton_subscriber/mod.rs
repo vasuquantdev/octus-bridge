@@ -188,8 +188,7 @@ impl TonSubscriber {
 
             match shard_account {
                 Some(account) => match &account.account.storage.state {
-                    ton_block::AccountState::AccountActive(state) => {
-                        log::info!("Last transaction id: {:?}", account.last_transaction_id);
+                    ton_block::AccountState::AccountActive(_) => {
                         return Ok(account);
                     }
                     ton_block::AccountState::AccountFrozen(_) => {
