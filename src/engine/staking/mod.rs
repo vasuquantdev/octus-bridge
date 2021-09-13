@@ -8,7 +8,6 @@ use tokio::sync::Notify;
 use ton_types::UInt256;
 
 use crate::engine::keystore::*;
-use crate::engine::ton_contracts::user_data_contract::confirm_ton_account;
 use crate::engine::ton_contracts::*;
 use crate::engine::ton_subscriber::*;
 use crate::engine::EngineContext;
@@ -32,7 +31,6 @@ pub struct Staking {
 impl Staking {
     pub async fn new(context: Arc<EngineContext>, staking_account: UInt256) -> Result<Arc<Self>> {
         let (staking_events_tx, staking_events_rx) = mpsc::unbounded_channel();
-        let (user_data_events_tx, user_data_events_rx) = mpsc::unbounded_channel();
 
         let staking_contract = context
             .ton_subscriber
@@ -56,44 +54,11 @@ impl Staking {
             .ton_subscriber
             .wait_contract_state(user_data_account)
             .await?;
-
         let user_data_contract = UserDataContract(&user_data_contract);
-        let details = user_data_contract.get_details()?;
-        if &details.relay_eth_address != context.keystore.eth.address().as_fixed_bytes() {
-            return Err(StakingError::UserDataEthAddressMismatch.into());
-        }
-        if details.relay_ton_pubkey != context.keystore.ton.public_key() {
-            return Err(StakingError::UserDataTonPublicKeyMismatch.into());
-        }
 
-        let user_data_observer = AccountObserver::new(&user_data_events_tx);
-        if !details.ton_pubkey_confirmed {
-            context
-                .deliver_message(
-                    user_data_observer.clone(),
-                    UnsignedMessage::new(confirm_ton_account(), user_data_account),
-                    true,
-                )
-                .await
-                .context("Failed confirming ton account")?;
-            log::info!("Confirmed ton address");
-        }
-        if !details.eth_address_confirmed {
-            let subscriber = context
-                .eth_subscribers
-                .get_subscriber(bridge_event_configuration.network_configuration.chain_id)
-                .ok_or(StakingError::RequiredEthNetworkNotFound)?;
-            subscriber
-                .verify_relay_staker_address(
-                    context.keystore.eth.address(),
-                    context.staker_address,
-                    &bridge_event_configuration
-                        .network_configuration
-                        .event_emitter
-                        .into(),
-                )
-                .await?;
-        }
+        let (user_data_observer, user_data_events_rx) = user_data_contract
+            .ensure_verified(&context, user_data_account, bridge_event_configuration)
+            .await?;
 
         // Initialize relay round
         let current_relay_round = staking_contract.collect_relay_round_state(&context).await?;
@@ -381,6 +346,68 @@ impl Staking {
         StakingContract(&staking_contract)
             .collect_relay_round_state(context)
             .await
+    }
+}
+
+impl UserDataContract<'_> {
+    async fn ensure_verified(
+        &self,
+        context: &Arc<EngineContext>,
+        user_data_account: UInt256,
+        bridge_event_configuration: EthEventConfigurationDetails,
+    ) -> Result<(
+        Arc<AccountObserver<UserDataEvent>>,
+        AccountEventsRx<UserDataEvent>,
+    )> {
+        let (user_data_events_tx, user_data_events_rx) = mpsc::unbounded_channel();
+
+        let details = self.get_details()?;
+        log::info!("UserData details: {:?}", details);
+
+        if &details.relay_eth_address != context.keystore.eth.address().as_fixed_bytes() {
+            return Err(StakingError::UserDataEthAddressMismatch.into());
+        }
+        if details.relay_ton_pubkey != context.keystore.ton.public_key() {
+            return Err(StakingError::UserDataTonPublicKeyMismatch.into());
+        }
+
+        let user_data_observer = AccountObserver::new(&user_data_events_tx);
+
+        if !details.ton_pubkey_confirmed {
+            context
+                .deliver_message(
+                    user_data_observer.clone(),
+                    UnsignedMessage::new(
+                        user_data_contract::confirm_ton_account(),
+                        user_data_account,
+                    ),
+                    true,
+                )
+                .await
+                .context("Failed confirming TON public key")?;
+            log::info!("Confirmed TON public key");
+        }
+
+        if !details.eth_address_confirmed {
+            let subscriber = context
+                .eth_subscribers
+                .get_subscriber(bridge_event_configuration.network_configuration.chain_id)
+                .ok_or(StakingError::RequiredEthNetworkNotFound)?;
+            subscriber
+                .verify_relay_staker_address(
+                    context.keystore.eth.address(),
+                    context.staker_address,
+                    &bridge_event_configuration
+                        .network_configuration
+                        .event_emitter
+                        .into(),
+                )
+                .await
+                .context("Failed confirming ETH address")?;
+            log::info!("Confirmed ETH address")
+        }
+
+        Ok((user_data_observer, user_data_events_rx))
     }
 }
 
