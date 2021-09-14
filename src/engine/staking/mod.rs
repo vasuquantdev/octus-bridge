@@ -155,7 +155,7 @@ impl Staking {
 
                     let now = chrono::Utc::now().timestamp() as u64;
                     tokio::time::sleep(Duration::from_secs(
-                        (event.round_end_time as u64).wrapping_sub(now) + ROUND_OFFSET,
+                        (event.round_end_time as u64).saturating_sub(now) + ROUND_OFFSET,
                     ))
                     .await;
 
@@ -234,12 +234,13 @@ impl Staking {
                 log::info!("Elections management loop. State: {:?}", elections_state);
 
                 let now = chrono::Utc::now().timestamp() as u64;
+                log::info!("Now: {}", now);
 
                 match elections_state {
                     ElectionsState::NotStarted { start_time } => {
                         let staking = staking.clone();
                         let action = async move {
-                            let delay = (start_time as u64).wrapping_sub(now);
+                            let delay = (start_time as u64).saturating_sub(now);
 
                             log::info!("Starting elections in {} seconds", delay);
                             tokio::time::sleep(Duration::from_secs(delay)).await;
@@ -263,7 +264,7 @@ impl Staking {
                     ElectionsState::Started { end_time, .. } => {
                         let staking = staking.clone();
                         let action = async move {
-                            let delay = (end_time as u64).wrapping_sub(now);
+                            let delay = (end_time as u64).saturating_sub(now);
 
                             log::info!("Ending elections in {} seconds", delay);
                             tokio::time::sleep(Duration::from_secs(delay)).await;
