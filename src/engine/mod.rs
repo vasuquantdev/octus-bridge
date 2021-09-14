@@ -190,24 +190,19 @@ impl EngineContext {
         self: &Arc<Self>,
         observer: Arc<AccountObserver<T>>,
         unsigned_message: UnsignedMessage,
-        sign: bool,
     ) -> Result<()>
     where
         T: Send + 'static,
     {
         loop {
-            let message = if sign {
-                self.keystore.ton.sign(&unsigned_message)?
-            } else {
-                unsigned_message.build_without_signature()?
-            };
+            let message = self.keystore.ton.sign(&unsigned_message)?;
 
             match self
                 .send_ton_message(&message.account, &message.message, message.expire_at)
                 .await?
             {
                 MessageStatus::Expired => {
-                    log::info!("Message to account {:x} expired", message.account);
+                    log::warn!("Message to account {:x} expired", message.account);
                 }
                 MessageStatus::Delivered => {
                     log::info!("Successfully sent message to account {:x}", message.account);

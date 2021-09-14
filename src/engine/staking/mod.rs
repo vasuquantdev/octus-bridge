@@ -302,7 +302,6 @@ impl Staking {
                     user_data_contract::become_relay_next_round(),
                     self.user_data_account,
                 ),
-                true,
             )
             .await
     }
@@ -316,7 +315,6 @@ impl Staking {
                     self.user_data_account,
                 )
                 .arg(relay_round),
-                true,
             )
             .await
     }
@@ -329,7 +327,6 @@ impl Staking {
                     staking_contract::start_election_on_new_round(),
                     self.staking_account,
                 ),
-                false,
             )
             .await
     }
@@ -339,7 +336,6 @@ impl Staking {
             .deliver_message(
                 self.staking_observer.clone(),
                 UnsignedMessage::new(staking_contract::end_election(), self.staking_account),
-                false,
             )
             .await
     }
@@ -432,7 +428,6 @@ impl UserDataContract<'_> {
                         user_data_contract::confirm_ton_account(),
                         user_data_account,
                     ),
-                    true,
                 )
                 .await
                 .context("Failed confirming TON public key")?;
