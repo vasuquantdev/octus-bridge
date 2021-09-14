@@ -291,8 +291,6 @@ pub struct StakingDetails {
     pub token_balance: u128,
     #[abi(uint128)]
     pub reward_token_balance: u128,
-    #[abi(uint128)]
-    pub reward_per_second: u128,
     #[abi(uint32)]
     pub last_reward_time: u32,
     #[abi(array)]

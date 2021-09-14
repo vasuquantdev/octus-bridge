@@ -39,7 +39,7 @@ impl Staking {
             .await?;
         let staking_contract = StakingContract(&staking_contract);
 
-        // Get bridge ETH event configuration
+        // Get bridge ETH event configuratison
         let bridge_event_configuration = staking_contract
             .get_eth_bridge_configuration_details(&context)
             .await?;
@@ -467,7 +467,9 @@ impl StakingContract<'_> {
         &self,
         context: &EngineContext,
     ) -> Result<EthEventConfigurationDetails> {
-        let details = self.get_details()?;
+        let details = self
+            .get_details()
+            .context("Failed to get staking details")?;
         let configuration_contract = context
             .ton_subscriber
             .wait_contract_state(details.bridge_event_config_eth_ton)
