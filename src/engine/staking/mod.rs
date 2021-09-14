@@ -214,22 +214,15 @@ impl Staking {
                     None => return,
                 };
 
-                let (
-                    elections_state,
-                    new_round_fut,
-                    elections_start_fut,
-                    elections_end_fut,
-                    timings_changed_fut,
-                ) = {
-                    let current_relay_round = staking.current_relay_round.lock().await;
-                    (
-                        current_relay_round.elections_state,
-                        staking.relay_round_started_notify.notified(),
-                        staking.elections_start_notify.notified(),
-                        staking.elections_end_notify.notified(),
-                        staking.election_timings_changed_notify.notified(),
-                    )
-                };
+                let current_relay_round = staking.current_relay_round.lock().await;
+                let elections_state = current_relay_round.elections_state;
+                let new_round_fut = staking.relay_round_started_notify.notified();
+                let elections_start_fut_outer = staking.elections_start_notify.notified();
+                let elections_start_fut_inner = staking.elections_start_notify.notified();
+                let elections_end_fut_outer = staking.elections_end_notify.notified();
+                let elections_end_fut_inner = staking.elections_end_notify.notified();
+                let timings_changed_fut = staking.election_timings_changed_notify.notified();
+                drop(current_relay_round);
 
                 log::info!("Elections management loop. State: {:?}", elections_state);
 
@@ -249,11 +242,14 @@ impl Staking {
                             if let Err(e) = staking.start_election().await {
                                 log::error!("Failed to start election: {:?}", e);
                             }
+
+                            log::info!("Waiting elections start");
+                            elections_start_fut_inner.await;
                         };
 
                         tokio::select! {
                             _ = action => continue,
-                            _ = elections_start_fut => {
+                            _ = elections_start_fut_outer => {
                                 log::warn!("Elections loop: cancelling elections start. Already started");
                             }
                             _ = timings_changed_fut => {
@@ -273,11 +269,14 @@ impl Staking {
                             if let Err(e) = staking.end_election().await {
                                 log::error!("Failed to end election: {:?}", e);
                             }
+
+                            log::info!("Waiting elections end");
+                            elections_end_fut_inner.await;
                         };
 
                         tokio::select! {
                             _ = action => continue,
-                            _ = elections_end_fut => {
+                            _ = elections_end_fut_outer => {
                                 log::warn!("Elections loop: cancelling elections ending. Already ended");
                             }
                             _ = timings_changed_fut => {
