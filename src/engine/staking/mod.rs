@@ -231,17 +231,20 @@ impl Staking {
                     )
                 };
 
+                log::info!("Elections management loop. State: {:?}", elections_state);
+
                 let now = chrono::Utc::now().timestamp() as u64;
 
                 match elections_state {
                     ElectionsState::NotStarted { start_time } => {
                         let staking = staking.clone();
                         let action = async move {
-                            tokio::time::sleep(Duration::from_secs(
-                                (start_time as u64).wrapping_sub(now),
-                            ))
-                            .await;
+                            let delay = (start_time as u64).wrapping_sub(now);
 
+                            log::info!("Starting elections in {} seconds", delay);
+                            tokio::time::sleep(Duration::from_secs(delay)).await;
+
+                            log::info!("Starting elections");
                             if let Err(e) = staking.start_election().await {
                                 log::error!("Failed to start election: {:?}", e);
                             }
@@ -260,11 +263,12 @@ impl Staking {
                     ElectionsState::Started { end_time, .. } => {
                         let staking = staking.clone();
                         let action = async move {
-                            tokio::time::sleep(Duration::from_secs(
-                                (end_time as u64).wrapping_sub(now),
-                            ))
-                            .await;
+                            let delay = (end_time as u64).wrapping_sub(now);
 
+                            log::info!("Ending elections in {} seconds", delay);
+                            tokio::time::sleep(Duration::from_secs(delay)).await;
+
+                            log::info!("Ending elections");
                             if let Err(e) = staking.end_election().await {
                                 log::error!("Failed to end election: {:?}", e);
                             }
