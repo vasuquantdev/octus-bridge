@@ -261,6 +261,14 @@ pub struct UserDataDetails {
     pub relay_ton_pubkey: UInt256,
     #[abi(bool)]
     pub ton_pubkey_confirmed: bool,
+    #[abi(bool)]
+    pub slashed: bool,
+    #[abi(with = "address_only_hash")]
+    pub root: UInt256,
+    #[abi(with = "address_only_hash")]
+    pub user: UInt256,
+    #[abi(with = "address_only_hash")]
+    pub dao_root: UInt256,
 }
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
