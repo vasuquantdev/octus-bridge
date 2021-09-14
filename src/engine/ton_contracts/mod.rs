@@ -29,6 +29,12 @@ impl EventBaseContract<'_> {
         Ok(result)
     }
 
+    pub fn round_number(&self) -> Result<u32> {
+        let function = base_event_contract::round_number();
+        let result = self.0.run_local(function, &[])?.unpack_first()?;
+        Ok(result)
+    }
+
     pub fn get_voters(&self, vote: EventVote) -> Result<Vec<UInt256>> {
         let function = base_event_contract::get_voters();
         let inputs = [answer_id(), vote.token_value().named("vote")];

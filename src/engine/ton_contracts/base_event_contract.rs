@@ -14,6 +14,16 @@ pub fn status() -> &'static ton_abi::Function {
     })
 }
 
+pub fn round_number() -> &'static ton_abi::Function {
+    static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
+    FUNCTION.get_or_init(|| {
+        FunctionBuilder::new("round_number")
+            .default_headers()
+            .output("round_number", u32::param_type())
+            .build()
+    })
+}
+
 /// External responsible function
 pub fn get_voters() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();

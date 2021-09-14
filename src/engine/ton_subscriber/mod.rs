@@ -524,7 +524,6 @@ type ShardAccountTx = watch::Sender<Option<ton_block::ShardAccount>>;
 type ShardAccountRx = watch::Receiver<Option<ton_block::ShardAccount>>;
 
 pub type AccountEventsTx<T> = mpsc::UnboundedSender<(UInt256, T)>;
-pub type AccountEventsRx<T> = mpsc::UnboundedReceiver<(UInt256, T)>;
 
 #[derive(thiserror::Error, Debug)]
 enum TonSubscriberError {

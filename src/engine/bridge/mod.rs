@@ -380,9 +380,10 @@ impl Bridge {
         let ton_subscriber = &self.context.ton_subscriber;
 
         let contract = ton_subscriber.wait_contract_state(account).await?;
+        let base_event_contract = EventBaseContract(&contract);
 
         // Check further steps based on event statuses
-        match EventBaseContract(&contract).process(keystore.ton.public_key())? {
+        match base_event_contract.process(keystore.ton.public_key())? {
             EventAction::Nop => return Ok(()),
             EventAction::Remove => {
                 self.pending_ton_events.remove(&account);
@@ -390,6 +391,7 @@ impl Bridge {
             }
             EventAction::Vote => { /* continue voting */ }
         }
+        let round_number = base_event_contract.round_number()?;
 
         // Get event details
         let event_init_data = TonEventContract(&contract).event_init_data()?;
@@ -403,16 +405,29 @@ impl Bridge {
             .ton_event_configurations
             .get(&event_init_data.configuration)
             .map(|configuration| {
-                ton_abi::TokenValue::decode_params(
-                    &configuration.event_abi,
-                    event_init_data.vote_data.event_data.clone().into(),
-                    2,
+                (
+                    configuration.details.network_configuration.proxy,
+                    ton_abi::TokenValue::decode_params(
+                        &configuration.event_abi,
+                        event_init_data.vote_data.event_data.clone().into(),
+                        2,
+                    ),
                 )
             });
 
         let decoded_data = match data {
             // Decode event data with event abi from configuration
-            Some(data) => data.and_then(map_ton_tokens_to_eth_bytes),
+            Some((proxy, data)) => data.and_then(|data| {
+                Ok(make_mapped_ton_event(
+                    event_init_data.vote_data.event_transaction_lt,
+                    event_init_data.vote_data.event_timestamp,
+                    map_ton_tokens_to_eth_bytes(data)?,
+                    event_init_data.configuration,
+                    account,
+                    proxy,
+                    round_number,
+                ))
+            }),
             // Do nothing when configuration was not found
             None => {
                 log::error!(
@@ -427,8 +442,11 @@ impl Bridge {
 
         let message = match decoded_data {
             // Confirm with signature
-            Ok(data) => UnsignedMessage::new(ton_event_contract::confirm(), account)
-                .arg(keystore.eth.sign(&data).to_vec()),
+            Ok(data) => {
+                log::info!("Signing event data: {}", hex::encode(&data));
+                UnsignedMessage::new(ton_event_contract::confirm(), account)
+                    .arg(keystore.eth.sign(&data).to_vec())
+            }
 
             // Reject if event data is invalid
             Err(e) => {

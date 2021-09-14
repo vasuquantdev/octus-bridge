@@ -81,6 +81,39 @@ fn map_eth_abi_param_to_ton(param: &EthParamType) -> Result<TonParamType> {
     })
 }
 
+/// struct TONEvent {
+///     uint64 eventTransactionLt;
+///     uint32 eventTimestamp;
+///     bytes eventData;
+///     int8 configurationWid;
+///     uint256 configurationAddress;
+///     int8 eventContractWid;
+///     uint256 eventContractAddress;
+///     address proxy;
+///     uint32 round;
+/// }
+pub fn make_mapped_ton_event(
+    event_transaction_lt: u64,
+    event_timestamp: u32,
+    event_data: Vec<u8>,
+    configuration: ton_types::UInt256,
+    event_account: ton_types::UInt256,
+    proxy: [u8; 20],
+    round: u32,
+) -> Vec<u8> {
+    ethabi::encode(&[
+        ethabi::Token::Uint(event_transaction_lt.into()),
+        ethabi::Token::Uint(event_timestamp.into()),
+        ethabi::Token::Bytes(event_data.into()),
+        ethabi::Token::Int(0i8.into()),
+        ethabi::Token::Uint(configuration.as_slice().into()),
+        ethabi::Token::Int(0i8.into()),
+        ethabi::Token::Uint(event_account.as_slice().into()),
+        ethabi::Token::Address(proxy.into()),
+        ethabi::Token::Uint(round.into()),
+    ])
+}
+
 /// Maps `Vec<TonTokenValue>` to bytes, which could be signed
 pub fn map_ton_tokens_to_eth_bytes(tokens: Vec<ton_abi::Token>) -> Result<Vec<u8>> {
     let tokens = tokens
@@ -510,5 +543,34 @@ mod test {
         ])
         .unwrap();
         println!("Staking event: {}", hex::encode(&bytes));
+    }
+
+    #[test]
+    fn test_mapped_event() {
+        let data = make_mapped_ton_event(
+            123,
+            321,
+            map_ton_tokens_to_eth_bytes(vec![
+                123u32.token_value().named("round_num"),
+                ton_abi::Token::new(
+                    "eth_keys",
+                    ton_abi::TokenValue::Array(
+                        ton_abi::ParamType::Uint(160),
+                        vec![
+                            nekoton_abi::uint160_bytes::pack([1u8; 20]),
+                            nekoton_abi::uint160_bytes::pack([2u8; 20]),
+                            nekoton_abi::uint160_bytes::pack([3u8; 20]),
+                        ],
+                    ),
+                ),
+                9999u32.token_value().named("round_num"),
+            ])
+            .unwrap(),
+            UInt256::default(),
+            UInt256::default(),
+            [1u8; 20],
+            123,
+        );
+        println!("{}", hex::encode(data));
     }
 }
