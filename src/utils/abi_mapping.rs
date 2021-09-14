@@ -270,7 +270,7 @@ mod test {
         let got = super::map_eth_abi_to_ton(types.iter()).unwrap();
         let expected = vec![
             TonParamType::Bytes,
-            TonParamType::Bytes,
+            TonParamType::String,
             TonParamType::Int(128),
             TonParamType::Tuple(vec![
                 ton_abi::Param {
