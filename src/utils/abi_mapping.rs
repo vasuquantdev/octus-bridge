@@ -101,7 +101,7 @@ pub fn make_mapped_ton_event(
     proxy: [u8; 20],
     round: u32,
 ) -> Vec<u8> {
-    ethabi::encode(&[
+    ethabi::encode(&[ethabi::Token::Tuple(vec![
         ethabi::Token::Uint(event_transaction_lt.into()),
         ethabi::Token::Uint(event_timestamp.into()),
         ethabi::Token::Bytes(event_data.into()),
@@ -111,7 +111,7 @@ pub fn make_mapped_ton_event(
         ethabi::Token::Uint(event_account.as_slice().into()),
         ethabi::Token::Address(proxy.into()),
         ethabi::Token::Uint(round.into()),
-    ])
+    ])])
 }
 
 /// Maps `Vec<TonTokenValue>` to bytes, which could be signed
@@ -505,12 +505,20 @@ mod test {
             5u32.token_value().named("chainId"),
             ton_abi::Token::new(
                 "actions",
-                ton_abi::TokenValue::Tuple(vec![
-                    UInt256::default().token_value().named("value"),
-                    nekoton_abi::uint160_bytes::pack([1u8; 20]).named("target"),
-                    ton_abi::TokenValue::String("asd".to_string()).named("signature"),
-                    vec![1u8, 2, 3].token_value().named("callData"),
-                ]),
+                ton_abi::TokenValue::Array(
+                    ton_abi::ParamType::Tuple(vec![
+                        ton_abi::Param::new("value", ton_abi::ParamType::Uint(256)),
+                        ton_abi::Param::new("target", ton_abi::ParamType::Uint(160)),
+                        ton_abi::Param::new("signature", ton_abi::ParamType::String),
+                        ton_abi::Param::new("callData", ton_abi::ParamType::Bytes),
+                    ]),
+                    vec![ton_abi::TokenValue::Tuple(vec![
+                        UInt256::default().token_value().named("value"),
+                        nekoton_abi::uint160_bytes::pack([1u8; 20]).named("target"),
+                        ton_abi::TokenValue::String("asd".to_string()).named("signature"),
+                        vec![1u8, 2, 3].token_value().named("callData"),
+                    ])],
+                ),
             ),
         ])
         .unwrap();
@@ -551,19 +559,26 @@ mod test {
             123,
             321,
             map_ton_tokens_to_eth_bytes(vec![
-                123u32.token_value().named("round_num"),
+                0i8.token_value().named("gasBackWid"),
+                UInt256::default().token_value().named("gasBackAddress"),
+                5u32.token_value().named("chainId"),
                 ton_abi::Token::new(
-                    "eth_keys",
+                    "actions",
                     ton_abi::TokenValue::Array(
-                        ton_abi::ParamType::Uint(160),
-                        vec![
-                            nekoton_abi::uint160_bytes::pack([1u8; 20]),
-                            nekoton_abi::uint160_bytes::pack([2u8; 20]),
-                            nekoton_abi::uint160_bytes::pack([3u8; 20]),
-                        ],
+                        ton_abi::ParamType::Tuple(vec![
+                            ton_abi::Param::new("value", ton_abi::ParamType::Uint(256)),
+                            ton_abi::Param::new("target", ton_abi::ParamType::Uint(160)),
+                            ton_abi::Param::new("signature", ton_abi::ParamType::String),
+                            ton_abi::Param::new("callData", ton_abi::ParamType::Bytes),
+                        ]),
+                        vec![ton_abi::TokenValue::Tuple(vec![
+                            UInt256::default().token_value().named("value"),
+                            nekoton_abi::uint160_bytes::pack([1u8; 20]).named("target"),
+                            ton_abi::TokenValue::String("asd".to_string()).named("signature"),
+                            vec![1u8, 2, 3].token_value().named("callData"),
+                        ])],
                     ),
                 ),
-                9999u32.token_value().named("round_num"),
             ])
             .unwrap(),
             UInt256::default(),
