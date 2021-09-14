@@ -59,7 +59,7 @@ fn map_eth_abi_param_to_ton(param: &EthParamType) -> Result<TonParamType> {
         EthParamType::Int(size) => TonParamType::Int(*size),
         EthParamType::Uint(size) => TonParamType::Uint(*size),
         EthParamType::Bool => TonParamType::Bool,
-        EthParamType::String => TonParamType::Bytes,
+        EthParamType::String => TonParamType::String,
         EthParamType::Array(param) => {
             TonParamType::Array(Box::new(map_eth_abi_param_to_ton(param.as_ref())?))
         }
@@ -123,7 +123,7 @@ pub fn map_eth_token_to_ton(token: EthTokenValue, param: &EthParamType) -> Resul
             TonTokenValue::Int(ton_abi::Int { number, size })
         }
         (EthTokenValue::Address(ad), _) => TonTokenValue::Bytes(ad.0.to_vec()),
-        (EthTokenValue::String(a), _) => TonTokenValue::Bytes(Vec::from(a)),
+        (EthTokenValue::String(a), _) => TonTokenValue::String(a),
         (EthTokenValue::Bool(a), _) => TonTokenValue::Bool(a),
         (EthTokenValue::FixedArray(a), EthParamType::FixedArray(abi, _)) => {
             let param_type = match *abi.clone() {
@@ -206,6 +206,7 @@ fn map_ton_token_to_eth(token: TonTokenValue) -> Result<EthTokenValue, AbiMappin
                 .map(|ton| map_ton_token_to_eth(ton.value))
                 .collect::<Result<_, _>>()?,
         ),
+        TonTokenValue::String(a) => EthTokenValue::String(a),
         any => return Err(AbiMappingError::UnsupportedTonType(any)),
     })
 }
@@ -220,13 +221,10 @@ enum AbiMappingError {
 
 #[cfg(test)]
 mod test {
-    use super::map_ton_token_to_eth;
-    use super::EthParamType;
-    use super::EthTokenValue;
-    use super::TonParamType;
-    use super::TonTokenValue;
-    use crate::utils::{map_eth_token_to_ton, EthEventAbi};
+    use super::*;
+    use nekoton_abi::{BuildTokenValue, TokenValueExt};
     use pretty_assertions::assert_eq;
+    use ton_types::UInt256;
 
     #[test]
     fn test_eth_ton() {
@@ -430,5 +428,87 @@ mod test {
     #[test]
     fn test_abi3() {
         EthEventAbi::new(ABI3).unwrap();
+    }
+
+    #[test]
+    fn test_abi4() {
+        // Withdrawal event
+        decode_ton_event_abi(
+            r#"[
+                {"name":"wid","type":"int8"},
+                {"name":"addr","type":"uint256"},
+                {"name":"tokens","type":"uint128"},
+                {"name":"eth_addr","type":"uint160"},
+                {"name":"chainId","type":"uint32"}
+            ]"#,
+        )
+        .unwrap();
+
+        let bytes = map_ton_tokens_to_eth_bytes(vec![
+            0i8.token_value().named("wid"),
+            UInt256::default().token_value().named("addr"),
+            123u128.token_value().named("tokens"),
+            nekoton_abi::uint160_bytes::pack([1u8; 20]).named("eth_addr"),
+            5u32.token_value().named("chainId"),
+        ])
+        .unwrap();
+        println!("Withdrawal event: {}", hex::encode(&bytes));
+
+        // DAO event
+        decode_ton_event_abi(
+            r#"[
+                {"name":"gasBackWid","type":"int8"},
+				{"name":"gasBackAddress","type":"uint256"},
+				{"name":"chainId","type":"uint32"},
+				{"components":[{"name":"value","type":"uint256"},{"name":"target","type":"uint160"},{"name":"signature","type":"string"},{"name":"callData","type":"bytes"}],"name":"actions","type":"tuple[]"}
+
+            ]"#,
+        )
+        .unwrap();
+
+        let bytes = map_ton_tokens_to_eth_bytes(vec![
+            0i8.token_value().named("gasBackWid"),
+            UInt256::default().token_value().named("gasBackAddress"),
+            5u32.token_value().named("chainId"),
+            ton_abi::Token::new(
+                "actions",
+                ton_abi::TokenValue::Tuple(vec![
+                    UInt256::default().token_value().named("value"),
+                    nekoton_abi::uint160_bytes::pack([1u8; 20]).named("target"),
+                    ton_abi::TokenValue::String("asd".to_string()).named("signature"),
+                    vec![1u8, 2, 3].token_value().named("callData"),
+                ]),
+            ),
+        ])
+        .unwrap();
+        println!("DaoRoot event: {}", hex::encode(&bytes));
+
+        // Staking event
+        decode_ton_event_abi(
+            r#"[
+				{"name":"round_num","type":"uint32"},
+				{"name":"eth_keys","type":"uint160[]"},
+				{"name":"round_end","type":"uint32"}
+			]"#,
+        )
+        .unwrap();
+
+        let bytes = map_ton_tokens_to_eth_bytes(vec![
+            123u32.token_value().named("round_num"),
+            ton_abi::Token::new(
+                "eth_keys",
+                ton_abi::TokenValue::Array(
+                    ton_abi::ParamType::Uint(160),
+                    vec![
+                        nekoton_abi::uint160_bytes::pack([1u8; 20]),
+                        nekoton_abi::uint160_bytes::pack([2u8; 20]),
+                        nekoton_abi::uint160_bytes::pack([3u8; 20]),
+                    ],
+                ),
+            ),
+            9999u32.token_value().named("round_num"),
+        ])
+        .unwrap();
+        println!("Staking event: {}", hex::encode(&bytes));
     }
 }

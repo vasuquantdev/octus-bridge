@@ -31,6 +31,7 @@ pub struct Staking {
 impl Staking {
     pub async fn new(context: Arc<EngineContext>, staking_account: UInt256) -> Result<Arc<Self>> {
         let (staking_events_tx, staking_events_rx) = mpsc::unbounded_channel();
+        let (user_data_events_tx, user_data_events_rx) = mpsc::unbounded_channel();
 
         let staking_contract = context
             .ton_subscriber
@@ -56,7 +57,7 @@ impl Staking {
             .await?;
         let user_data_contract = UserDataContract(&user_data_contract);
 
-        let (user_data_observer, user_data_events_rx) = user_data_contract
+        user_data_contract
             .ensure_verified(&context, user_data_account, bridge_event_configuration)
             .await?;
 
@@ -79,7 +80,7 @@ impl Staking {
             staking_account,
             staking_observer: AccountObserver::new(&staking_events_tx),
             user_data_account,
-            user_data_observer,
+            user_data_observer: AccountObserver::new(&user_data_events_tx),
         });
 
         start_listening_events(
@@ -193,11 +194,12 @@ impl Staking {
         self: Arc<Self>,
         (_, event): (UInt256, UserDataEvent),
     ) -> Result<()> {
+        // TODO: handle?
+
         match event {
-            UserDataEvent::RelayMembershipRequested(_data) => {
-                //self.staking_state.applied_round(data.round_num);
-                // TODO: confirm address and pubkey
-            }
+            UserDataEvent::RelayMembershipRequested(_) => {}
+            UserDataEvent::TonPubkeyConfirmed(_) => {}
+            UserDataEvent::EthAddressConfirmed(_) => {}
         }
         Ok(())
     }
@@ -355,25 +357,67 @@ impl UserDataContract<'_> {
         context: &Arc<EngineContext>,
         user_data_account: UInt256,
         bridge_event_configuration: EthEventConfigurationDetails,
-    ) -> Result<(
-        Arc<AccountObserver<UserDataEvent>>,
-        AccountEventsRx<UserDataEvent>,
-    )> {
-        let (user_data_events_tx, user_data_events_rx) = mpsc::unbounded_channel();
+    ) -> Result<()> {
+        let ton_pubkey_confirmed_notify = Arc::new(Notify::new());
+        let eth_address_confirmed_notify = Arc::new(Notify::new());
+
+        let ton_notified = ton_pubkey_confirmed_notify.notified();
+        let eth_notified = eth_address_confirmed_notify.notified();
+
+        let (user_data_events_tx, mut user_data_events_rx) =
+            mpsc::unbounded_channel::<(UInt256, UserDataEvent)>();
 
         let details = self.get_details()?;
         log::info!("UserData details: {:?}", details);
 
-        if &details.relay_eth_address != context.keystore.eth.address().as_fixed_bytes() {
+        let relay_eth_address = *context.keystore.eth.address().as_fixed_bytes();
+        let relay_ton_pubkey = *context.keystore.ton.public_key();
+
+        if details.relay_eth_address != relay_eth_address {
             return Err(StakingError::UserDataEthAddressMismatch.into());
         }
-        if details.relay_ton_pubkey != context.keystore.ton.public_key() {
+        if details.relay_ton_pubkey != relay_ton_pubkey {
             return Err(StakingError::UserDataTonPublicKeyMismatch.into());
         }
 
         let user_data_observer = AccountObserver::new(&user_data_events_tx);
 
-        if !details.ton_pubkey_confirmed {
+        tokio::spawn({
+            let ton_pubkey_confirmed_notify = ton_pubkey_confirmed_notify.clone();
+            let eth_address_confirmed_notify = eth_address_confirmed_notify.clone();
+
+            async move {
+                while let Some((_, event)) = user_data_events_rx.recv().await {
+                    match event {
+                        UserDataEvent::TonPubkeyConfirmed(event) => {
+                            if event.ton_pubkey == relay_ton_pubkey {
+                                log::info!("Received TON pubkey confirmation");
+                                ton_pubkey_confirmed_notify.notify_waiters();
+                            } else {
+                                log::error!("Confirmed TON pubkey mismatch");
+                            }
+                        }
+                        UserDataEvent::EthAddressConfirmed(event) => {
+                            if event.eth_addr == relay_eth_address {
+                                log::info!("Received ETH address confirmation");
+                                eth_address_confirmed_notify.notify_waiters();
+                            } else {
+                                log::error!("Confirmed ETH address mismatch");
+                            }
+                        }
+                        UserDataEvent::RelayMembershipRequested(_) => { /* do nothing */ }
+                    }
+                }
+            }
+        });
+
+        context
+            .ton_subscriber
+            .add_transactions_subscription([user_data_account], &user_data_observer);
+
+        if details.ton_pubkey_confirmed {
+            ton_pubkey_confirmed_notify.notify_waiters();
+        } else {
             context
                 .deliver_message(
                     user_data_observer.clone(),
@@ -385,10 +429,12 @@ impl UserDataContract<'_> {
                 )
                 .await
                 .context("Failed confirming TON public key")?;
-            log::info!("Confirmed TON public key");
+            log::info!("Sent TON public key confirmation");
         }
 
-        if !details.eth_address_confirmed {
+        if details.eth_address_confirmed {
+            eth_address_confirmed_notify.notify_waiters();
+        } else {
             let subscriber = context
                 .eth_subscribers
                 .get_subscriber(bridge_event_configuration.network_configuration.chain_id)
@@ -404,10 +450,13 @@ impl UserDataContract<'_> {
                 )
                 .await
                 .context("Failed confirming ETH address")?;
-            log::info!("Confirmed ETH address")
+            log::info!("Sent ETH address confirmation")
         }
 
-        Ok((user_data_observer, user_data_events_rx))
+        log::info!("Waiting confirmation...");
+        futures::future::join(ton_notified, eth_notified).await;
+
+        Ok(())
     }
 }
 
@@ -570,11 +619,15 @@ impl ReadFromTransaction for StakingEvent {
 #[derive(Debug)]
 enum UserDataEvent {
     RelayMembershipRequested(RelayMembershipRequestedEvent),
+    TonPubkeyConfirmed(TonPubkeyConfirmedEvent),
+    EthAddressConfirmed(EthAddressConfirmedEvent),
 }
 
 impl ReadFromTransaction for UserDataEvent {
     fn read_from_transaction(ctx: &TxContext<'_>) -> Option<Self> {
         let membership_requested = user_data_contract::events::relay_membership_requested();
+        let ton_confirmed = user_data_contract::events::ton_pubkey_confirmed();
+        let eth_confirmed = user_data_contract::events::eth_address_confirmed();
 
         let mut res = None;
         ctx.iterate_events(|id, body| {
@@ -585,6 +638,10 @@ impl ReadFromTransaction for UserDataEvent {
                     body,
                     UserDataEvent::RelayMembershipRequested
                 );
+            } else if id == ton_confirmed.id {
+                parse_tokens!(res, ton_confirmed, body, UserDataEvent::TonPubkeyConfirmed)
+            } else if id == eth_confirmed.id {
+                parse_tokens!(res, eth_confirmed, body, UserDataEvent::EthAddressConfirmed)
             }
         });
         res

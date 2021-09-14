@@ -390,3 +390,15 @@ pub struct RelayMembershipRequestedEvent {
     #[abi(uint32)]
     pub lock_until: u32,
 }
+
+#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
+pub struct TonPubkeyConfirmedEvent {
+    #[abi(with = "uint256_bytes")]
+    pub ton_pubkey: UInt256,
+}
+
+#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
+pub struct EthAddressConfirmedEvent {
+    #[abi(with = "uint160_bytes")]
+    pub eth_addr: [u8; 20],
+}

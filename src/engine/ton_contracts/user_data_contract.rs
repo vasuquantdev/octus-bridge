@@ -51,4 +51,22 @@ pub mod events {
                 .build()
         })
     }
+
+    pub fn ton_pubkey_confirmed() -> &'static ton_abi::Event {
+        static FUNCTION: OnceCell<ton_abi::Event> = OnceCell::new();
+        FUNCTION.get_or_init(|| {
+            EventBuilder::new("TonPubkeyConfirmed")
+                .input("pubkey", ton_abi::ParamType::Uint(256))
+                .build()
+        })
+    }
+
+    pub fn eth_address_confirmed() -> &'static ton_abi::Event {
+        static FUNCTION: OnceCell<ton_abi::Event> = OnceCell::new();
+        FUNCTION.get_or_init(|| {
+            EventBuilder::new("EthAddressConfirmed")
+                .input("eth_addr", ton_abi::ParamType::Uint(160))
+                .build()
+        })
+    }
 }
