@@ -343,8 +343,6 @@ pub struct RelayRoundsDetails {
     pub current_election_start_time: u32,
     #[abi(uint32)]
     pub prev_relay_round_end_time: u32,
-    #[abi(uint32)]
-    pub pending_relay_round: u32,
     #[abi(bool)]
     pub current_election_ended: bool,
 }
