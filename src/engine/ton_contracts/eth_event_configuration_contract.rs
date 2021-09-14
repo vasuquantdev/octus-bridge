@@ -31,7 +31,6 @@ pub fn deploy_event() -> &'static ton_abi::Function {
     FUNCTION.get_or_init(|| {
         FunctionBuilder::new("deployEvent")
             .input("vote_data", EthEventVoteData::param_type())
-            .output("event_address", ton_abi::ParamType::Address)
             .build()
     })
 }
