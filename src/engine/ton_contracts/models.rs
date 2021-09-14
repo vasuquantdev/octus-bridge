@@ -365,8 +365,8 @@ pub struct ElectionStartedEvent {
     pub round_num: u32,
     #[abi(uint32)]
     pub election_start_time: u32,
-    #[abi(bool)]
-    pub election_end_time: bool,
+    #[abi(uint32)]
+    pub election_end_time: u32,
     #[abi(with = "address_only_hash")]
     pub election_addr: UInt256,
 }
