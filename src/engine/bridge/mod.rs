@@ -1146,6 +1146,34 @@ impl ReadFromTransaction for ConnectorEvent {
     }
 }
 
+impl TxContext<'_> {
+    fn find_new_event_contract_address(&self) -> Option<UInt256> {
+        let event = base_event_configuration_contract::events::new_event_contract();
+
+        let mut address: Option<ton_block::MsgAddressInt> = None;
+        self.iterate_events(|id, body| {
+            if id == event.id {
+                match event
+                    .decode_input(body)
+                    .and_then(|tokens| tokens.unpack_first().map_err(anyhow::Error::from))
+                {
+                    Ok(parsed) => address = Some(parsed),
+                    Err(e) => {
+                        log::error!("Failed to parse NewEventContract event: {:?}", e);
+                    }
+                }
+            }
+        });
+
+        if let Some(address) = address {
+            Some(only_account_hash(address))
+        } else {
+            log::warn!("NewEventContract was not found on deployEvent transaction");
+            None
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 enum TonEventConfigurationEvent {
     EventDeployed {
@@ -1170,12 +1198,9 @@ impl ReadFromTransaction for TonEventConfigurationEvent {
                     .and_then(|tokens| tokens.unpack_first().map_err(anyhow::Error::from))
                     .ok()?;
 
-                let address: ton_block::MsgAddressInt =
-                    ctx.find_function_output(function)?.unpack_first().ok()?;
-
                 Some(Self::EventDeployed {
                     vote_data,
-                    address: only_account_hash(address),
+                    address: ctx.find_new_event_contract_address()?,
                 })
             }
             id if id == ton_event_configuration_contract::set_end_timestamp().input_id => {
@@ -1215,12 +1240,9 @@ impl ReadFromTransaction for EthEventConfigurationEvent {
                     .and_then(|tokens| tokens.unpack_first().map_err(anyhow::Error::from))
                     .ok()?;
 
-                let address: ton_block::MsgAddressInt =
-                    ctx.find_function_output(function)?.unpack_first().ok()?;
-
                 Some(Self::EventDeployed {
                     vote_data,
-                    address: only_account_hash(address),
+                    address: ctx.find_new_event_contract_address()?,
                 })
             }
             id if id == eth_event_configuration_contract::set_end_block_number().input_id => {
