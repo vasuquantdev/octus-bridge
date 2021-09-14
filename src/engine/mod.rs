@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use parking_lot::Mutex;
 use tiny_adnl::utils::*;
 use ton_block::Serializable;
@@ -68,14 +68,20 @@ impl Engine {
             None => return Err(EngineError::BridgeAccountNotFound.into()),
         };
 
-        let bridge_details = BridgeContract(&bridge_contract).get_details()?;
+        let bridge_details = BridgeContract(&bridge_contract)
+            .get_details()
+            .context("Failed to get bridge details")?;
 
         // Initialize bridge
-        let bridge = Bridge::new(self.context.clone(), bridge_account).await?;
+        let bridge = Bridge::new(self.context.clone(), bridge_account)
+            .await
+            .context("Failed to init bridge")?;
         *self.bridge.lock() = Some(bridge);
 
         // Initialize staking
-        let staking = Staking::new(self.context.clone(), bridge_details.staking).await?;
+        let staking = Staking::new(self.context.clone(), bridge_details.staking)
+            .await
+            .context("Failed to init staking")?;
         *self.staking.lock() = Some(staking);
 
         self.context.eth_subscribers.start();

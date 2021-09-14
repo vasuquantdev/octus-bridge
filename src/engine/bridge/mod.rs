@@ -3,7 +3,7 @@ use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use nekoton_abi::*;
 use parking_lot::RwLock;
 use tiny_adnl::utils::*;
@@ -520,14 +520,18 @@ impl Bridge {
             .ok_or(BridgeError::BridgeAccountNotFound)?;
         let bridge = BridgeContract(&contract);
 
-        let connector_count = bridge.connector_counter()?;
+        let connector_count = bridge
+            .connector_counter()
+            .context("Failed to get connector count")?;
 
         let mut state = self.state.write();
 
         // Iterate for all connectors
         for id in 0..connector_count {
             // Compute next connector address
-            let connector_account = bridge.derive_connector_address(id)?;
+            let connector_account = bridge
+                .derive_connector_address(id)
+                .context("Failed to derive connector address")?;
 
             // Extract details from contract
             let details = match shard_accounts.find_account(&connector_account)? {
@@ -615,7 +619,9 @@ impl Bridge {
         configuration_contract: &ExistingContract,
     ) -> Result<()> {
         // Get event type using base contract abi
-        let event_type = EventConfigurationBaseContract(configuration_contract).get_type()?;
+        let event_type = EventConfigurationBaseContract(configuration_contract)
+            .get_type()
+            .context("Failed to get event configuration type")?;
         log::info!("Found configuration of type: {}", event_type);
 
         match state.connectors.get_mut(connector_account) {
@@ -625,17 +631,13 @@ impl Bridge {
 
         match event_type {
             // Extract and populate ETH event configuration details
-            EventType::Eth => self.add_eth_event_configuration(
-                state,
-                configuration_account,
-                configuration_contract,
-            )?,
+            EventType::Eth => self
+                .add_eth_event_configuration(state, configuration_account, configuration_contract)
+                .context("Failed to add ETH event configuration")?,
             // Extract and populate TON event configuration details
-            EventType::Ton => self.add_ton_event_configuration(
-                state,
-                configuration_account,
-                configuration_contract,
-            )?,
+            EventType::Ton => self
+                .add_ton_event_configuration(state, configuration_account, configuration_contract)
+                .context("Failed to add TON event configuration")?,
         };
 
         // Done
@@ -649,7 +651,9 @@ impl Bridge {
         contract: &ExistingContract,
     ) -> Result<()> {
         // Get configuration details
-        let details = EthEventConfigurationContract(contract).get_details()?;
+        let details = EthEventConfigurationContract(contract)
+            .get_details()
+            .context("Failed to get ETH event configuration details")?;
 
         // Verify and prepare abi
         let event_abi = Arc::new(EthEventAbi::new(&details.basic_configuration.event_abi)?);
@@ -721,7 +725,9 @@ impl Bridge {
         contract: &ExistingContract,
     ) -> Result<()> {
         // Get configuration details
-        let details = TonEventConfigurationContract(contract).get_details()?;
+        let details = TonEventConfigurationContract(contract)
+            .get_details()
+            .context("Failed to get TON event configuration details")?;
 
         // Check if configuration is expired
         let current_timestamp = self.context.ton_subscriber.current_utime();

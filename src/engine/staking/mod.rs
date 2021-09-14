@@ -367,7 +367,9 @@ impl UserDataContract<'_> {
         let (user_data_events_tx, mut user_data_events_rx) =
             mpsc::unbounded_channel::<(UInt256, UserDataEvent)>();
 
-        let details = self.get_details()?;
+        let details = self
+            .get_details()
+            .context("Failed to get UserData details")?;
         log::info!("UserData details: {:?}", details);
 
         let relay_eth_address = *context.keystore.eth.address().as_fixed_bytes();
@@ -470,7 +472,9 @@ impl StakingContract<'_> {
             .ton_subscriber
             .wait_contract_state(details.bridge_event_config_eth_ton)
             .await?;
-        EthEventConfigurationContract(&configuration_contract).get_details()
+        EthEventConfigurationContract(&configuration_contract)
+            .get_details()
+            .context("Failed to get ETH bridge configuration details")
     }
 
     async fn collect_relay_round_state(&self, context: &EngineContext) -> Result<RoundState> {
