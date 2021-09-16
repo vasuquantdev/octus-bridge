@@ -1213,11 +1213,12 @@ impl ReadFromTransaction for TonEventConfigurationEvent {
     fn read_from_transaction(ctx: &TxContext<'_>) -> Option<Self> {
         let in_msg_body = ctx.in_msg_internal()?.body()?;
 
-        match nekoton_abi::read_function_id(&in_msg_body).ok()? {
-            id if id == ton_event_configuration_contract::deploy_event().input_id => {
-                let function = ton_event_configuration_contract::set_end_timestamp();
+        let deploy_event = ton_event_configuration_contract::deploy_event();
+        let set_end_timestamp = ton_event_configuration_contract::set_end_timestamp();
 
-                let vote_data: TonEventVoteData = function
+        match nekoton_abi::read_function_id(&in_msg_body).ok()? {
+            id if id == deploy_event.input_id => {
+                let vote_data: TonEventVoteData = deploy_event
                     .decode_input(in_msg_body, true)
                     .and_then(|tokens| tokens.unpack_first().map_err(anyhow::Error::from))
                     .ok()?;
@@ -1227,8 +1228,8 @@ impl ReadFromTransaction for TonEventConfigurationEvent {
                     address: ctx.find_new_event_contract_address()?,
                 })
             }
-            id if id == ton_event_configuration_contract::set_end_timestamp().input_id => {
-                let end_timestamp = ton_event_configuration_contract::set_end_timestamp()
+            id if id == set_end_timestamp.input_id => {
+                let end_timestamp = set_end_timestamp
                     .decode_input(in_msg_body, true)
                     .and_then(|tokens| tokens.unpack_first().map_err(anyhow::Error::from))
                     .ok()?;
@@ -1255,11 +1256,12 @@ impl ReadFromTransaction for EthEventConfigurationEvent {
     fn read_from_transaction(ctx: &TxContext<'_>) -> Option<Self> {
         let in_msg_body = ctx.in_msg_internal()?.body()?;
 
-        match nekoton_abi::read_function_id(&in_msg_body).ok()? {
-            id if id == eth_event_configuration_contract::deploy_event().input_id => {
-                let function = eth_event_configuration_contract::deploy_event();
+        let deploy_event = eth_event_configuration_contract::deploy_event();
+        let set_end_block_number = eth_event_configuration_contract::set_end_block_number();
 
-                let vote_data: EthEventVoteData = function
+        match nekoton_abi::read_function_id(&in_msg_body).ok()? {
+            id if id == deploy_event.input_id => {
+                let vote_data: EthEventVoteData = deploy_event
                     .decode_input(in_msg_body, true)
                     .and_then(|tokens| tokens.unpack_first().map_err(anyhow::Error::from))
                     .ok()?;
@@ -1269,8 +1271,8 @@ impl ReadFromTransaction for EthEventConfigurationEvent {
                     address: ctx.find_new_event_contract_address()?,
                 })
             }
-            id if id == eth_event_configuration_contract::set_end_block_number().input_id => {
-                let end_block_number = eth_event_configuration_contract::set_end_block_number()
+            id if id == set_end_block_number.input_id => {
+                let end_block_number = set_end_block_number
                     .decode_input(in_msg_body, true)
                     .and_then(|tokens| tokens.unpack_first().map_err(anyhow::Error::from))
                     .ok()?;
