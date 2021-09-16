@@ -1,10 +1,11 @@
 use std::collections::{hash_map, HashMap};
 use std::ops::Deref;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::{Arc, Weak};
 
 use anyhow::{Context, Result};
 use parking_lot::Mutex;
+use tiny_adnl::utils::FxHashMap;
 use tokio::sync::{mpsc, oneshot, watch, Notify};
 use ton_block::{BinTreeType, Deserializable, HashmapAugType};
 use ton_indexer::utils::{BlockIdExtExtension, BlockProofStuff, BlockStuff, ShardStateStuff};
@@ -18,7 +19,7 @@ pub struct TonSubscriber {
     ready_signal: Notify,
     current_utime: AtomicU32,
     state_subscriptions: Mutex<HashMap<UInt256, StateSubscription>>,
-    mc_block_awaiters: Mutex<Vec<Box<dyn BlockAwaiter>>>,
+    mc_block_awaiters: Mutex<FxHashMap<usize, Box<dyn BlockAwaiter>>>,
     messages_queue: Arc<PendingMessagesQueue>,
 }
 
@@ -29,7 +30,10 @@ impl TonSubscriber {
             ready_signal: Notify::new(),
             current_utime: AtomicU32::new(0),
             state_subscriptions: Mutex::new(HashMap::new()),
-            mc_block_awaiters: Mutex::new(Vec::with_capacity(4)),
+            mc_block_awaiters: Mutex::new(FxHashMap::with_capacity_and_hasher(
+                4,
+                Default::default(),
+            )),
             messages_queue,
         })
     }
@@ -60,15 +64,15 @@ impl TonSubscriber {
                 &mut self,
                 block: &ton_block::Block,
                 block_info: &ton_block::BlockInfo,
-            ) -> Result<()> {
+            ) -> Result<bool> {
                 if matches!(self.since, Some(since) if block_info.gen_utime().0 < since) {
-                    return Ok(());
+                    return Ok(false);
                 }
 
                 if let Some(tx) = self.tx.take() {
                     let _ = tx.send(extract_shards(block, block_info));
                 }
-                Ok(())
+                Ok(true)
             }
         }
 
@@ -120,10 +124,13 @@ impl TonSubscriber {
         }
 
         let (tx, rx) = oneshot::channel();
-        self.mc_block_awaiters.lock().push(Box::new(Handler {
-            since,
-            tx: Some(tx),
-        }));
+        self.mc_block_awaiters.lock().insert(
+            BLOCK_AWAITER_ID.fetch_add(1, Ordering::Relaxed),
+            Box::new(Handler {
+                since,
+                tx: Some(tx),
+            }),
+        );
         rx.await?
     }
 
@@ -218,12 +225,16 @@ impl TonSubscriber {
         self.current_utime
             .store(block_info.gen_utime().0, Ordering::Release);
 
-        let awaiters = std::mem::take(&mut *self.mc_block_awaiters.lock());
-        for mut awaiter in awaiters {
-            if let Err(e) = awaiter.handle_block(block, &block_info) {
-                log::error!("Failed to handle masterchain block: {:?}", e);
-            }
-        }
+        let mut mc_block_awaiters = self.mc_block_awaiters.lock();
+        mc_block_awaiters.retain(
+            |_, awaiter| match awaiter.handle_block(block, &block_info) {
+                Ok(retain) => retain,
+                Err(e) => {
+                    log::error!("Failed to handle masterchain block: {:?}", e);
+                    true
+                }
+            },
+        );
 
         Ok(())
     }
@@ -329,6 +340,8 @@ impl ton_indexer::Subscriber for TonSubscriber {
         Ok(())
     }
 }
+
+static BLOCK_AWAITER_ID: AtomicUsize = AtomicUsize::new(0);
 
 struct StateSubscription {
     state_tx: ShardAccountTx,
@@ -460,7 +473,7 @@ pub trait BlockAwaiter: Send + Sync {
         &mut self,
         block: &ton_block::Block,
         block_info: &ton_block::BlockInfo,
-    ) -> Result<()>;
+    ) -> Result<bool>;
 }
 
 pub trait TransactionsSubscription: Send + Sync {
