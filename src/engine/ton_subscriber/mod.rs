@@ -64,15 +64,15 @@ impl TonSubscriber {
                 &mut self,
                 block: &ton_block::Block,
                 block_info: &ton_block::BlockInfo,
-            ) -> Result<bool> {
+            ) -> Result<BlockAwaiterAction> {
                 if matches!(self.since, Some(since) if block_info.gen_utime().0 < since) {
-                    return Ok(false);
+                    return Ok(BlockAwaiterAction::Retain);
                 }
 
                 if let Some(tx) = self.tx.take() {
                     let _ = tx.send(extract_shards(block, block_info));
                 }
-                Ok(true)
+                Ok(BlockAwaiterAction::Remove)
             }
         }
 
@@ -228,7 +228,7 @@ impl TonSubscriber {
         let mut mc_block_awaiters = self.mc_block_awaiters.lock();
         mc_block_awaiters.retain(
             |_, awaiter| match awaiter.handle_block(block, &block_info) {
-                Ok(retain) => retain,
+                Ok(action) => action == BlockAwaiterAction::Retain,
                 Err(e) => {
                     log::error!("Failed to handle masterchain block: {:?}", e);
                     true
@@ -468,12 +468,18 @@ enum StateSubscriptionStatus {
     Stopped,
 }
 
-pub trait BlockAwaiter: Send + Sync {
+trait BlockAwaiter: Send + Sync {
     fn handle_block(
         &mut self,
         block: &ton_block::Block,
         block_info: &ton_block::BlockInfo,
-    ) -> Result<bool>;
+    ) -> Result<BlockAwaiterAction>;
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+enum BlockAwaiterAction {
+    Retain,
+    Remove,
 }
 
 pub trait TransactionsSubscription: Send + Sync {
