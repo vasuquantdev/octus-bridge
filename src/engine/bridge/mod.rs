@@ -946,7 +946,7 @@ impl Bridge {
                 }
 
                 // Wait all shards
-                let current_utime = match ton_subscriber.wait_shards().await {
+                let current_utime = match ton_subscriber.wait_shards(None).await {
                     Ok(shards) => {
                         for (_, block_id) in shards.block_ids {
                             if let Err(e) = ton_engine.wait_state(&block_id, None, false).await {

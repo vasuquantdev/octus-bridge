@@ -36,6 +36,12 @@ impl TonSubscriber {
 
     pub async fn start(self: &Arc<Self>) -> Result<()> {
         self.wait_sync().await;
+
+        let now = chrono::Utc::now().timestamp() as u32;
+        log::info!("Waiting masterchain block for {}", now);
+        self.wait_shards(Some(now)).await?;
+        log::info!("Finished waiting masterchain block for {}", now);
+
         Ok(())
     }
 
@@ -43,8 +49,9 @@ impl TonSubscriber {
         self.current_utime.load(Ordering::Acquire)
     }
 
-    pub async fn wait_shards(&self) -> Result<LatestShardBlocks> {
+    pub async fn wait_shards(&self, since: Option<u32>) -> Result<LatestShardBlocks> {
         struct Handler {
+            since: Option<u32>,
             tx: Option<oneshot::Sender<Result<LatestShardBlocks>>>,
         }
 
@@ -54,6 +61,10 @@ impl TonSubscriber {
                 block: &ton_block::Block,
                 block_info: &ton_block::BlockInfo,
             ) -> Result<()> {
+                if matches!(self.since, Some(since) if block_info.gen_utime().0 < since) {
+                    return Ok(());
+                }
+
                 if let Some(tx) = self.tx.take() {
                     let _ = tx.send(extract_shards(block, block_info));
                 }
@@ -109,9 +120,10 @@ impl TonSubscriber {
         }
 
         let (tx, rx) = oneshot::channel();
-        self.mc_block_awaiters
-            .lock()
-            .push(Box::new(Handler { tx: Some(tx) }));
+        self.mc_block_awaiters.lock().push(Box::new(Handler {
+            since,
+            tx: Some(tx),
+        }));
         rx.await?
     }
 
