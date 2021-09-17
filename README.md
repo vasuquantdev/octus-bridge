@@ -1,20 +1,117 @@
-# ETH-to-TON relay
+<p align="center">
+    <h3 align="center">relay</h3>
+    <p align="center">ETH-TON bridge connecting link</p>
+    <p align="center">
+        <a href="/LICENSE">
+            <img alt="GitHub" src="https://img.shields.io/github/license/broxus/ton-eth-bridge-relay" />
+        </a>
+    </p>
+</p>
 
+### Runtime requirements
+- CPU: 8 cores, 2 GHz
+- RAM: 16 GB
+- Storage: 200 GB fast SSD
+- Network: 100 MBit/s
 
-## How to run
+### Docker build
 
-We don't provide prebuilt `.deb` packages due security reasons. So, to
-get `.deb`
-you should run this:
+The simplest way, but adds some overhead. Not recommended for machines with lower specs than required.
 
-- `./scripts/build_deb.sh`
-- run `sudo dpkg -i name_of_deb_package_you_got_on_previous_step`
-- change config in you favourite editor (default location is
-  `/etc/relay.conf`)
-- run it: `sudo systemctl start relay`
-- init it: ` relay-client --server-addr ADDRESS_YOU_SET_AS_LISTEN_ADDRESS` and
-  enjoy cli experience.
+#### How to run
 
-### Service restart
+```bash
+# Build docker container
+docker build --tag relay .
 
-- run client and unlock the relay
+# Run container
+docker run -ti --rm \
+  --mount type=bind,source=$(pwd)/state,target=/var/relay \
+  --mount type=bind,source=$(pwd)/cfg,target=/cfg \
+  -p 30303:30303/udp \
+  relay
+```
+
+### Native build
+
+A little bit more complex way, but gives some performance boost and reduces load.
+
+#### Requirements
+- Rust 1.54+
+- Clang 11
+
+#### How to run
+```bash
+export MASTER_PASSWORD=your_password
+wget https://raw.githubusercontent.com/tonlabs/main.ton.dev/master/configs/main.ton.dev/ton-global.config.json
+RUSTFLAGS='-C target-cpu=native' cargo run \
+  --release -- \
+  run --config config.yaml --global-config ton-global.config.json
+```
+
+### Example config
+
+`config.yaml`
+
+> NOTE: all parameters can be overwritten from environment
+
+```yaml
+---
+# Keystore password
+master_password: 12345678
+# Your address from which you specified keys
+staker_address: '0:a921453472366b7feeec15323a96b5dcf17197c88dc0d4578dfa52900b8a33cb'
+bridge_settings:
+  # Keystore data path
+  keys_path: "/etc/relay/keys.json"
+  # Bridge contract address
+  # TODO: update after mainnet
+  bridge_address: "0:eb0cad5322e47264b6b293dbbd2167e1bad75169c3b16e8f92e0b86fe1069143"
+  # EVM network configs
+  networks:
+    - chain_id: 5
+      # RPC node endpoint
+      endpoint: "https://goerli.infura.io/v3/your_key"
+      # Timeout, used for simple getter requests
+      get_timeout_sec: 10
+      # Max simultaneous connection count
+      pool_size: 10
+      # Event logs polling interval
+      poll_interval_sec: 10
+      # Max total request duration
+      maximum_failed_responses_time_sec: 600
+node_settings:
+  # UDP port, used for ADNL node
+  adnl_port: 30303
+  # Root directory for relay DB
+  db_path: "/var/relay/db"
+  # Path to temporary ADNL keys. 
+  # NOTE: Will be generated if it was not there
+  temp_keys_path: "/var/relay/adnl-keys.json"
+logger_settings:
+  appenders:
+    stdout:
+      kind: console
+      encoder:
+        pattern: "{h({l})} {M} = {m} {n}"
+  root:
+    level: info
+    appenders:
+      - stdout
+  loggers:
+    ton_indexer:
+      level: warn
+      appenders:
+        - stdout
+      additive: false
+    relay:
+      level: info
+      appenders:
+        - stdout
+      additive: false
+    tiny_adnl:
+      level: error
+      appenders:
+        - stdout
+      additive: false
+```

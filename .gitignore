@@ -10,6 +10,7 @@ keys*.json
 logs*.log
 config*.yaml
 
+state/
 log/
 scripts/relay*
 docker-compose.yaml

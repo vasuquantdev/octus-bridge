@@ -265,11 +265,19 @@ impl EthSubscriber {
     async fn update(&self) -> Result<()> {
         log::info!("Updating ETH subscriber");
 
+        // Skip iteration when there are no pending confirmations
+        if self.pending_confirmations.lock().await.is_empty() {
+            tokio::time::sleep(Duration::from_secs(self.config.poll_interval_sec)).await;
+            return Ok(());
+        }
+
+        // Prepare tryhard config
         let api_request_strategy = generate_fixed_timeout_config(
             Duration::from_secs(self.config.poll_interval_sec),
             Duration::from_secs(self.config.maximum_failed_responses_time_sec),
         );
 
+        // Get latest ETH block
         let current_block = match retry(
             || self.get_current_block_number(),
             api_request_strategy,
@@ -284,12 +292,14 @@ impl EthSubscriber {
 
         log::info!("Current ETH block: {}", current_block);
 
+        // Check last processed block
         let last_processed_block = self.last_processed_block.load(Ordering::Acquire);
         if last_processed_block == current_block {
             tokio::time::sleep(Duration::from_secs(self.config.poll_interval_sec)).await;
             return Ok(());
         }
 
+        // Get all events since last processed block
         let events = match retry(
             || {
                 timeout(
@@ -317,6 +327,7 @@ impl EthSubscriber {
             }
         };
 
+        // Update pending confirmations
         let mut pending_confirmations = self.pending_confirmations.lock().await;
         for event in events {
             log::info!("Got ETH log: {:?}", event);
@@ -335,6 +346,7 @@ impl EthSubscriber {
             }
         }
 
+        // Resolve verified confirmations
         let mut events_to_check = futures::stream::FuturesOrdered::new();
         pending_confirmations.retain(|&event_id, confirmation| {
             if confirmation.target_block > current_block {

@@ -15,7 +15,7 @@ async fn main() -> Result<()> {
 
 async fn run(app: App) -> Result<()> {
     let mut config = config::Config::new();
-    config.merge(read_config(app.config)?)?;
+    config.merge(read_config(app.config).context("Failed to read config")?)?;
     config.merge(config::Environment::new())?;
 
     match app.command {

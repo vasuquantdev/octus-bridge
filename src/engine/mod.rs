@@ -120,19 +120,27 @@ impl EngineContext {
             ton_types::UInt256::from_be_bytes(&config.staker_address.address().get_bytestring(0));
         let settings = config.bridge_settings;
 
-        let keystore = KeyStore::new(&settings.keys_path, config.master_password)?;
+        let keystore = KeyStore::new(&settings.keys_path, config.master_password)
+            .context("Failed to create keystore")?;
 
         let messages_queue = PendingMessagesQueue::new(16);
 
         let ton_subscriber = TonSubscriber::new(messages_queue.clone());
         let ton_engine = ton_indexer::Engine::new(
-            config.node_settings.build_indexer_config().await?,
+            config
+                .node_settings
+                .build_indexer_config()
+                .await
+                .context("Failed to build node config")?,
             global_config,
             vec![ton_subscriber.clone() as Arc<dyn ton_indexer::Subscriber>],
         )
-        .await?;
+        .await
+        .context("Failed to start TON node")?;
 
-        let eth_subscribers = EthSubscriberRegistry::new(settings.networks.clone()).await?;
+        let eth_subscribers = EthSubscriberRegistry::new(settings.networks.clone())
+            .await
+            .context("Failed to create EVM networks registry")?;
 
         Ok(Arc::new(Self {
             shutdown_requests_tx,
