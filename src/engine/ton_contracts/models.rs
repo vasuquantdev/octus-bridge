@@ -364,20 +364,6 @@ pub struct ElectionEndedEvent {
 }
 
 #[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
-pub struct RelayMembershipRequestedEvent {
-    #[abi(uint32)]
-    pub round_num: u32,
-    #[abi(uint128)]
-    pub tokens: u128,
-    #[abi(with = "uint256_bytes")]
-    pub ton_pubkey: UInt256,
-    #[abi(with = "uint160_bytes")]
-    pub eth_address: [u8; 20],
-    #[abi(uint32)]
-    pub lock_until: u32,
-}
-
-#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
 pub struct TonPubkeyConfirmedEvent {
     #[abi(with = "uint256_bytes")]
     pub ton_pubkey: UInt256,
@@ -387,4 +373,12 @@ pub struct TonPubkeyConfirmedEvent {
 pub struct EthAddressConfirmedEvent {
     #[abi(with = "uint160_bytes")]
     pub eth_addr: [u8; 20],
+}
+
+#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
+pub struct RelayKeysUpdatedEvent {
+    #[abi(with = "uint256_bytes")]
+    pub ton_pubkey: UInt256,
+    #[abi(with = "uint160_bytes")]
+    pub eth_address: [u8; 20],
 }

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use parking_lot::Mutex;
 use tiny_adnl::utils::*;
+use tokio::sync::mpsc;
 use ton_block::Serializable;
 
 use self::bridge::*;
@@ -31,8 +32,9 @@ impl Engine {
     pub async fn new(
         config: AppConfig,
         global_config: ton_indexer::GlobalConfig,
+        shutdown_requests_tx: ShutdownRequestsTx,
     ) -> Result<Arc<Self>> {
-        let context = EngineContext::new(config, global_config).await?;
+        let context = EngineContext::new(config, global_config, shutdown_requests_tx).await?;
 
         Ok(Arc::new(Self {
             context,
@@ -92,8 +94,9 @@ impl Engine {
 }
 
 pub struct EngineContext {
+    pub shutdown_requests_tx: ShutdownRequestsTx,
     pub staker_account: ton_types::UInt256,
-    pub settings: RelayConfig,
+    pub settings: BridgeConfig,
     pub keystore: Arc<KeyStore>,
     pub messages_queue: Arc<PendingMessagesQueue>,
     pub ton_subscriber: Arc<TonSubscriber>,
@@ -108,10 +111,14 @@ impl Drop for EngineContext {
 }
 
 impl EngineContext {
-    async fn new(config: AppConfig, global_config: ton_indexer::GlobalConfig) -> Result<Arc<Self>> {
+    async fn new(
+        config: AppConfig,
+        global_config: ton_indexer::GlobalConfig,
+        shutdown_requests_tx: ShutdownRequestsTx,
+    ) -> Result<Arc<Self>> {
         let staker_account =
             ton_types::UInt256::from_be_bytes(&config.staker_address.address().get_bytestring(0));
-        let settings = config.relay_settings;
+        let settings = config.bridge_settings;
 
         let keystore = KeyStore::new(&settings.keys_path, config.master_password)?;
 
@@ -128,6 +135,7 @@ impl EngineContext {
         let eth_subscribers = EthSubscriberRegistry::new(settings.networks.clone()).await?;
 
         Ok(Arc::new(Self {
+            shutdown_requests_tx,
             staker_account,
             settings,
             keystore,
@@ -215,6 +223,8 @@ impl EngineContext {
         Ok(())
     }
 }
+
+pub type ShutdownRequestsTx = mpsc::UnboundedSender<()>;
 
 #[derive(thiserror::Error, Debug)]
 enum EngineError {

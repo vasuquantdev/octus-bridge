@@ -15,27 +15,40 @@ use crate::engine::ton_subscriber::*;
 use crate::engine::EngineContext;
 use crate::utils::*;
 
+/// Rounds part of relays logic
 pub struct Staking {
+    /// Shared engine context
     context: Arc<EngineContext>,
 
+    /// Current relay round info
     current_relay_round: Mutex<RoundState>,
+
+    /// Notifier for `RelayRoundInitialized` events
     relay_round_started_notify: Notify,
+    /// Notifier for `ElectionStarted` events
     elections_start_notify: Notify,
+    /// Notifier for `ElectionEnded` events
     elections_end_notify: Notify,
+    /// Notifier for `RelayConfigUpdated` events
     election_timings_changed_notify: Notify,
 
+    /// Staking contract address
     staking_account: UInt256,
+    /// Staking events listener
     staking_observer: Arc<AccountObserver<(RoundState, StakingEvent)>>,
+
+    /// Staker user data contract address
     user_data_account: UInt256,
+    /// UserData events listener
     user_data_observer: Arc<AccountObserver<UserDataEvent>>,
 }
 
 impl Staking {
     pub async fn new(ctx: Arc<EngineContext>, staking_account: UInt256) -> Result<Arc<Self>> {
         // Prepare staking
-        ctx.ensure_user_data_verified(staking_account)
+        ctx.ensure_user_data_confirmed(staking_account)
             .await
-            .context("Failed to ensure that user data is verified")?;
+            .context("Failed to ensure that user data is confirmed")?;
 
         // Prepare initial data
         let shard_accounts = ctx.get_all_shard_accounts().await?;
@@ -97,6 +110,7 @@ impl Staking {
             Self::process_user_data_event,
         );
 
+        // Subscribe observers
         let context = &staking.context;
         context
             .ton_subscriber
@@ -109,8 +123,6 @@ impl Staking {
             staking.become_relay_next_round().await?;
         }
 
-        // TODO: get all shard states and collect reward
-
         staking.start_managing_elections();
 
         Ok(staking)
@@ -120,6 +132,8 @@ impl Staking {
         self: Arc<Self>,
         (_, (round_state, event)): (UInt256, (RoundState, StakingEvent)),
     ) -> Result<()> {
+        // Lock round state before notification.
+        // NOTE: at this time it can also be locked in elections management loop
         let mut current_relay_round = self.current_relay_round.lock();
         *current_relay_round = round_state;
 
@@ -127,6 +141,7 @@ impl Staking {
             StakingEvent::ElectionStarted(_) => {
                 self.elections_start_notify.notify_waiters();
 
+                // Start participating in elections
                 let staking = self.clone();
                 tokio::spawn(async move {
                     let notify_fut = staking.elections_end_notify.notified();
@@ -148,16 +163,19 @@ impl Staking {
             StakingEvent::RelayRoundInitialized(event) => {
                 self.relay_round_started_notify.notify_waiters();
 
+                // Spawn delayed reward collection
                 let staking = self.clone();
                 tokio::spawn(async move {
                     const ROUND_OFFSET: u64 = 10; // seconds
 
+                    // Wait until round end
                     let now = chrono::Utc::now().timestamp() as u64;
                     tokio::time::sleep(Duration::from_secs(
                         (event.round_end_time as u64).saturating_sub(now) + ROUND_OFFSET,
                     ))
                     .await;
 
+                    // Collect reward
                     if let Err(e) = staking.get_reward_for_relay_round(event.round_num).await {
                         log::error!(
                             "Failed to collect reward for round {}: {:?}",
@@ -172,6 +190,7 @@ impl Staking {
             }
         }
 
+        // NOTE: `current_relay_round` lock is dropped here
         Ok(())
     }
 
@@ -179,13 +198,19 @@ impl Staking {
         self: Arc<Self>,
         (_, event): (UInt256, UserDataEvent),
     ) -> Result<()> {
-        // TODO: handle?
+        let keystore = &self.context.keystore;
 
-        match event {
-            UserDataEvent::RelayMembershipRequested(_) => {}
-            UserDataEvent::TonPubkeyConfirmed(_) => {}
-            UserDataEvent::EthAddressConfirmed(_) => {}
+        if let UserDataEvent::RelayKeysUpdated(event) = event {
+            if event.ton_pubkey != keystore.ton.public_key()
+                || &event.eth_address != keystore.eth.address().as_fixed_bytes()
+            {
+                log::error!(
+                        "FATAL ERROR. Staker sent different keys. Current relay setup is not operational now"
+                    );
+                self.context.shutdown_requests_tx.send(())?;
+            }
         }
+
         Ok(())
     }
 
@@ -194,13 +219,18 @@ impl Staking {
 
         tokio::spawn(async move {
             loop {
+                // Get staking if it is still alive
                 let staking = match staking.upgrade() {
                     Some(staking) => staking,
                     None => return,
                 };
 
+                // Prepare notification futures
                 let (elections_state, timings_changed_fut) = {
+                    // Acquire mutex lock here
                     let current_relay_round = staking.current_relay_round.lock();
+
+                    // Prepare pending elections state
                     let elections_state = current_relay_round.elections_state;
                     log::info!("Elections management loop. State: {:?}", elections_state);
 
@@ -225,12 +255,15 @@ impl Staking {
                     };
                     let timings_changed_fut = staking.election_timings_changed_notify.notified();
 
+                    // NOTE: `current_relay_round` lock is dropped here, so it is guaranteed that
+                    // no other events are executed in same time
                     (elections_state, timings_changed_fut)
                 };
 
                 let now = chrono::Utc::now().timestamp() as u64;
                 log::info!("Now: {}", now);
 
+                // Process election state
                 match elections_state {
                     PendingElectionsState::NotStarted {
                         start_time,
@@ -238,17 +271,21 @@ impl Staking {
                         outer_fut,
                     } => {
                         let staking = staking.clone();
+
                         let action = async move {
                             let delay = (start_time as u64).saturating_sub(now);
 
+                            // Wait elections start time
                             log::info!("Starting elections in {} seconds", delay);
                             tokio::time::sleep(Duration::from_secs(delay)).await;
 
+                            // Start elections
                             log::info!("Starting elections");
                             if let Err(e) = staking.start_election().await {
                                 log::error!("Failed to start election: {:?}", e);
                             }
 
+                            // Wait actual elections start
                             log::info!("Waiting elections start");
                             inner_fut.await;
                         };
@@ -272,14 +309,17 @@ impl Staking {
                         let action = async move {
                             let delay = (end_time as u64).saturating_sub(now);
 
+                            // Wait elections end time
                             log::info!("Ending elections in {} seconds", delay);
                             tokio::time::sleep(Duration::from_secs(delay)).await;
 
+                            // End elections
                             log::info!("Ending elections");
                             if let Err(e) = staking.end_election().await {
                                 log::error!("Failed to end election: {:?}", e);
                             }
 
+                            // Wait actual elections end
                             log::info!("Waiting elections end");
                             inner_fut.await;
                         };
@@ -295,6 +335,7 @@ impl Staking {
                         }
                     }
                     PendingElectionsState::Finished { new_round_fut } => {
+                        // Wait new round initialization
                         log::info!("Elections loop: waiting new round");
                         new_round_fut.await
                     }
@@ -303,6 +344,7 @@ impl Staking {
         });
     }
 
+    /// Delivers `becomeRelayNextRound` message to user data contract
     async fn become_relay_next_round(&self) -> Result<()> {
         self.context
             .deliver_message(
@@ -315,6 +357,7 @@ impl Staking {
             .await
     }
 
+    /// Delivers `getRewardForRelayRound` message to user data contract
     async fn get_reward_for_relay_round(&self, relay_round: u32) -> Result<()> {
         self.context
             .deliver_message(
@@ -328,6 +371,7 @@ impl Staking {
             .await
     }
 
+    /// Delivers `startElectionOnNewRound` message to staking contract
     async fn start_election(&self) -> Result<()> {
         self.context
             .deliver_message(
@@ -340,6 +384,7 @@ impl Staking {
             .await
     }
 
+    /// Delivers `endElection` message to staking contract
     async fn end_election(&self) -> Result<()> {
         self.context
             .deliver_message(
@@ -351,7 +396,8 @@ impl Staking {
 }
 
 impl EngineContext {
-    async fn ensure_user_data_verified(self: &Arc<Self>, staking_account: UInt256) -> Result<()> {
+    /// Ensures that TON pubkey and ETH address are confirmed in UserData
+    async fn ensure_user_data_confirmed(self: &Arc<Self>, staking_account: UInt256) -> Result<()> {
         let shard_accounts = self.get_all_shard_accounts().await?;
         let staking_contract = shard_accounts
             .find_account(&staking_account)?
@@ -381,6 +427,7 @@ impl EngineContext {
 }
 
 impl UserDataContract<'_> {
+    /// Ensures that TON pubkey and ETH address are confirmed in UserData
     async fn ensure_verified(
         &self,
         context: &Arc<EngineContext>,
@@ -420,6 +467,15 @@ impl UserDataContract<'_> {
             async move {
                 while let Some((_, event)) = user_data_events_rx.recv().await {
                     match event {
+                        UserDataEvent::RelayKeysUpdated(event) => {
+                            if event.ton_pubkey != relay_ton_pubkey
+                                || event.eth_address != relay_eth_address
+                            {
+                                log::error!(
+                                    "TON pubkey or ETH address changed. Relay in current setup may freeze"
+                                );
+                            }
+                        }
                         UserDataEvent::TonPubkeyConfirmed(event) => {
                             if event.ton_pubkey == relay_ton_pubkey {
                                 log::info!("Received TON pubkey confirmation");
@@ -436,7 +492,6 @@ impl UserDataContract<'_> {
                                 log::error!("Confirmed ETH address mismatch");
                             }
                         }
-                        UserDataEvent::RelayMembershipRequested(_) => { /* do nothing */ }
                     }
                 }
             }
@@ -491,6 +546,7 @@ impl UserDataContract<'_> {
 }
 
 impl<'a> StakingContract<'a> {
+    /// Find bridge ETH event configuration
     fn get_eth_bridge_configuration_details(
         &self,
         shard_accounts: &ShardAccountsMap,
@@ -507,6 +563,7 @@ impl<'a> StakingContract<'a> {
             .context("Failed to get ETH bridge configuration details")
     }
 
+    /// Collect relay round state
     fn get_round_state(&self) -> Result<RoundState> {
         let relay_config = self
             .get_relay_config()
@@ -642,26 +699,21 @@ impl ReadFromTransaction for (RoundState, StakingEvent) {
 
 #[derive(Debug)]
 enum UserDataEvent {
-    RelayMembershipRequested(RelayMembershipRequestedEvent),
+    RelayKeysUpdated(RelayKeysUpdatedEvent),
     TonPubkeyConfirmed(TonPubkeyConfirmedEvent),
     EthAddressConfirmed(EthAddressConfirmedEvent),
 }
 
 impl ReadFromTransaction for UserDataEvent {
     fn read_from_transaction(ctx: &TxContext<'_>) -> Option<Self> {
-        let membership_requested = user_data_contract::events::relay_membership_requested();
+        let keys_updated = user_data_contract::events::relay_keys_updated();
         let ton_confirmed = user_data_contract::events::ton_pubkey_confirmed();
         let eth_confirmed = user_data_contract::events::eth_address_confirmed();
 
         let mut res = None;
         ctx.iterate_events(|id, body| {
-            if id == membership_requested.id {
-                parse_tokens!(
-                    res,
-                    membership_requested,
-                    body,
-                    UserDataEvent::RelayMembershipRequested
-                );
+            if id == keys_updated.id {
+                parse_tokens!(res, keys_updated, body, UserDataEvent::RelayKeysUpdated)
             } else if id == ton_confirmed.id {
                 parse_tokens!(res, ton_confirmed, body, UserDataEvent::TonPubkeyConfirmed)
             } else if id == eth_confirmed.id {

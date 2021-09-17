@@ -1,5 +1,6 @@
 use std::convert::TryFrom;
 
+use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use web3::types::{Log, H256};
 
@@ -40,12 +41,12 @@ impl TryFrom<Log> for ParsedEthEvent {
     fn try_from(log: Log) -> Result<Self, Self::Error> {
         let transaction_hash = log
             .transaction_hash
-            .ok_or(ParsedEthEventError::TransactionHashNotFound)?;
+            .context("Transaction hash was not found in event")?;
 
         let event_index = log
             .log_index
             .map(|x| x.as_u32())
-            .ok_or(ParsedEthEventError::EventIndexNotFound)?;
+            .context("Event index was not found in event")?;
 
         if let Some(true) = log.removed {
             return Ok(ParsedEthEvent::Removed(RemovedEthEvent {
@@ -57,11 +58,11 @@ impl TryFrom<Log> for ParsedEthEvent {
         let block_number = log
             .block_number
             .map(|x| x.as_u64())
-            .ok_or(ParsedEthEventError::BlockNumberNotFound)?;
+            .context("Block number was not found in event")?;
 
         let block_hash = log
             .block_hash
-            .ok_or(ParsedEthEventError::BlockHashNotFound)?;
+            .context("Block hash was not found in event")?;
 
         let data = log.data.0;
 
@@ -95,16 +96,4 @@ pub struct ReceivedEthEvent {
     pub block_number: u64,
     pub block_hash: H256,
     pub data: Vec<u8>,
-}
-
-#[derive(thiserror::Error, Debug)]
-enum ParsedEthEventError {
-    #[error("Transaction hash was not found in event")]
-    TransactionHashNotFound,
-    #[error("Block number was not found in event")]
-    BlockNumberNotFound,
-    #[error("Block hash was not found in event")]
-    BlockHashNotFound,
-    #[error("Event index was not found in event")]
-    EventIndexNotFound,
 }

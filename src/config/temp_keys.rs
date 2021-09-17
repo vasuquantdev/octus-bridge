@@ -3,9 +3,12 @@ use std::path::Path;
 
 use anyhow::Result;
 
+/// ADNL keys wrapper
 pub struct TempKeys(ton_indexer::NodeKeys);
 
 impl TempKeys {
+    /// Load from disk.
+    /// NOTE: generates and saves new if it doesn't exist
     pub fn load<P>(path: P, force_regenerate: bool) -> Result<Self>
     where
         P: AsRef<Path>,

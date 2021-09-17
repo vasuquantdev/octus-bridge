@@ -104,7 +104,7 @@ pub fn make_mapped_ton_event(
     ethabi::encode(&[ethabi::Token::Tuple(vec![
         ethabi::Token::Uint(event_transaction_lt.into()),
         ethabi::Token::Uint(event_timestamp.into()),
-        ethabi::Token::Bytes(event_data.into()),
+        ethabi::Token::Bytes(event_data),
         ethabi::Token::Int(0i8.into()),
         ethabi::Token::Uint(configuration.as_slice().into()),
         ethabi::Token::Int(0i8.into()),

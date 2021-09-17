@@ -11,12 +11,14 @@ use ton_types::UInt256;
 use crate::config::{FromPhraseAndPath, StoredKeysData, UnencryptedEthData, UnencryptedTonData};
 use crate::utils::*;
 
+/// A collection of signers
 pub struct KeyStore {
     pub eth: EthSigner,
     pub ton: TonSigner,
 }
 
 impl KeyStore {
+    /// Loads and decrypts keystore state
     pub fn new<P>(keys_path: P, password: SecUtf8) -> Result<Arc<Self>>
     where
         P: AsRef<Path>,
@@ -244,7 +246,7 @@ mod tst {
 
     use super::*;
 
-    const TEST_PHRASE: &'static str =
+    const TEST_PHRASE: &str =
         "spy taste penalty add aware trim crouch denial dinner arrest magic young";
 
     #[test]

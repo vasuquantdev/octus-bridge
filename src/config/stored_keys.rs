@@ -11,6 +11,97 @@ use serde::{Deserialize, Serialize};
 
 use crate::utils::*;
 
+/// Keystore data, stored on disk
+#[derive(Serialize, Deserialize)]
+pub struct StoredKeysData {
+    #[serde(with = "serde_bytes_base64")]
+    salt: Vec<u8>,
+
+    /// ETH part
+    eth: StoredKeysDataPart,
+    /// TON part
+    ton: StoredKeysDataPart,
+}
+
+impl StoredKeysData {
+    /// Encrypts ETH and TON data
+    pub fn new(password: &str, eth: UnencryptedEthData, ton: UnencryptedTonData) -> Result<Self> {
+        let mut rng = rand::rngs::OsRng;
+        let salt: [u8; 20] = rng.gen();
+
+        let key = symmetric_key_from_password(password, &salt);
+        let encryptor = ChaCha20Poly1305::new(&key);
+
+        Ok(Self {
+            salt: salt.to_vec(),
+            eth: eth.encrypt(&encryptor, &mut rng)?,
+            ton: ton.encrypt(&encryptor, &mut rng)?,
+        })
+    }
+
+    /// Decrypts full ETH and TON data
+    pub fn decrypt(&self, password: &str) -> Result<(UnencryptedEthData, UnencryptedTonData)> {
+        let key = symmetric_key_from_password(password, &self.salt);
+        let decrypter = ChaCha20Poly1305::new(&key);
+
+        let eth = UnencryptedEthData::decrypt(&decrypter, &self.eth)?;
+        let ton = UnencryptedTonData::decrypt(&decrypter, &self.ton)?;
+
+        Ok((eth, ton))
+    }
+
+    /// Decrypts private keys from ETH and TON data
+    pub fn decrypt_only_keys(&self, password: &str) -> Result<([u8; 32], [u8; 32])> {
+        let key = symmetric_key_from_password(password, &self.salt);
+        let decrypter = ChaCha20Poly1305::new(&key);
+
+        let eth = self.eth.decrypt_secret_key(&decrypter)?;
+        let ton = self.ton.decrypt_secret_key(&decrypter)?;
+
+        Ok((eth, ton))
+    }
+
+    /// Loads data from disk
+    pub fn load<P>(path: P) -> Result<Self>
+    where
+        P: AsRef<Path>,
+    {
+        let file = File::open(path)?;
+        let data: Self = serde_json::from_reader(&file)?;
+        Ok(data)
+    }
+
+    /// Stores data on disk
+    pub fn save<P>(&self, path: P) -> Result<()>
+    where
+        P: AsRef<Path>,
+    {
+        let file = File::create(path)?;
+        serde_json::to_writer_pretty(file, self)?;
+        Ok(())
+    }
+}
+
+/// Encrypted seed and path
+#[derive(Serialize, Deserialize)]
+pub struct StoredKeysDataPart {
+    #[serde(with = "serde_bytes_base64")]
+    pub encrypted_seed_phrase: Vec<u8>,
+    #[serde(with = "serde_bytes_base64")]
+    pub encrypted_derivation_path: Vec<u8>,
+    #[serde(with = "serde_nonce")]
+    pub nonce: Nonce,
+}
+
+impl StoredKeysDataPart {
+    fn decrypt_secret_key(&self, decrypter: &ChaCha20Poly1305) -> Result<[u8; 32]> {
+        let seed_phrase = decrypt_secure_str(decrypter, &self.nonce, &self.encrypted_seed_phrase)?;
+        let path = decrypt_secure_str(decrypter, &self.nonce, &self.encrypted_derivation_path)?;
+        derive_secret_from_phrase(seed_phrase.unsecure(), path.unsecure())
+    }
+}
+
+/// Raw ETH seed phrase with derived address
 pub struct UnencryptedEthData {
     phrase: SecUtf8,
     path: SecUtf8,
@@ -61,6 +152,7 @@ impl FromPhraseAndPath for UnencryptedEthData {
     }
 }
 
+/// Raw TON seed phrase with derived public key
 pub struct UnencryptedTonData {
     phrase: SecUtf8,
     path: SecUtf8,
@@ -149,87 +241,6 @@ pub trait FromPhraseAndPath: Sized {
             encrypted_derivation_path,
             nonce,
         })
-    }
-}
-
-/// Data, stored on disk in `encrypted_data` filed of config.
-#[derive(Serialize, Deserialize)]
-pub struct StoredKeysData {
-    #[serde(with = "serde_bytes_base64")]
-    salt: Vec<u8>,
-    eth: StoredKeysDataPart,
-    ton: StoredKeysDataPart,
-}
-
-impl StoredKeysData {
-    pub fn new(password: &str, eth: UnencryptedEthData, ton: UnencryptedTonData) -> Result<Self> {
-        let mut rng = rand::rngs::OsRng;
-        let salt: [u8; 20] = rng.gen();
-
-        let key = symmetric_key_from_password(password, &salt);
-        let encryptor = ChaCha20Poly1305::new(&key);
-
-        Ok(Self {
-            salt: salt.to_vec(),
-            eth: eth.encrypt(&encryptor, &mut rng)?,
-            ton: ton.encrypt(&encryptor, &mut rng)?,
-        })
-    }
-
-    pub fn decrypt(&self, password: &str) -> Result<(UnencryptedEthData, UnencryptedTonData)> {
-        let key = symmetric_key_from_password(password, &self.salt);
-        let decrypter = ChaCha20Poly1305::new(&key);
-
-        let eth = UnencryptedEthData::decrypt(&decrypter, &self.eth)?;
-        let ton = UnencryptedTonData::decrypt(&decrypter, &self.ton)?;
-
-        Ok((eth, ton))
-    }
-
-    pub fn decrypt_only_keys(&self, password: &str) -> Result<([u8; 32], [u8; 32])> {
-        let key = symmetric_key_from_password(password, &self.salt);
-        let decrypter = ChaCha20Poly1305::new(&key);
-
-        let eth = self.eth.decrypt_secret_key(&decrypter)?;
-        let ton = self.ton.decrypt_secret_key(&decrypter)?;
-
-        Ok((eth, ton))
-    }
-
-    pub fn load<P>(path: P) -> Result<Self>
-    where
-        P: AsRef<Path>,
-    {
-        let file = File::open(path)?;
-        let data: Self = serde_json::from_reader(&file)?;
-        Ok(data)
-    }
-
-    pub fn save<P>(&self, path: P) -> Result<()>
-    where
-        P: AsRef<Path>,
-    {
-        let file = File::create(path)?;
-        serde_json::to_writer_pretty(file, self)?;
-        Ok(())
-    }
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct StoredKeysDataPart {
-    #[serde(with = "serde_bytes_base64")]
-    pub encrypted_seed_phrase: Vec<u8>,
-    #[serde(with = "serde_bytes_base64")]
-    pub encrypted_derivation_path: Vec<u8>,
-    #[serde(with = "serde_nonce")]
-    pub nonce: Nonce,
-}
-
-impl StoredKeysDataPart {
-    fn decrypt_secret_key(&self, decrypter: &ChaCha20Poly1305) -> Result<[u8; 32]> {
-        let seed_phrase = decrypt_secure_str(decrypter, &self.nonce, &self.encrypted_seed_phrase)?;
-        let path = decrypt_secure_str(decrypter, &self.nonce, &self.encrypted_derivation_path)?;
-        derive_secret_from_phrase(seed_phrase.unsecure(), path.unsecure())
     }
 }
 

@@ -14,44 +14,76 @@ mod eth_config;
 mod stored_keys;
 mod temp_keys;
 
+/// Main application config (full). Used to run relay
 #[derive(Serialize, Deserialize)]
 pub struct AppConfig {
+    /// Password, used to encode and decode data in keystore
     pub master_password: SecUtf8,
+
+    /// Staker address from which keys were submitted
     #[serde(with = "serde_address")]
     pub staker_address: ton_block::MsgAddressInt,
-    pub relay_settings: RelayConfig,
+
+    /// Bridge related settings
+    pub bridge_settings: BridgeConfig,
+
+    /// TON node settings
     #[serde(default)]
     pub node_settings: NodeConfig,
+
+    /// log4rs settings.
+    /// See [docs](https://docs.rs/log4rs/1.0.0/log4rs/) for more details
     #[serde(default = "default_logger_settings")]
     pub logger_settings: serde_yaml::Value,
 }
 
+/// Main application config (brief). Used for simple commands that require only password
 #[derive(Serialize, Deserialize)]
 pub struct BriefAppConfig {
+    /// Password, used to encode and decode data in keystore
     #[serde(default)]
     pub master_password: Option<SecUtf8>,
 }
 
+/// Bridge related settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RelayConfig {
+#[serde(deny_unknown_fields)]
+pub struct BridgeConfig {
+    /// Path to file with keystore data
     pub keys_path: PathBuf,
+
+    /// Bridge contract address
     #[serde(with = "serde_address")]
     pub bridge_address: ton_block::MsgAddressInt,
+
+    /// EVM networks settings
     pub networks: Vec<EthConfig>,
 }
 
+/// TON node settings
 #[derive(Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct NodeConfig {
+    /// Node public ip. Automatically determines if None
     pub adnl_public_ip: Option<Ipv4Addr>,
+
+    /// Node port. Default: 30303
     pub adnl_port: u16,
+
+    /// Path to the DB directory. Default: `./db`
     pub db_path: PathBuf,
+
+    /// Path to the ADNL keys. Default: `adnl-keys.json`.
+    /// NOTE: generates new keys if specified path doesn't exist
     pub temp_keys_path: PathBuf,
+
+    /// Allowed DB size in bytes. Default: one third of all machine RAM
     pub max_db_memory_usage: usize,
 }
 
 impl NodeConfig {
     pub async fn build_indexer_config(self) -> Result<ton_indexer::NodeConfig> {
+        // Determine public ip
         let ip_address = match self.adnl_public_ip {
             Some(address) => address,
             None => public_ip::addr_v4()
@@ -60,12 +92,15 @@ impl NodeConfig {
         };
         log::info!("Using public ip: {}", ip_address);
 
+        // Generate temp keys
         // TODO: add param to generate new temp keys
         let temp_keys =
             TempKeys::load(self.temp_keys_path, false).context("Failed to load temp keys")?;
 
+        // Prepare DB folder
         std::fs::create_dir_all(&self.db_path)?;
 
+        // Done
         Ok(ton_indexer::NodeConfig {
             ip_address: SocketAddrV4::new(ip_address, self.adnl_port),
             adnl_keys: temp_keys.into(),

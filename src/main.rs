@@ -6,6 +6,7 @@ use dialoguer::{Confirm, Input, Password};
 use relay::config::*;
 use relay::engine::*;
 use serde::Serialize;
+use tokio::sync::mpsc;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -61,14 +62,17 @@ impl CmdRun {
 
         log::info!("Initializing relay...");
 
-        let engine = Engine::new(config, global_config)
+        let (shutdown_requests_tx, mut shutdown_requests_rx) = mpsc::unbounded_channel();
+
+        let engine = Engine::new(config, global_config, shutdown_requests_tx)
             .await
             .context("Failed to create engine")?;
         engine.start().await.context("Failed to start engine")?;
 
         log::info!("Initialized relay");
 
-        futures::future::pending().await
+        shutdown_requests_rx.recv().await;
+        Ok(())
     }
 }
 

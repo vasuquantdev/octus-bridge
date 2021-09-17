@@ -43,11 +43,11 @@ pub fn get_reward_for_relay_round() -> &'static ton_abi::Function {
 pub mod events {
     use super::*;
 
-    pub fn relay_membership_requested() -> &'static ton_abi::Event {
+    pub fn relay_keys_updated() -> &'static ton_abi::Event {
         static FUNCTION: OnceCell<ton_abi::Event> = OnceCell::new();
         FUNCTION.get_or_init(|| {
-            EventBuilder::new("RelayMembershipRequested")
-                .inputs(RelayMembershipRequestedEvent::param_type())
+            EventBuilder::new("RelayKeysUpdated")
+                .inputs(RelayKeysUpdatedEvent::param_type())
                 .build()
         })
     }

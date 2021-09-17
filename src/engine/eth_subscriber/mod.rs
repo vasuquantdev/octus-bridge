@@ -24,12 +24,16 @@ use crate::utils::*;
 mod contracts;
 mod models;
 
+/// A collection of EVM chain subscribers
 pub struct EthSubscriberRegistry {
+    /// EVM subscribers by chain id
     subscribers: DashMap<u32, Arc<EthSubscriber>>,
+    /// Shared last block numbers
     last_block_numbers: Arc<LastBlockNumbersMap>,
 }
 
 impl EthSubscriberRegistry {
+    /// Creates registry from configs
     pub async fn new<I>(networks: I) -> Result<Arc<Self>>
     where
         I: IntoIterator<Item = EthConfig>,
@@ -46,6 +50,7 @@ impl EthSubscriberRegistry {
         Ok(registry)
     }
 
+    /// Starts all subscribers
     pub fn start(&self) {
         for subscriber in &self.subscribers {
             subscriber.start();

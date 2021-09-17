@@ -18,15 +18,21 @@ use crate::engine::ton_subscriber::*;
 use crate::engine::EngineContext;
 use crate::utils::*;
 
+/// Events part of relays logic
 pub struct Bridge {
+    /// Shared engine context
     context: Arc<EngineContext>,
 
+    /// Bridge contract address
     bridge_account: UInt256,
-
+    /// Bridge events listener
     bridge_observer: Arc<AccountObserver<BridgeEvent>>,
+    /// Known contracts
     state: Arc<RwLock<BridgeState>>,
 
+    // Observers for pending ETH events
     pending_eth_events: Arc<FxDashMap<UInt256, PendingEthEvent>>,
+    // Observers for pending TON events
     pending_ton_events: Arc<FxDashMap<UInt256, PendingTonEvent>>,
 
     connectors_tx: AccountEventsTx<ConnectorEvent>,
@@ -104,6 +110,7 @@ impl Bridge {
             Self::process_ton_event,
         );
 
+        // Subscribe bridge account to transactions
         bridge
             .context
             .ton_subscriber
@@ -125,18 +132,18 @@ impl Bridge {
     ) -> Result<()> {
         match event {
             BridgeEvent::ConnectorDeployed(event) => {
+                // Create connector entry if it wasn't already created
                 match self.state.write().connectors.entry(event.connector) {
                     hash_map::Entry::Vacant(entry) => {
+                        // Create observer
                         let observer = AccountObserver::new(&self.connectors_tx);
 
-                        let entry = entry.insert(ConnectorState {
-                            event_type: ConnectorConfigurationType::Unknown,
-                            observer,
-                        });
+                        let entry = entry.insert(observer);
 
+                        // Subscribe observer to transactions
                         self.context
                             .ton_subscriber
-                            .add_transactions_subscription([event.connector], &entry.observer);
+                            .add_transactions_subscription([event.connector], entry);
                     }
                     hash_map::Entry::Occupied(_) => {
                         log::error!(
@@ -147,6 +154,7 @@ impl Bridge {
                     }
                 };
 
+                // Check connector contract if it was added in this iteration
                 tokio::spawn(async move {
                     if let Err(e) = self.check_connector_contract(event.connector).await {
                         log::error!("Failed to check connector contract: {:?}", e);
@@ -172,10 +180,12 @@ impl Bridge {
         (account, event): (UInt256, EthEventConfigurationEvent),
     ) -> Result<()> {
         match event {
-            EthEventConfigurationEvent::EventDeployed { address, .. } => {
+            // Create observer on each deployment event
+            EthEventConfigurationEvent::EventDeployed { address } => {
                 // TODO: check if vote data already exist somewhere
                 self.add_pending_eth_event(address);
             }
+            // Update configuration state
             EthEventConfigurationEvent::SetEndBlockNumber { end_block_number } => {
                 let mut state = self.state.write();
                 let configuration = state
@@ -193,11 +203,16 @@ impl Bridge {
         (account, event): (UInt256, TonEventConfigurationEvent),
     ) -> Result<()> {
         match event {
+            // Create observer on each deployment event
             TonEventConfigurationEvent::EventDeployed { address, .. } => {
+                // NOTE: Each event must be unique on the contracts level,
+                // so receiving message with duplicated address is
+                // a signal the something went wrong
                 if !self.add_pending_ton_event(address) {
                     log::warn!("Got deployment message for pending event: {:x}", account);
                 }
             }
+            // Update configuration state
             TonEventConfigurationEvent::SetEndTimestamp { end_timestamp } => {
                 let mut state = self.state.write();
                 let configuration = state
@@ -218,15 +233,19 @@ impl Bridge {
 
         let our_public_key = self.context.keystore.ton.public_key();
 
+        // Handle only known ETH events
         if let Entry::Occupied(entry) = self.pending_eth_events.entry(account) {
             match event {
+                // Handle event initialization
                 EthEvent::ReceiveRoundRelays { keys } => {
                     // Check if event contains our key
                     if !keys.contains(our_public_key) {
                         entry.remove();
+                        // Do nothing
                         return Ok(());
                     }
 
+                    // Start voting
                     self.spawn_background_task(
                         "update ETH event",
                         self.clone().update_eth_event(account),
@@ -236,9 +255,10 @@ impl Bridge {
                 EthEvent::Confirm { public_key } | EthEvent::Reject { public_key }
                     if public_key == our_public_key =>
                 {
+                    // Remove pending event
                     entry.remove();
                 }
-                _ => { /* Ignore other votes */ }
+                _ => { /* Ignore other events */ }
             }
         }
 
@@ -253,16 +273,19 @@ impl Bridge {
 
         let our_public_key = self.context.keystore.ton.public_key();
 
+        // Handle only known TON events
         if let Entry::Occupied(entry) = self.pending_ton_events.entry(account) {
             match event {
-                // Handle received keys
+                // Handle event initialization
                 TonEvent::ReceiveRoundRelays { keys } => {
                     // Check if event contains our key
                     if !keys.contains(our_public_key) {
                         entry.remove();
+                        // Do nothing
                         return Ok(());
                     }
 
+                    // Start voting
                     self.spawn_background_task(
                         "update TON event",
                         self.clone().update_ton_event(account),
@@ -274,7 +297,7 @@ impl Bridge {
                 {
                     entry.remove();
                 }
-                _ => { /* Ignore other votes */ }
+                _ => { /* Ignore other events */ }
             }
         }
 
@@ -286,6 +309,7 @@ impl Bridge {
         let ton_subscriber = &self.context.ton_subscriber;
         let eth_subscribers = &self.context.eth_subscribers;
 
+        // Wait contract state
         let contract = ton_subscriber.wait_contract_state(account).await?;
 
         match EventBaseContract(&contract).process(keystore.ton.public_key())? {
@@ -299,6 +323,7 @@ impl Bridge {
 
         let event_init_data = EthEventContract(&contract).event_init_data()?;
 
+        // Get event configuration data
         let data = self
             .state
             .read()
@@ -315,8 +340,11 @@ impl Bridge {
                 )
             });
 
+        // NOTE: be sure to drop `eth_event_configurations` lock before that
         let (eth_subscriber, event_abi, blocks_to_confirm) = match data {
+            // Configuration found
             Some((chain_id, abi, blocks_to_confirm)) => {
+                // Get required subscriber
                 match eth_subscribers.get_subscriber(chain_id) {
                     Some(subscriber) => (subscriber, abi, blocks_to_confirm),
                     None => {
@@ -330,6 +358,7 @@ impl Bridge {
                     }
                 }
             }
+            // Configuration not found
             None => {
                 log::error!(
                     "ETH event configuration {:x} not found for event {:x}",
@@ -341,16 +370,20 @@ impl Bridge {
             }
         };
 
+        // Verify ETH event and create message to event contract
         let message = match eth_subscriber
             .verify(event_init_data.vote_data, event_abi, blocks_to_confirm)
             .await
         {
+            // Confirm event if transaction was found
             Ok(VerificationStatus::Exists) => {
                 UnsignedMessage::new(eth_event_contract::confirm(), account)
             }
+            // Reject event if transaction not found
             Ok(VerificationStatus::NotExists) => {
                 UnsignedMessage::new(eth_event_contract::reject(), account)
             }
+            // Skip event otherwise
             Err(e) => {
                 log::error!("Failed to verify ETH event {:x}: {:?}", account, e);
                 self.pending_eth_events.remove(&account);
@@ -358,15 +391,14 @@ impl Bridge {
             }
         };
 
+        // Clone events observer and deliver message to the contract
         let eth_event_observer = match self.pending_eth_events.get(&account) {
             Some(observer) => observer.clone(),
             None => return Ok(()),
         };
-
         self.context
             .deliver_message(eth_event_observer, message)
             .await?;
-
         Ok(())
     }
 
@@ -374,6 +406,7 @@ impl Bridge {
         let keystore = &self.context.keystore;
         let ton_subscriber = &self.context.ton_subscriber;
 
+        // Wait contract state
         let contract = ton_subscriber.wait_contract_state(account).await?;
         let base_event_contract = EventBaseContract(&contract);
 
@@ -392,7 +425,7 @@ impl Bridge {
         let event_init_data = TonEventContract(&contract).event_init_data()?;
 
         // Find suitable configuration
-        // NOTE: be sure to drop `self.state` before removing pending ton event.
+        // NOTE: be sure to drop `self.state` lock before removing pending ton event.
         // It may deadlock otherwise!
         let data = self
             .state
@@ -454,15 +487,14 @@ impl Bridge {
             }
         };
 
+        // Clone events observer and deliver message to the contract
         let ton_event_observer = match self.pending_ton_events.get(&account) {
             Some(observer) => observer.clone(),
             None => return Ok(()),
         };
-
         self.context
             .deliver_message(ton_event_observer, message)
             .await?;
-
         Ok(())
     }
 
@@ -554,13 +586,7 @@ impl Bridge {
             let observer = AccountObserver::new(&self.connectors_tx);
 
             // Add new connector
-            state.connectors.insert(
-                connector_account,
-                ConnectorState {
-                    event_type: ConnectorConfigurationType::Unknown,
-                    observer: observer.clone(),
-                },
-            );
+            state.connectors.insert(connector_account, observer.clone());
 
             // Subscribe connector for transaction
             ton_subscriber.add_transactions_subscription([connector_account], &observer);
@@ -618,9 +644,8 @@ impl Bridge {
             .context("Failed to get event configuration type")?;
         log::info!("Found configuration of type: {}", event_type);
 
-        match state.connectors.get_mut(connector_account) {
-            Some(connector) => connector.event_type = ConnectorConfigurationType::Known(event_type),
-            None => return Err(BridgeError::UnknownConnector.into()),
+        if !state.connectors.contains_key(connector_account) {
+            return Err(BridgeError::UnknownConnector.into());
         }
 
         match event_type {
@@ -853,13 +878,16 @@ impl Bridge {
             loop {
                 tokio::time::sleep(Duration::from_secs(10)).await;
 
+                // Get bridge if it is still alive
                 let bridge = match bridge.upgrade() {
                     Some(bridge) => bridge,
                     None => return,
                 };
 
+                // Get last heights in all chains
                 let last_block_heights = bridge.context.eth_subscribers.get_last_block_numbers();
 
+                // Remove all expired configurations
                 let subscriptions_to_remove = {
                     let mut to_remove = FxHashMap::default();
 
@@ -899,6 +927,7 @@ impl Bridge {
                     to_remove
                 };
 
+                // Unsubscribe all expired subscriptions
                 for (chain_id, subscriptions) in subscriptions_to_remove {
                     let subscriber = match bridge.context.eth_subscribers.get_subscriber(chain_id) {
                         Some(subscriber) => subscriber,
@@ -956,7 +985,7 @@ impl Bridge {
                     }
                 };
 
-                // Get all expired configurations
+                // Remove all expired configurations
                 let mut state = bridge.state.write();
                 state.ton_event_configurations.retain(|account, state| {
                     if state.details.is_expired(current_utime) {
@@ -973,23 +1002,23 @@ impl Bridge {
         });
     }
 
+    /// Creates ETH event observer if it doesn't exist and subscribes it to transactions
     fn add_pending_eth_event(&self, account: UInt256) -> bool {
         use dashmap::mapref::entry::Entry;
 
         if let Entry::Vacant(entry) = self.pending_eth_events.entry(account) {
             let observer = AccountObserver::new(&self.eth_events_tx);
             entry.insert(observer.clone());
-
             self.context
                 .ton_subscriber
                 .add_transactions_subscription([account], &observer);
-
             true
         } else {
             false
         }
     }
 
+    /// Creates TON event observer if it doesn't exist and subscribes it to transactions
     fn add_pending_ton_event(&self, account: UInt256) -> bool {
         use dashmap::mapref::entry::Entry;
 
@@ -1005,6 +1034,7 @@ impl Bridge {
         }
     }
 
+    /// Waits future in background. In case of error does nothing but logging
     fn spawn_background_task<F>(self: &Arc<Self>, name: &'static str, fut: F)
     where
         F: Future<Output = Result<()>> + Send + 'static,
@@ -1017,11 +1047,18 @@ impl Bridge {
     }
 }
 
+/// Semi-persistent bridge contracts collection
 #[derive(Default)]
 struct BridgeState {
     connectors: ConnectorsMap,
     eth_event_configurations: EthEventConfigurationsMap,
     ton_event_configurations: TonEventConfigurationsMap,
+
+    /// Unique event contracts code hashes.
+    ///
+    /// NOTE: only built on startup and then updated on each new configuration.
+    /// Elements are not removed because it is not needed (the situation when one
+    /// contract code will be used for ETH and TON simultaneously)
     event_code_hashes: EventCodeHashesMap,
 }
 
@@ -1050,14 +1087,11 @@ fn add_event_code_hash(
             }
         }
     };
-
     Ok(())
 }
 
-type PendingEthEvent = Arc<AccountObserver<EthEvent>>;
-type PendingTonEvent = Arc<AccountObserver<TonEvent>>;
-
 impl EventBaseContract<'_> {
+    /// Determine event action
     fn process(&self, public_key: &UInt256) -> Result<EventAction> {
         Ok(match self.status()? {
             // If it is still initializing - postpone processing until relay keys are received
@@ -1073,29 +1107,25 @@ impl EventBaseContract<'_> {
 }
 
 enum EventAction {
+    /// Delay event processing
     Nop,
+    /// Remove pending event
     Remove,
+    /// Continue voting for event
     Vote,
 }
 
-#[derive(Clone)]
-struct ConnectorState {
-    event_type: ConnectorConfigurationType,
-    observer: Arc<AccountObserver<ConnectorEvent>>,
-}
-
-/// Linked configuration event type hint
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-enum ConnectorConfigurationType {
-    Unknown,
-    Known(EventType),
-}
-
+/// ETH event configuration data
 #[derive(Clone)]
 struct EthEventConfigurationState {
+    /// Configuration details
     details: EthEventConfigurationDetails,
+    /// Parsed and mapped event ABI
     event_abi: Arc<EthEventAbi>,
+    /// ETH event topic
     topic_hash: [u8; 32],
+
+    /// Observer must live as long as configuration lives
     _observer: Arc<AccountObserver<EthEventConfigurationEvent>>,
 }
 
@@ -1105,10 +1135,15 @@ impl EthEventConfigurationDetails {
     }
 }
 
+/// TON event configuration data
 #[derive(Clone)]
 struct TonEventConfigurationState {
+    /// Configuration details
     details: TonEventConfigurationDetails,
+    /// Parsed `eventData` ABI
     event_abi: Vec<ton_abi::Param>,
+
+    /// Observer must live as long as configuration lives
     _observer: Arc<AccountObserver<TonEventConfigurationEvent>>,
 }
 
@@ -1345,6 +1380,10 @@ fn read_external_in_msg(body: &ton_types::SliceData) -> Option<(UInt256, ton_typ
         _ => None,
     }
 }
+
+type ConnectorState = Arc<AccountObserver<ConnectorEvent>>;
+type PendingEthEvent = Arc<AccountObserver<EthEvent>>;
+type PendingTonEvent = Arc<AccountObserver<TonEvent>>;
 
 type DefaultHeaders = (PubkeyHeader, TimeHeader, ExpireHeader);
 
