@@ -201,9 +201,9 @@ impl ElectionsContract<'_> {
 pub struct RelayRoundContract<'a>(pub &'a ExistingContract);
 
 impl RelayRoundContract<'_> {
-    pub fn relay_keys(&self) -> Result<Vec<UInt256>> {
-        let function = relay_round_contract::relay_keys();
-        let RelayKeys { items } = self.0.run_local(function, &[])?.unpack()?;
+    pub fn staker_addrs(&self) -> Result<Vec<UInt256>> {
+        let function = relay_round_contract::staker_addrs();
+        let StakerAddresses { items } = self.0.run_local(function, &[])?.unpack()?;
         Ok(items)
     }
 }

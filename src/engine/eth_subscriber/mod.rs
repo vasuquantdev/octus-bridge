@@ -140,7 +140,7 @@ impl EthSubscriber {
         const GWEI: u64 = 1000000000;
 
         let min_balance: U256 = U256::from(50000000 * GWEI);
-        let attached_gas: U256 = U256::from(200 * GWEI);
+        let gas_price: U256 = U256::from(300 * GWEI);
 
         let verifier_contract = contracts::staking_contract(self.api.clone(), *verifier_address)?;
         let workchain_id = ethabi::Token::Int(U256::from(0));
@@ -169,8 +169,8 @@ impl EthSubscriber {
                 [workchain_id, address_body],
                 *relay_address,
                 web3::contract::Options {
-                    gas: Some(attached_gas),
-                    gas_price: None,
+                    gas: None,
+                    gas_price: Some(gas_price),
                     value: None,
                     nonce: None,
                     condition: None,

@@ -92,7 +92,7 @@ impl Engine {
 }
 
 pub struct EngineContext {
-    pub staker_address: ton_types::UInt256,
+    pub staker_account: ton_types::UInt256,
     pub settings: RelayConfig,
     pub keystore: Arc<KeyStore>,
     pub messages_queue: Arc<PendingMessagesQueue>,
@@ -109,7 +109,7 @@ impl Drop for EngineContext {
 
 impl EngineContext {
     async fn new(config: AppConfig, global_config: ton_indexer::GlobalConfig) -> Result<Arc<Self>> {
-        let staker_address =
+        let staker_account =
             ton_types::UInt256::from_be_bytes(&config.staker_address.address().get_bytestring(0));
         let settings = config.relay_settings;
 
@@ -128,7 +128,7 @@ impl EngineContext {
         let eth_subscribers = EthSubscriberRegistry::new(settings.networks.clone()).await?;
 
         Ok(Arc::new(Self {
-            staker_address,
+            staker_account,
             settings,
             keystore,
             messages_queue,

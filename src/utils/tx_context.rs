@@ -1,4 +1,8 @@
+use anyhow::{Context, Result};
 use ton_types::UInt256;
+
+use super::existing_contract::*;
+use super::shard_utils::*;
 
 pub trait ReadFromTransaction: Sized {
     fn read_from_transaction(ctx: &TxContext<'_>) -> Option<Self>;
@@ -101,5 +105,11 @@ impl TxContext<'_> {
                 Ok(true)
             })
             .ok();
+    }
+
+    pub fn get_account_state(&self) -> Result<ExistingContract> {
+        self.shard_accounts
+            .find_account(self.account)?
+            .context("Account not found after transaction")
     }
 }

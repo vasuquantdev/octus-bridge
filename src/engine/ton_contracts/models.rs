@@ -188,7 +188,7 @@ pub struct RelayRoundInitializedEvent {
     pub duplicate: bool,
 }
 
-#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
+#[derive(Debug, Clone, UnpackAbiPlain, KnownParamTypePlain)]
 pub struct StakerAddresses {
     #[abi(with = "array_address_only_nonzero_hash")]
     pub items: Vec<UInt256>,
@@ -196,24 +196,6 @@ pub struct StakerAddresses {
 
 pub mod array_address_only_nonzero_hash {
     use super::*;
-
-    pub fn pack(value: Vec<UInt256>) -> ton_abi::TokenValue {
-        ton_abi::TokenValue::Array(
-            param_type(),
-            value
-                .into_iter()
-                .map(|value| {
-                    ton_abi::TokenValue::Address(ton_block::MsgAddress::AddrStd(
-                        ton_block::MsgAddrStd {
-                            anycast: None,
-                            workchain_id: 0,
-                            address: value.into(),
-                        },
-                    ))
-                })
-                .collect(),
-        )
-    }
 
     pub fn unpack(value: &ton_abi::TokenValue) -> UnpackerResult<Vec<UInt256>> {
         match value {

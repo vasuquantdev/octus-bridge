@@ -130,11 +130,6 @@ impl Bridge {
                         let observer = AccountObserver::new(&self.connectors_tx);
 
                         let entry = entry.insert(ConnectorState {
-                            details: ConnectorDetails {
-                                id: event.id,
-                                event_configuration: event.event_configuration,
-                                enabled: false,
-                            },
                             event_type: ConnectorConfigurationType::Unknown,
                             observer,
                         });
@@ -562,7 +557,6 @@ impl Bridge {
             state.connectors.insert(
                 connector_account,
                 ConnectorState {
-                    details,
                     event_type: ConnectorConfigurationType::Unknown,
                     observer: observer.clone(),
                 },
@@ -697,7 +691,7 @@ impl Bridge {
                     details,
                     event_abi,
                     topic_hash,
-                    observer: observer.clone(),
+                    _observer: observer.clone(),
                 });
             }
             hash_map::Entry::Occupied(_) => {
@@ -761,7 +755,7 @@ impl Bridge {
                 entry.insert(TonEventConfigurationState {
                     details,
                     event_abi,
-                    observer: observer.clone(),
+                    _observer: observer.clone(),
                 });
             }
             hash_map::Entry::Occupied(_) => {
@@ -1086,7 +1080,6 @@ enum EventAction {
 
 #[derive(Clone)]
 struct ConnectorState {
-    details: ConnectorDetails,
     event_type: ConnectorConfigurationType,
     observer: Arc<AccountObserver<ConnectorEvent>>,
 }
@@ -1103,7 +1096,7 @@ struct EthEventConfigurationState {
     details: EthEventConfigurationDetails,
     event_abi: Arc<EthEventAbi>,
     topic_hash: [u8; 32],
-    observer: Arc<AccountObserver<EthEventConfigurationEvent>>,
+    _observer: Arc<AccountObserver<EthEventConfigurationEvent>>,
 }
 
 impl EthEventConfigurationDetails {
@@ -1116,7 +1109,7 @@ impl EthEventConfigurationDetails {
 struct TonEventConfigurationState {
     details: TonEventConfigurationDetails,
     event_abi: Vec<ton_abi::Param>,
-    observer: Arc<AccountObserver<TonEventConfigurationEvent>>,
+    _observer: Arc<AccountObserver<TonEventConfigurationEvent>>,
 }
 
 impl TonEventConfigurationDetails {
@@ -1200,13 +1193,8 @@ impl TxContext<'_> {
 
 #[derive(Debug, Clone)]
 enum TonEventConfigurationEvent {
-    EventDeployed {
-        vote_data: TonEventVoteData,
-        address: UInt256,
-    },
-    SetEndTimestamp {
-        end_timestamp: u32,
-    },
+    EventDeployed { address: UInt256 },
+    SetEndTimestamp { end_timestamp: u32 },
 }
 
 impl ReadFromTransaction for TonEventConfigurationEvent {
@@ -1217,17 +1205,9 @@ impl ReadFromTransaction for TonEventConfigurationEvent {
         let set_end_timestamp = ton_event_configuration_contract::set_end_timestamp();
 
         match nekoton_abi::read_function_id(&in_msg_body).ok()? {
-            id if id == deploy_event.input_id => {
-                let vote_data: TonEventVoteData = deploy_event
-                    .decode_input(in_msg_body, true)
-                    .and_then(|tokens| tokens.unpack_first().map_err(anyhow::Error::from))
-                    .ok()?;
-
-                Some(Self::EventDeployed {
-                    vote_data,
-                    address: ctx.find_new_event_contract_address()?,
-                })
-            }
+            id if id == deploy_event.input_id => Some(Self::EventDeployed {
+                address: ctx.find_new_event_contract_address()?,
+            }),
             id if id == set_end_timestamp.input_id => {
                 let end_timestamp = set_end_timestamp
                     .decode_input(in_msg_body, true)
@@ -1243,13 +1223,8 @@ impl ReadFromTransaction for TonEventConfigurationEvent {
 
 #[derive(Debug, Clone)]
 enum EthEventConfigurationEvent {
-    EventDeployed {
-        vote_data: EthEventVoteData,
-        address: UInt256,
-    },
-    SetEndBlockNumber {
-        end_block_number: u32,
-    },
+    EventDeployed { address: UInt256 },
+    SetEndBlockNumber { end_block_number: u32 },
 }
 
 impl ReadFromTransaction for EthEventConfigurationEvent {
@@ -1260,17 +1235,9 @@ impl ReadFromTransaction for EthEventConfigurationEvent {
         let set_end_block_number = eth_event_configuration_contract::set_end_block_number();
 
         match nekoton_abi::read_function_id(&in_msg_body).ok()? {
-            id if id == deploy_event.input_id => {
-                let vote_data: EthEventVoteData = deploy_event
-                    .decode_input(in_msg_body, true)
-                    .and_then(|tokens| tokens.unpack_first().map_err(anyhow::Error::from))
-                    .ok()?;
-
-                Some(Self::EventDeployed {
-                    vote_data,
-                    address: ctx.find_new_event_contract_address()?,
-                })
-            }
+            id if id == deploy_event.input_id => Some(Self::EventDeployed {
+                address: ctx.find_new_event_contract_address()?,
+            }),
             id if id == set_end_block_number.input_id => {
                 let end_block_number = set_end_block_number
                     .decode_input(in_msg_body, true)
@@ -1330,16 +1297,9 @@ impl ReadFromTransaction for EthEvent {
 
 #[derive(Debug, Clone)]
 enum TonEvent {
-    ReceiveRoundRelays {
-        keys: Vec<UInt256>,
-    },
-    Confirm {
-        public_key: UInt256,
-        signature: Vec<u8>,
-    },
-    Reject {
-        public_key: UInt256,
-    },
+    ReceiveRoundRelays { keys: Vec<UInt256> },
+    Confirm { public_key: UInt256 },
+    Reject { public_key: UInt256 },
 }
 
 impl ReadFromTransaction for TonEvent {
@@ -1351,15 +1311,7 @@ impl ReadFromTransaction for TonEvent {
 
                 match read_function_id(&body) {
                     Ok(id) if id == ton_event_contract::confirm().input_id => {
-                        let signature = ton_event_contract::confirm()
-                            .decode_input(body, true)
-                            .and_then(|tokens| tokens.unpack_first().map_err(anyhow::Error::from))
-                            .ok()?;
-
-                        Some(TonEvent::Confirm {
-                            public_key,
-                            signature,
-                        })
+                        Some(TonEvent::Confirm { public_key })
                     }
                     Ok(id) if id == ton_event_contract::reject().input_id => {
                         Some(TonEvent::Reject { public_key })

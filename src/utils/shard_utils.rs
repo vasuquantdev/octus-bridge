@@ -43,17 +43,23 @@ impl ShardAccountsMapExt for ShardAccountsMap {
 
         match item {
             // Search account in shard state
-            Some((_, shard)) => match shard
-                .get(account)
-                .and_then(|account| ExistingContract::from_shard_account_opt(&account))?
-            {
-                // Account found
-                Some(contract) => Ok(Some(contract)),
-                // Account was not found (it never had any transactions) or there is not AccountStuff in it
-                None => Ok(None),
-            },
+            Some((_, shard)) => shard.find_account(account),
             // Exceptional situation when no suitable shard was found
             None => Err(ShardUtilsError::InvalidContractAddress).context("No suitable shard found"),
+        }
+    }
+}
+
+impl ShardAccountsMapExt for ton_block::ShardAccounts {
+    fn find_account(&self, account: &UInt256) -> Result<Option<ExistingContract>> {
+        match self
+            .get(account)
+            .and_then(|account| ExistingContract::from_shard_account_opt(&account))?
+        {
+            // Account found
+            Some(contract) => Ok(Some(contract)),
+            // Account was not found (it never had any transactions) or there is not AccountStuff in it
+            None => Ok(None),
         }
     }
 }
