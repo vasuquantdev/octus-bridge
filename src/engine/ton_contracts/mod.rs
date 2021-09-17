@@ -201,10 +201,22 @@ impl ElectionsContract<'_> {
 pub struct RelayRoundContract<'a>(pub &'a ExistingContract);
 
 impl RelayRoundContract<'_> {
-    pub fn staker_addrs(&self) -> Result<Vec<UInt256>> {
-        let function = relay_round_contract::staker_addrs();
-        let StakerAddresses { items } = self.0.run_local(function, &[])?.unpack()?;
-        Ok(items)
+    pub fn has_unclaimed_reward(&self, staker_addr: UInt256) -> Result<bool> {
+        let function = relay_round_contract::has_unclaimed_reward();
+        let inputs = [
+            answer_id(),
+            ton_block::MsgAddrStd::with_address(None, 0, staker_addr.into())
+                .token_value()
+                .named("staker_addr"),
+        ];
+        let has_reward = self.0.run_local(function, &inputs)?.unpack_first()?;
+        Ok(has_reward)
+    }
+
+    pub fn end_time(&self) -> Result<u32> {
+        let function = relay_round_contract::end_time();
+        let end_time = self.0.run_local(function, &[])?.unpack_first()?;
+        Ok(end_time)
     }
 }
 

@@ -276,6 +276,8 @@ pub struct StakingDetails {
     #[abi(with = "address_only_hash")]
     pub admin: UInt256,
     #[abi(with = "address_only_hash")]
+    pub rescuer: UInt256,
+    #[abi(with = "address_only_hash")]
     pub rewarder: UInt256,
     #[abi(uint128)]
     pub token_balance: u128,
@@ -297,6 +299,8 @@ pub struct RelayConfigDetails {
     pub election_time: u32,
     #[abi(uint32)]
     pub time_before_election: u32,
+    #[abi(uint32)]
+    pub min_round_gap_time: u32,
     #[abi(uint16)]
     pub relays_count: u16,
     #[abi(uint16)]

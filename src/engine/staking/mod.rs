@@ -125,7 +125,84 @@ impl Staking {
 
         staking.start_managing_elections();
 
+        staking.collect_all_unclaimed_reward().await?;
+
         Ok(staking)
+    }
+
+    async fn collect_all_unclaimed_reward(self: &Arc<Self>) -> Result<()> {
+        let shard_accounts = self.context.get_all_shard_accounts().await?;
+        let staking_contract = shard_accounts
+            .find_account(&self.staking_account)?
+            .context("Staking contract not found")?;
+        let staking_contract = StakingContract(&staking_contract);
+
+        let try_collect_reward = |relay_round: u32| -> Result<()> {
+            let relay_round_address = staking_contract
+                .get_relay_round_address(relay_round)
+                .context("Failed to compute relay round address")?;
+
+            let relay_round_contract = match shard_accounts.find_account(&relay_round_address) {
+                Ok(Some(contract)) => contract,
+                Ok(None) => {
+                    log::warn!("Relay round {} not found", relay_round);
+                    return Ok(());
+                }
+                Err(e) => {
+                    log::warn!("Failed to find relay round {}: {:?}", relay_round, e);
+                    return Ok(());
+                }
+            };
+            let relay_round_contract = RelayRoundContract(&relay_round_contract);
+
+            // Check if staker has unclaimed reward
+            match relay_round_contract.has_unclaimed_reward(self.context.staker_account) {
+                Ok(true) => { /* continue */ }
+                Ok(false) => return Ok(()),
+                Err(e) => {
+                    log::warn!(
+                        "Failed to check unclaimed reward for round {}: {:?}",
+                        relay_round,
+                        e
+                    );
+                }
+            };
+
+            // Get end time and collect reward
+            match relay_round_contract.end_time() {
+                Ok(end_time) => {
+                    let staking = self.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = staking
+                            .get_reward_for_relay_round(relay_round, end_time)
+                            .await
+                        {
+                            log::error!(
+                                "Failed to collect reward for round {}: {:?}",
+                                relay_round,
+                                e
+                            );
+                        }
+                    });
+                }
+                Err(e) => {
+                    log::warn!("Failed to check round {} end time: {:?}", relay_round, e);
+                }
+            };
+            Ok(())
+        };
+
+        let current_round = staking_contract
+            .get_relay_rounds_details()
+            .context("Failed to get relay rounds details")?
+            .current_relay_round;
+        let oldest_relay_round = current_round.saturating_sub(2);
+
+        for relay_round in (oldest_relay_round..current_round).rev() {
+            try_collect_reward(relay_round)?;
+        }
+
+        Ok(())
     }
 
     async fn process_staking_event(
@@ -166,17 +243,11 @@ impl Staking {
                 // Spawn delayed reward collection
                 let staking = self.clone();
                 tokio::spawn(async move {
-                    const ROUND_OFFSET: u64 = 10; // seconds
-
-                    // Wait until round end
-                    let now = chrono::Utc::now().timestamp() as u64;
-                    tokio::time::sleep(Duration::from_secs(
-                        (event.round_end_time as u64).saturating_sub(now) + ROUND_OFFSET,
-                    ))
-                    .await;
-
                     // Collect reward
-                    if let Err(e) = staking.get_reward_for_relay_round(event.round_num).await {
+                    if let Err(e) = staking
+                        .get_reward_for_relay_round(event.round_num, event.round_end_time)
+                        .await
+                    {
                         log::error!(
                             "Failed to collect reward for round {}: {:?}",
                             event.round_num,
@@ -357,8 +428,18 @@ impl Staking {
             .await
     }
 
-    /// Delivers `getRewardForRelayRound` message to user data contract
-    async fn get_reward_for_relay_round(&self, relay_round: u32) -> Result<()> {
+    /// Delivers `getRewardForRelayRound` message to user data contract at specified time
+    async fn get_reward_for_relay_round(&self, relay_round: u32, end_time: u32) -> Result<()> {
+        const ROUND_OFFSET: u64 = 10; // seconds
+
+        // Wait until round end
+        let now = chrono::Utc::now().timestamp() as u64;
+        tokio::time::sleep(Duration::from_secs(
+            (end_time as u64).saturating_sub(now) + ROUND_OFFSET,
+        ))
+        .await;
+
+        // Collect
         self.context
             .deliver_message(
                 self.user_data_observer.clone(),
