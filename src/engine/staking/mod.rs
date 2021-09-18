@@ -198,7 +198,7 @@ impl Staking {
             .current_relay_round;
         let oldest_relay_round = current_round.saturating_sub(2);
 
-        for relay_round in (oldest_relay_round..current_round).rev() {
+        for relay_round in (oldest_relay_round..=current_round).rev() {
             try_collect_reward(relay_round)?;
         }
 
