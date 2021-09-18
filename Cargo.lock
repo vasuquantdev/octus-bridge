@@ -3323,6 +3323,7 @@ dependencies = [
  "pin-project",
  "reqwest",
  "rlp",
+ "secp256k1",
  "serde",
  "serde_json",
  "tiny-keccak",

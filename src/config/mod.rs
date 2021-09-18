@@ -9,10 +9,12 @@ use serde::{Deserialize, Serialize};
 pub use self::eth_config::*;
 pub use self::stored_keys::*;
 use self::temp_keys::*;
+pub use self::verification_state::*;
 
 mod eth_config;
 mod stored_keys;
 mod temp_keys;
+mod verification_state;
 
 /// Main application config (full). Used to run relay
 #[derive(Serialize, Deserialize)]
@@ -49,7 +51,7 @@ pub struct BriefAppConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BridgeConfig {
-    /// Path to file with keystore data
+    /// Path to the file with keystore data
     pub keys_path: PathBuf,
 
     /// Bridge contract address
@@ -58,6 +60,36 @@ pub struct BridgeConfig {
 
     /// EVM networks settings
     pub networks: Vec<EthConfig>,
+
+    /// ETH address verification settings
+    #[serde(default)]
+    pub address_verification: AddressVerificationConfig,
+}
+
+/// ETH address verification settings
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct AddressVerificationConfig {
+    /// Minimal balance on user's wallet to start address verification
+    /// Default: 50000000 (0.05 ETH)
+    pub min_balance_gwei: u64,
+
+    /// Fixed gas price. Default: 300
+    pub gas_price_gwei: u64,
+
+    /// Path to the file with transaction state.
+    /// Default: `./verification-state.json`
+    pub state_path: PathBuf,
+}
+
+impl Default for AddressVerificationConfig {
+    fn default() -> Self {
+        Self {
+            min_balance_gwei: 50000000,
+            gas_price_gwei: 300,
+            state_path: "verification-state.json".into(),
+        }
+    }
 }
 
 /// TON node settings
@@ -73,7 +105,7 @@ pub struct NodeConfig {
     /// Path to the DB directory. Default: `./db`
     pub db_path: PathBuf,
 
-    /// Path to the ADNL keys. Default: `adnl-keys.json`.
+    /// Path to the ADNL keys. Default: `./adnl-keys.json`.
     /// NOTE: generates new keys if specified path doesn't exist
     pub temp_keys_path: PathBuf,
 

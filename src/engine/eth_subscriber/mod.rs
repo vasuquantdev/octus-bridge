@@ -138,19 +138,79 @@ impl EthSubscriber {
 
     pub async fn verify_relay_staker_address(
         &self,
+        settings: &AddressVerificationConfig,
+        secret_key: &secp256k1::SecretKey,
         relay_address: &ethabi::Address,
         staker_address: UInt256,
         verifier_address: &ethabi::Address,
     ) -> Result<()> {
         const GWEI: u64 = 1000000000;
 
-        let min_balance: U256 = U256::from(50000000 * GWEI);
-        let gas_price: U256 = U256::from(300 * GWEI);
+        let clear_state = || {
+            if let Err(e) = std::fs::remove_file(&settings.state_path) {
+                log::info!("Failed to reset address verification state: {:?}", e);
+            }
+        };
+
+        // Restore previous state
+        match AddressVerificationState::try_load(&settings.state_path)? {
+            // Ignore state for different address
+            Some(state) if state.address != relay_address.0 => {
+                log::warn!("Address verification state created for the different relay address. It will be ignored");
+                clear_state();
+            }
+            // Wait until transaction is found
+            Some(state) => {
+                let transaction_id = hex::encode(state.transaction_hash);
+
+                loop {
+                    // Find transaction
+                    match self
+                        .api
+                        .transaction(web3::types::TransactionId::Hash(
+                            state.transaction_hash.into(),
+                        ))
+                        .await?
+                    {
+                        // Check if found transaction was included in block
+                        Some(transaction) => match transaction.block_hash {
+                            // If it was included, consider that the address is confirmed
+                            Some(block) => {
+                                log::info!(
+                                    "ETH transaction {} found in block {}",
+                                    transaction_id,
+                                    hex::encode(block.as_bytes())
+                                );
+                                clear_state();
+                                return Ok(());
+                            }
+                            // If it wasn't included, poll
+                            None => {
+                                log::info!("ETH transaction {} is still pending", transaction_id);
+                                tokio::time::sleep(Duration::from_secs(10)).await;
+                            }
+                        },
+                        // Ignore state for non-existing transaction
+                        None => {
+                            log::warn!("Address verification state contains non-existing transaction. It will be ignored");
+                            clear_state();
+                            break; // continue verification
+                        }
+                    };
+                }
+            }
+            None => { /* continue verification */ }
+        };
+
+        // Prepare params
+        let min_balance: U256 = U256::from(settings.min_balance_gwei * GWEI);
+        let gas_price: U256 = U256::from(settings.gas_price_gwei * GWEI);
 
         let verifier_contract = contracts::staking_contract(self.api.clone(), *verifier_address)?;
         let workchain_id = ethabi::Token::Int(U256::from(0));
         let address_body = ethabi::Token::Uint(U256::from_big_endian(staker_address.as_slice()));
 
+        // Wait minimal balance
         loop {
             let balance = retry(
                 || self.get_balance(*relay_address),
@@ -159,31 +219,47 @@ impl EthSubscriber {
             )
             .await?;
 
-            // 0.05 ETH
             if balance < min_balance {
-                log::info!("Insufficient balance");
+                log::info!("Insufficient balance ({}/{})", balance, min_balance);
                 tokio::time::sleep(Duration::from_secs(10)).await;
             } else {
                 break;
             }
         }
 
-        verifier_contract
-            .call(
-                "verify_relay_staker_address",
-                [workchain_id, address_body],
-                *relay_address,
-                web3::contract::Options {
-                    gas: None,
-                    gas_price: Some(gas_price),
-                    value: None,
-                    nonce: None,
-                    condition: None,
-                    transaction_type: None,
-                    access_list: None,
-                },
-            )
-            .await?;
+        // Prepare transaction
+        let fn_data = verifier_contract
+            .abi()
+            .function("verify_relay_staker_address")
+            .and_then(|function| function.encode_input(&[workchain_id, address_body]))
+            .map_err(|err| web3::error::Error::Decoder(format!("{:?}", err)))
+            .context("Failed to prepare address verification transaction")?;
+
+        let accounts = web3::api::Accounts::new(self.api.transport().clone());
+        let tx = web3::types::TransactionParameters {
+            to: Some(*verifier_address),
+            gas_price: Some(gas_price),
+            data: web3::types::Bytes(fn_data),
+            ..Default::default()
+        };
+
+        let signed = accounts
+            .sign_transaction(tx, secret_key)
+            .await
+            .context("Failed to sign address verification transaction")?;
+
+        AddressVerificationState {
+            transaction_hash: signed.transaction_hash.0,
+            address: relay_address.0,
+        }
+        .save(&settings.state_path)
+        .context("Failed to save address verification state")?;
+
+        self.api
+            .send_raw_transaction(signed.raw_transaction)
+            .await
+            .context("Failed to send raw ETH transaction")?;
+
         Ok(())
     }
 

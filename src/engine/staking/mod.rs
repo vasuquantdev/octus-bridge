@@ -607,6 +607,8 @@ impl UserDataContract<'_> {
                 .ok_or(StakingError::RequiredEthNetworkNotFound)?;
             subscriber
                 .verify_relay_staker_address(
+                    &context.settings.address_verification,
+                    context.keystore.eth.secret_key(),
                     context.keystore.eth.address(),
                     context.staker_account,
                     &bridge_event_configuration

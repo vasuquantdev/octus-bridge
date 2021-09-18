@@ -98,6 +98,10 @@ impl EthSigner {
         ex_sign
     }
 
+    pub fn secret_key(&self) -> &secp256k1::SecretKey {
+        &self.secret_key
+    }
+
     pub fn pubkey(&self) -> &secp256k1::PublicKey {
         &self.public_key
     }

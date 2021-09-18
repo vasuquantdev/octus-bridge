@@ -45,7 +45,7 @@ tiny-bip39 = { git = "https://github.com/broxus/tiny-bip39.git" }
 tiny-hderive = { git = "https://github.com/broxus/tiny-hderive.git" }
 
 # ETH
-web3 = { version = "0.17.0", default-features = false, features = ["http-rustls-tls"] }
+web3 = { version = "0.17.0", default-features = false, features = ["http-rustls-tls", "signing"] }
 ethabi = "14.0.0"
 
 # TON specific dependencies
