@@ -839,9 +839,28 @@ impl Bridge {
                     }),
                 };
 
+                macro_rules! check_configuration {
+                    ($name: literal, $contract: ident) => {
+                        match $contract(&contract).event_init_data() {
+                            Ok(init_data) => init_data.configuration,
+                            Err(e) => {
+                                log::info!("Failed to get {} event init data: {:?}", $name, e);
+                                return Ok(true);
+                            }
+                        };
+                    };
+                }
+
                 match EventBaseContract(&contract).process(our_public_key) {
                     Ok(EventAction::Nop | EventAction::Vote) => match event_type {
                         EventType::Eth => {
+                            let configuration = check_configuration!("ETH", EthEventContract);
+
+                            if !state.eth_event_configurations.contains_key(&configuration) {
+                                log::warn!("ETH event configuration not found: {:x}", hash);
+                                return Ok(true);
+                            }
+
                             if self.add_pending_eth_event(hash) {
                                 self.spawn_background_task(
                                     "initial update ETH event",
@@ -850,6 +869,13 @@ impl Bridge {
                             }
                         }
                         EventType::Ton => {
+                            let configuration = check_configuration!("TON", TonEventContract);
+
+                            if !state.ton_event_configurations.contains_key(&configuration) {
+                                log::warn!("TON event configuration not found: {:x}", hash);
+                                return Ok(true);
+                            }
+
                             if self.add_pending_ton_event(hash) {
                                 self.spawn_background_task(
                                     "initial update TON event",
