@@ -287,6 +287,8 @@ pub struct StakingDetails {
     pub last_reward_time: u32,
     #[abi(array)]
     pub reward_rounds: Vec<RewardRound>,
+    #[abi(bool)]
+    pub emergency: bool,
 }
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
