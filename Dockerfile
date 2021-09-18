@@ -7,8 +7,6 @@ RUN echo "deb http://apt.llvm.org/buster/ llvm-toolchain-buster-11 main" >> /etc
 RUN wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -
 RUN apt-get update \
     && apt-get install -y clang-11 cmake
-# Switch back to dialog for any ad-hoc use of apt-get
-ENV DEBIAN_FRONTEND=dialog
 
 RUN mkdir relay
 WORKDIR relay
@@ -28,7 +26,6 @@ RUN useradd -ms /bin/bash relay
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-      wget \
       openssl \
       ca-certificates \
     && apt-get autoremove -y \
