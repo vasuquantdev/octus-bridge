@@ -1,7 +1,7 @@
 use anyhow::Result;
 use ethabi::{ParamType as EthParamType, Token as EthTokenValue};
 use num_bigint::{BigInt, BigUint};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use ton_abi::{ParamType as TonParamType, TokenValue as TonTokenValue};
 
 pub struct EthEventAbi {
@@ -45,40 +45,53 @@ pub fn decode_eth_event_abi(abi: &str) -> Result<ethabi::Event> {
         .map_err(anyhow::Error::from)
 }
 
-pub fn map_eth_abi_to_ton<'a, I>(abi: I) -> Result<Vec<TonParamType>>
+pub fn map_eth_abi_to_ton<'a, I>(abi: I, can_update_ctx: bool) -> Result<Vec<TonParamType>>
 where
     I: Iterator<Item = &'a EthParamType>,
 {
-    abi.map(map_eth_abi_param_to_ton).collect()
+    abi.filter_map(|param| map_eth_abi_param_to_ton(param, can_update_ctx).transpose())
+        .collect()
 }
 
-fn map_eth_abi_param_to_ton(param: &EthParamType) -> Result<TonParamType> {
-    Ok(match param {
+fn map_eth_abi_param_to_ton(
+    param: &EthParamType,
+    can_update_ctx: bool,
+) -> Result<Option<TonParamType>> {
+    Ok(Some(match param {
         EthParamType::Address => TonParamType::Bytes,
         EthParamType::Bytes => TonParamType::Bytes,
         EthParamType::Int(size) => TonParamType::Int(*size),
         EthParamType::Uint(size) => TonParamType::Uint(*size),
         EthParamType::Bool => TonParamType::Bool,
         EthParamType::String => TonParamType::String,
-        EthParamType::Array(param) => {
-            TonParamType::Array(Box::new(map_eth_abi_param_to_ton(param.as_ref())?))
-        }
+        EthParamType::Array(param) => match map_eth_abi_param_to_ton(param.as_ref(), false)? {
+            Some(param) => TonParamType::Array(Box::new(param)),
+            None => return Ok(None),
+        },
+        &EthParamType::FixedBytes(1) if can_update_ctx => return Ok(None),
         EthParamType::FixedBytes(size) => TonParamType::FixedBytes(*size),
         EthParamType::FixedArray(param, size) => {
-            TonParamType::FixedArray(Box::new(map_eth_abi_param_to_ton(param.as_ref())?), *size)
+            match map_eth_abi_param_to_ton(param.as_ref(), false)? {
+                Some(param) => TonParamType::FixedArray(Box::new(param), *size),
+                None => return Ok(None),
+            }
         }
         EthParamType::Tuple(params) => TonParamType::Tuple(
             params
                 .iter()
-                .map(|item| {
-                    Ok(ton_abi::Param {
-                        name: String::new(),
-                        kind: map_eth_abi_param_to_ton(item)?,
-                    })
+                .filter_map(|item| {
+                    map_eth_abi_param_to_ton(item, can_update_ctx)
+                        .transpose()
+                        .map(|kind| {
+                            kind.map(|kind| ton_abi::Param {
+                                name: String::new(),
+                                kind,
+                            })
+                        })
                 })
                 .collect::<Result<Vec<ton_abi::Param>>>()?,
         ),
-    })
+    }))
 }
 
 /// struct TONEvent {
@@ -128,10 +141,12 @@ pub fn map_eth_tokens_to_ton_cell(
     tokens: Vec<EthTokenValue>,
     abi: &[EthParamType],
 ) -> Result<ton_types::Cell> {
+    let mut ctx = EthToTonMappingContext::default();
+
     let tokens = tokens
         .into_iter()
         .zip(abi.iter())
-        .map(|(token, param)| map_eth_token_to_ton(token, param))
+        .filter_map(|(token, param)| map_eth_token_to_ton(token, param, true, &mut ctx).transpose())
         .collect::<Result<Vec<TonTokenValue>>>()?;
 
     let cells = Vec::with_capacity(tokens.len());
@@ -139,10 +154,60 @@ pub fn map_eth_tokens_to_ton_cell(
         .and_then(|builder| builder.into_cell())
 }
 
-pub fn map_eth_token_to_ton(token: EthTokenValue, param: &EthParamType) -> Result<TonTokenValue> {
-    Ok(match (token, param) {
+#[derive(Default, Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct EthToTonMappingContext {
+    /// Starts new cell for each tuple.
+    ///
+    /// See `MAPPING_FLAG_TUPLES_TO_NEW_CELL`
+    pub tuples_to_new_cell: bool,
+
+    /// Interprets bytes ad cell
+    ///
+    /// See `MAPPING_FLAG_BYTES_AS_CELL`
+    pub bytes_as_cell: bool,
+}
+
+impl EthToTonMappingContext {
+    pub fn update(&mut self, flags: u8) {
+        self.tuples_to_new_cell = flags & MAPPING_FLAG_TUPLES_TO_NEW_CELL != 0;
+        self.bytes_as_cell = flags & MAPPING_FLAG_BYTES_AS_CELL != 0;
+    }
+}
+
+pub const MAPPING_FLAG_TUPLES_TO_NEW_CELL: u8 = 0b00000001;
+pub const MAPPING_FLAG_BYTES_AS_CELL: u8 = 0b00000010;
+
+impl From<u8> for EthToTonMappingContext {
+    fn from(flags: u8) -> Self {
+        let mut ctx = Self::default();
+        ctx.update(flags);
+        ctx
+    }
+}
+
+pub fn map_eth_token_to_ton(
+    token: EthTokenValue,
+    param: &EthParamType,
+    can_update_ctx: bool,
+    ctx: &mut EthToTonMappingContext,
+) -> Result<Option<TonTokenValue>> {
+    Ok(Some(match (token, param) {
+        (EthTokenValue::FixedBytes(x), EthParamType::FixedBytes(1)) if can_update_ctx => {
+            let flags = *x.get(0).ok_or(AbiMappingError::InvalidMappingFlags)?;
+            ctx.update(flags);
+            return Ok(None);
+        }
         (EthTokenValue::FixedBytes(x), _) => TonTokenValue::FixedBytes(x.to_vec()),
-        (EthTokenValue::Bytes(x), _) => TonTokenValue::Bytes(x.to_vec()),
+        (EthTokenValue::Bytes(x), _) => {
+            if ctx.bytes_as_cell {
+                let data = base64::decode(&x)?;
+                TonTokenValue::Cell(ton_types::deserialize_tree_of_cells(
+                    &mut std::io::Cursor::new(data),
+                )?)
+            } else {
+                TonTokenValue::Bytes(x.to_vec())
+            }
+        }
         (EthTokenValue::Uint(x), &EthParamType::Uint(size)) => {
             let mut bytes = [0u8; 256 / 8];
             x.to_big_endian(&mut bytes);
@@ -161,7 +226,7 @@ pub fn map_eth_token_to_ton(token: EthTokenValue, param: &EthParamType) -> Resul
         (EthTokenValue::FixedArray(a), EthParamType::FixedArray(abi, _)) => {
             let param_type = match *abi.clone() {
                 EthParamType::Array(arr) => {
-                    let mut mapped = map_eth_abi_to_ton(std::iter::once(arr.as_ref()))?;
+                    let mut mapped = map_eth_abi_to_ton(std::iter::once(arr.as_ref()), false)?;
                     anyhow::ensure!(!mapped.is_empty(), "No types");
                     mapped.remove(0)
                 }
@@ -170,14 +235,14 @@ pub fn map_eth_token_to_ton(token: EthTokenValue, param: &EthParamType) -> Resul
             TonTokenValue::FixedArray(
                 param_type,
                 a.into_iter()
-                    .map(|value| map_eth_token_to_ton(value, abi))
+                    .filter_map(|value| map_eth_token_to_ton(value, abi, false, ctx).transpose())
                     .collect::<Result<Vec<_>, _>>()?,
             )
         }
         (EthTokenValue::Array(a), EthParamType::Array(abi)) => {
             let param_type = match *abi.clone() {
                 EthParamType::Array(arr) => {
-                    let mut mapped = map_eth_abi_to_ton(std::iter::once(arr.as_ref()))?;
+                    let mut mapped = map_eth_abi_to_ton(std::iter::once(arr.as_ref()), false)?;
                     anyhow::ensure!(!mapped.is_empty(), "No types");
                     mapped.remove(0)
                 }
@@ -186,20 +251,42 @@ pub fn map_eth_token_to_ton(token: EthTokenValue, param: &EthParamType) -> Resul
             TonTokenValue::Array(
                 param_type,
                 a.into_iter()
-                    .map(|value| map_eth_token_to_ton(value, abi))
+                    .filter_map(|value| map_eth_token_to_ton(value, abi, false, ctx).transpose())
                     .collect::<Result<Vec<_>, _>>()?,
             )
         }
-        (EthTokenValue::Tuple(a), EthParamType::Tuple(abi)) => TonTokenValue::Tuple(
-            a.into_iter()
+        (EthTokenValue::Tuple(a), EthParamType::Tuple(abi)) => {
+            // NOTE: save flag before processing tokens to prevent updating
+            let to_new_cell = ctx.tuples_to_new_cell;
+
+            let tokens = a
+                .into_iter()
                 .zip(abi.iter())
-                .map(|(value, abi)| {
-                    map_eth_token_to_ton(value, abi).map(|x| ton_abi::Token::new("", x))
+                .filter_map(|(value, abi)| {
+                    map_eth_token_to_ton(value, abi, can_update_ctx, ctx).transpose()
                 })
-                .collect::<Result<Vec<_>, _>>()?,
-        ),
+                .collect::<Result<Vec<_>, _>>()?;
+
+            if to_new_cell {
+                TonTokenValue::Cell(
+                    ton_abi::TokenValue::pack_token_values_into_chain(
+                        &tokens,
+                        Default::default(),
+                        2,
+                    )?
+                    .into(),
+                )
+            } else {
+                TonTokenValue::Tuple(
+                    tokens
+                        .into_iter()
+                        .map(|x| ton_abi::Token::new("", x))
+                        .collect(),
+                )
+            }
+        }
         ty => return Err(AbiMappingError::UnsupportedEthType(ty.0).into()),
-    })
+    }))
 }
 
 fn map_ton_token_to_eth(token: TonTokenValue) -> Result<EthTokenValue, AbiMappingError> {
@@ -250,6 +337,8 @@ enum AbiMappingError {
     UnsupportedTonType(ton_abi::TokenValue),
     #[error("Unsupported type: {:?}", .0)]
     UnsupportedEthType(ethabi::Token),
+    #[error("Invalid mapping flags")]
+    InvalidMappingFlags,
 }
 
 #[cfg(test)]
@@ -267,7 +356,7 @@ mod test {
             EthParamType::Int(128),
             EthParamType::Tuple(vec![EthParamType::Bool, EthParamType::Bytes]),
         ];
-        let got = super::map_eth_abi_to_ton(types.iter()).unwrap();
+        let got = super::map_eth_abi_to_ton(types.iter(), true).unwrap();
         let expected = vec![
             TonParamType::Bytes,
             TonParamType::String,
@@ -357,7 +446,10 @@ mod test {
                     ethabi::ParamType::Uint(256),
                     ethabi::ParamType::Bytes
                 ]),
+                true,
+                &mut Default::default()
             )
+            .unwrap()
             .unwrap(),
             ton_expected
         );
@@ -587,5 +679,26 @@ mod test {
             123,
         );
         println!("{}", hex::encode(data));
+    }
+
+    #[test]
+    fn test_abi_mapping_flags() {
+        let tokens = vec![
+            ethabi::Token::Bytes(vec![1, 2, 3]),
+            ethabi::Token::FixedBytes(vec![0x03]),
+            ethabi::Token::Tuple(vec![ethabi::Token::Bool(true)]),
+        ];
+
+        let cell = map_eth_tokens_to_ton_cell(
+            tokens,
+            &[
+                ethabi::ParamType::Bytes,
+                ethabi::ParamType::FixedBytes(1),
+                ethabi::ParamType::Tuple(vec![ethabi::ParamType::Bool]),
+            ],
+        )
+        .unwrap();
+
+        println!("{:#.1024}", cell);
     }
 }

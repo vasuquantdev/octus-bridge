@@ -2066,6 +2066,7 @@ dependencies = [
  "anyhow",
  "argh",
  "async-trait",
+ "base64",
  "bb8",
  "bincode",
  "cargo-husky",
