@@ -133,10 +133,6 @@ impl Staking {
             .ton_subscriber
             .add_transactions_subscription([user_data_account], &staking.user_data_observer);
 
-        if should_vote {
-            staking.become_relay_next_round().await?;
-        }
-
         staking.start_managing_elections();
 
         staking.collect_all_unclaimed_reward().await?;
