@@ -21,7 +21,7 @@ pub struct Staking {
     context: Arc<EngineContext>,
 
     /// Current relay round info
-    current_relay_round: Mutex<RoundState>,
+    current_relay_round: Mutex<CurrentRelayRound>,
 
     /// Notifier for `RelayRoundInitialized` events
     relay_round_started_notify: Notify,
@@ -30,7 +30,9 @@ pub struct Staking {
     /// Notifier for `ElectionEnded` events
     elections_end_notify: Notify,
     /// Notifier for `RelayConfigUpdated` events
-    election_timings_changed_notify: Notify,
+    relay_config_updated_notify: Notify,
+    /// Notifier for `DepositProcessed` events
+    user_data_balance_changed_notify: Notify,
 
     /// Staking contract address
     staking_account: UInt256,
@@ -57,7 +59,7 @@ impl Staking {
             .context("Staking contract not found")?;
         let staking_contract = StakingContract(&staking_contract);
 
-        let current_relay_round = staking_contract
+        let relay_round_state = staking_contract
             .get_round_state()
             .context("Current relay round not found")?;
 
@@ -65,10 +67,18 @@ impl Staking {
             .get_user_data_address(&ctx.staker_account)
             .context("User data account not found")?;
 
-        let should_vote = match &current_relay_round.elections_state {
+        let user_data_contract = shard_accounts
+            .find_account(&user_data_account)?
+            .context("User data account not found")?;
+        let user_data_balance = UserDataContract(&user_data_contract)
+            .get_details()
+            .context("Failed to get user data details")?
+            .token_balance;
+
+        let should_vote = match &relay_round_state.elections_state {
             ElectionsState::Started { .. } => {
                 let elections_contract = shard_accounts
-                    .find_account(&current_relay_round.next_elections_account)?
+                    .find_account(&relay_round_state.next_elections_account)?
                     .context("Next elections contract not found")?;
                 let elections_contract = ElectionsContract(&elections_contract);
                 let elected = elections_contract
@@ -86,11 +96,15 @@ impl Staking {
         // Create object
         let staking = Arc::new(Self {
             context: ctx,
-            current_relay_round: Mutex::new(current_relay_round),
+            current_relay_round: Mutex::new(CurrentRelayRound {
+                user_data_balance,
+                state: relay_round_state,
+            }),
             relay_round_started_notify: Default::default(),
             elections_start_notify: Default::default(),
             elections_end_notify: Default::default(),
-            election_timings_changed_notify: Default::default(),
+            relay_config_updated_notify: Default::default(),
+            user_data_balance_changed_notify: Default::default(),
             staking_account,
             staking_observer: AccountObserver::new(&staking_events_tx),
             user_data_account,
@@ -212,7 +226,7 @@ impl Staking {
         // Lock round state before notification.
         // NOTE: at this time it can also be locked in elections management loop
         let mut current_relay_round = self.current_relay_round.lock();
-        *current_relay_round = round_state;
+        current_relay_round.state = round_state;
 
         match event {
             StakingEvent::ElectionStarted(_) => {
@@ -257,7 +271,7 @@ impl Staking {
                 });
             }
             StakingEvent::RelayConfigUpdated(_) => {
-                self.election_timings_changed_notify.notify_waiters();
+                self.relay_config_updated_notify.notify_waiters();
             }
         }
 
@@ -271,15 +285,23 @@ impl Staking {
     ) -> Result<()> {
         let keystore = &self.context.keystore;
 
-        if let UserDataEvent::RelayKeysUpdated(event) = event {
-            if event.ton_pubkey != keystore.ton.public_key()
-                || &event.eth_address != keystore.eth.address().as_fixed_bytes()
-            {
-                log::error!(
+        match event {
+            UserDataEvent::RelayKeysUpdated(event) => {
+                if event.ton_pubkey != keystore.ton.public_key()
+                    || &event.eth_address != keystore.eth.address().as_fixed_bytes()
+                {
+                    log::error!(
                         "FATAL ERROR. Staker sent different keys. Current relay setup is not operational now"
                     );
-                self.context.shutdown_requests_tx.send(())?;
+                    self.context.shutdown_requests_tx.send(())?;
+                }
             }
+            UserDataEvent::DepositProcessed(event) => {
+                let mut current_relay_round = self.current_relay_round.lock();
+                current_relay_round.user_data_balance = event.new_balance;
+                self.user_data_balance_changed_notify.notify_waiters();
+            }
+            _ => { /* ignore */ }
         }
 
         Ok(())
@@ -297,12 +319,12 @@ impl Staking {
                 };
 
                 // Prepare notification futures
-                let (elections_state, timings_changed_fut) = {
+                let (elections_state, relay_config_updated_fut) = {
                     // Acquire mutex lock here
                     let current_relay_round = staking.current_relay_round.lock();
 
                     // Prepare pending elections state
-                    let elections_state = current_relay_round.elections_state;
+                    let elections_state = current_relay_round.state.elections_state;
                     log::info!("Elections management loop. State: {:?}", elections_state);
 
                     let elections_state = match elections_state {
@@ -324,11 +346,11 @@ impl Staking {
                             new_round_fut: staking.relay_round_started_notify.notified(),
                         },
                     };
-                    let timings_changed_fut = staking.election_timings_changed_notify.notified();
+                    let relay_config_updated_fut = staking.relay_config_updated_notify.notified();
 
                     // NOTE: `current_relay_round` lock is dropped here, so it is guaranteed that
                     // no other events are executed in same time
-                    (elections_state, timings_changed_fut)
+                    (elections_state, relay_config_updated_fut)
                 };
 
                 let now = chrono::Utc::now().timestamp() as u64;
@@ -366,7 +388,7 @@ impl Staking {
                             _ = outer_fut => {
                                 log::warn!("Elections loop: cancelling elections start. Already started");
                             }
-                            _ = timings_changed_fut => {
+                            _ = relay_config_updated_fut => {
                                 log::warn!("Elections loop: cancelling elections start. Timings changed");
                             }
                         }
@@ -400,7 +422,7 @@ impl Staking {
                             _ = outer_fut => {
                                 log::warn!("Elections loop: cancelling elections ending. Already ended");
                             }
-                            _ = timings_changed_fut => {
+                            _ = relay_config_updated_fut => {
                                 log::warn!("Elections loop: cancelling elections ending. Timings changed");
                             }
                         }
@@ -417,6 +439,50 @@ impl Staking {
 
     /// Delivers `becomeRelayNextRound` message to user data contract
     async fn become_relay_next_round(&self) -> Result<()> {
+        // Wait until user has enough balance to be elected
+        loop {
+            let (user_data_balance_changed_fut, relay_config_updated_fut) = {
+                let current_relay_round = self.current_relay_round.lock();
+
+                let user_data_balance = current_relay_round.user_data_balance;
+                let min_relay_deposit = current_relay_round.state.min_relay_deposit;
+
+                // Check if user can be elected
+                if user_data_balance >= min_relay_deposit {
+                    log::info!(
+                        "User has enough balance to be elected ({}/{})",
+                        user_data_balance,
+                        min_relay_deposit
+                    );
+                    break;
+                }
+
+                // Wait some changes
+                log::info!(
+                    "User doesn't have enough balance to be elected ({}/{})",
+                    user_data_balance,
+                    min_relay_deposit
+                );
+
+                // User data notifications
+                (
+                    self.user_data_balance_changed_notify.notified(),
+                    self.relay_config_updated_notify.notified(),
+                )
+            };
+
+            // Wait until balance or config are changed
+            tokio::select! {
+                _ = user_data_balance_changed_fut => {
+                    log::info!("Next round procedure loop. User data balance changed");
+                }
+                _ = relay_config_updated_fut => {
+                    log::info!("Next round procedure loop. Relay config updated ")
+                }
+            }
+        }
+
+        // Send message `becomeRelayNextRound`
         self.context
             .deliver_message(
                 self.user_data_observer.clone(),
@@ -474,6 +540,12 @@ impl Staking {
             )
             .await
     }
+}
+
+/// Relay round and user data params
+struct CurrentRelayRound {
+    user_data_balance: u128,
+    state: RoundState,
 }
 
 impl EngineContext {
@@ -573,6 +645,7 @@ impl UserDataContract<'_> {
                                 log::error!("Confirmed ETH address mismatch");
                             }
                         }
+                        UserDataEvent::DepositProcessed(_) => { /* ignore */ }
                     }
                 }
             }
@@ -686,6 +759,7 @@ impl<'a> StakingContract<'a> {
         Ok(RoundState {
             elections_state,
             next_elections_account,
+            min_relay_deposit: relay_config.min_relay_deposit,
         })
     }
 }
@@ -694,6 +768,7 @@ impl<'a> StakingContract<'a> {
 struct RoundState {
     elections_state: ElectionsState,
     next_elections_account: UInt256,
+    min_relay_deposit: u128,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -785,6 +860,7 @@ enum UserDataEvent {
     RelayKeysUpdated(RelayKeysUpdatedEvent),
     TonPubkeyConfirmed(TonPubkeyConfirmedEvent),
     EthAddressConfirmed(EthAddressConfirmedEvent),
+    DepositProcessed(DepositProcessedEvent),
 }
 
 impl ReadFromTransaction for UserDataEvent {
@@ -792,6 +868,7 @@ impl ReadFromTransaction for UserDataEvent {
         let keys_updated = user_data_contract::events::relay_keys_updated();
         let ton_confirmed = user_data_contract::events::ton_pubkey_confirmed();
         let eth_confirmed = user_data_contract::events::eth_address_confirmed();
+        let deposit = user_data_contract::events::deposit_processed();
 
         let mut res = None;
         ctx.iterate_events(|id, body| {
@@ -801,6 +878,8 @@ impl ReadFromTransaction for UserDataEvent {
                 parse_tokens!(res, ton_confirmed, body, UserDataEvent::TonPubkeyConfirmed)
             } else if id == eth_confirmed.id {
                 parse_tokens!(res, eth_confirmed, body, UserDataEvent::EthAddressConfirmed)
+            } else if id == deposit.id {
+                parse_tokens!(res, deposit, body, UserDataEvent::DepositProcessed)
             }
         });
         res

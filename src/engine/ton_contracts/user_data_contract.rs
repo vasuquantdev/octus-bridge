@@ -69,4 +69,13 @@ pub mod events {
                 .build()
         })
     }
+
+    pub fn deposit_processed() -> &'static ton_abi::Event {
+        static FUNCTION: OnceCell<ton_abi::Event> = OnceCell::new();
+        FUNCTION.get_or_init(|| {
+            EventBuilder::new("DepositProcessed")
+                .inputs(DepositProcessedEvent::param_type())
+                .build()
+        })
+    }
 }

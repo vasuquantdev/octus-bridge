@@ -382,6 +382,14 @@ pub struct EthAddressConfirmedEvent {
 }
 
 #[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
+pub struct DepositProcessedEvent {
+    #[abi(uint128)]
+    pub tokens_deposited: u128,
+    #[abi(uint128)]
+    pub new_balance: u128,
+}
+
+#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
 pub struct RelayKeysUpdatedEvent {
     #[abi(with = "uint256_bytes")]
     pub ton_pubkey: UInt256,
