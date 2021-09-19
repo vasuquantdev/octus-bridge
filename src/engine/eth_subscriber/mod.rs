@@ -667,11 +667,22 @@ impl PendingConfirmation {
         let vote_data = &self.vote_data;
 
         match self.event_abi.decode_and_map(&event.data) {
-            Ok(data)
-                if data.repr_hash() == vote_data.event_data.repr_hash()
-                    && event.block_number == vote_data.event_block_number as u64
-                    && &event.block_hash.0 == vote_data.event_block.as_slice() =>
-            {
+            Ok(data) => {
+                log::error!("Received: {:#.1024}", data);
+                log::error!("Expected: {:#.1024}", vote_data.event_data);
+
+                if data.repr_hash() != vote_data.event_data.repr_hash() {
+                    log::error!("Event data mismatch");
+                    return VerificationStatus::NotExists;
+                }
+                if event.block_number != vote_data.event_block_number as u64 {
+                    log::error!("Event block number mismatch");
+                    return VerificationStatus::NotExists;
+                }
+                if &event.block_hash.0 != vote_data.event_block.as_slice() {
+                    log::error!("Event block hash mismatch");
+                    return VerificationStatus::NotExists;
+                }
                 VerificationStatus::Exists
             }
             _ => VerificationStatus::NotExists,
