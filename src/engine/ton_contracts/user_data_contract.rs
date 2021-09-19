@@ -56,7 +56,7 @@ pub mod events {
         static FUNCTION: OnceCell<ton_abi::Event> = OnceCell::new();
         FUNCTION.get_or_init(|| {
             EventBuilder::new("TonPubkeyConfirmed")
-                .input("pubkey", ton_abi::ParamType::Uint(256))
+                .inputs(TonPubkeyConfirmedEvent::param_type())
                 .build()
         })
     }
@@ -65,7 +65,7 @@ pub mod events {
         static FUNCTION: OnceCell<ton_abi::Event> = OnceCell::new();
         FUNCTION.get_or_init(|| {
             EventBuilder::new("EthAddressConfirmed")
-                .input("eth_addr", ton_abi::ParamType::Uint(160))
+                .inputs(EthAddressConfirmedEvent::param_type())
                 .build()
         })
     }
