@@ -111,6 +111,9 @@ impl Staking {
             user_data_observer: AccountObserver::new(&user_data_events_tx),
         });
 
+        let staking_clone = staking.clone();
+        let elections_end_fut = staking_clone.elections_end_notify.notified();
+
         start_listening_events(
             &staking,
             "StakingContract",
@@ -132,6 +135,15 @@ impl Staking {
         context
             .ton_subscriber
             .add_transactions_subscription([user_data_account], &staking.user_data_observer);
+
+        if should_vote {
+            tokio::select! {
+                _ = staking_clone.become_relay_next_round() => {}
+                _ = elections_end_fut => {
+                    log::info!("Elections finished");
+                }
+            }
+        }
 
         staking.start_managing_elections();
 
