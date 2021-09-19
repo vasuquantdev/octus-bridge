@@ -339,13 +339,13 @@ impl EthSubscriber {
     }
 
     async fn update(&self) -> Result<()> {
-        log::info!("Updating ETH subscriber");
-
         // Skip iteration when there are no pending confirmations
         if self.pending_confirmations.lock().await.is_empty() {
             tokio::time::sleep(Duration::from_secs(self.config.poll_interval_sec)).await;
             return Ok(());
         }
+
+        log::info!("Updating ETH subscriber");
 
         // Prepare tryhard config
         let api_request_strategy = generate_fixed_timeout_config(
