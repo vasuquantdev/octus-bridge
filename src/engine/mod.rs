@@ -123,6 +123,13 @@ impl Engine {
                         buffer.write(LabeledEthSubscriberMetrics(&engine.context));
                         buffer.write(LabeledTonSubscriberMetrics(&engine.context));
 
+                        if let Some(bridge) = &*engine.bridge.lock() {
+                            buffer.write(LabeledBridgeMetrics {
+                                context: &engine.context,
+                                bridge,
+                            });
+                        }
+
                         if let Some(staking) = &*engine.staking.lock() {
                             buffer.write(LabeledStakingMetrics {
                                 context: &engine.context,
@@ -281,6 +288,27 @@ impl EngineContext {
     }
 }
 
+struct LabeledBridgeMetrics<'a> {
+    context: &'a EngineContext,
+    bridge: &'a Bridge,
+}
+
+impl std::fmt::Display for LabeledBridgeMetrics<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let metrics = self.bridge.metrics();
+
+        f.begin_metric("bridge_pending_eth_event_count")
+            .label(LABEL_STAKER, &self.context.staker_account_str)
+            .value(metrics.pending_eth_event_count)?;
+
+        f.begin_metric("bridge_pending_ton_event_count")
+            .label(LABEL_STAKER, &self.context.staker_account_str)
+            .value(metrics.pending_ton_event_count)?;
+
+        Ok(())
+    }
+}
+
 struct LabeledStakingMetrics<'a> {
     context: &'a EngineContext,
     staking: &'a Staking,
@@ -295,11 +323,13 @@ impl std::fmt::Display for LabeledStakingMetrics<'_> {
             .value(metrics.user_data_tokens_balance)?;
 
         f.begin_metric("staking_current_relay_round")
+            .label(LABEL_STAKER, &self.context.staker_account_str)
             .value(metrics.current_relay_round)?;
 
         let status = match metrics.elections_state {
             ElectionsState::NotStarted { start_time } => {
                 f.begin_metric("staking_elections_start_time")
+                    .label(LABEL_STAKER, &self.context.staker_account_str)
                     .label(LABEL_ROUND_NUM, metrics.current_relay_round)
                     .value(start_time)?;
                 0
@@ -309,9 +339,11 @@ impl std::fmt::Display for LabeledStakingMetrics<'_> {
                 end_time,
             } => {
                 f.begin_metric("staking_elections_start_time")
+                    .label(LABEL_STAKER, &self.context.staker_account_str)
                     .label(LABEL_ROUND_NUM, metrics.current_relay_round)
                     .value(start_time)?;
                 f.begin_metric("staking_elections_end_time")
+                    .label(LABEL_STAKER, &self.context.staker_account_str)
                     .label(LABEL_ROUND_NUM, metrics.current_relay_round)
                     .value(end_time)?;
                 1
@@ -320,6 +352,7 @@ impl std::fmt::Display for LabeledStakingMetrics<'_> {
         };
 
         f.begin_metric("staking_elections_status")
+            .label(LABEL_STAKER, &self.context.staker_account_str)
             .label(LABEL_ROUND_NUM, &metrics.current_relay_round)
             .value(status)?;
 

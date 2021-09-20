@@ -132,6 +132,13 @@ impl Bridge {
         Ok(bridge)
     }
 
+    pub fn metrics(&self) -> BridgeMetrics {
+        BridgeMetrics {
+            pending_eth_event_count: self.eth_events_state.count.load(Ordering::Acquire),
+            pending_ton_event_count: self.ton_events_state.count.load(Ordering::Acquire),
+        }
+    }
+
     async fn process_bridge_event(
         self: Arc<Self>,
         (_, event): (UInt256, BridgeEvent),
@@ -1087,6 +1094,11 @@ impl Bridge {
             }
         });
     }
+}
+
+pub struct BridgeMetrics {
+    pub pending_eth_event_count: usize,
+    pub pending_ton_event_count: usize,
 }
 
 struct EventsState<T> {
