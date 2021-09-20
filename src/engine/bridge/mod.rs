@@ -126,7 +126,6 @@ impl Bridge {
         bridge.get_all_configurations().await?;
         bridge.get_all_events().await?;
 
-        bridge.start_eth_event_configurations_gc();
         bridge.start_ton_event_configurations_gc();
 
         Ok(bridge)
@@ -714,19 +713,6 @@ impl Bridge {
             .get_subscriber(details.network_configuration.chain_id)
             .ok_or(BridgeError::UnknownChainId)?;
 
-        // Check if configuration is expired
-        let last_processed_height = eth_subscriber.get_last_processed_block();
-        if details.is_expired(last_processed_height) {
-            // Do nothing in that case
-            log::warn!(
-                "Ignoring ETH event configuration {}: end block number {} is less then current {}",
-                account.to_hex_string(),
-                details.network_configuration.end_block_number,
-                last_processed_height
-            );
-            return Ok(());
-        }
-
         // Add unique event hash
         add_event_code_hash(
             &mut state.event_code_hashes,
@@ -923,74 +909,6 @@ impl Bridge {
         }
 
         Ok(())
-    }
-
-    fn start_eth_event_configurations_gc(self: &Arc<Self>) {
-        let bridge = Arc::downgrade(self);
-
-        tokio::spawn(async move {
-            loop {
-                tokio::time::sleep(Duration::from_secs(10)).await;
-
-                // Get bridge if it is still alive
-                let bridge = match bridge.upgrade() {
-                    Some(bridge) => bridge,
-                    None => return,
-                };
-
-                // Get last heights in all chains
-                let last_block_heights = bridge.context.eth_subscribers.get_last_block_numbers();
-
-                // Remove all expired configurations
-                let subscriptions_to_remove = {
-                    let mut to_remove = FxHashMap::default();
-
-                    let mut state = bridge.state.write();
-                    state.eth_event_configurations.retain(|account, state| {
-                        let network_configuration = &state.details.network_configuration;
-
-                        let chain_id = network_configuration.chain_id;
-                        let last_number = match last_block_heights.get(&chain_id) {
-                            Some(height) => *height,
-                            None => {
-                                log::warn!("Found unknown chain id: {}", chain_id);
-                                return true;
-                            }
-                        };
-
-                        if state.details.is_expired(last_number) {
-                            log::warn!(
-                                "Removing ETH event configuration {}",
-                                account.to_hex_string()
-                            );
-
-                            to_remove
-                                .entry(chain_id)
-                                .or_insert_with(|| Vec::with_capacity(1))
-                                .push((
-                                    ethabi::Address::from(network_configuration.event_emitter),
-                                    state.topic_hash,
-                                    *account,
-                                ));
-                            false
-                        } else {
-                            true
-                        }
-                    });
-
-                    to_remove
-                };
-
-                // Unsubscribe all expired subscriptions
-                for (chain_id, subscriptions) in subscriptions_to_remove {
-                    let subscriber = match bridge.context.eth_subscribers.get_subscriber(chain_id) {
-                        Some(subscriber) => subscriber,
-                        None => continue,
-                    };
-                    subscriber.unsubscribe(subscriptions);
-                }
-            }
-        });
     }
 
     fn start_ton_event_configurations_gc(self: &Arc<Self>) {
@@ -1195,12 +1113,6 @@ struct EthEventConfigurationState {
 
     /// Observer must live as long as configuration lives
     _observer: Arc<AccountObserver<EthEventConfigurationEvent>>,
-}
-
-impl EthEventConfigurationDetails {
-    fn is_expired(&self, end_block_number: u64) -> bool {
-        (1..end_block_number).contains(&(self.network_configuration.end_block_number as u64))
-    }
 }
 
 /// TON event configuration data
