@@ -176,7 +176,7 @@ pub struct MetricsConfig {
     /// Default: `127.0.0.1:10000`
     pub listen_address: SocketAddr,
 
-    /// Listen address of metrics. Used by the client to gather prometheus metrics.
+    /// Path to the metrics.
     /// Default: `/`
     #[serde(with = "serde_url")]
     pub metrics_path: PathAndQuery,

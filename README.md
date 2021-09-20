@@ -80,14 +80,35 @@ bridge_settings:
       poll_interval_sec: 10
       # Max total request duration
       maximum_failed_responses_time_sec: 600
+  # ETH address verification settings (optional)
+  address_verification:
+    # Minimal balance on user's wallet to start address verification.
+    # Default: 50000000
+    min_balance_gwei: 50000000
+    # Fixed gas price. Default: 300
+    gas_price_gwei: 300
+    # Path to the file with transaction state.
+    # Default: "./verification-state.json"
+    state_path: "verification-state.json"
 node_settings:
-  # UDP port, used for ADNL node
+  # UDP port, used for ADNL node. Default: 30303
   adnl_port: 30303
-  # Root directory for relay DB
+  # Root directory for relay DB. Default: "./db"
   db_path: "/var/relay/db"
   # Path to temporary ADNL keys. 
-  # NOTE: Will be generated if it was not there
+  # NOTE: Will be generated if it was not there.
+  # Default: "./adnl-keys.json"
   temp_keys_path: "/var/relay/adnl-keys.json"
+metrics_settings:
+  # Listen address of metrics. Used by the client to gather prometheus metrics.
+  # Default: "127.0.0.1:10000"
+  listen_address: "127.0.0.1:10000"
+  # Path to the metrics. Default: "/"
+  metrics_path: "/"
+  # Metrics update interval in seconds. Default: 10
+  collection_interval_sec: 10
+# log4rs settings.
+# See https://docs.rs/log4rs/1.0.0/log4rs/ for more details
 logger_settings:
   appenders:
     stdout:
