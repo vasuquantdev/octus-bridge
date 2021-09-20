@@ -122,6 +122,13 @@ impl Engine {
                         let mut buffer = buffers.acquire_buffer().await;
                         buffer.write(LabeledEthSubscriberMetrics(&engine.context));
                         buffer.write(LabeledTonSubscriberMetrics(&engine.context));
+
+                        if let Some(staking) = &*engine.staking.lock() {
+                            buffer.write(LabeledStakingMetrics {
+                                context: &engine.context,
+                                staking,
+                            });
+                        }
                     }
                     // Exporter or engine are already dropped
                     _ => return,
@@ -274,6 +281,52 @@ impl EngineContext {
     }
 }
 
+struct LabeledStakingMetrics<'a> {
+    context: &'a EngineContext,
+    staking: &'a Staking,
+}
+
+impl std::fmt::Display for LabeledStakingMetrics<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let metrics = self.staking.metrics();
+
+        f.begin_metric("staking_user_data_tokens_balance")
+            .label(LABEL_STAKER, &self.context.staker_account_str)
+            .value(metrics.user_data_tokens_balance)?;
+
+        f.begin_metric("staking_current_relay_round")
+            .value(metrics.current_relay_round)?;
+
+        let status = match metrics.elections_state {
+            ElectionsState::NotStarted { start_time } => {
+                f.begin_metric("staking_elections_start_time")
+                    .label(LABEL_ROUND_NUM, metrics.current_relay_round)
+                    .value(start_time)?;
+                0
+            }
+            ElectionsState::Started {
+                start_time,
+                end_time,
+            } => {
+                f.begin_metric("staking_elections_start_time")
+                    .label(LABEL_ROUND_NUM, metrics.current_relay_round)
+                    .value(start_time)?;
+                f.begin_metric("staking_elections_end_time")
+                    .label(LABEL_ROUND_NUM, metrics.current_relay_round)
+                    .value(end_time)?;
+                1
+            }
+            ElectionsState::Finished => 2,
+        };
+
+        f.begin_metric("staking_elections_status")
+            .label(LABEL_ROUND_NUM, &metrics.current_relay_round)
+            .value(status)?;
+
+        Ok(())
+    }
+}
+
 struct LabeledTonSubscriberMetrics<'a>(&'a EngineContext);
 
 impl std::fmt::Display for LabeledTonSubscriberMetrics<'_> {
@@ -320,6 +373,7 @@ impl std::fmt::Display for LabeledEthSubscriberMetrics<'_> {
 
 const LABEL_STAKER: &str = "staker";
 const LABEL_CHAIN_ID: &str = "chain_id";
+const LABEL_ROUND_NUM: &str = "round_num";
 
 pub type ShutdownRequestsTx = mpsc::UnboundedSender<()>;
 

@@ -152,6 +152,16 @@ impl Staking {
         Ok(staking)
     }
 
+    pub fn metrics(&self) -> StakingMetrics {
+        let current_relay_round = self.current_relay_round.lock();
+
+        StakingMetrics {
+            current_relay_round: current_relay_round.state.number,
+            user_data_tokens_balance: current_relay_round.user_data_balance,
+            elections_state: current_relay_round.state.elections_state,
+        }
+    }
+
     async fn collect_all_unclaimed_reward(self: &Arc<Self>) -> Result<()> {
         let shard_accounts = self.context.get_all_shard_accounts().await?;
         let staking_contract = shard_accounts
@@ -550,6 +560,12 @@ impl Staking {
     }
 }
 
+pub struct StakingMetrics {
+    pub current_relay_round: u32,
+    pub user_data_tokens_balance: u128,
+    pub elections_state: ElectionsState,
+}
+
 /// Relay round and user data params
 struct CurrentRelayRound {
     user_data_balance: u128,
@@ -765,6 +781,7 @@ impl<'a> StakingContract<'a> {
         };
 
         Ok(RoundState {
+            number: relay_rounds_details.current_relay_round,
             elections_state,
             next_elections_account,
             min_relay_deposit: relay_config.min_relay_deposit,
@@ -774,13 +791,14 @@ impl<'a> StakingContract<'a> {
 
 #[derive(Debug, Clone)]
 struct RoundState {
+    number: u32,
     elections_state: ElectionsState,
     next_elections_account: UInt256,
     min_relay_deposit: u128,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-enum ElectionsState {
+pub enum ElectionsState {
     NotStarted { start_time: u32 },
     Started { start_time: u32, end_time: u32 },
     Finished,
