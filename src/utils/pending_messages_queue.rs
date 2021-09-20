@@ -1,5 +1,5 @@
 use std::collections::hash_map;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -13,6 +13,7 @@ use super::shard_utils::*;
 pub struct PendingMessagesQueue {
     min_expire_at: AtomicU32,
     entries: Mutex<FxHashMap<PendingMessageId, PendingMessage>>,
+    entry_count: AtomicUsize,
 }
 
 impl PendingMessagesQueue {
@@ -23,7 +24,12 @@ impl PendingMessagesQueue {
                 capacity,
                 Default::default(),
             )),
+            entry_count: Default::default(),
         })
+    }
+
+    pub fn len(&self) -> usize {
+        self.entry_count.load(Ordering::Acquire)
     }
 
     pub fn add_message(
@@ -46,6 +52,7 @@ impl PendingMessagesQueue {
                 });
 
                 self.min_expire_at.fetch_min(expire_at, Ordering::AcqRel);
+                self.entry_count.fetch_add(1, Ordering::Release);
 
                 Ok(rx)
             }
@@ -62,6 +69,8 @@ impl PendingMessagesQueue {
             Some(message) => message,
             None => return,
         };
+
+        self.entry_count.fetch_sub(1, Ordering::Release);
 
         if let Some(tx) = message.tx.take() {
             tx.send(MessageStatus::Delivered).ok();
@@ -106,6 +115,7 @@ impl PendingMessagesQueue {
         });
 
         self.min_expire_at.store(min_expire_at, Ordering::Release);
+        self.entry_count.store(entries.len(), Ordering::Release);
     }
 }
 

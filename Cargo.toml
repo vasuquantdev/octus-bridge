@@ -21,6 +21,8 @@ dialoguer = "0.8"
 either = "1.6"
 futures = "0.3"
 hex = "0.4"
+http = "0.2"
+hyper = { version = "0.14", features = ["server"]}
 log = "0.4"
 log4rs = "1.0"
 num-bigint = "0.3"
@@ -71,17 +73,3 @@ tempfile = "3.2.0"
 [features]
 default = []
 asm = ["ton_types/asm", "ton_block/asm", "ton_abi/asm", "tiny-adnl/asm", "ton-indexer/asm"]
-
-[package.metadata.deb]
-depends = "$auto"
-section = "utility"
-assets = [
-    ["target/release/relay", "usr/bin/relay", "755"],
-    ["target/release/client", "usr/bin/relay-client", "755"],
-]
-conf-files = ["/etc/relay.conf"]
-maintainer-scripts = "debian/"
-features = ["graphql-transport", "tonlib-transport"]
-
-[package.metadata.deb.systemd-units]
-unit-scripts = "debian/"

@@ -9,6 +9,7 @@ use ton_block::Serializable;
 use self::bridge::*;
 use self::eth_subscriber::*;
 use self::keystore::*;
+use self::metrics_exporter::*;
 use self::staking::*;
 use self::ton_contracts::*;
 use self::ton_subscriber::*;
@@ -18,11 +19,13 @@ use crate::utils::*;
 mod bridge;
 mod eth_subscriber;
 mod keystore;
+mod metrics_exporter;
 mod staking;
 mod ton_contracts;
 mod ton_subscriber;
 
 pub struct Engine {
+    metrics_exporter: Option<Arc<MetricsExporter>>,
     context: Arc<EngineContext>,
     bridge: Mutex<Option<Arc<Bridge>>>,
     staking: Mutex<Option<Arc<Staking>>>,
@@ -34,16 +37,19 @@ impl Engine {
         global_config: ton_indexer::GlobalConfig,
         shutdown_requests_tx: ShutdownRequestsTx,
     ) -> Result<Arc<Self>> {
+        let metrics_exporter = config.metrics_settings.clone().map(MetricsExporter::new);
+
         let context = EngineContext::new(config, global_config, shutdown_requests_tx).await?;
 
         Ok(Arc::new(Self {
+            metrics_exporter,
             context,
             bridge: Mutex::new(None),
             staking: Mutex::new(None),
         }))
     }
 
-    pub async fn start(&self) -> Result<()> {
+    pub async fn start(self: &Arc<Self>) -> Result<()> {
         // Print ETH address and TON public key
         log::warn!(
             "Using ETH address: {}",
@@ -53,6 +59,8 @@ impl Engine {
             "Using TON public key: {}",
             self.context.keystore.ton.public_key().to_hex_string()
         );
+
+        self.start_metrics_exporter();
 
         // Sync node and subscribers
         self.context.start().await?;
@@ -91,10 +99,42 @@ impl Engine {
         // Done
         Ok(())
     }
+
+    fn start_metrics_exporter(self: &Arc<Self>) {
+        let metrics_exporter = match &self.metrics_exporter {
+            Some(metrics_exporter) => metrics_exporter,
+            None => return,
+        };
+
+        // Start exporter server
+        metrics_exporter.start();
+
+        let buffers = Arc::downgrade(metrics_exporter.buffers());
+        let interval = metrics_exporter.interval();
+
+        let engine = Arc::downgrade(self);
+
+        tokio::spawn(async move {
+            loop {
+                match (engine.upgrade(), buffers.upgrade()) {
+                    // Update next metrics buffer
+                    (Some(engine), Some(buffers)) => {
+                        let mut buffer = buffers.acquire_buffer().await;
+                        buffer.write(LabeledEthSubscriberMetrics(&engine.context));
+                        buffer.write(LabeledTonSubscriberMetrics(&engine.context));
+                    }
+                    // Exporter or engine are already dropped
+                    _ => return,
+                };
+                tokio::time::sleep(interval).await;
+            }
+        });
+    }
 }
 
 pub struct EngineContext {
     pub shutdown_requests_tx: ShutdownRequestsTx,
+    pub staker_account_str: String,
     pub staker_account: ton_types::UInt256,
     pub settings: BridgeConfig,
     pub keystore: Arc<KeyStore>,
@@ -118,6 +158,7 @@ impl EngineContext {
     ) -> Result<Arc<Self>> {
         let staker_account =
             ton_types::UInt256::from_be_bytes(&config.staker_address.address().get_bytestring(0));
+        let staker_account_str = config.staker_address.to_string();
         let settings = config.bridge_settings;
 
         let keystore = KeyStore::new(&settings.keys_path, config.master_password)
@@ -144,6 +185,7 @@ impl EngineContext {
 
         Ok(Arc::new(Self {
             shutdown_requests_tx,
+            staker_account_str,
             staker_account,
             settings,
             keystore,
@@ -231,6 +273,53 @@ impl EngineContext {
         Ok(())
     }
 }
+
+struct LabeledTonSubscriberMetrics<'a>(&'a EngineContext);
+
+impl std::fmt::Display for LabeledTonSubscriberMetrics<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let metrics = self.0.ton_subscriber.metrics();
+
+        f.begin_metric("ton_subscriber_ready")
+            .label(LABEL_STAKER, &self.0.staker_account_str)
+            .value(metrics.ready)?;
+
+        f.begin_metric("ton_subscriber_current_utime")
+            .label(LABEL_STAKER, &self.0.staker_account_str)
+            .value(metrics.current_utime)?;
+
+        f.begin_metric("ton_subscriber_pending_message_count")
+            .label(LABEL_STAKER, &self.0.staker_account_str)
+            .value(metrics.pending_message_count)?;
+
+        Ok(())
+    }
+}
+
+struct LabeledEthSubscriberMetrics<'a>(&'a EngineContext);
+
+impl std::fmt::Display for LabeledEthSubscriberMetrics<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for subscriber in self.0.eth_subscribers.subscribers() {
+            let chain_id = subscriber.chain_id_str();
+            let metrics = subscriber.metrics();
+
+            f.begin_metric("eth_subscriber_last_processed_block")
+                .label(LABEL_STAKER, &self.0.staker_account_str)
+                .label(LABEL_CHAIN_ID, &chain_id)
+                .value(metrics.last_processed_block)?;
+
+            f.begin_metric("eth_subscriber_pending_confirmation_count")
+                .label(LABEL_STAKER, &self.0.staker_account_str)
+                .label(LABEL_CHAIN_ID, &chain_id)
+                .value(metrics.pending_confirmation_count)?;
+        }
+        Ok(())
+    }
+}
+
+const LABEL_STAKER: &str = "staker";
+const LABEL_CHAIN_ID: &str = "chain_id";
 
 pub type ShutdownRequestsTx = mpsc::UnboundedSender<()>;
 

@@ -38,6 +38,14 @@ impl TonSubscriber {
         })
     }
 
+    pub fn metrics(&self) -> TonSubscriberMetrics {
+        TonSubscriberMetrics {
+            ready: self.ready.load(Ordering::Acquire),
+            current_utime: self.current_utime(),
+            pending_message_count: self.messages_queue.len(),
+        }
+    }
+
     pub async fn start(self: &Arc<Self>) -> Result<()> {
         self.wait_sync().await;
 
@@ -339,6 +347,13 @@ impl ton_indexer::Subscriber for TonSubscriber {
 
         Ok(())
     }
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct TonSubscriberMetrics {
+    pub ready: bool,
+    pub current_utime: u32,
+    pub pending_message_count: usize,
 }
 
 static BLOCK_AWAITER_ID: AtomicUsize = AtomicUsize::new(0);

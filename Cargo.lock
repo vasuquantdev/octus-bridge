@@ -2080,6 +2080,8 @@ dependencies = [
  "ethabi",
  "futures",
  "hex",
+ "http",
+ "hyper",
  "log",
  "log4rs",
  "nekoton-abi",

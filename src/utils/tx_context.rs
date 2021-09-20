@@ -4,7 +4,7 @@ use ton_types::UInt256;
 use super::existing_contract::*;
 use super::shard_utils::*;
 
-pub trait ReadFromTransaction: Sized {
+pub trait ReadFromTransaction: Sized + Send + Sync {
     fn read_from_transaction(ctx: &TxContext<'_>) -> Option<Self>;
 }
 

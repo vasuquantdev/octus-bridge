@@ -1,6 +1,6 @@
 use std::collections::hash_map;
 use std::convert::TryFrom;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -62,6 +62,10 @@ impl EthSubscriberRegistry {
         self.subscribers.get(&chain_id).map(|x| x.clone())
     }
 
+    pub fn subscribers(&self) -> &DashMap<u32, Arc<EthSubscriber>> {
+        &self.subscribers
+    }
+
     pub fn get_last_block_number(&self, chain_id: u32) -> Result<u64> {
         self.last_block_numbers
             .get(&chain_id)
@@ -95,6 +99,7 @@ impl EthSubscriberRegistry {
 
 pub struct EthSubscriber {
     chain_id: u32,
+    chain_id_str: String,
     config: EthConfig,
     api: EthApi,
     pool: Arc<Semaphore>,
@@ -102,6 +107,7 @@ pub struct EthSubscriber {
     last_processed_block: Arc<AtomicU64>,
     last_block_numbers: Arc<LastBlockNumbersMap>,
     pending_confirmations: tokio::sync::Mutex<FxHashMap<EventId, PendingConfirmation>>,
+    pending_confirmation_count: AtomicUsize,
 }
 
 impl EthSubscriber {
@@ -116,6 +122,7 @@ impl EthSubscriber {
 
         let subscriber = Arc::new(Self {
             chain_id,
+            chain_id_str: chain_id.to_string(),
             config,
             api,
             pool,
@@ -123,6 +130,7 @@ impl EthSubscriber {
             last_processed_block: Arc::new(AtomicU64::default()),
             last_block_numbers,
             pending_confirmations: Default::default(),
+            pending_confirmation_count: Default::default(),
         });
 
         let last_processed_block = subscriber.get_current_block_number().await?;
@@ -134,6 +142,17 @@ impl EthSubscriber {
             .insert(chain_id, last_processed_block);
 
         Ok(subscriber)
+    }
+
+    pub fn chain_id_str(&self) -> &str {
+        &self.chain_id_str
+    }
+
+    pub fn metrics(&self) -> EthSubscriberMetrics {
+        EthSubscriberMetrics {
+            last_processed_block: self.last_processed_block.load(Ordering::Acquire),
+            pending_confirmation_count: self.pending_confirmation_count.load(Ordering::Acquire),
+        }
     }
 
     pub async fn verify_relay_staker_address(
@@ -314,6 +333,9 @@ impl EthSubscriber {
                 },
             );
 
+            self.pending_confirmation_count
+                .store(pending_confirmations.len(), Ordering::Release);
+
             rx
         };
 
@@ -452,6 +474,8 @@ impl EthSubscriber {
 
             false
         });
+        self.pending_confirmation_count
+            .store(pending_confirmations.len(), Ordering::Release);
 
         let events_to_check = events_to_check
             .collect::<Vec<(EventId, Result<Option<ParsedEthEvent>>)>>()
@@ -569,6 +593,12 @@ impl EthSubscriber {
         .context("Timeout getting height")??;
         Ok(result.as_u64())
     }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct EthSubscriberMetrics {
+    pub last_processed_block: u64,
+    pub pending_confirmation_count: usize,
 }
 
 #[derive(Default)]

@@ -1,5 +1,6 @@
 use std::collections::hash_map;
 use std::future::Future;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -31,15 +32,14 @@ pub struct Bridge {
     state: Arc<RwLock<BridgeState>>,
 
     // Observers for pending ETH events
-    pending_eth_events: Arc<FxDashMap<UInt256, PendingEthEvent>>,
+    eth_events_state: EventsState<EthEvent>,
+
     // Observers for pending TON events
-    pending_ton_events: Arc<FxDashMap<UInt256, PendingTonEvent>>,
+    ton_events_state: EventsState<TonEvent>,
 
     connectors_tx: AccountEventsTx<ConnectorEvent>,
     eth_event_configurations_tx: AccountEventsTx<EthEventConfigurationEvent>,
     ton_event_configurations_tx: AccountEventsTx<TonEventConfigurationEvent>,
-    eth_events_tx: AccountEventsTx<EthEvent>,
-    ton_events_tx: AccountEventsTx<TonEvent>,
 }
 
 impl Bridge {
@@ -59,13 +59,19 @@ impl Bridge {
             bridge_account,
             bridge_observer: bridge_observer.clone(),
             state: Arc::new(Default::default()),
-            pending_eth_events: Arc::new(Default::default()),
-            pending_ton_events: Arc::new(Default::default()),
+            eth_events_state: EventsState {
+                pending: Default::default(),
+                count: Default::default(),
+                events_tx: eth_events_tx,
+            },
+            ton_events_state: EventsState {
+                pending: Default::default(),
+                count: Default::default(),
+                events_tx: ton_events_tx,
+            },
             connectors_tx,
             eth_event_configurations_tx,
             ton_event_configurations_tx,
-            eth_events_tx,
-            ton_events_tx,
         });
 
         // Prepare listeners
@@ -182,8 +188,7 @@ impl Bridge {
         match event {
             // Create observer on each deployment event
             EthEventConfigurationEvent::EventDeployed { address } => {
-                // TODO: check if vote data already exist somewhere
-                self.add_pending_eth_event(address);
+                self.add_pending_event(address, &self.eth_events_state);
             }
             // Update configuration state
             EthEventConfigurationEvent::SetEndBlockNumber { end_block_number } => {
@@ -208,7 +213,7 @@ impl Bridge {
                 // NOTE: Each event must be unique on the contracts level,
                 // so receiving message with duplicated address is
                 // a signal the something went wrong
-                if !self.add_pending_ton_event(address) {
+                if !self.add_pending_event(address, &self.ton_events_state) {
                     log::warn!("Got deployment message for pending event: {:x}", account);
                 }
             }
@@ -233,23 +238,25 @@ impl Bridge {
 
         let our_public_key = self.context.keystore.ton.public_key();
 
+        // Use flag to update counter outside events map lock to reduce its duration
+        let mut event_removed = false;
+
         // Handle only known ETH events
-        if let Entry::Occupied(entry) = self.pending_eth_events.entry(account) {
+        if let Entry::Occupied(entry) = self.eth_events_state.pending.entry(account) {
             match event {
                 // Handle event initialization
                 EthEvent::ReceiveRoundRelays { keys } => {
                     // Check if event contains our key
-                    if !keys.contains(our_public_key) {
+                    if keys.contains(our_public_key) {
+                        // Start voting
+                        self.spawn_background_task(
+                            "update ETH event",
+                            self.clone().update_eth_event(account),
+                        );
+                    } else {
                         entry.remove();
-                        // Do nothing
-                        return Ok(());
+                        event_removed = true;
                     }
-
-                    // Start voting
-                    self.spawn_background_task(
-                        "update ETH event",
-                        self.clone().update_eth_event(account),
-                    );
                 }
                 // Handle our confirmation or rejection
                 EthEvent::Confirm { public_key } | EthEvent::Reject { public_key }
@@ -257,9 +264,15 @@ impl Bridge {
                 {
                     // Remove pending event
                     entry.remove();
+                    event_removed = true;
                 }
                 _ => { /* Ignore other events */ }
             }
+        }
+
+        // Update metrics
+        if event_removed {
+            self.eth_events_state.count.fetch_sub(1, Ordering::Release);
         }
 
         Ok(())
@@ -273,32 +286,40 @@ impl Bridge {
 
         let our_public_key = self.context.keystore.ton.public_key();
 
+        // Use flag to update counter outside events map lock to reduce its duration
+        let mut event_removed = false;
+
         // Handle only known TON events
-        if let Entry::Occupied(entry) = self.pending_ton_events.entry(account) {
+        if let Entry::Occupied(entry) = self.ton_events_state.pending.entry(account) {
             match event {
                 // Handle event initialization
                 TonEvent::ReceiveRoundRelays { keys } => {
                     // Check if event contains our key
-                    if !keys.contains(our_public_key) {
+                    if keys.contains(our_public_key) {
+                        // Start voting
+                        self.spawn_background_task(
+                            "update TON event",
+                            self.clone().update_ton_event(account),
+                        );
+                    } else {
                         entry.remove();
-                        // Do nothing
-                        return Ok(());
+                        event_removed = true;
                     }
-
-                    // Start voting
-                    self.spawn_background_task(
-                        "update TON event",
-                        self.clone().update_ton_event(account),
-                    );
                 }
                 // Handle our confirmation or rejection
                 TonEvent::Confirm { public_key, .. } | TonEvent::Reject { public_key }
                     if public_key == our_public_key =>
                 {
                     entry.remove();
+                    event_removed = true;
                 }
                 _ => { /* Ignore other events */ }
             }
+        }
+
+        // Update metrics
+        if event_removed {
+            self.ton_events_state.count.fetch_sub(1, Ordering::Release);
         }
 
         Ok(())
@@ -315,7 +336,7 @@ impl Bridge {
         match EventBaseContract(&contract).process(keystore.ton.public_key())? {
             EventAction::Nop => return Ok(()),
             EventAction::Remove => {
-                self.pending_eth_events.remove(&account);
+                self.eth_events_state.remove(&account);
                 return Ok(());
             }
             EventAction::Vote => { /* continue voting */ }
@@ -353,7 +374,7 @@ impl Bridge {
                             chain_id,
                             account
                         );
-                        self.pending_eth_events.remove(&account);
+                        self.eth_events_state.remove(&account);
                         return Ok(());
                     }
                 }
@@ -365,7 +386,7 @@ impl Bridge {
                     event_init_data.configuration,
                     account
                 );
-                self.pending_eth_events.remove(&account);
+                self.eth_events_state.remove(&account);
                 return Ok(());
             }
         };
@@ -386,13 +407,13 @@ impl Bridge {
             // Skip event otherwise
             Err(e) => {
                 log::error!("Failed to verify ETH event {:x}: {:?}", account, e);
-                self.pending_eth_events.remove(&account);
+                self.eth_events_state.remove(&account);
                 return Ok(());
             }
         };
 
         // Clone events observer and deliver message to the contract
-        let eth_event_observer = match self.pending_eth_events.get(&account) {
+        let eth_event_observer = match self.eth_events_state.pending.get(&account) {
             Some(observer) => observer.clone(),
             None => return Ok(()),
         };
@@ -414,7 +435,7 @@ impl Bridge {
         match base_event_contract.process(keystore.ton.public_key())? {
             EventAction::Nop => return Ok(()),
             EventAction::Remove => {
-                self.pending_ton_events.remove(&account);
+                self.ton_events_state.remove(&account);
                 return Ok(());
             }
             EventAction::Vote => { /* continue voting */ }
@@ -463,7 +484,7 @@ impl Bridge {
                     event_init_data.configuration,
                     account
                 );
-                self.pending_ton_events.remove(&account);
+                self.ton_events_state.remove(&account);
                 return Ok(());
             }
         };
@@ -488,7 +509,7 @@ impl Bridge {
         };
 
         // Clone events observer and deliver message to the contract
-        let ton_event_observer = match self.pending_ton_events.get(&account) {
+        let ton_event_observer = match self.ton_events_state.pending.get(&account) {
             Some(observer) => observer.clone(),
             None => return Ok(()),
         };
@@ -861,7 +882,7 @@ impl Bridge {
                                 return Ok(true);
                             }
 
-                            if self.add_pending_eth_event(hash) {
+                            if self.add_pending_event(hash, &self.eth_events_state) {
                                 self.spawn_background_task(
                                     "initial update ETH event",
                                     self.clone().update_eth_event(hash),
@@ -876,7 +897,7 @@ impl Bridge {
                                 return Ok(true);
                             }
 
-                            if self.add_pending_ton_event(hash) {
+                            if self.add_pending_event(hash, &self.ton_events_state) {
                                 self.spawn_background_task(
                                     "initial update TON event",
                                     self.clone().update_ton_event(hash),
@@ -1029,11 +1050,14 @@ impl Bridge {
     }
 
     /// Creates ETH event observer if it doesn't exist and subscribes it to transactions
-    fn add_pending_eth_event(&self, account: UInt256) -> bool {
+    fn add_pending_event<T>(&self, account: UInt256, state: &EventsState<T>) -> bool
+    where
+        T: std::fmt::Debug + ReadFromTransaction + 'static,
+    {
         use dashmap::mapref::entry::Entry;
 
-        if let Entry::Vacant(entry) = self.pending_eth_events.entry(account) {
-            let observer = AccountObserver::new(&self.eth_events_tx);
+        let new_event = if let Entry::Vacant(entry) = state.pending.entry(account) {
+            let observer = AccountObserver::new(&state.events_tx);
             entry.insert(observer.clone());
             self.context
                 .ton_subscriber
@@ -1041,23 +1065,15 @@ impl Bridge {
             true
         } else {
             false
-        }
-    }
+        };
 
-    /// Creates TON event observer if it doesn't exist and subscribes it to transactions
-    fn add_pending_ton_event(&self, account: UInt256) -> bool {
-        use dashmap::mapref::entry::Entry;
-
-        if let Entry::Vacant(entry) = self.pending_ton_events.entry(account) {
-            let observer = AccountObserver::new(&self.ton_events_tx);
-            entry.insert(observer.clone());
-            self.context
-                .ton_subscriber
-                .add_transactions_subscription([account], &observer);
-            true
-        } else {
-            false
+        // Update metrics
+        // NOTE: use separate flag to reduce events map lock duration
+        if new_event {
+            state.count.fetch_add(1, Ordering::Release);
         }
+
+        new_event
     }
 
     /// Waits future in background. In case of error does nothing but logging
@@ -1070,6 +1086,20 @@ impl Bridge {
                 log::error!("Failed to {}: {:?}", name, e);
             }
         });
+    }
+}
+
+struct EventsState<T> {
+    pending: FxDashMap<UInt256, Arc<AccountObserver<T>>>,
+    count: AtomicUsize,
+    events_tx: AccountEventsTx<T>,
+}
+
+impl<T> EventsState<T> {
+    fn remove(&self, account: &UInt256) {
+        if self.pending.remove(account).is_some() {
+            self.count.fetch_sub(1, Ordering::Release);
+        }
     }
 }
 
@@ -1408,8 +1438,6 @@ fn read_external_in_msg(body: &ton_types::SliceData) -> Option<(UInt256, ton_typ
 }
 
 type ConnectorState = Arc<AccountObserver<ConnectorEvent>>;
-type PendingEthEvent = Arc<AccountObserver<EthEvent>>;
-type PendingTonEvent = Arc<AccountObserver<TonEvent>>;
 
 type DefaultHeaders = (PubkeyHeader, TimeHeader, ExpireHeader);
 
