@@ -1,42 +1,39 @@
-
-FROM rust:1.51.0 as builder
+FROM rust:1.54.0 as builder
 
 # Avoid warnings by switching to noninteractive
 ENV DEBIAN_FRONTEND=noninteractive
-
+RUN echo "deb http://apt.llvm.org/buster/ llvm-toolchain-buster-11 main" >> /etc/apt/sources.list \
+    echo "deb-src http://apt.llvm.org/buster/ llvm-toolchain-buster-11 main" >> /etc/apt/sources.list
+RUN wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -
 RUN apt-get update \
-    && apt-get install -y libclang-dev cmake
+    && apt-get install -y clang-11 cmake
 
-# Switch back to dialog for any ad-hoc use of apt-get
-ENV DEBIAN_FRONTEND=dialog
 RUN mkdir relay
 WORKDIR relay
 COPY Cargo.lock ./Cargo.lock
 COPY Cargo.toml ./Cargo.toml
-
-# Main library
 COPY src ./src
-# supporting libraries
-COPY relay-eth ./relay-eth
-COPY relay-models ./relay-models
-COPY relay-ton ./relay-ton
-COPY client ./client
-COPY relay-utils ./relay-utils
 COPY LICENSE ./LICENSE
 RUN ls -lah
-RUN rustup component add rustfmt
-RUN cargo build --release --features="tonlib-transport,graphql-transport,paranoid"
 
-FROM debian:buster-slim
+RUN rustup component add rustfmt
+RUN cargo build --release
+
+
+FROM debian:buster-slim as runtime
 
 RUN useradd -ms /bin/bash relay
 
-RUN apt-get update &&  apt-get install -y --no-install-recommends   libsnappy1v5 gnupg2 openssl ca-certificates wget librdkafka1 libsasl2-2 gettext-base libpq-dev  default-libmysqlclient-dev \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+      openssl \
+      ca-certificates \
     && apt-get autoremove -y \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder relay/target/release/relay /relay
+
 # Entrypoint
 COPY scripts/entrypoint.sh /entrypoint.sh
 RUN mkdir cfg

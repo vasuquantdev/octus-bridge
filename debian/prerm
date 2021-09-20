@@ -1,6 +1,0 @@
-#!/bin/sh
-set -e
-systemctl stop relay
-deluser bridge -f
-
-#DEBHELPER#

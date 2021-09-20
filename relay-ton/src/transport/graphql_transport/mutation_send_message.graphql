@@ -1,8 +1,0 @@
-mutation MutationSendMessage($id: String!, $boc: String!) {
-    postRequests(requests: [
-        {
-            id: $id,
-            body: $boc
-        }
-    ])
-}

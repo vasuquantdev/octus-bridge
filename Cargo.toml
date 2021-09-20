@@ -1,98 +1,75 @@
 [package]
 name = "relay"
-version = "1.1.3"
+version = "2.0.0"
 edition = "2018"
 authors = ["Broxus team"]
 publish = false
 license-file = "LICENSE"
 
-[workspace]
-members = [
-    "client",
-    "relay-eth",
-    "relay-ton",
-    "relay-models",
-    "relay-utils"
-]
-
 [dependencies]
-# Local dependencies
-relay-eth = { path = "./relay-eth" }
-relay-ton = { path = "./relay-ton" }
-relay-models = { path = "./relay-models" }
-relay-utils = { path = "./relay-utils" }
-
-# General dependencies
+anyhow = "1.0"
+argh = "0.1"
 async-trait = "0.1"
-anyhow = "1.0.33"
-backtrace = "0.3.55"
-base64 = "*"
-borsh = "0.9.0"
-chrono = { version = "0.4", features = ["serde"] }
-clap = "3.0.0-beta.2"
-config = { version = "*", features = ["yaml"] }
+base64 = "0.13"
+bb8 = "0.7"
+bincode = "1.3.3"
+chacha20poly1305 = "0.9"
+chrono = "0.4.19"
+config = { version = "0.11", default-features = false, features = ["yaml"] }
+dashmap = "4.0"
+dialoguer = "0.8"
 either = "1.6"
-futures = "0.3.1"
-hex = "0.4.2"
+futures = "0.3"
+hex = "0.4"
 http = "0.2"
-log = "*"
-log4rs = "1.0.0"
-num-bigint = "0.2.6"
-num-traits = "0.2.14"
-opg = { version = "0.0", features = ["chrono"] }
-rand = "0.6"
-sha3 = "0.9.1"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1.0.59"
-serde_yaml = "0.8.14"
-sled = "0.34.5"
-thiserror = "1.0.22"
-toml = "0.5.7"
-tokio = { version = "1", features = ["full"] }
-url = "2.1.1"
-warp = "0.3"
-semver = "0.11.0"
+hyper = { version = "0.14", features = ["server"]}
+log = "0.4"
+log4rs = "1.0"
+num-bigint = "0.3"
+once_cell = "1.8"
+parking_lot = "0.11"
+public-ip = "0.2"
+rand = "0.8"
+regex = "1.5"
+secp256k1 = { version = "0.20", features = ["recovery"] }
+secstr = { version = "0.4",features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.8"
+tap = "1.0.1"
+thiserror = "1.0"
+tokio = { version = "1.6", features = ["sync", "fs", "rt-multi-thread", "macros"] }
+tryhard = "0.4.0"
+url = { version = "2.2.2", features = ["serde"] }
+uuid = { version = "0.8.2", features = ["v4"] }
 
-# ETH specific dependencies
+ed25519-dalek = {git = "https://github.com/broxus/ed25519-dalek.git"}
+tiny-bip39 = { git = "https://github.com/broxus/tiny-bip39.git" }
+tiny-hderive = { git = "https://github.com/broxus/tiny-hderive.git" }
+
+# ETH
+web3 = { version = "0.17.0", default-features = false, features = ["http-rustls-tls", "signing"] }
 ethabi = "14.0.0"
 
 # TON specific dependencies
-ton_block = { git = "https://github.com/tonlabs/ton-labs-block.git" }
-ton_abi = { git = "https://github.com/tonlabs/ton-labs-abi", rev = "a2b2a9dc2e8c30a070e9af79cf0c24a55bdd5a87" }
+ton_block = { git = "https://github.com/broxus/ton-labs-block" }
+ton_abi = { git = "https://github.com/broxus/ton-labs-abi" }
+ton_types = { git = "https://github.com/broxus/ton-labs-types" }
 
-# Crypto stuff
-secp256k1 = { version = "0.20.0", features = ["default", "rand", "recovery"] }
-ed25519-dalek = "1.0.1"
-ring = "0.16.15"
-sodiumoxide = "0.2.6"
-secstr = "0.4.0"
-tiny-hderive = "0.3.0"
-tiny-bip39 = "0.8.0"
-tokio-stream = "0.1.5"
+tiny-adnl = { git = "https://github.com/broxus/tiny-adnl" }
 
 # Nekoton SDK
-nekoton-abi = { git = "https://github.com/broxus/nekoton.git" }
+nekoton-abi = { git = "https://github.com/broxus/nekoton.git", features = ["derive"] }
+nekoton-utils = { git = "https://github.com/broxus/nekoton.git", features = ["encryption"] }
+
+# Indexer engine
+ton-indexer = { git = "https://github.com/broxus/ton-indexer.git" }
 
 [dev-dependencies]
+cargo-husky = { version = "1", features = ["default", "run-cargo-fmt", "run-cargo-check"] }
 pretty_assertions = "0.7.2"
+tempfile = "3.2.0"
 
 [features]
-default = ["graphql-transport"]
-tonlib-transport = ["relay-ton/tonlib-transport"]
-graphql-transport = ["relay-ton/graphql-transport"]
-paranoid = []
-dockered = []
-
-[package.metadata.deb]
-depends = "$auto"
-section = "utility"
-assets = [
-    ["target/release/relay", "usr/bin/relay", "755"],
-    ["target/release/client", "usr/bin/relay-client", "755"],
-]
-conf-files = ["/etc/relay.conf"]
-maintainer-scripts = "debian/"
-features = [ "graphql-transport", "tonlib-transport" ]
-
-[package.metadata.deb.systemd-units]
-unit-scripts = "debian/"
+default = []
+asm = ["ton_types/asm", "ton_block/asm", "ton_abi/asm", "tiny-adnl/asm", "ton-indexer/asm"]
