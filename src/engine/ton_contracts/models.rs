@@ -310,7 +310,11 @@ pub struct RelayConfigDetails {
     #[abi(uint128)]
     pub min_relay_deposit: u128,
     #[abi(uint128)]
-    pub relay_initial_deposit: u128,
+    pub relay_initial_ton_deposit: u128,
+    #[abi(uint128)]
+    pub relay_reward_per_second: u128,
+    #[abi(uint128)]
+    pub user_reward_per_second: u128,
 }
 
 #[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
@@ -329,8 +333,6 @@ pub struct RelayRoundsDetails {
     pub current_relay_round_end_time: u32,
     #[abi(uint32)]
     pub current_election_start_time: u32,
-    #[abi(uint32)]
-    pub prev_relay_round_end_time: u32,
     #[abi(bool)]
     pub current_election_ended: bool,
 }
