@@ -817,98 +817,107 @@ impl Bridge {
 
         let our_public_key = self.context.keystore.ton.public_key();
 
-        let state = self.state.read();
+        let start = std::time::Instant::now();
 
-        for (_, accounts) in shard_accounts {
-            accounts.iterate_with_keys(|hash, shard_account| {
-                // Get account from shard state
-                let account = match shard_account.read_account()? {
-                    ton_block::Account::Account(account) => account,
-                    ton_block::Account::AccountNone => return Ok(true),
-                };
+        log::info!("Started iterating all events...");
+        tokio::task::block_in_place(move || {
+            let state = self.state.read();
 
-                // Try to get its hash
-                let code_hash = match account.storage.state() {
-                    ton_block::AccountState::AccountActive(ton_block::StateInit {
-                        code: Some(code),
-                        ..
-                    }) => code.repr_hash(),
-                    _ => return Ok(true),
-                };
-
-                // Filter only known event contracts
-                let event_type = match state.event_code_hashes.get(&code_hash) {
-                    Some(event_type) => event_type,
-                    None => return Ok(true),
-                };
-
-                log::info!("FOUND EVENT {:?}: {:x}", event_type, hash);
-
-                // Extract data
-                let contract = ExistingContract {
-                    account,
-                    last_transaction_id: LastTransactionId::Exact(TransactionId {
-                        lt: shard_account.last_trans_lt(),
-                        hash: *shard_account.last_trans_hash(),
-                    }),
-                };
-
-                macro_rules! check_configuration {
-                    ($name: literal, $contract: ident) => {
-                        match $contract(&contract).event_init_data() {
-                            Ok(init_data) => init_data.configuration,
-                            Err(e) => {
-                                log::info!("Failed to get {} event init data: {:?}", $name, e);
-                                return Ok(true);
-                            }
-                        };
+            for (_, accounts) in shard_accounts {
+                accounts.iterate_with_keys(|hash, shard_account| {
+                    // Get account from shard state
+                    let account = match shard_account.read_account()? {
+                        ton_block::Account::Account(account) => account,
+                        ton_block::Account::AccountNone => return Ok(true),
                     };
-                }
 
-                match EventBaseContract(&contract).process(our_public_key) {
-                    Ok(EventAction::Nop | EventAction::Vote) => match event_type {
-                        EventType::Eth => {
-                            let configuration = check_configuration!("ETH", EthEventContract);
+                    // Try to get its hash
+                    let code_hash = match account.storage.state() {
+                        ton_block::AccountState::AccountActive(ton_block::StateInit {
+                            code: Some(code),
+                            ..
+                        }) => code.repr_hash(),
+                        _ => return Ok(true),
+                    };
 
-                            if !state.eth_event_configurations.contains_key(&configuration) {
-                                log::warn!("ETH event configuration not found: {:x}", hash);
-                                return Ok(true);
-                            }
+                    // Filter only known event contracts
+                    let event_type = match state.event_code_hashes.get(&code_hash) {
+                        Some(event_type) => event_type,
+                        None => return Ok(true),
+                    };
 
-                            if self.add_pending_event(hash, &self.eth_events_state) {
-                                self.spawn_background_task(
-                                    "initial update ETH event",
-                                    self.clone().update_eth_event(hash),
-                                );
-                            }
-                        }
-                        EventType::Ton => {
-                            let configuration = check_configuration!("TON", TonEventContract);
+                    log::info!("FOUND EVENT {:?}: {:x}", event_type, hash);
 
-                            if !state.ton_event_configurations.contains_key(&configuration) {
-                                log::warn!("TON event configuration not found: {:x}", hash);
-                                return Ok(true);
-                            }
+                    // Extract data
+                    let contract = ExistingContract {
+                        account,
+                        last_transaction_id: LastTransactionId::Exact(TransactionId {
+                            lt: shard_account.last_trans_lt(),
+                            hash: *shard_account.last_trans_hash(),
+                        }),
+                    };
 
-                            if self.add_pending_event(hash, &self.ton_events_state) {
-                                self.spawn_background_task(
-                                    "initial update TON event",
-                                    self.clone().update_ton_event(hash),
-                                );
-                            }
-                        }
-                    },
-                    Ok(EventAction::Remove) => { /* do nothing */ }
-                    Err(e) => {
-                        log::error!("Failed to get {} event details: {:?}", event_type, e);
+                    macro_rules! check_configuration {
+                        ($name: literal, $contract: ident) => {
+                            match $contract(&contract).event_init_data() {
+                                Ok(init_data) => init_data.configuration,
+                                Err(e) => {
+                                    log::info!("Failed to get {} event init data: {:?}", $name, e);
+                                    return Ok(true);
+                                }
+                            };
+                        };
                     }
-                }
 
-                Ok(true)
-            })?;
-        }
+                    match EventBaseContract(&contract).process(our_public_key) {
+                        Ok(EventAction::Nop | EventAction::Vote) => match event_type {
+                            EventType::Eth => {
+                                let configuration = check_configuration!("ETH", EthEventContract);
 
-        Ok(())
+                                if !state.eth_event_configurations.contains_key(&configuration) {
+                                    log::warn!("ETH event configuration not found: {:x}", hash);
+                                    return Ok(true);
+                                }
+
+                                if self.add_pending_event(hash, &self.eth_events_state) {
+                                    self.spawn_background_task(
+                                        "initial update ETH event",
+                                        self.clone().update_eth_event(hash),
+                                    );
+                                }
+                            }
+                            EventType::Ton => {
+                                let configuration = check_configuration!("TON", TonEventContract);
+
+                                if !state.ton_event_configurations.contains_key(&configuration) {
+                                    log::warn!("TON event configuration not found: {:x}", hash);
+                                    return Ok(true);
+                                }
+
+                                if self.add_pending_event(hash, &self.ton_events_state) {
+                                    self.spawn_background_task(
+                                        "initial update TON event",
+                                        self.clone().update_ton_event(hash),
+                                    );
+                                }
+                            }
+                        },
+                        Ok(EventAction::Remove) => { /* do nothing */ }
+                        Err(e) => {
+                            log::error!("Failed to get {} event details: {:?}", event_type, e);
+                        }
+                    }
+
+                    Ok(true)
+                })?;
+            }
+
+            log::info!(
+                "Finished iterating all events in {} seconds",
+                start.elapsed().as_secs()
+            );
+            Ok(())
+        })
     }
 
     fn start_ton_event_configurations_gc(self: &Arc<Self>) {
