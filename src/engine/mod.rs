@@ -56,8 +56,8 @@ impl Engine {
             EthAddressWrapper(self.context.keystore.eth.address())
         );
         log::warn!(
-            "Using TON public key: {}",
-            self.context.keystore.ton.public_key().to_hex_string()
+            "Using TON public key: 0x{:x}",
+            self.context.keystore.ton.public_key()
         );
 
         self.start_metrics_exporter();

@@ -159,8 +159,8 @@ impl Bridge {
                     }
                     hash_map::Entry::Occupied(_) => {
                         log::error!(
-                            "Got connector deployment event but it already exists: {}",
-                            event.connector.to_hex_string()
+                            "Got connector deployment event but it already exists: {:x}",
+                            event.connector
                         );
                         return Ok(());
                     }
@@ -593,15 +593,15 @@ impl Bridge {
                     Ok(details) => details,
                     Err(e) => {
                         log::error!(
-                            "Failed to get connector details {}: {:?}",
-                            connector_account.to_hex_string(),
+                            "Failed to get connector details {:x}: {:?}",
+                            connector_account,
                             e
                         );
                         continue;
                     }
                 },
                 None => {
-                    log::error!("Connector not found: {}", connector_account.to_hex_string());
+                    log::error!("Connector not found: {:x}", connector_account);
                     continue;
                 }
             };
@@ -631,8 +631,8 @@ impl Bridge {
                         // It is a strange situation when connector contains an address of the contract
                         // which doesn't exist, so log it here to investigate it later
                         log::warn!(
-                            "Connected configuration was not found: {}",
-                            details.event_configuration.to_hex_string()
+                            "Connected configuration was not found: {:x}",
+                            details.event_configuration
                         );
                         continue;
                     }
@@ -646,8 +646,8 @@ impl Bridge {
                 &configuration_contract,
             ) {
                 log::error!(
-                    "Failed to process event configuration {}: {:?}",
-                    &details.event_configuration.to_hex_string(),
+                    "Failed to process event configuration {:x}: {:?}",
+                    details.event_configuration,
                     e
                 );
             }
@@ -767,8 +767,8 @@ impl Bridge {
         if details.is_expired(current_timestamp) {
             // Do nothing in that case
             log::warn!(
-                "Ignoring TON event configuration {}: end timestamp {} is less then current {}",
-                account.to_hex_string(),
+                "Ignoring TON event configuration {:x}: end timestamp {} is less then current {}",
+                account,
                 details.network_configuration.end_timestamp,
                 current_timestamp
             );
@@ -967,10 +967,7 @@ impl Bridge {
                 let mut state = bridge.state.write();
                 state.ton_event_configurations.retain(|account, state| {
                     if state.details.is_expired(current_utime) {
-                        log::warn!(
-                            "Removing TON event configuration {}",
-                            account.to_hex_string()
-                        );
+                        log::warn!("Removing TON event configuration {:x}", account);
                         false
                     } else {
                         true
@@ -1114,10 +1111,14 @@ fn read_code_hash(cell: &mut ton_types::SliceData) -> Result<Option<ton_types::U
     if !cell.get_next_bit()? {
         return Ok(None);
     }
-    // 5.1. Skip split depth
-    ton_block::Number5::read_maybe_from::<ton_block::Number5>(cell)?;
-    // 5.2. Skip ticktock
-    cell.move_by(2)?;
+    // 5.1. Skip optional split depth (`ton_block::Number5`)
+    if cell.get_next_bit()? {
+        cell.move_by(5)?;
+    }
+    // 5.2. Skip optional ticktock (`ton_block::TickTock`)
+    if cell.get_next_bit()? {
+        cell.move_by(2)?;
+    }
     // 5.3. Skip empty code
     if !cell.get_next_bit()? {
         return Ok(None);
