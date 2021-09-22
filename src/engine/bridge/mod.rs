@@ -9,7 +9,7 @@ use nekoton_abi::*;
 use parking_lot::RwLock;
 use tiny_adnl::utils::*;
 use tokio::sync::mpsc;
-use ton_block::HashmapAugType;
+use ton_block::{Deserializable, HashmapAugType, MaybeDeserialize};
 use ton_types::UInt256;
 
 use crate::engine::eth_subscriber::*;
@@ -825,25 +825,22 @@ impl Bridge {
 
             for (_, accounts) in shard_accounts {
                 accounts.iterate_with_keys(|hash, shard_account| {
-                    // Get account from shard state
-                    let account = match shard_account.read_account()? {
-                        ton_block::Account::Account(account) => account,
-                        ton_block::Account::AccountNone => return Ok(true),
-                    };
-
-                    // Try to get its hash
-                    let code_hash = match account.storage.state() {
-                        ton_block::AccountState::AccountActive(ton_block::StateInit {
-                            code: Some(code),
-                            ..
-                        }) => code.repr_hash(),
-                        _ => return Ok(true),
+                    let code_hash = match read_code_hash(&mut shard_account.account_cell().into())?
+                    {
+                        Some(code_hash) => code_hash,
+                        None => return Ok(true),
                     };
 
                     // Filter only known event contracts
                     let event_type = match state.event_code_hashes.get(&code_hash) {
                         Some(event_type) => event_type,
                         None => return Ok(true),
+                    };
+
+                    // Get account from shard state
+                    let account = match shard_account.read_account()? {
+                        ton_block::Account::Account(account) => account,
+                        ton_block::Account::AccountNone => return Ok(true),
                     };
 
                     log::info!("FOUND EVENT {:?}: {:x}", event_type, hash);
@@ -1083,6 +1080,52 @@ fn add_event_code_hash(
         }
     };
     Ok(())
+}
+
+fn read_code_hash(cell: &mut ton_types::SliceData) -> Result<Option<ton_types::UInt256>> {
+    // 1. Read account
+    if !cell.get_next_bit()? {
+        return Ok(None);
+    }
+
+    // 2. Skip non-standard address
+    if cell.get_next_int(2)? != 0b10 || cell.get_next_bit()? {
+        return Ok(None);
+    }
+    cell.move_by(8 + 256)?;
+
+    // 3. Skip storage info
+    // 3.1. Skip storage used
+    ton_block::StorageUsed::skip(cell)?;
+    // 3.2. Skip last paid
+    cell.move_by(32)?;
+    // 3.3. Skip due payment
+    if cell.get_next_bit()? {
+        ton_block::Grams::skip(cell)?;
+    }
+
+    // 4. Skip storage
+    // 4.1. Skip last transaction lt
+    cell.move_by(64)?;
+    // 4.2. Skip balance
+    ton_block::CurrencyCollection::skip(cell)?;
+
+    // 5. Skip account state
+    if !cell.get_next_bit()? {
+        return Ok(None);
+    }
+    // 5.1. Skip split depth
+    ton_block::Number5::read_maybe_from::<ton_block::Number5>(cell)?;
+    // 5.2. Skip ticktock
+    cell.move_by(2)?;
+    // 5.3. Skip empty code
+    if !cell.get_next_bit()? {
+        return Ok(None);
+    }
+
+    // Read code hash
+    let code = cell.checked_drain_reference()?;
+    Ok(Some(code.repr_hash()))
 }
 
 impl EventBaseContract<'_> {
