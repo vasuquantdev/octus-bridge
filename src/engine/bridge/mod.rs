@@ -6,10 +6,10 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use nekoton_abi::*;
-use parking_lot::RwLock;
 use tiny_adnl::utils::*;
 use tokio::sync::mpsc;
-use ton_block::{Deserializable, HashmapAugType, MaybeDeserialize};
+use tokio::sync::RwLock;
+use ton_block::{Deserializable, HashmapAugType};
 use ton_types::UInt256;
 
 use crate::engine::eth_subscriber::*;
@@ -29,7 +29,7 @@ pub struct Bridge {
     /// Bridge events listener
     bridge_observer: Arc<AccountObserver<BridgeEvent>>,
     /// Known contracts
-    state: Arc<RwLock<BridgeState>>,
+    state: RwLock<BridgeState>,
 
     // Observers for pending ETH events
     eth_events_state: EventsState<EthEvent>,
@@ -58,7 +58,7 @@ impl Bridge {
             context,
             bridge_account,
             bridge_observer: bridge_observer.clone(),
-            state: Arc::new(Default::default()),
+            state: Default::default(),
             eth_events_state: EventsState {
                 pending: Default::default(),
                 count: Default::default(),
@@ -145,7 +145,7 @@ impl Bridge {
         match event {
             BridgeEvent::ConnectorDeployed(event) => {
                 // Create connector entry if it wasn't already created
-                match self.state.write().connectors.entry(event.connector) {
+                match self.state.write().await.connectors.entry(event.connector) {
                     hash_map::Entry::Vacant(entry) => {
                         // Create observer
                         let observer = AccountObserver::new(&self.connectors_tx);
@@ -198,7 +198,7 @@ impl Bridge {
             }
             // Update configuration state
             EthEventConfigurationEvent::SetEndBlockNumber { end_block_number } => {
-                let mut state = self.state.write();
+                let mut state = self.state.write().await;
                 let configuration = state
                     .eth_event_configurations
                     .get_mut(&account)
@@ -225,7 +225,7 @@ impl Bridge {
             }
             // Update configuration state
             TonEventConfigurationEvent::SetEndTimestamp { end_timestamp } => {
-                let mut state = self.state.write();
+                let mut state = self.state.write().await;
                 let configuration = state
                     .ton_event_configurations
                     .get_mut(&account)
@@ -351,21 +351,22 @@ impl Bridge {
         let event_init_data = EthEventContract(&contract).event_init_data()?;
 
         // Get event configuration data
-        let data = self
-            .state
-            .read()
-            .eth_event_configurations
-            .get(&event_init_data.configuration)
-            .map(|configuration| {
-                (
-                    configuration.details.network_configuration.chain_id,
-                    configuration.event_abi.clone(),
-                    configuration
-                        .details
-                        .network_configuration
-                        .event_blocks_to_confirm,
-                )
-            });
+        let data = {
+            let state = self.state.read().await;
+            state
+                .eth_event_configurations
+                .get(&event_init_data.configuration)
+                .map(|configuration| {
+                    (
+                        configuration.details.network_configuration.chain_id,
+                        configuration.event_abi.clone(),
+                        configuration
+                            .details
+                            .network_configuration
+                            .event_blocks_to_confirm,
+                    )
+                })
+        };
 
         // NOTE: be sure to drop `eth_event_configurations` lock before that
         let (eth_subscriber, event_abi, blocks_to_confirm) = match data {
@@ -454,21 +455,22 @@ impl Bridge {
         // Find suitable configuration
         // NOTE: be sure to drop `self.state` lock before removing pending ton event.
         // It may deadlock otherwise!
-        let data = self
-            .state
-            .read()
-            .ton_event_configurations
-            .get(&event_init_data.configuration)
-            .map(|configuration| {
-                (
-                    configuration.details.network_configuration.proxy,
-                    ton_abi::TokenValue::decode_params(
-                        &configuration.event_abi,
-                        event_init_data.vote_data.event_data.clone().into(),
-                        2,
-                    ),
-                )
-            });
+        let data = {
+            let state = self.state.read().await;
+            state
+                .ton_event_configurations
+                .get(&event_init_data.configuration)
+                .map(|configuration| {
+                    (
+                        configuration.details.network_configuration.proxy,
+                        ton_abi::TokenValue::decode_params(
+                            &configuration.event_abi,
+                            event_init_data.vote_data.event_data.clone().into(),
+                            2,
+                        ),
+                    )
+                })
+        };
 
         let decoded_data = match data {
             // Decode event data with event abi from configuration
@@ -553,7 +555,7 @@ impl Bridge {
         log::info!("Got configuration contract");
 
         // Extract and process info from contract
-        let mut state = self.state.write();
+        let mut state = self.state.write().await;
         self.process_event_configuration(
             &mut *state,
             &connector_account,
@@ -565,6 +567,10 @@ impl Bridge {
     }
 
     async fn get_all_configurations(&self) -> Result<()> {
+        // Lock state before other logic to make sure that all events
+        // will be queued in their handlers
+        let mut state = self.state.write().await;
+
         let shard_accounts = self.context.get_all_shard_accounts().await?;
 
         let ton_subscriber = &self.context.ton_subscriber;
@@ -577,8 +583,6 @@ impl Bridge {
         let connector_count = bridge
             .connector_counter()
             .context("Failed to get connector count")?;
-
-        let mut state = self.state.write();
 
         // Iterate for all connectors
         for id in 0..connector_count {
@@ -813,108 +817,152 @@ impl Bridge {
     }
 
     async fn get_all_events(self: &Arc<Self>) -> Result<()> {
-        let shard_accounts = self.context.get_all_shard_accounts().await?;
+        type AccountsSet = FxHashSet<UInt256>;
 
-        let our_public_key = self.context.keystore.ton.public_key();
+        fn iterate_events(
+            bridge: Arc<Bridge>,
+            accounts: ton_block::ShardAccounts,
+            event_code_hashes: Arc<EventCodeHashesMap>,
+            unique_eth_event_configurations: Arc<AccountsSet>,
+            unique_ton_event_configurations: Arc<AccountsSet>,
+        ) -> Result<bool> {
+            let our_public_key = bridge.context.keystore.ton.public_key();
+
+            accounts.iterate_with_keys(|hash, shard_account| {
+                // Prefetch only contract code hash
+                let code_hash = match read_code_hash(&mut shard_account.account_cell().into())? {
+                    Some(code_hash) => code_hash,
+                    None => return Ok(true),
+                };
+
+                // Filter only known event contracts
+                let event_type = match event_code_hashes.get(&code_hash) {
+                    Some(event_type) => event_type,
+                    None => return Ok(true),
+                };
+
+                // Read account from shard state
+                let account = match shard_account.read_account()? {
+                    ton_block::Account::Account(account) => account,
+                    ton_block::Account::AccountNone => return Ok(true),
+                };
+
+                log::info!("FOUND EVENT {:?}: {:x}", event_type, hash);
+
+                // Extract data
+                let contract = ExistingContract {
+                    account,
+                    last_transaction_id: LastTransactionId::Exact(TransactionId {
+                        lt: shard_account.last_trans_lt(),
+                        hash: *shard_account.last_trans_hash(),
+                    }),
+                };
+
+                macro_rules! check_configuration {
+                    ($name: literal, $contract: ident) => {
+                        match $contract(&contract).event_init_data() {
+                            Ok(init_data) => init_data.configuration,
+                            Err(e) => {
+                                log::info!("Failed to get {} event init data: {:?}", $name, e);
+                                return Ok(true);
+                            }
+                        };
+                    };
+                }
+
+                // Process event
+                match EventBaseContract(&contract).process(our_public_key) {
+                    Ok(EventAction::Nop | EventAction::Vote) => match event_type {
+                        EventType::Eth => {
+                            let configuration = check_configuration!("ETH", EthEventContract);
+
+                            if !unique_eth_event_configurations.contains(&configuration) {
+                                log::warn!("ETH event configuration not found: {:x}", hash);
+                                return Ok(true);
+                            }
+
+                            if bridge.add_pending_event(hash, &bridge.eth_events_state) {
+                                bridge.spawn_background_task(
+                                    "initial update ETH event",
+                                    bridge.clone().update_eth_event(hash),
+                                );
+                            }
+                        }
+                        EventType::Ton => {
+                            let configuration = check_configuration!("TON", TonEventContract);
+
+                            if !unique_ton_event_configurations.contains(&configuration) {
+                                log::warn!("TON event configuration not found: {:x}", hash);
+                                return Ok(true);
+                            }
+
+                            if bridge.add_pending_event(hash, &bridge.ton_events_state) {
+                                bridge.spawn_background_task(
+                                    "initial update TON event",
+                                    bridge.clone().update_ton_event(hash),
+                                );
+                            }
+                        }
+                    },
+                    Ok(EventAction::Remove) => { /* do nothing */ }
+                    Err(e) => {
+                        log::error!("Failed to get {} event details: {:?}", event_type, e);
+                    }
+                }
+
+                Ok(true)
+            })
+        }
+
+        // Wait all accounts
+        let shard_accounts = self.context.get_all_shard_accounts().await?;
 
         let start = std::time::Instant::now();
 
+        // Lock state to prevent adding new configurations
+        let state = self.state.read().await;
+
+        // Prepare shard task context
+        let event_code_hashes = Arc::new(state.event_code_hashes.clone());
+        let unique_eth_event_configurations = Arc::new(state.unique_eth_event_configurations());
+        let unique_ton_event_configurations = Arc::new(state.unique_ton_event_configurations());
+        let (results_tx, mut results_rx) = mpsc::unbounded_channel();
+
+        // Process shards in parallel
         log::info!("Started iterating all events...");
-        tokio::task::block_in_place(move || {
-            let state = self.state.read();
+        for (_, accounts) in shard_accounts {
+            let bridge = self.clone();
+            let event_code_hashes = event_code_hashes.clone();
+            let unique_eth_event_configurations = unique_eth_event_configurations.clone();
+            let unique_ton_event_configurations = unique_ton_event_configurations.clone();
+            let results_tx = results_tx.clone();
 
-            for (_, accounts) in shard_accounts {
-                accounts.iterate_with_keys(|hash, shard_account| {
-                    let code_hash = match read_code_hash(&mut shard_account.account_cell().into())?
-                    {
-                        Some(code_hash) => code_hash,
-                        None => return Ok(true),
-                    };
+            tokio::task::spawn_blocking(move || {
+                results_tx
+                    .send(iterate_events(
+                        bridge,
+                        accounts,
+                        event_code_hashes,
+                        unique_eth_event_configurations,
+                        unique_ton_event_configurations,
+                    ))
+                    .ok();
+            });
+        }
 
-                    // Filter only known event contracts
-                    let event_type = match state.event_code_hashes.get(&code_hash) {
-                        Some(event_type) => event_type,
-                        None => return Ok(true),
-                    };
-
-                    // Get account from shard state
-                    let account = match shard_account.read_account()? {
-                        ton_block::Account::Account(account) => account,
-                        ton_block::Account::AccountNone => return Ok(true),
-                    };
-
-                    log::info!("FOUND EVENT {:?}: {:x}", event_type, hash);
-
-                    // Extract data
-                    let contract = ExistingContract {
-                        account,
-                        last_transaction_id: LastTransactionId::Exact(TransactionId {
-                            lt: shard_account.last_trans_lt(),
-                            hash: *shard_account.last_trans_hash(),
-                        }),
-                    };
-
-                    macro_rules! check_configuration {
-                        ($name: literal, $contract: ident) => {
-                            match $contract(&contract).event_init_data() {
-                                Ok(init_data) => init_data.configuration,
-                                Err(e) => {
-                                    log::info!("Failed to get {} event init data: {:?}", $name, e);
-                                    return Ok(true);
-                                }
-                            };
-                        };
-                    }
-
-                    match EventBaseContract(&contract).process(our_public_key) {
-                        Ok(EventAction::Nop | EventAction::Vote) => match event_type {
-                            EventType::Eth => {
-                                let configuration = check_configuration!("ETH", EthEventContract);
-
-                                if !state.eth_event_configurations.contains_key(&configuration) {
-                                    log::warn!("ETH event configuration not found: {:x}", hash);
-                                    return Ok(true);
-                                }
-
-                                if self.add_pending_event(hash, &self.eth_events_state) {
-                                    self.spawn_background_task(
-                                        "initial update ETH event",
-                                        self.clone().update_eth_event(hash),
-                                    );
-                                }
-                            }
-                            EventType::Ton => {
-                                let configuration = check_configuration!("TON", TonEventContract);
-
-                                if !state.ton_event_configurations.contains_key(&configuration) {
-                                    log::warn!("TON event configuration not found: {:x}", hash);
-                                    return Ok(true);
-                                }
-
-                                if self.add_pending_event(hash, &self.ton_events_state) {
-                                    self.spawn_background_task(
-                                        "initial update TON event",
-                                        self.clone().update_ton_event(hash),
-                                    );
-                                }
-                            }
-                        },
-                        Ok(EventAction::Remove) => { /* do nothing */ }
-                        Err(e) => {
-                            log::error!("Failed to get {} event details: {:?}", event_type, e);
-                        }
-                    }
-
-                    Ok(true)
-                })?;
+        // Wait until all shards are processed
+        while let Some(result) = results_rx.recv().await {
+            if let Err(e) = result {
+                return Err(e).context("Failed to find all events");
             }
+        }
 
-            log::info!(
-                "Finished iterating all events in {} seconds",
-                start.elapsed().as_secs()
-            );
-            Ok(())
-        })
+        // Done
+        log::info!(
+            "Finished iterating all events in {} seconds",
+            start.elapsed().as_secs()
+        );
+        Ok(())
     }
 
     fn start_ton_event_configurations_gc(self: &Arc<Self>) {
@@ -937,7 +985,7 @@ impl Bridge {
 
                 // Check expired configurations
                 let has_expired_configurations = {
-                    let state = bridge.state.read();
+                    let state = bridge.state.read().await;
                     state.has_expired_ton_event_configurations(current_utime)
                 };
 
@@ -964,7 +1012,7 @@ impl Bridge {
                 };
 
                 // Remove all expired configurations
-                let mut state = bridge.state.write();
+                let mut state = bridge.state.write().await;
                 state.ton_event_configurations.retain(|account, state| {
                     if state.details.is_expired(current_utime) {
                         log::warn!("Removing TON event configuration {:x}", account);
@@ -1056,6 +1104,20 @@ impl BridgeState {
         self.ton_event_configurations
             .iter()
             .any(|(_, state)| state.details.is_expired(current_timestamp))
+    }
+
+    fn unique_eth_event_configurations(&self) -> FxHashSet<UInt256> {
+        self.eth_event_configurations
+            .iter()
+            .map(|(key, _)| *key)
+            .collect()
+    }
+
+    fn unique_ton_event_configurations(&self) -> FxHashSet<UInt256> {
+        self.ton_event_configurations
+            .iter()
+            .map(|(key, _)| *key)
+            .collect()
     }
 }
 
