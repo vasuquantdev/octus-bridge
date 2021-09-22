@@ -280,11 +280,7 @@ impl TonSubscriber {
                             }
                         }
                         Err(e) => {
-                            log::error!(
-                                "Failed to get account {}: {:?}",
-                                account.to_hex_string(),
-                                e
-                            );
+                            log::error!("Failed to get account {:x}: {:?}", account, e);
                         }
                     };
                 } else {
@@ -390,12 +386,10 @@ impl StateSubscription {
             return Ok(());
         }
 
-        let account_block = match account_blocks.get_with_aug(account).with_context(|| {
-            format!(
-                "Failed to get account block for {}",
-                account.to_hex_string()
-            )
-        })? {
+        let account_block = match account_blocks
+            .get_with_aug(account)
+            .with_context(|| format!("Failed to get account block for {:x}", account))?
+        {
             Some((account_block, _)) => account_block,
             None => return Ok(()),
         };
@@ -411,9 +405,9 @@ impl StateSubscription {
                 Ok(tx) => tx,
                 Err(e) => {
                     log::error!(
-                        "Failed to parse transaction in block {} for account {}: {:?}",
+                        "Failed to parse transaction in block {} for account {:x}: {:?}",
                         block_info.seq_no(),
-                        account.to_hex_string(),
+                        account,
                         e
                     );
                     continue;
@@ -454,9 +448,9 @@ impl StateSubscription {
             for subscription in self.iter_transaction_subscriptions() {
                 if let Err(e) = subscription.handle_transaction(ctx) {
                     log::error!(
-                        "Failed to handle transaction {} for account {}: {:?}",
-                        hash.to_hex_string(),
-                        account.to_hex_string(),
+                        "Failed to handle transaction {:x} for account {:x}: {:?}",
+                        hash,
+                        account,
                         e
                     );
                 }
@@ -517,11 +511,7 @@ where
     fn handle_transaction(&self, ctx: TxContext<'_>) -> Result<()> {
         let event = T::read_from_transaction(&ctx);
 
-        log::info!(
-            "Got transaction on account {}: {:?}",
-            ctx.account.to_hex_string(),
-            event
-        );
+        log::info!("Got transaction on account {:x}: {:?}", ctx.account, event);
 
         // Send event to event manager if it exist
         if let Some(event) = event {
