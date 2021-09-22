@@ -929,25 +929,30 @@ impl Bridge {
         let (results_tx, mut results_rx) = mpsc::unbounded_channel();
 
         // Process shards in parallel
-        log::info!("Started iterating all events...");
-        for (_, accounts) in shard_accounts {
+        log::info!("Started searching for all events...");
+        for (shard_ident, accounts) in shard_accounts {
             let bridge = self.clone();
             let event_code_hashes = event_code_hashes.clone();
             let unique_eth_event_configurations = unique_eth_event_configurations.clone();
             let unique_ton_event_configurations = unique_ton_event_configurations.clone();
             let results_tx = results_tx.clone();
 
-            tokio::task::spawn_blocking(move || {
-                results_tx
-                    .send(iterate_events(
-                        bridge,
-                        accounts,
-                        event_code_hashes,
-                        unique_eth_event_configurations,
-                        unique_ton_event_configurations,
-                    ))
-                    .ok();
-            });
+            tokio::spawn(tokio::task::spawn_blocking(move || {
+                let start = std::time::Instant::now();
+                let result = iterate_events(
+                    bridge,
+                    accounts,
+                    event_code_hashes,
+                    unique_eth_event_configurations,
+                    unique_ton_event_configurations,
+                );
+                log::info!(
+                    "Processed accounts in shard {} in {} seconds",
+                    shard_ident.shard_prefix_as_str_with_tag(),
+                    start.elapsed().as_secs()
+                );
+                results_tx.send(result).ok();
+            }));
         }
 
         // Wait until all shards are processed
