@@ -76,7 +76,7 @@ impl Staking {
             .token_balance;
 
         let should_vote = match &relay_round_state.elections_state {
-            ElectionsState::Started { .. } => {
+            ElectionsState::Started { .. } if !ctx.settings.ignore_elections => {
                 let elections_contract = shard_accounts
                     .find_account(&relay_round_state.next_elections_account)?
                     .context("Next elections contract not found")?;
@@ -249,6 +249,11 @@ impl Staking {
         match event {
             StakingEvent::ElectionStarted(_) => {
                 self.elections_start_notify.notify_waiters();
+
+                // Do nothing if elections are ignored
+                if self.context.settings.ignore_elections {
+                    return Ok(());
+                }
 
                 // Start participating in elections
                 let staking = self.clone();

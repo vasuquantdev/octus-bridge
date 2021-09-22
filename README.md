@@ -65,8 +65,9 @@ bridge_settings:
   # Keystore data path
   keys_path: "/etc/relay/keys.json"
   # Bridge contract address
-  # TODO: update after mainnet
-  bridge_address: "0:eb0cad5322e47264b6b293dbbd2167e1bad75169c3b16e8f92e0b86fe1069143"
+  bridge_address: "0:65d2002fae133c1064ae0f0ff44e416e52f112cf8faece53cd39e93d0f4d23d7"
+  # If set, relay will not participate in elections. Default: false
+  ignore_elections: false
   # EVM network configs
   networks:
     - chain_id: 5

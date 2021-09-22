@@ -195,7 +195,10 @@ where
     let result = re.replace_all(&data, |caps: &regex::Captures| {
         match std::env::var(&caps[1]) {
             Ok(value) => value,
-            Err(_) => (&caps[0]).to_string(),
+            Err(_) => {
+                log::warn!("Environment variable {} was not set", &caps[1]);
+                String::default()
+            }
         }
     });
 

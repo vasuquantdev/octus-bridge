@@ -65,6 +65,10 @@ pub struct BridgeConfig {
     #[serde(with = "serde_address")]
     pub bridge_address: ton_block::MsgAddressInt,
 
+    /// If set, relay will not participate in elections. Default: false
+    #[serde(default)]
+    pub ignore_elections: bool,
+
     /// EVM networks settings
     pub networks: Vec<EthConfig>,
 
