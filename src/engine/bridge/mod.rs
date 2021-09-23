@@ -1,6 +1,6 @@
 use std::collections::hash_map;
 use std::future::Future;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -40,6 +40,11 @@ pub struct Bridge {
     connectors_tx: AccountEventsTx<ConnectorEvent>,
     eth_event_configurations_tx: AccountEventsTx<EthEventConfigurationEvent>,
     ton_event_configurations_tx: AccountEventsTx<TonEventConfigurationEvent>,
+
+    /// Total number of all events for each ETH configuration
+    eth_event_counters: FxDashMap<UInt256, AtomicUsize>,
+    /// Total number of all events for each TON configuration
+    ton_event_counters: FxDashMap<UInt256, AtomicUsize>,
 }
 
 impl Bridge {
@@ -72,6 +77,8 @@ impl Bridge {
             connectors_tx,
             eth_event_configurations_tx,
             ton_event_configurations_tx,
+            eth_event_counters: Default::default(),
+            ton_event_counters: Default::default(),
         });
 
         // Prepare listeners
@@ -194,7 +201,12 @@ impl Bridge {
         match event {
             // Create observer on each deployment event
             EthEventConfigurationEvent::EventDeployed { address } => {
-                self.add_pending_event(address, &self.eth_events_state);
+                if self.add_pending_event(address, &self.eth_events_state) {
+                    let this = self.clone();
+                    self.spawn_background_task("preprocess ETH event", async move {
+                        this.preprocess_event(address, &this.eth_events_state).await
+                    });
+                }
             }
             // Update configuration state
             EthEventConfigurationEvent::SetEndBlockNumber { end_block_number } => {
@@ -216,10 +228,15 @@ impl Bridge {
         match event {
             // Create observer on each deployment event
             TonEventConfigurationEvent::EventDeployed { address, .. } => {
-                // NOTE: Each event must be unique on the contracts level,
-                // so receiving message with duplicated address is
-                // a signal the something went wrong
-                if !self.add_pending_event(address, &self.ton_events_state) {
+                if self.add_pending_event(address, &self.ton_events_state) {
+                    let this = self.clone();
+                    self.spawn_background_task("preprocess TON event", async move {
+                        this.preprocess_event(address, &this.ton_events_state).await
+                    });
+                } else {
+                    // NOTE: Each TON event must be unique on the contracts level,
+                    // so receiving message with duplicated address is
+                    // a signal the something went wrong
                     log::warn!("Got deployment message for pending event: {:x}", account);
                 }
             }
@@ -331,7 +348,40 @@ impl Bridge {
         Ok(())
     }
 
+    /// Check deployed event contract in parallel with transactions processing
+    async fn preprocess_event<T: EventExt>(
+        self: &Arc<Bridge>,
+        account: UInt256,
+        state: &EventsState<T>,
+    ) -> Result<()> {
+        // Wait contract state
+        let ton_subscriber = &self.context.ton_subscriber;
+        let contract = ton_subscriber.wait_contract_state(account).await?;
+        let base_event_contract = EventBaseContract(&contract);
+
+        // Check further steps based on event statuses
+        match base_event_contract.process(self.context.keystore.ton.public_key())? {
+            // Event was not activated yet, so it will be processed in
+            // event transactions subscription
+            EventAction::Nop => Ok(()),
+            // Event was already processed, so just remove it
+            // NOTE: it is ok to remove it even if it didn't exist
+            EventAction::Remove => {
+                state.remove(&account);
+                Ok(())
+            }
+            // Start processing event.
+            // NOTE: it is ok to update_ton_event twice because in fact it will
+            // do anything only once
+            EventAction::Vote => T::update_event(self.clone(), account).await,
+        }
+    }
+
     async fn update_eth_event(self: Arc<Self>, account: UInt256) -> Result<()> {
+        if !self.eth_events_state.start_processing(&account) {
+            return Ok(());
+        }
+
         let keystore = &self.context.keystore;
         let ton_subscriber = &self.context.ton_subscriber;
         let eth_subscribers = &self.context.eth_subscribers;
@@ -421,7 +471,7 @@ impl Bridge {
 
         // Clone events observer and deliver message to the contract
         let eth_event_observer = match self.eth_events_state.pending.get(&account) {
-            Some(observer) => observer.clone(),
+            Some(entry) => entry.observer.clone(),
             None => return Ok(()),
         };
         self.context
@@ -431,6 +481,10 @@ impl Bridge {
     }
 
     async fn update_ton_event(self: Arc<Self>, account: UInt256) -> Result<()> {
+        if !self.ton_events_state.start_processing(&account) {
+            return Ok(());
+        }
+
         let keystore = &self.context.keystore;
         let ton_subscriber = &self.context.ton_subscriber;
 
@@ -518,7 +572,7 @@ impl Bridge {
 
         // Clone events observer and deliver message to the contract
         let ton_event_observer = match self.ton_events_state.pending.get(&account) {
-            Some(observer) => observer.clone(),
+            Some(entry) => entry.observer.clone(),
             None => return Ok(()),
         };
         self.context
@@ -700,6 +754,8 @@ impl Bridge {
         account: &UInt256,
         contract: &ExistingContract,
     ) -> Result<()> {
+        use dashmap::mapref::entry::Entry;
+
         // Get configuration details
         let details = EthEventConfigurationContract(contract)
             .get_details()
@@ -743,6 +799,10 @@ impl Bridge {
             }
         };
 
+        if let Entry::Vacant(entry) = self.eth_event_counters.entry(*account) {
+            entry.insert(AtomicUsize::new(0));
+        }
+
         // Subscribe to ETH events
         eth_subscriber.subscribe(eth_contract_address.into(), topic_hash, *account);
 
@@ -761,6 +821,8 @@ impl Bridge {
         account: &UInt256,
         contract: &ExistingContract,
     ) -> Result<()> {
+        use dashmap::mapref::entry::Entry;
+
         // Get configuration details
         let details = TonEventConfigurationContract(contract)
             .get_details()
@@ -806,6 +868,10 @@ impl Bridge {
                 return Err(BridgeError::EventConfigurationAlreadyExists.into());
             }
         };
+
+        if let Entry::Vacant(entry) = self.ton_event_counters.entry(*account) {
+            entry.insert(AtomicUsize::new(0));
+        }
 
         // Subscribe to TON events
         self.context
@@ -881,6 +947,10 @@ impl Bridge {
                                 return Ok(true);
                             }
 
+                            if let Some(counter) = bridge.eth_event_counters.get(&configuration) {
+                                counter.fetch_add(1, Ordering::Relaxed);
+                            }
+
                             if bridge.add_pending_event(hash, &bridge.eth_events_state) {
                                 bridge.spawn_background_task(
                                     "initial update ETH event",
@@ -894,6 +964,10 @@ impl Bridge {
                             if !unique_ton_event_configurations.contains(&configuration) {
                                 log::warn!("TON event configuration not found: {:x}", hash);
                                 return Ok(true);
+                            }
+
+                            if let Some(counter) = bridge.ton_event_counters.get(&configuration) {
+                                counter.fetch_add(1, Ordering::Relaxed);
                             }
 
                             if bridge.add_pending_event(hash, &bridge.ton_events_state) {
@@ -924,6 +998,10 @@ impl Bridge {
 
         // Prepare shard task context
         let event_code_hashes = Arc::new(state.event_code_hashes.clone());
+
+        // NOTE: configuration sets are explicitly constructed from state instead of
+        // just using [eth/ton]_event_counters. It is done on purpose to use the actual
+        // configurations. It is acceptable that event counters will not be relevant
         let unique_eth_event_configurations = Arc::new(state.unique_eth_event_configurations());
         let unique_ton_event_configurations = Arc::new(state.unique_ton_event_configurations());
 
@@ -1044,7 +1122,10 @@ impl Bridge {
 
         let new_event = if let Entry::Vacant(entry) = state.pending.entry(account) {
             let observer = AccountObserver::new(&state.events_tx);
-            entry.insert(observer.clone());
+            entry.insert(PendingEventState {
+                processing_started: AtomicBool::new(false),
+                observer: observer.clone(),
+            });
             self.context
                 .ton_subscriber
                 .add_transactions_subscription([account], &observer);
@@ -1081,16 +1162,51 @@ pub struct BridgeMetrics {
 }
 
 struct EventsState<T> {
-    pending: FxDashMap<UInt256, Arc<AccountObserver<T>>>,
+    pending: FxDashMap<UInt256, PendingEventState<T>>,
     count: AtomicUsize,
     events_tx: AccountEventsTx<T>,
 }
 
-impl<T> EventsState<T> {
+impl<T> EventsState<T>
+where
+    T: EventExt,
+{
+    /// Returns false if event processing was already started or event didn't exist
+    fn start_processing(&self, account: &UInt256) -> bool {
+        match self.pending.get(account) {
+            Some(entry) => !entry.processing_started.fetch_or(true, Ordering::AcqRel),
+            None => false,
+        }
+    }
+
     fn remove(&self, account: &UInt256) {
         if self.pending.remove(account).is_some() {
             self.count.fetch_sub(1, Ordering::Release);
         }
+    }
+}
+
+struct PendingEventState<T> {
+    processing_started: AtomicBool,
+    observer: Arc<AccountObserver<T>>,
+}
+
+#[async_trait::async_trait]
+trait EventExt {
+    async fn update_event(bridge: Arc<Bridge>, account: UInt256) -> Result<()>;
+}
+
+#[async_trait::async_trait]
+impl EventExt for EthEvent {
+    async fn update_event(bridge: Arc<Bridge>, account: UInt256) -> Result<()> {
+        bridge.update_eth_event(account).await
+    }
+}
+
+#[async_trait::async_trait]
+impl EventExt for TonEvent {
+    async fn update_event(bridge: Arc<Bridge>, account: UInt256) -> Result<()> {
+        bridge.update_ton_event(account).await
     }
 }
 
