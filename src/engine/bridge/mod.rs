@@ -40,11 +40,6 @@ pub struct Bridge {
     connectors_tx: AccountEventsTx<ConnectorEvent>,
     eth_event_configurations_tx: AccountEventsTx<EthEventConfigurationEvent>,
     ton_event_configurations_tx: AccountEventsTx<TonEventConfigurationEvent>,
-
-    /// Total number of all events for each ETH configuration
-    eth_event_counters: FxDashMap<UInt256, AtomicUsize>,
-    /// Total number of all events for each TON configuration
-    ton_event_counters: FxDashMap<UInt256, AtomicUsize>,
 }
 
 impl Bridge {
@@ -77,8 +72,6 @@ impl Bridge {
             connectors_tx,
             eth_event_configurations_tx,
             ton_event_configurations_tx,
-            eth_event_counters: Default::default(),
-            ton_event_counters: Default::default(),
         });
 
         // Prepare listeners
@@ -754,8 +747,6 @@ impl Bridge {
         account: &UInt256,
         contract: &ExistingContract,
     ) -> Result<()> {
-        use dashmap::mapref::entry::Entry;
-
         // Get configuration details
         let details = EthEventConfigurationContract(contract)
             .get_details()
@@ -799,10 +790,6 @@ impl Bridge {
             }
         };
 
-        if let Entry::Vacant(entry) = self.eth_event_counters.entry(*account) {
-            entry.insert(AtomicUsize::new(0));
-        }
-
         // Subscribe to ETH events
         eth_subscriber.subscribe(eth_contract_address.into(), topic_hash, *account);
 
@@ -821,8 +808,6 @@ impl Bridge {
         account: &UInt256,
         contract: &ExistingContract,
     ) -> Result<()> {
-        use dashmap::mapref::entry::Entry;
-
         // Get configuration details
         let details = TonEventConfigurationContract(contract)
             .get_details()
@@ -868,10 +853,6 @@ impl Bridge {
                 return Err(BridgeError::EventConfigurationAlreadyExists.into());
             }
         };
-
-        if let Entry::Vacant(entry) = self.ton_event_counters.entry(*account) {
-            entry.insert(AtomicUsize::new(0));
-        }
 
         // Subscribe to TON events
         self.context
@@ -947,10 +928,6 @@ impl Bridge {
                                 return Ok(true);
                             }
 
-                            if let Some(counter) = bridge.eth_event_counters.get(&configuration) {
-                                counter.fetch_add(1, Ordering::Relaxed);
-                            }
-
                             if bridge.add_pending_event(hash, &bridge.eth_events_state) {
                                 bridge.spawn_background_task(
                                     "initial update ETH event",
@@ -964,10 +941,6 @@ impl Bridge {
                             if !unique_ton_event_configurations.contains(&configuration) {
                                 log::warn!("TON event configuration not found: {:x}", hash);
                                 return Ok(true);
-                            }
-
-                            if let Some(counter) = bridge.ton_event_counters.get(&configuration) {
-                                counter.fetch_add(1, Ordering::Relaxed);
                             }
 
                             if bridge.add_pending_event(hash, &bridge.ton_events_state) {
