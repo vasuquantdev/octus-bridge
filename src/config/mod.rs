@@ -122,6 +122,9 @@ pub struct NodeConfig {
 
     /// Allowed DB size in bytes. Default: one third of all machine RAM
     pub max_db_memory_usage: usize,
+
+    /// Archives map queue. Default: 16
+    pub parallel_archive_downloads: u32,
 }
 
 impl NodeConfig {
@@ -152,6 +155,7 @@ impl NodeConfig {
             old_blocks_policy: Default::default(),
             shard_state_cache_enabled: false,
             max_db_memory_usage: self.max_db_memory_usage,
+            parallel_archive_downloads: self.parallel_archive_downloads,
             adnl_options: Default::default(),
             rldp_options: Default::default(),
             dht_options: Default::default(),
@@ -169,6 +173,7 @@ impl Default for NodeConfig {
             db_path: "db".into(),
             temp_keys_path: "adnl-keys.json".into(),
             max_db_memory_usage: ton_indexer::default_max_db_memory_usage(),
+            parallel_archive_downloads: 16,
         }
     }
 }
