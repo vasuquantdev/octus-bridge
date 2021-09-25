@@ -2798,7 +2798,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#d2c4bf18718e920356fb8d031ef0e4572639833f"
+source = "git+https://github.com/broxus/ton-indexer.git#174be22962d0bba6b1368ef16c279fab7ca66f5b"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2836,7 +2836,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer-alloc"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#d2c4bf18718e920356fb8d031ef0e4572639833f"
+source = "git+https://github.com/broxus/ton-indexer.git#174be22962d0bba6b1368ef16c279fab7ca66f5b"
 dependencies = [
  "errno",
  "log",
