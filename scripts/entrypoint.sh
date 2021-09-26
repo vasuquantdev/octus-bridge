@@ -1,6 +1,6 @@
 #!/bin/bash
 
 ./relay \
-  --config /cfg/config.yaml \
   run \
+  --config /cfg/config.yaml \
   --global-config /cfg/ton-global.config.json

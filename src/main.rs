@@ -5,7 +5,7 @@ use argh::FromArgs;
 use dialoguer::{Confirm, Input, Password};
 use relay::config::*;
 use relay::engine::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
 #[tokio::main]
@@ -14,14 +14,10 @@ async fn main() -> Result<()> {
 }
 
 async fn run(app: App) -> Result<()> {
-    let mut config = config::Config::new();
-    config.merge(read_config(app.config).context("Failed to read config")?)?;
-    config.merge(config::Environment::new())?;
-
     match app.command {
-        Subcommand::Run(run) => run.execute(config.try_into()?).await,
-        Subcommand::Generate(generate) => generate.execute(config.try_into()?),
-        Subcommand::Export(export) => export.execute(config.try_into()?),
+        Subcommand::Run(run) => run.execute().await,
+        Subcommand::Generate(generate) => generate.execute(),
+        Subcommand::Export(export) => export.execute(),
     }
 }
 
@@ -30,10 +26,6 @@ async fn run(app: App) -> Result<()> {
 struct App {
     #[argh(subcommand)]
     command: Subcommand,
-
-    /// path to config file ('config.yaml' by default)
-    #[argh(option, short = 'c', default = "String::from(\"config.yaml\")")]
-    config: String,
 }
 
 #[derive(Debug, PartialEq, FromArgs)]
@@ -48,13 +40,18 @@ enum Subcommand {
 /// Starts relay node
 #[argh(subcommand, name = "run")]
 struct CmdRun {
+    /// path to config file ('config.yaml' by default)
+    #[argh(option, short = 'c', default = "String::from(\"config.yaml\")")]
+    config: String,
+
     /// path to global config file
     #[argh(option, short = 'g')]
     global_config: String,
 }
 
 impl CmdRun {
-    async fn execute(self, config: AppConfig) -> Result<()> {
+    async fn execute(self) -> Result<()> {
+        let config: AppConfig = read_config(self.config)?;
         let global_config = ton_indexer::GlobalConfig::from_file(&self.global_config)
             .context("Failed to open global config")?;
 
@@ -87,10 +84,16 @@ struct CmdGenerate {
     /// import from existing phrases
     #[argh(switch, short = 'i')]
     import: bool,
+
+    /// path to config file ('config.yaml' by default)
+    #[argh(option, short = 'c', default = "String::from(\"config.yaml\")")]
+    config: String,
 }
 
 impl CmdGenerate {
-    fn execute(self, config: BriefAppConfig) -> Result<()> {
+    fn execute(self) -> Result<()> {
+        let config: BriefAppConfig = read_config(self.config)?;
+
         let path = std::path::Path::new(&self.output);
         if path.exists()
             && !Confirm::new()
@@ -141,10 +144,16 @@ struct CmdExport {
     /// the path where the encrypted file is stored
     #[argh(positional)]
     from: String,
+
+    /// path to config file ('config.yaml' by default)
+    #[argh(option, short = 'c', default = "String::from(\"config.yaml\")")]
+    config: String,
 }
 
 impl CmdExport {
-    fn execute(self, config: BriefAppConfig) -> Result<()> {
+    fn execute(self) -> Result<()> {
+        let config: BriefAppConfig = read_config(self.config)?;
+
         let data = StoredKeysData::load(&self.from)?;
         let password = config.ask_password(false)?;
 
@@ -186,11 +195,12 @@ impl BriefAppConfigExt for BriefAppConfig {
     }
 }
 
-fn read_config<P>(path: P) -> Result<config::File<config::FileSourceString>>
+fn read_config<P, T>(path: P) -> Result<T>
 where
     P: AsRef<std::path::Path>,
+    for<'de> T: Deserialize<'de>,
 {
-    let data = std::fs::read_to_string(path)?;
+    let data = std::fs::read_to_string(path).context("Failed to read config")?;
     let re = regex::Regex::new(r"\$\{([a-zA-Z_][0-9a-zA-Z_]*)\}").unwrap();
     let result = re.replace_all(&data, |caps: &regex::Captures| {
         match std::env::var(&caps[1]) {
@@ -202,10 +212,13 @@ where
         }
     });
 
-    Ok(config::File::from_str(
+    let mut config = config::Config::new();
+    config.merge(config::File::from_str(
         result.as_ref(),
         config::FileFormat::Yaml,
-    ))
+    ))?;
+
+    config.try_into().context("Failed to parse config")
 }
 
 fn init_logger(config: &serde_yaml::Value) -> Result<()> {

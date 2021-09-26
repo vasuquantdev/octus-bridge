@@ -22,7 +22,7 @@ pub struct EthConfig {
     #[serde(default = "default_poll_interval_sec")]
     pub poll_interval_sec: u64,
 
-    /// Max request duration (including all failed retires). Default: 600
+    /// Max request duration (including all failed retires). Default: 604800
     #[serde(default = "default_maximum_failed_responses_time_sec")]
     pub maximum_failed_responses_time_sec: u64,
 }
@@ -40,5 +40,5 @@ fn default_poll_interval_sec() -> u64 {
 }
 
 fn default_maximum_failed_responses_time_sec() -> u64 {
-    600
+    604800
 }

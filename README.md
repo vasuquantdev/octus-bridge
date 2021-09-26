@@ -24,7 +24,17 @@ The simplest way, but adds some overhead. Not recommended for machines with lowe
 # Build docker container
 docker build --tag relay .
 
+# Prepare relay config
+mkdir cfg
+# Fill it using the example below
+vim cfg/config.yaml
+
+# Download network config
+wget -O cfg/ton-global.config.json \
+  https://raw.githubusercontent.com/tonlabs/main.ton.dev/master/configs/main.ton.dev/ton-global.config.json
+
 # Run container
+# (you may also need to pass some environment variables specified in the config)
 docker run -ti --rm \
   --mount type=bind,source=$(pwd)/state,target=/var/relay \
   --mount type=bind,source=$(pwd)/cfg,target=/cfg \
@@ -34,31 +44,64 @@ docker run -ti --rm \
 
 ### Native build
 
-A little bit more complex way, but gives some performance boost and reduces load.
+A little more complex way, but gives some performance gain and reduces the load.
 
 #### Requirements
 - Rust 1.54+
 - Clang 11
+- openssl-dev
 
 #### How to run
 ```bash
+RUSTFLAGS='-C target-cpu=native' cargo build --release
+
+# Prepare relay config
+mkdir cfg
+# Fill it using the example below
+vim ./cfg/config.yaml
+
+# Download network config
+wget -O ./cfg/ton-global.config.json \
+  https://raw.githubusercontent.com/tonlabs/main.ton.dev/master/configs/main.ton.dev/ton-global.config.json
+
 export MASTER_PASSWORD=your_password
-wget https://raw.githubusercontent.com/tonlabs/main.ton.dev/master/configs/main.ton.dev/ton-global.config.json
-RUSTFLAGS='-C target-cpu=native' cargo run \
-  --release -- \
-  run --config config.yaml --global-config ton-global.config.json
+target/release/relay run \
+  --config cfg/config.yaml \
+  --global-config cfg/ton-global.config.json
 ```
+
+> NOTE: If you want to make a systemd service for the relay, then it is better to set it `Restart=no`
+> 
+> Example:
+> ```
+> [Unit]
+> Description=relay
+> After=network.target
+> StartLimitIntervalSec=0
+>
+> [Service]
+> Type=simple
+> Restart=no
+> WorkingDirectory=/etc/bridge
+> ExecStart=/usr/local/bin/relay run --config /etc/bridge/config.yaml --global-config /etc/bridge/ton-global.config.json
+> Environment=MASTER_PASSWORD=superpassword
+> Environment=RELAY_STAKER_ADDRESS=0:1111111111111111111111111111111111111111111111111111111111111111
+>
+> [Install]
+> WantedBy=multi-user.target
+> ```
 
 ### Example config
 
 `config.yaml`
 
-> NOTE: all parameters can be overwritten from environment
+> NOTE: The syntax `${VAR}` can also be used everywhere in config. It will be
+> replaced by the value of the environment variable `VAR`.
 
 ```yaml
 ---
 # Keystore password
-master_password: 12345678
+master_password: "${MASTER_PASSWORD}"
 # Your address from which you specified keys
 staker_address: '0:a921453472366b7feeec15323a96b5dcf17197c88dc0d4578dfa52900b8a33cb'
 bridge_settings:
@@ -79,8 +122,6 @@ bridge_settings:
       pool_size: 10
       # Event logs polling interval
       poll_interval_sec: 10
-      # Max total request duration
-      maximum_failed_responses_time_sec: 600
   # ETH address verification settings (optional)
   address_verification:
     # Minimal balance on user's wallet to start address verification.
@@ -104,7 +145,7 @@ metrics_settings:
   # Listen address of metrics. Used by the client to gather prometheus metrics.
   # Default: "127.0.0.1:10000"
   listen_address: "127.0.0.1:10000"
-  # Path to the metrics. Default: "/"
+  # URL path to the metrics. Default: "/"
   metrics_path: "/"
   # Metrics update interval in seconds. Default: 10
   collection_interval_sec: 10
@@ -137,3 +178,67 @@ logger_settings:
         - stdout
       additive: false
 ```
+
+### Architecture overview
+
+The relay is simultaneously the TON node and can communicate with all EVM networks specified in the config. 
+Its purpose is to check and sign transaction events.
+
+At startup, it synchronizes the TON node and downloads blockchain state. It searches Bridge contract state in it,
+all connectors, active configurations and pending events. Then it subscribes to the Bridge contract in TON and 
+listens for connector deployment events. Each new connector can produce activation event which signals that relay
+should subscribe to the event configuration contract. Each configuration contract produces event deployment 
+events, relay sees and checks them.
+
+- For TON-to-EVM events, only the correctness of data packing is checked (all other stuff is verified on the contracts 
+  side). If the event is correct, the relay converts this data into ETH ABI encoded bytes and signs it with its
+  ETH key. This signature is sent along with a confirmation message. If the data in the event was invalid then the 
+  relay sends a rejection message.
+  
+  ##### TON-to-EVM ABI mapping rules:
+  ```
+  bytes => same
+  string => same
+  uintX => same
+  intX => same
+  bool => same
+  fixedbytes => same
+  fixedarray => same but mapped
+  array => same but mapped
+  tuple => same but mapped
+  _ => unsupported
+  ```
+
+- For EVM-to-TON events, all event parameters are checked on the relay side. It waits for or looking for a transaction
+  on the specified EVM network, converts event data to the TVM cell and sends a confirmation message if everything was
+  correct. Otherwise, it sends a rejection message.
+
+  ##### ETH-to-TON ABI mapping rules:
+  ```
+  address => bytes (of length 20)
+  bytes => bytes or cell (*)
+  string => same
+  intX => same
+  uintX => same
+  bool => same
+  array => same but mapped
+  fixedbytes1 => depends on context (**)
+  fixedbytesX => same
+  fixedarray => same but mapped
+  tuple => same but mapped or cell (***)
+  _ => unsupported
+  ```
+
+  > When converting ABI from EVM format to TON, there is a mechanism for controlling this process.
+  > You can add a `bytes1` *(\*\*)* element which sets context flags to its value.
+  > 
+  > Currently, there are only two flags:
+  > - `0x01` - place tuples to new cell (***)
+  > - `0x02` - interpret `bytes` as encoded TVM cell (*)
+  > 
+  > NOTE: Flags can't be changed inside an array element! This would lead to inconsistent array items ABI.
+
+The decision to make the relay a TON node was not made by chance. In the first version, several relays were connected 
+to the one "light" (4TB goes brr) node which was constantly restarted or to the graphql which also was quite unreliable.
+As a result, relays instantly see all events and vote for them almost simultaneously in one block. The implementation is
+more optimized than C++ node, so they don't harm the network.
