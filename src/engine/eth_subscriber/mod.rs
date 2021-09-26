@@ -428,8 +428,6 @@ impl EthSubscriber {
         // Update pending confirmations
         let mut pending_confirmations = self.pending_confirmations.lock().await;
         for event in events {
-            log::info!("Got ETH log: {:?}", event);
-
             if let Some(confirmation) = pending_confirmations.get_mut(&event.event_id()) {
                 match event {
                     ParsedEthEvent::Removed(_) => {
@@ -445,7 +443,7 @@ impl EthSubscriber {
         }
 
         // Resolve verified confirmations
-        let mut events_to_check = futures::stream::FuturesOrdered::new();
+        let events_to_check = futures::stream::FuturesUnordered::new();
         pending_confirmations.retain(|&event_id, confirmation| {
             if confirmation.target_block > current_block {
                 return true;
@@ -504,7 +502,7 @@ impl EthSubscriber {
 
         drop(pending_confirmations);
 
-        // Update last processed block while
+        // Update last processed block
         if let Some(mut entry) = self.last_block_numbers.get_mut(&self.chain_id) {
             *entry.value_mut() = current_block;
             self.last_processed_block
@@ -696,23 +694,19 @@ impl PendingConfirmation {
     fn check(&self, event: ReceivedEthEvent) -> VerificationStatus {
         let vote_data = &self.vote_data;
 
-        match self.event_abi.decode_and_map(&event.data) {
-            Ok(data) => {
-                log::error!("Received: {:#.1024}", data);
-                log::error!("Expected: {:#.1024}", vote_data.event_data);
+        // NOTE: event_index and transaction_hash are already checked while searching
+        // ETH event log, but here they are also checked just in case.
+        if event.event_index != vote_data.event_index
+            || &event.transaction_hash.0 != vote_data.event_transaction.as_slice()
+            || event.block_number != vote_data.event_block_number as u64
+            || &event.block_hash.0 != vote_data.event_block.as_slice()
+        {
+            return VerificationStatus::NotExists;
+        }
 
-                if data.repr_hash() != vote_data.event_data.repr_hash() {
-                    log::error!("Event data mismatch");
-                    return VerificationStatus::NotExists;
-                }
-                if event.block_number != vote_data.event_block_number as u64 {
-                    log::error!("Event block number mismatch");
-                    return VerificationStatus::NotExists;
-                }
-                if &event.block_hash.0 != vote_data.event_block.as_slice() {
-                    log::error!("Event block hash mismatch");
-                    return VerificationStatus::NotExists;
-                }
+        // Event data is checked last, because it is quite expensive
+        match self.event_abi.decode_and_map(&event.data) {
+            Ok(data) if data.repr_hash() == vote_data.event_data.repr_hash() => {
                 VerificationStatus::Exists
             }
             _ => VerificationStatus::NotExists,
