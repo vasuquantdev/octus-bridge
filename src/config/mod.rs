@@ -152,6 +152,8 @@ impl NodeConfig {
             adnl_keys: temp_keys.into(),
             rocks_db_path: self.db_path.join("rocksdb"),
             file_db_path: self.db_path.join("files"),
+            // NOTE: State GC is disabled until it is fully tested
+            state_gc_options: None,
             old_blocks_policy: Default::default(),
             shard_state_cache_enabled: false,
             max_db_memory_usage: self.max_db_memory_usage,
