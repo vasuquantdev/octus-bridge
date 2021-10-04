@@ -235,6 +235,7 @@ events, relay sees and checks them.
   > Currently, there are only two flags:
   > - `0x01` - place tuples to new cell (***)
   > - `0x02` - interpret `bytes` as encoded TVM cell (*)
+  > - `0x04` - insert default cell in case of error with flag `0x02` (*)
   > 
   > NOTE: Flags can't be changed inside an array element! This would lead to inconsistent array items ABI.
 

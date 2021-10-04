@@ -165,17 +165,24 @@ pub struct EthToTonMappingContext {
     ///
     /// See `MAPPING_FLAG_BYTES_AS_CELL`
     pub bytes_as_cell: bool,
+
+    /// Insert default cell in case of error with `MAPPING_FLAG_BYTES_AS_CELL`
+    ///
+    /// See `MAPPING_FLAG_IGNORE_INVALID_CELL`
+    pub ignore_invalid_cell: bool,
 }
 
 impl EthToTonMappingContext {
     pub fn update(&mut self, flags: u8) {
         self.tuples_to_new_cell = flags & MAPPING_FLAG_TUPLES_TO_NEW_CELL != 0;
         self.bytes_as_cell = flags & MAPPING_FLAG_BYTES_AS_CELL != 0;
+        self.ignore_invalid_cell = flags & MAPPING_FLAG_IGNORE_INVALID_CELL != 0;
     }
 }
 
 pub const MAPPING_FLAG_TUPLES_TO_NEW_CELL: u8 = 0b00000001;
 pub const MAPPING_FLAG_BYTES_AS_CELL: u8 = 0b00000010;
+pub const MAPPING_FLAG_IGNORE_INVALID_CELL: u8 = 0b00000100;
 
 impl From<u8> for EthToTonMappingContext {
     fn from(flags: u8) -> Self {
@@ -200,12 +207,13 @@ pub fn map_eth_token_to_ton(
         (EthTokenValue::FixedBytes(x), _) => TonTokenValue::FixedBytes(x.to_vec()),
         (EthTokenValue::Bytes(x), _) => {
             if ctx.bytes_as_cell {
-                let data = base64::decode(&x)?;
-                TonTokenValue::Cell(ton_types::deserialize_tree_of_cells(
-                    &mut std::io::Cursor::new(data),
-                )?)
+                match ton_types::deserialize_tree_of_cells(&mut std::io::Cursor::new(x)) {
+                    Ok(cell) => TonTokenValue::Cell(cell),
+                    Err(_) if ctx.ignore_invalid_cell => TonTokenValue::Cell(Default::default()),
+                    Err(e) => return Err(e),
+                }
             } else {
-                TonTokenValue::Bytes(x.to_vec())
+                TonTokenValue::Bytes(x)
             }
         }
         (EthTokenValue::Uint(x), &EthParamType::Uint(size)) => {
