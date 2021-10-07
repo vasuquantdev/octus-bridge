@@ -137,7 +137,7 @@ bridge_settings:
       poll_interval_sec: 10
     # Polygon
     - chain_id: 137
-      endpoint: https://rpc-mainnet.matic.network
+      endpoint: https://matic-mainnet.chainstacklabs.com
       get_timeout_sec: 10
       pool_size: 10
       poll_interval_sec: 10
