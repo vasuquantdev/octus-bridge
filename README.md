@@ -113,14 +113,33 @@ bridge_settings:
   ignore_elections: false
   # EVM network configs
   networks:
-    - chain_id: 5
+    # Ethereum
+    - chain_id: 1
       # RPC node endpoint
-      endpoint: "https://goerli.infura.io/v3/your_key"
+      endpoint: "${ETH_MAINNET_URL}"
       # Timeout, used for simple getter requests
       get_timeout_sec: 10
       # Max simultaneous connection count
       pool_size: 10
       # Event logs polling interval
+      poll_interval_sec: 10
+    # Smart Chain
+    - chain_id: 56
+      endpoint: https://bsc-dataseed.binance.org
+      get_timeout_sec: 10
+      pool_size: 10
+      poll_interval_sec: 10
+    # Fantom Opera
+    - chain_id: 250
+      endpoint: https://rpc.ftm.tools
+      get_timeout_sec: 10
+      pool_size: 10
+      poll_interval_sec: 10
+    # Polygon
+    - chain_id: 137
+      endpoint: https://rpc-mainnet.matic.network
+      get_timeout_sec: 10
+      pool_size: 10
       poll_interval_sec: 10
   # ETH address verification settings (optional)
   address_verification:
