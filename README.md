@@ -129,6 +129,7 @@ bridge_settings:
       get_timeout_sec: 10
       pool_size: 10
       poll_interval_sec: 10
+      max_block_range: 5000
     # Fantom Opera
     - chain_id: 250
       endpoint: https://rpc.ftm.tools

@@ -376,7 +376,7 @@ impl EthSubscriber {
         );
 
         // Get latest ETH block
-        let current_block = match retry(
+        let mut current_block = match retry(
             || self.get_current_block_number(),
             api_request_strategy,
             "get actual ethereum height",
@@ -395,6 +395,17 @@ impl EthSubscriber {
         if last_processed_block == current_block {
             tokio::time::sleep(Duration::from_secs(self.config.poll_interval_sec)).await;
             return Ok(());
+        }
+
+        if let Some(max_block_range) = self.config.max_block_range {
+            if last_processed_block + max_block_range < current_block {
+                current_block = last_processed_block + max_block_range;
+                log::warn!(
+                    "Querying at most {} blocks. New current ETH block: {}",
+                    max_block_range,
+                    current_block
+                );
+            }
         }
 
         // Get all events since last processed block
