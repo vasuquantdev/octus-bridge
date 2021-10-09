@@ -32,10 +32,10 @@ pub struct Bridge {
     state: RwLock<BridgeState>,
 
     // Observers for pending ETH events
-    eth_events_state: EventsState<EthEvent>,
+    eth_events_state: Arc<EventsState<EthEvent>>,
 
     // Observers for pending TON events
-    ton_events_state: EventsState<TonEvent>,
+    ton_events_state: Arc<EventsState<TonEvent>>,
 
     connectors_tx: AccountEventsTx<ConnectorEvent>,
     eth_event_configurations_tx: AccountEventsTx<EthEventConfigurationEvent>,
@@ -59,16 +59,8 @@ impl Bridge {
             bridge_account,
             bridge_observer: bridge_observer.clone(),
             state: Default::default(),
-            eth_events_state: EventsState {
-                pending: Default::default(),
-                count: Default::default(),
-                events_tx: eth_events_tx,
-            },
-            ton_events_state: EventsState {
-                pending: Default::default(),
-                count: Default::default(),
-                events_tx: ton_events_tx,
-            },
+            eth_events_state: EventsState::new(eth_events_tx),
+            ton_events_state: EventsState::new(ton_events_tx),
             connectors_tx,
             eth_event_configurations_tx,
             ton_event_configurations_tx,
@@ -467,8 +459,18 @@ impl Bridge {
             Some(entry) => entry.observer.clone(),
             None => return Ok(()),
         };
+        let eth_events_state = Arc::downgrade(&self.eth_events_state);
+
         self.context
-            .deliver_message(eth_event_observer, message)
+            .deliver_message(
+                eth_event_observer,
+                message,
+                // Stop voting for the contract if it was removed
+                move || match eth_events_state.upgrade() {
+                    Some(state) => state.pending.contains_key(&account),
+                    None => false,
+                },
+            )
             .await?;
         Ok(())
     }
@@ -568,8 +570,18 @@ impl Bridge {
             Some(entry) => entry.observer.clone(),
             None => return Ok(()),
         };
+        let ton_events_state = Arc::downgrade(&self.ton_events_state);
+
         self.context
-            .deliver_message(ton_event_observer, message)
+            .deliver_message(
+                ton_event_observer,
+                message,
+                // Stop voting for the contract if it was removed
+                move || match ton_events_state.upgrade() {
+                    Some(state) => state.pending.contains_key(&account),
+                    None => false,
+                },
+            )
             .await?;
         Ok(())
     }
@@ -1144,6 +1156,14 @@ impl<T> EventsState<T>
 where
     T: EventExt,
 {
+    fn new(events_tx: AccountEventsTx<T>) -> Arc<Self> {
+        Arc::new(Self {
+            pending: Default::default(),
+            count: Default::default(),
+            events_tx,
+        })
+    }
+
     /// Returns false if event processing was already started or event didn't exist
     fn start_processing(&self, account: &UInt256) -> bool {
         match self.pending.get(account) {

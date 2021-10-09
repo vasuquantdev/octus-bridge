@@ -513,6 +513,9 @@ impl Staking {
                     user_data_contract::become_relay_next_round(),
                     self.user_data_account,
                 ),
+                // Condition is always true because this method should
+                // always be called inside `tokio::select`
+                || true,
             )
             .await
     }
@@ -537,6 +540,9 @@ impl Staking {
                     self.user_data_account,
                 )
                 .arg(relay_round),
+                // Condition is always true because this method is always accepted by the contract.
+                // (It is an exception situation otherwise)
+                || true,
             )
             .await
     }
@@ -550,6 +556,9 @@ impl Staking {
                     staking_contract::start_election_on_new_round(),
                     self.staking_account,
                 ),
+                // Condition is always true because this method should
+                // always be called inside `tokio::select`
+                || true,
             )
             .await
     }
@@ -560,6 +569,9 @@ impl Staking {
             .deliver_message(
                 self.staking_observer.clone(),
                 UnsignedMessage::new(staking_contract::end_election(), self.staking_account),
+                // Condition is always true because this method should
+                // always be called inside `tokio::select`
+                || true,
             )
             .await
     }
@@ -694,6 +706,8 @@ impl UserDataContract<'_> {
                         user_data_contract::confirm_ton_account(),
                         user_data_account,
                     ),
+                    // Condition is always true because this method is always accepted by the contract
+                    || true,
                 )
                 .await
                 .context("Failed confirming TON public key")?;

@@ -258,15 +258,25 @@ impl EngineContext {
         Ok(status)
     }
 
-    async fn deliver_message<T>(
+    async fn deliver_message<T, F>(
         self: &Arc<Self>,
         observer: Arc<AccountObserver<T>>,
         unsigned_message: UnsignedMessage,
+        mut condition: F,
     ) -> Result<()>
     where
         T: Send + 'static,
+        F: FnMut() -> bool + 'static,
     {
         loop {
+            // Check if message should be sent
+            if !condition() {
+                break;
+            }
+
+            // Prepare and send the message
+            // NOTE: it must be signed every time before sending because it uses current
+            // timestamp in headers. It will not work outside this loop
             let message = self.keystore.ton.sign(&unsigned_message)?;
 
             match self
@@ -274,6 +284,7 @@ impl EngineContext {
                 .await?
             {
                 MessageStatus::Expired => {
+                    // Do nothing on expire and just retry
                     log::warn!("Message to account {:x} expired", message.account);
                 }
                 MessageStatus::Delivered => {
@@ -283,6 +294,8 @@ impl EngineContext {
             }
         }
 
+        // Make sure that observer is living enough. Messages will not be found
+        // if it is deleted too early
         drop(observer);
         Ok(())
     }
