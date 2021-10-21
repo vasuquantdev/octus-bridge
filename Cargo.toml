@@ -1,6 +1,6 @@
 [package]
 name = "relay"
-version = "2.0.1"
+version = "2.0.2"
 edition = "2018"
 authors = ["Broxus team"]
 publish = false
@@ -58,6 +58,8 @@ ton_types = { git = "https://github.com/broxus/ton-labs-types" }
 
 tiny-adnl = { git = "https://github.com/broxus/tiny-adnl" }
 
+eth-ton-abi-converter = { git = "https://github.com/broxus/eth-ton-abi-converter.git" }
+
 # Nekoton SDK
 nekoton-abi = { git = "https://github.com/broxus/nekoton.git", features = ["derive"] }
 nekoton-utils = { git = "https://github.com/broxus/nekoton.git", features = ["encryption"] }
@@ -69,6 +71,9 @@ ton-indexer = { git = "https://github.com/broxus/ton-indexer.git" }
 cargo-husky = { version = "1", features = ["default", "run-cargo-fmt", "run-cargo-check"] }
 pretty_assertions = "0.7.2"
 tempfile = "3.2.0"
+
+[patch.crates-io]
+hmac-drbg = { git = "https://github.com/Rexagon/rust-hmac-drbg" }
 
 [features]
 default = []

@@ -268,12 +268,8 @@ impl EngineContext {
         T: Send + 'static,
         F: FnMut() -> bool + 'static,
     {
-        loop {
-            // Check if message should be sent
-            if !condition() {
-                break;
-            }
-
+        // Check if message should be sent
+        while condition() {
             // Prepare and send the message
             // NOTE: it must be signed every time before sending because it uses current
             // timestamp in headers. It will not work outside this loop

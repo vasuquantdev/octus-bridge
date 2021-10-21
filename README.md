@@ -252,7 +252,7 @@ events, relay sees and checks them.
   > When converting ABI from EVM format to TON, there is a mechanism for controlling this process.
   > You can add a `bytes1` *(\*\*)* element which sets context flags to its value.
   > 
-  > Currently, there are only two flags:
+  > Currently, there are only three flags:
   > - `0x01` - place tuples to new cell (***)
   > - `0x02` - interpret `bytes` as encoded TVM cell (*)
   > - `0x04` - insert default cell in case of error with flag `0x02` (*)
