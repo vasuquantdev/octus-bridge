@@ -47,7 +47,7 @@ docker run -ti --rm \
 A little more complex way, but gives some performance gain and reduces the load.
 
 #### Requirements
-- Rust 1.54+
+- Rust 1.56+
 - Clang 11
 - openssl-dev
 

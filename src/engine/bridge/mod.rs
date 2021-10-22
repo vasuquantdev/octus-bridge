@@ -222,7 +222,7 @@ impl Bridge {
                 } else {
                     // NOTE: Each TON event must be unique on the contracts level,
                     // so receiving message with duplicated address is
-                    // a signal the something went wrong
+                    // a signal that something went wrong
                     log::warn!("Got deployment message for pending event: {:x}", account);
                 }
             }
@@ -241,7 +241,7 @@ impl Bridge {
 
     async fn process_eth_event(
         self: Arc<Self>,
-        (account, event): (UInt256, EthEvent),
+        (account, event): (UInt256, (EthEvent, EventStatus)),
     ) -> Result<()> {
         use dashmap::mapref::entry::Entry;
 
@@ -252,29 +252,33 @@ impl Bridge {
 
         // Handle only known ETH events
         if let Entry::Occupied(entry) = self.eth_events_state.pending.entry(account) {
+            let remove_entry = || {
+                // Remove pending event
+                entry.remove();
+                event_removed = true;
+            };
+
             match event {
+                // Remove event if voting process was finished
+                (_, EventStatus::Confirmed | EventStatus::Rejected) => remove_entry(),
                 // Handle event initialization
-                EthEvent::ReceiveRoundRelays { keys, status } => {
+                (EthEvent::ReceiveRoundRelays { keys }, _) => {
                     // Check if event contains our key
-                    if status == EventStatus::Pending && keys.contains(our_public_key) {
+                    if keys.contains(our_public_key) {
                         // Start voting
                         self.spawn_background_task(
                             "update ETH event",
                             self.clone().update_eth_event(account),
                         );
                     } else {
-                        entry.remove();
-                        event_removed = true;
+                        remove_entry();
                     }
                 }
                 // Handle our confirmation or rejection
-                EthEvent::Confirm { public_key, status }
-                | EthEvent::Reject { public_key, status }
-                    if status != EventStatus::Pending || public_key == our_public_key =>
+                (EthEvent::Confirm { public_key } | EthEvent::Reject { public_key }, _)
+                    if public_key == our_public_key =>
                 {
-                    // Remove pending event
-                    entry.remove();
-                    event_removed = true;
+                    remove_entry()
                 }
                 _ => { /* Ignore other events */ }
             }
@@ -290,7 +294,7 @@ impl Bridge {
 
     async fn process_ton_event(
         self: Arc<Self>,
-        (account, event): (UInt256, TonEvent),
+        (account, event): (UInt256, (TonEvent, EventStatus)),
     ) -> Result<()> {
         use dashmap::mapref::entry::Entry;
 
@@ -301,28 +305,33 @@ impl Bridge {
 
         // Handle only known TON events
         if let Entry::Occupied(entry) = self.ton_events_state.pending.entry(account) {
+            let remove_entry = || {
+                // Remove pending event
+                entry.remove();
+                event_removed = true;
+            };
+
             match event {
+                // Remove event if voting process was finished
+                (_, EventStatus::Confirmed | EventStatus::Rejected) => remove_entry(),
                 // Handle event initialization
-                TonEvent::ReceiveRoundRelays { keys, status } => {
+                (TonEvent::ReceiveRoundRelays { keys }, _) => {
                     // Check if event contains our key
-                    if status == EventStatus::Pending && keys.contains(our_public_key) {
+                    if keys.contains(our_public_key) {
                         // Start voting
                         self.spawn_background_task(
                             "update TON event",
                             self.clone().update_ton_event(account),
                         );
                     } else {
-                        entry.remove();
-                        event_removed = true;
+                        remove_entry();
                     }
                 }
                 // Handle our confirmation or rejection
-                TonEvent::Confirm { public_key, status }
-                | TonEvent::Reject { public_key, status }
-                    if status != EventStatus::Pending || public_key == our_public_key =>
+                (TonEvent::Confirm { public_key } | TonEvent::Reject { public_key }, _)
+                    if public_key == our_public_key =>
                 {
-                    entry.remove();
-                    event_removed = true;
+                    remove_entry();
                 }
                 _ => { /* Ignore other events */ }
             }
@@ -1152,14 +1161,14 @@ pub struct BridgeMetrics {
 struct EventsState<T> {
     pending: FxDashMap<UInt256, PendingEventState<T>>,
     count: AtomicUsize,
-    events_tx: AccountEventsTx<T>,
+    events_tx: AccountEventsTx<(T, EventStatus)>,
 }
 
 impl<T> EventsState<T>
 where
     T: EventExt,
 {
-    fn new(events_tx: AccountEventsTx<T>) -> Arc<Self> {
+    fn new(events_tx: AccountEventsTx<(T, EventStatus)>) -> Arc<Self> {
         Arc::new(Self {
             pending: Default::default(),
             count: Default::default(),
@@ -1184,7 +1193,7 @@ where
 
 struct PendingEventState<T> {
     processing_started: AtomicBool,
-    observer: Arc<AccountObserver<T>>,
+    observer: Arc<AccountObserver<(T, EventStatus)>>,
 }
 
 #[async_trait::async_trait]
@@ -1503,27 +1512,18 @@ impl ReadFromTransaction for EthEventConfigurationEvent {
     }
 }
 
-impl TxContext<'_> {
-    fn get_event_status(&self) -> Option<EventStatus> {
-        let state = self.get_account_state().ok()?;
+impl ReadFromTransaction for EventStatus {
+    fn read_from_transaction(ctx: &TxContext<'_>) -> Option<Self> {
+        let state = ctx.get_account_state().ok()?;
         EventBaseContract(&state).status().ok()
     }
 }
 
 #[derive(Debug, Clone)]
 enum EthEvent {
-    ReceiveRoundRelays {
-        keys: Vec<UInt256>,
-        status: EventStatus,
-    },
-    Confirm {
-        public_key: UInt256,
-        status: EventStatus,
-    },
-    Reject {
-        public_key: UInt256,
-        status: EventStatus,
-    },
+    ReceiveRoundRelays { keys: Vec<UInt256> },
+    Confirm { public_key: UInt256 },
+    Reject { public_key: UInt256 },
 }
 
 impl ReadFromTransaction for EthEvent {
@@ -1534,12 +1534,12 @@ impl ReadFromTransaction for EthEvent {
                 let (public_key, body) = read_external_in_msg(&in_msg.body()?)?;
 
                 match read_function_id(&body) {
-                    Ok(id) if id == eth_event_contract::confirm().input_id => ctx
-                        .get_event_status()
-                        .map(|status| EthEvent::Confirm { public_key, status }),
-                    Ok(id) if id == eth_event_contract::reject().input_id => ctx
-                        .get_event_status()
-                        .map(|status| EthEvent::Reject { public_key, status }),
+                    Ok(id) if id == eth_event_contract::confirm().input_id => {
+                        Some(EthEvent::Confirm { public_key })
+                    }
+                    Ok(id) if id == eth_event_contract::reject().input_id => {
+                        Some(EthEvent::Reject { public_key })
+                    }
                     _ => None,
                 }
             }
@@ -1553,11 +1553,7 @@ impl ReadFromTransaction for EthEvent {
                             .and_then(|tokens| tokens.unpack().map_err(anyhow::Error::from))
                             .ok()?;
 
-                        ctx.get_event_status()
-                            .map(|status| EthEvent::ReceiveRoundRelays {
-                                keys: items,
-                                status,
-                            })
+                        Some(EthEvent::ReceiveRoundRelays { keys: items })
                     }
                     _ => None,
                 }
@@ -1569,18 +1565,9 @@ impl ReadFromTransaction for EthEvent {
 
 #[derive(Debug, Clone)]
 enum TonEvent {
-    ReceiveRoundRelays {
-        keys: Vec<UInt256>,
-        status: EventStatus,
-    },
-    Confirm {
-        public_key: UInt256,
-        status: EventStatus,
-    },
-    Reject {
-        public_key: UInt256,
-        status: EventStatus,
-    },
+    ReceiveRoundRelays { keys: Vec<UInt256> },
+    Confirm { public_key: UInt256 },
+    Reject { public_key: UInt256 },
 }
 
 impl ReadFromTransaction for TonEvent {
@@ -1591,12 +1578,12 @@ impl ReadFromTransaction for TonEvent {
                 let (public_key, body) = read_external_in_msg(&in_msg.body()?)?;
 
                 match read_function_id(&body) {
-                    Ok(id) if id == ton_event_contract::confirm().input_id => ctx
-                        .get_event_status()
-                        .map(|status| TonEvent::Confirm { public_key, status }),
-                    Ok(id) if id == ton_event_contract::reject().input_id => ctx
-                        .get_event_status()
-                        .map(|status| TonEvent::Reject { public_key, status }),
+                    Ok(id) if id == ton_event_contract::confirm().input_id => {
+                        Some(TonEvent::Confirm { public_key })
+                    }
+                    Ok(id) if id == ton_event_contract::reject().input_id => {
+                        Some(TonEvent::Reject { public_key })
+                    }
                     _ => None,
                 }
             }
@@ -1610,11 +1597,7 @@ impl ReadFromTransaction for TonEvent {
                             .and_then(|tokens| tokens.unpack().map_err(anyhow::Error::from))
                             .ok()?;
 
-                        ctx.get_event_status()
-                            .map(|status| TonEvent::ReceiveRoundRelays {
-                                keys: items,
-                                status,
-                            })
+                        Some(TonEvent::ReceiveRoundRelays { keys: items })
                     }
                     _ => None,
                 }

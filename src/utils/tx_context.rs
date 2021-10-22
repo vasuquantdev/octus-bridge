@@ -8,6 +8,19 @@ pub trait ReadFromTransaction: Sized + Send + Sync {
     fn read_from_transaction(ctx: &TxContext<'_>) -> Option<Self>;
 }
 
+impl<T, U> ReadFromTransaction for (T, U)
+where
+    T: ReadFromTransaction,
+    U: ReadFromTransaction,
+{
+    fn read_from_transaction(ctx: &TxContext<'_>) -> Option<Self> {
+        Some((
+            T::read_from_transaction(ctx)?,
+            U::read_from_transaction(ctx)?,
+        ))
+    }
+}
+
 #[derive(Copy, Clone)]
 pub struct TxContext<'a> {
     pub shard_accounts: &'a ton_block::ShardAccounts,
