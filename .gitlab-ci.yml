@@ -1,13 +1,31 @@
 include:
-  - project: 'common/gitlab-ci'
+  - project: "common/gitlab-ci"
     ref: master
-    file: '/templates/cloudbuild-common.gitlab-ci.yaml'
+    file: "/templates/cloudbuild-common.gitlab-ci.yaml"
+
+variables:
+  IMAGE_BASE: gcr.io/broxus/ton/tonbridge/relay
 
 stages:
   - cloudbuild
 
-cloudbuild:common-master:
+# dev pipeline
+cloudbuild:image-dev:
   extends: .cloudbuild:common
+  variables:
+    IMAGE_NAME: $IMAGE_BASE
+  only:
+    - develop
+  except:
+    - tags
+  script:
+    - gcloud builds submit --machine-type=n1-highcpu-8 --config=cloudbuild.yaml .
+
+# master pipeline
+cloudbuild:image-master:
+  extends: .cloudbuild:common
+  variables:
+    IMAGE_NAME: $IMAGE_BASE
   only:
     - master
   except:
