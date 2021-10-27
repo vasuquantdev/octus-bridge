@@ -9,19 +9,6 @@ variables:
 stages:
   - cloudbuild
 
-# dev pipeline
-cloudbuild:image-dev:
-  extends: .cloudbuild:common
-  variables:
-    IMAGE_NAME: $IMAGE_BASE
-  only:
-    - develop
-  except:
-    - tags
-  script:
-    - gcloud builds submit --machine-type=n1-highcpu-8 --config=cloudbuild.yaml .
-
-# master pipeline
 cloudbuild:image-master:
   extends: .cloudbuild:common
   variables:
