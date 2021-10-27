@@ -1,0 +1,13 @@
+[Unit]
+Description=relay
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=no
+WorkingDirectory=/etc/relay
+ExecStart=/usr/local/bin/relay run --config /etc/relay/config.yaml --global-config /etc/relay/ton-global.config.json
+
+[Install]
+WantedBy=multi-user.target

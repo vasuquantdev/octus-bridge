@@ -43,10 +43,19 @@ impl KeyStore {
         let eth_secret_key = secp256k1::SecretKey::from_slice(&eth_secret_key)?;
         let ton_secret_key = ed25519_dalek::SecretKey::from_bytes(&ton_secret_key)?;
 
-        Ok(Arc::new(Self {
+        let keystore = Arc::new(Self {
             eth: EthSigner::new(eth_secret_key),
             ton: TonSigner::new(ton_secret_key),
-        }))
+        });
+
+        // Print ETH address and TON public key
+        log::warn!("Using TON public key: 0x{:x}", keystore.ton.public_key());
+        log::warn!(
+            "Using ETH address: {}",
+            EthAddressWrapper(keystore.eth.address())
+        );
+
+        Ok(keystore)
     }
 }
 

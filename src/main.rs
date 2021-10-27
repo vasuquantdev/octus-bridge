@@ -105,15 +105,6 @@ impl CmdGenerate {
 
         let (eth, ton) = match self.import {
             true => {
-                let eth_phrase: String = Input::new()
-                    .with_prompt("ETH seed phrase")
-                    .interact_text()?;
-                let eth_path: String = Input::new()
-                    .with_prompt("ETH derivation path")
-                    .with_initial_text(UnencryptedEthData::DEFAULT_PATH)
-                    .interact_text()?;
-                let eth = UnencryptedEthData::from_phrase(eth_phrase.into(), eth_path.into())?;
-
                 let ton_phrase: String = Input::new()
                     .with_prompt("TON seed phrase")
                     .interact_text()?;
@@ -123,6 +114,15 @@ impl CmdGenerate {
                     .interact_text()?;
                 let ton = UnencryptedTonData::from_phrase(ton_phrase.into(), ton_path.into())?;
 
+                let eth_phrase: String = Input::new()
+                    .with_prompt("ETH seed phrase")
+                    .interact_text()?;
+                let eth_path: String = Input::new()
+                    .with_prompt("ETH derivation path")
+                    .with_initial_text(UnencryptedEthData::DEFAULT_PATH)
+                    .interact_text()?;
+                let eth = UnencryptedEthData::from_phrase(eth_phrase.into(), eth_path.into())?;
+
                 (eth, ton)
             }
             false => (
@@ -131,8 +131,12 @@ impl CmdGenerate {
             ),
         };
 
+        println!("Generated TON data: {:#}", ton.as_printable());
+        println!("Generated ETH data: {:#}", eth.as_printable());
+
         let password = config.ask_password(true)?;
         StoredKeysData::new(password.unsecure(), eth, ton)?.save(path)?;
+
         Ok(())
     }
 }
