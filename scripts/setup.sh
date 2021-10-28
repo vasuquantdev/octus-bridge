@@ -77,6 +77,11 @@ elif [[ "$setup_type" == "docker" ]]; then
     exit 1
   fi
 
+  echo "INFO: pulling image"
+  image="gcr.io/broxus/ton/tonbridge/relay:master-$(git rev-parse --short=8 HEAD)"
+  sudo docker pull "$image"
+  sudo docker image tag "$image" relay
+
   echo 'INFO: creating systemd service'
   sudo cp "$REPO_DIR/contrib/relay.docker.service" /etc/systemd/system/relay.service
 else

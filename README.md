@@ -49,6 +49,7 @@ NOTE: scripts are prepared and tested on **Ubuntu 20.04**. You may need to modif
    Environment=RELAY_MASTER_KEY=stub-master-key
    Environment=RELAY_STAKER_ADDRESS=your-staker-address
    Environment=ETH_MAINNET_URL=eth-http-rpc-endpoint
+   Environment=POLYGON_URL=polygon-http-rpc-endpoint
    ...
    ```
 
@@ -64,7 +65,7 @@ NOTE: scripts are prepared and tested on **Ubuntu 20.04**. You may need to modif
 
 4. ##### Link relay keys
    Use ETH address and TON public key from the previous step to link this relay setup
-   with your staker address at https://tonbridge.io/relayers/create
+   with your staker address at https://v2.tonbridge.io/relayers/create
 
    > During linking you will need to send at least **0.05 ETH** to your relay ETH address so that the relay can confirm his ownership.
    > 
@@ -163,7 +164,7 @@ bridge_settings:
     # Polygon
     - chain_id: 137
       # Public endpoint
-      endpoint: https://matic-mainnet.chainstacklabs.com
+      endpoint: "${POLYGON_URL}"
       get_timeout_sec: 10
       pool_size: 10
       poll_interval_sec: 10
