@@ -65,11 +65,12 @@ NOTE: scripts are prepared and tested on **Ubuntu 20.04**. You may need to modif
 
 4. ##### Link relay keys
    Use ETH address and TON public key from the previous step to link this relay setup
-   with your staker address at https://v2.tonbridge.io/relayers/create
+   with your staker address at https://v2.tonbridge.io/relayers/create. When you start the linking process go to step 5 and start the relay. It will begin to confirm the public key and address on the air.
+   It may take some time to sync at first (~40 minutes).
 
    > During linking you will need to send at least **0.05 ETH** to your relay ETH address so that the relay can confirm his ownership.
    > 
-   > If you think that this is a lot or if the gas price is more than 300 gwei now, 
+   > If you think that this is a lot or if the gas price is more than 300 GWEI now, 
    > then you can change the values in the config.
 
 5. ##### Enable and start relay service
@@ -82,6 +83,8 @@ NOTE: scripts are prepared and tested on **Ubuntu 20.04**. You may need to modif
    journalctl -fu relay
    ```
    Relay will be running on UDP port `30000` by default, so make sure that this port is not blocked by firewall.
+
+   NOTE: docker installation uses port 30000 in unit file, so you may need to update the service if you decide to change it.  
 
    > Relay has a built-in Prometheus metrics exporter which is configured in the `metrics_settings` section of the config.
    > By default, metrics are available at `http://127.0.0.1:10000/`
