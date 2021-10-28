@@ -51,6 +51,9 @@ if [[ "$setup_type" != "native" ]] && [[ "$setup_type" != "docker" ]]; then
   exit 1
 fi
 
+service_path="/etc/systemd/system/relay.service"
+config_path="/etc/relay/config.yaml"
+
 if [[ "$setup_type" == "native" ]]; then
   echo 'INFO: Running native installation'
 
@@ -68,7 +71,11 @@ if [[ "$setup_type" == "native" ]]; then
   sudo cp "$REPO_DIR/target/release/relay" /usr/local/bin/relay
 
   echo 'INFO: creating systemd service'
-  sudo cp "$REPO_DIR/contrib/relay.native.service" /etc/systemd/system/relay.service
+  if [[ -f "$service_path" ]]; then
+    echo "WARN: $service_path already exists"
+  else
+    sudo cp "$REPO_DIR/contrib/relay.native.service" "$service_path"
+  fi
 
 elif [[ "$setup_type" == "docker" ]]; then
   if ! sudo docker info > /dev/null 2>&1; then
@@ -83,7 +90,11 @@ elif [[ "$setup_type" == "docker" ]]; then
   sudo docker image tag "$image" relay
 
   echo 'INFO: creating systemd service'
-  sudo cp "$REPO_DIR/contrib/relay.docker.service" /etc/systemd/system/relay.service
+  if [[ -f "$service_path" ]]; then
+    echo "WARN: $service_path already exists"
+  else
+    sudo cp "$REPO_DIR/contrib/relay.docker.service" "$service_path"
+  fi
 else
   echo 'ERROR: Unexpected'
   exit 1
@@ -92,7 +103,11 @@ fi
 echo "INFO: preparing environment"
 sudo mkdir -p /etc/relay
 sudo mkdir -p /var/db/relay
-sudo cp "$REPO_DIR/contrib/config.yaml" /etc/relay/config.yaml
+if [[ -f "$config_path" ]]; then
+  echo "WARN: $config_path already exists"
+else
+  sudo cp -n "$REPO_DIR/contrib/config.yaml" "$config_path"
+fi
 sudo wget -O /etc/relay/ton-global.config.json \
   https://raw.githubusercontent.com/tonlabs/main.ton.dev/master/configs/main.ton.dev/ton-global.config.json
 
