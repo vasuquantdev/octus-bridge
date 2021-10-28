@@ -8,7 +8,7 @@ StartLimitIntervalSec=0
 Type=simple
 Restart=no
 WorkingDirectory=/etc/relay
-ExecStart=/usr/bin/docker run -t --rm --mount type=bind,source=/etc/relay,target=/etc/relay --mount type=bind,source=/var/db/relay,target=/var/db/relay relay run --config /etc/relay/config.yaml --global-config /etc/relay/ton-global.config.json
+ExecStart=/usr/bin/docker run -t --rm -p 30000:30000 --mount type=bind,source=/etc/relay,target=/etc/relay --mount type=bind,source=/var/db/relay,target=/var/db/relay relay run --config /etc/relay/config.yaml --global-config /etc/relay/ton-global.config.json
 
 [Install]
 WantedBy=multi-user.target
