@@ -1,0 +1,86 @@
+---
+# Keystore password
+master_password: "${RELAY_MASTER_KEY}"
+# Your address from which you specified keys
+staker_address: "${RELAY_STAKER_ADDRESS}"
+bridge_settings:
+  # Keystore data path
+  keys_path: "/etc/relay/keys.json"
+  # Bridge contract address
+  bridge_address: "0:65d2002fae133c1064ae0f0ff44e416e52f112cf8faece53cd39e93d0f4d23d7"
+  # If set, relay will not participate in elections. Default: false
+  ignore_elections: false
+  # EVM network configs
+  networks:
+    # Ethereum
+    - chain_id: 1
+      # RPC node HTTP endpoint
+      endpoint: "${ETH_MAINNET_URL}"
+      # Timeout, used for simple getter requests
+      get_timeout_sec: 10
+      # Max simultaneous connection count
+      pool_size: 10
+      # Event logs polling interval
+      poll_interval_sec: 10
+      # Maximum blocks range for getLogs request
+      max_block_range: 5000
+    # Smart Chain
+    - chain_id: 56
+      # Public endpoint
+      endpoint: https://bsc-dataseed.binance.org
+      get_timeout_sec: 10
+      pool_size: 10
+      poll_interval_sec: 10
+      max_block_range: 5000
+    # Fantom Opera
+    - chain_id: 250
+      # Public endpoint
+      endpoint: https://rpc.ftm.tools
+      get_timeout_sec: 10
+      pool_size: 10
+      poll_interval_sec: 10
+      max_block_range: 5000
+    # Polygon
+    - chain_id: 137
+      # Public endpoint
+      endpoint: "${POLYGON_URL}"
+      get_timeout_sec: 10
+      pool_size: 10
+      poll_interval_sec: 10
+      max_block_range: 5000
+node_settings:
+  # Root directory for relay DB. Default: "./db"
+  db_path: "/var/db/relay"
+  # UDP port, used for ADNL node. Default: 30303
+  adnl_port: 30000
+  # Path to temporary ADNL keys.
+  # NOTE: Will be generated if it was not there.
+  # Default: "./adnl-keys.json"
+  temp_keys_path: "/etc/relay/adnl-keys.json"
+metrics_settings:
+  # Listen address of metrics. Used by the client to gather prometheus metrics.
+  # Default: "127.0.0.1:10000"
+  listen_address: "127.0.0.1:10000"
+  # URL path to the metrics. Default: "/"
+  # Example: `curl http://127.0.0.1:10000/`
+  metrics_path: "/"
+  # Metrics update interval in seconds. Default: 10
+  collection_interval_sec: 10
+# log4rs settings.
+# See https://docs.rs/log4rs/1.0.0/log4rs/ for more details
+logger_settings:
+  appenders:
+    stdout:
+      kind: console
+      encoder:
+        pattern: "{h({l})} {M} = {m} {n}"
+  root:
+    level: info
+    appenders:
+      - stdout
+  loggers:
+    relay:
+      level: info
+      appenders:
+        - stdout
+      additive: false

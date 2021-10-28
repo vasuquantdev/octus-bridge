@@ -8,7 +8,7 @@ Dockerfile.local
 default_config.yaml
 keys*.json
 logs*.log
-config*.yaml
+/config.yaml
 
 state/
 log/
