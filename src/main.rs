@@ -85,6 +85,10 @@ struct CmdGenerate {
     #[argh(switch, short = 'i')]
     import: bool,
 
+    /// use empty password
+    #[argh(switch)]
+    empty_password: bool,
+
     /// path to config file ('config.yaml' by default)
     #[argh(option, short = 'c', default = "String::from(\"config.yaml\")")]
     config: String,
@@ -134,7 +138,11 @@ impl CmdGenerate {
         println!("Generated TON data: {:#}", ton.as_printable());
         println!("Generated ETH data: {:#}", eth.as_printable());
 
-        let password = config.ask_password(true)?;
+        let password = if self.empty_password {
+            make_empty_password()
+        } else {
+            config.ask_password(true)?
+        };
         StoredKeysData::new(password.unsecure(), eth, ton)?.save(path)?;
 
         Ok(())
@@ -149,6 +157,10 @@ struct CmdExport {
     #[argh(positional)]
     from: String,
 
+    /// use empty password
+    #[argh(switch)]
+    empty_password: bool,
+
     /// path to config file ('config.yaml' by default)
     #[argh(option, short = 'c', default = "String::from(\"config.yaml\")")]
     config: String,
@@ -159,7 +171,11 @@ impl CmdExport {
         let config: BriefAppConfig = read_config(self.config)?;
 
         let data = StoredKeysData::load(&self.from)?;
-        let password = config.ask_password(false)?;
+        let password = if self.empty_password {
+            make_empty_password()
+        } else {
+            config.ask_password(false)?
+        };
 
         let (eth, ton) = data.decrypt(password.unsecure())?;
 
@@ -186,8 +202,8 @@ trait BriefAppConfigExt {
 impl BriefAppConfigExt for BriefAppConfig {
     fn ask_password(&self, with_confirmation: bool) -> Result<Cow<secstr::SecUtf8>> {
         Ok(match self.master_password.as_ref() {
-            Some(password) => Cow::Borrowed(password),
-            None => {
+            Some(password) if !password.unsecure().is_empty() => Cow::Borrowed(password),
+            _ => {
                 let mut password = Password::new();
                 password.with_prompt("Enter password");
                 if with_confirmation {
@@ -197,6 +213,10 @@ impl BriefAppConfigExt for BriefAppConfig {
             }
         })
     }
+}
+
+fn make_empty_password<'a>() -> Cow<'a, secstr::SecUtf8> {
+    Cow::Owned("".into())
 }
 
 fn read_config<P, T>(path: P) -> Result<T>
@@ -210,7 +230,7 @@ where
         match std::env::var(&caps[1]) {
             Ok(value) => value,
             Err(_) => {
-                log::warn!("Environment variable {} was not set", &caps[1]);
+                eprintln!("WARN: Environment variable {} was not set", &caps[1]);
                 String::default()
             }
         }

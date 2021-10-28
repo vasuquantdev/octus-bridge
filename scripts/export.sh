@@ -15,15 +15,21 @@ function print_help() {
   echo '                    docker - The simplest way, but adds some overhead.'
   echo '                             Not recommended for machines with lower'
   echo '                             specs than required.'
+  echo '  --empty-password  Force use empty password'
 }
 
 path=""
+empty_password="false"
 while [[ $# -gt 0 ]]; do
   key="$1"
   case $key in
       -h|--help)
         print_help
         exit 0
+      ;;
+      --empty-password)
+        empty_password="true"
+        shift # past argument
       ;;
       -t|--type)
         setup_type="$2"
@@ -59,7 +65,7 @@ if [[ ! -f "$path" ]]; then
 fi
 
 if [[ "$setup_type" == "native" ]]; then
-  relay_binary="sudo /usr/local/bin/relay export"
+  relay_binary="/usr/local/bin/relay export"
 elif [[ "$setup_type" == "docker" ]]; then
   if ! sudo docker info > /dev/null 2>&1; then
     echo 'ERROR: This script uses docker, and it is not running or not configured properly.'
@@ -67,11 +73,15 @@ elif [[ "$setup_type" == "docker" ]]; then
     exit 1
   fi
 
-  relay_binary="sudo docker run -it --rm --mount type=bind,source=/etc/relay,target=/etc/relay relay export"
+  relay_binary="docker run -it --rm --mount type=bind,source=/etc/relay,target=/etc/relay relay export"
 else
   echo 'ERROR: Unexpected'
   exit 1
 fi
 
+if [[ "$empty_password" == "true" ]]; then
+  relay_binary="$relay_binary --empty-password"
+fi
+
 echo "Exporting keys from $path"
-bash -c "$relay_binary --config /etc/relay/config.yaml $path"
+sudo -E bash -c "$relay_binary --config /etc/relay/config.yaml $path"

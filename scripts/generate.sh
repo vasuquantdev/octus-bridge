@@ -13,15 +13,21 @@ function print_help() {
   echo '                             Not recommended for machines with lower'
   echo '                             specs than required.'
   echo '  -i,--import       Import from existing phrases'
+  echo '  --empty-password  Force use empty password'
 }
 
 import="false"
+empty_password="false"
 while [[ $# -gt 0 ]]; do
   key="$1"
   case $key in
       -h|--help)
         print_help
         exit 0
+      ;;
+      --empty-password)
+        empty_password="true"
+        shift # past argument
       ;;
       -i|--import)
         import="true"
@@ -55,7 +61,7 @@ if [[ "$setup_type" != "native" ]] && [[ "$setup_type" != "docker" ]]; then
 fi
 
 if [[ "$setup_type" == "native" ]]; then
-  relay_binary="sudo /usr/local/bin/relay generate"
+  relay_binary="/usr/local/bin/relay generate"
 elif [[ "$setup_type" == "docker" ]]; then
   if ! sudo docker info > /dev/null 2>&1; then
     echo 'ERROR: This script uses docker, and it is not running or not configured properly.'
@@ -63,7 +69,7 @@ elif [[ "$setup_type" == "docker" ]]; then
     exit 1
   fi
 
-  relay_binary="sudo docker run -it --rm --mount type=bind,source=/etc/relay,target=/etc/relay relay generate"
+  relay_binary="docker run -it --rm --mount type=bind,source=/etc/relay,target=/etc/relay relay generate"
 else
   echo 'ERROR: Unexpected'
   exit 1
@@ -73,4 +79,8 @@ if [[ "$import" == "true" ]]; then
   relay_binary="$relay_binary -i"
 fi
 
-bash -c "$relay_binary --config /etc/relay/config.yaml /etc/relay/keys.json"
+if [[ "$empty_password" == "true" ]]; then
+  relay_binary="$relay_binary --empty-password"
+fi
+
+sudo -E bash -c "$relay_binary --config /etc/relay/config.yaml /etc/relay/keys.json"
