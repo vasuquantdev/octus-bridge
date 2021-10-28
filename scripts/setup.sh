@@ -2,7 +2,7 @@
 set -eE
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
-REPO_DIR="$SCRIPT_DIR/.."
+REPO_DIR=$(cd "${SCRIPT_DIR}/../" && pwd -P)
 
 function print_help() {
   echo 'Usage: setup.sh [OPTIONS]'
