@@ -50,16 +50,6 @@ impl Engine {
     }
 
     pub async fn start(self: &Arc<Self>) -> Result<()> {
-        // Print ETH address and TON public key
-        log::warn!(
-            "Using ETH address: {}",
-            EthAddressWrapper(self.context.keystore.eth.address())
-        );
-        log::warn!(
-            "Using TON public key: 0x{:x}",
-            self.context.keystore.ton.public_key()
-        );
-
         self.start_metrics_exporter();
 
         // Sync node and subscribers

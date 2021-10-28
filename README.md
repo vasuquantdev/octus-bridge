@@ -14,86 +14,106 @@
 - Storage: 200 GB fast SSD
 - Network: 100 MBit/s
 
-### Docker build
+### How to run
 
-The simplest way, but adds some overhead. Not recommended for machines with lower specs than required.
+To simplify the build and create some semblance of standardization in this repository 
+there is a set of scripts for configuring the relay.
 
-#### How to run
+NOTE: scripts are prepared and tested on **Ubuntu 20.04**. You may need to modify them a little for other distros.
 
-```bash
-# Build docker container
-docker build --tag relay .
+1. ##### Setup relay service
+   * Native version (a little more complex way, but gives some performance gain and reduces the load):
+     ```bash
+     ./scripts/setup.sh -t native
+     ```
+   * **OR** docker version (the simplest way, but adds some overhead):
+     ```bash
+     ./scripts/setup.sh -t docker
+     ```
+     Not recommended for machines with lower specs than required
 
-# Prepare relay config
-mkdir cfg
-# Fill it using the example below
-vim cfg/config.yaml
+   > At this stage, a systemd service `relay` is created. Configs and keys will be in `/etc/relay` and
+   > TON node DB will be in `/var/db/relay`. 
 
-# Download network config
-wget -O cfg/ton-global.config.json \
-  https://raw.githubusercontent.com/tonlabs/main.ton.dev/master/configs/main.ton.dev/ton-global.config.json
+   **Do not start this service yet!**
+2. ##### Prepare config
+   Either add the environment variables to the `[Service]` section of unit file. 
+   It is located at `/etc/systemd/system/relay.service`.
+   
+   > This method is recommended because you can just make a backup of `/etc/relay` and 
+   > not be afraid for it's safety, all keys in it are encrypted   
 
-# Run container
-# (you may also need to pass some environment variables specified in the config)
-docker run -ti --rm \
-  --mount type=bind,source=$(pwd)/state,target=/var/relay \
-  --mount type=bind,source=$(pwd)/cfg,target=/cfg \
-  -p 30303:30303/udp \
-  relay
-```
+   ```unit file (systemd)
+   [Service]
+   ...
+   Environment=RELAY_MASTER_KEY=stub-master-key
+   Environment=RELAY_STAKER_ADDRESS=your-staker-address
+   Environment=ETH_MAINNET_URL=eth-http-rpc-endpoint
+   Environment=POLYGON_URL=polygon-http-rpc-endpoint
+   ...
+   ```
 
-### Native build
+   Or simply replace the `${..}` parameters in the config. It is located at `/etc/relay/config.yaml`.
 
-A little more complex way, but gives some performance gain and reduces the load.
+3. ##### Generate keys
+   ```bash
+     ./scripts/generate.sh -t docker # or `native`, depends on your installation type
+   ```
+   > if you already have seed phrases that you want to import, then add the `-i` flag
+   
+   This script will print unencrypted data. **Be sure to write it down somewhere! And also make a backup of the `/etc/relay` folder!**
 
-#### Requirements
-- Rust 1.56+
-- Clang 11
-- openssl-dev
+4. ##### Link relay keys
+   Use ETH address and TON public key from the previous step to link this relay setup
+   with your staker address at https://v2.tonbridge.io/relayers/create
 
-#### How to run
-```bash
-RUSTFLAGS='-C target-cpu=native' cargo build --release
+   > During linking you will need to send at least **0.05 ETH** to your relay ETH address so that the relay can confirm his ownership.
+   > 
+   > If you think that this is a lot or if the gas price is more than 300 gwei now, 
+   > then you can change the values in the config.
 
-# Prepare relay config
-mkdir cfg
-# Fill it using the example below
-vim ./cfg/config.yaml
+5. ##### Enable and start relay service
+   ```bash
+   systemctl enable relay
+   systemctl start relay
 
-# Download network config
-wget -O ./cfg/ton-global.config.json \
-  https://raw.githubusercontent.com/tonlabs/main.ton.dev/master/configs/main.ton.dev/ton-global.config.json
+   # Optionally check if it is running normally. It will take some time to start.
+   # Relay is fully operational when it prints `Initialized relay`
+   journalctl -fu relay
+   ```
+   Relay will be running on UDP port `30000` by default, so make sure that this port is not blocked by firewall.
 
-export MASTER_PASSWORD=your_password
-target/release/relay run \
-  --config cfg/config.yaml \
-  --global-config cfg/ton-global.config.json
-```
-
-> NOTE: If you want to make a systemd service for the relay, then it is better to set it `Restart=no`
-> 
-> Example:
-> ```
-> [Unit]
-> Description=relay
-> After=network.target
-> StartLimitIntervalSec=0
->
-> [Service]
-> Type=simple
-> Restart=no
-> WorkingDirectory=/etc/bridge
-> ExecStart=/usr/local/bin/relay run --config /etc/bridge/config.yaml --global-config /etc/bridge/ton-global.config.json
-> Environment=MASTER_PASSWORD=superpassword
-> Environment=RELAY_STAKER_ADDRESS=0:1111111111111111111111111111111111111111111111111111111111111111
->
-> [Install]
-> WantedBy=multi-user.target
-> ```
+   > Relay has a built-in Prometheus metrics exporter which is configured in the `metrics_settings` section of the config.
+   > By default, metrics are available at `http://127.0.0.1:10000/`
+   > 
+   > <details><summary><b>Response example:</b></summary>
+   > <p>
+   >
+   > ```
+   > eth_subscriber_last_processed_block{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",chain_id="250"} 19757952
+   > eth_subscriber_pending_confirmation_count{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",chain_id="250"} 0
+   > eth_subscriber_last_processed_block{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",chain_id="1"} 13467334
+   > eth_subscriber_pending_confirmation_count{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",chain_id="1"} 0
+   > eth_subscriber_last_processed_block{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",chain_id="137"} 20486774
+   > eth_subscriber_pending_confirmation_count{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",chain_id="137"} 0
+   > eth_subscriber_last_processed_block{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",chain_id="56"} 12140031
+   > eth_subscriber_pending_confirmation_count{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",chain_id="56"} 0
+   > ton_subscriber_ready{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} true
+   > ton_subscriber_current_utime{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 1635368353
+   > ton_subscriber_time_diff{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 5
+   > ton_subscriber_pending_message_count{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 0
+   > bridge_pending_eth_event_count{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 0
+   > bridge_pending_ton_event_count{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 0
+   > staking_user_data_tokens_balance{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 100000000000000
+   > staking_current_relay_round{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 5
+   > staking_elections_start_time{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",round_num="5"} 1635541843
+   > staking_elections_status{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",round_num="5"} 0
+   > ```
+   > 
+   > </p>
+   > </details>
 
 ### Example config
-
-`config.yaml`
 
 > NOTE: The syntax `${VAR}` can also be used everywhere in config. It will be
 > replaced by the value of the environment variable `VAR`.
@@ -101,9 +121,9 @@ target/release/relay run \
 ```yaml
 ---
 # Keystore password
-master_password: "${MASTER_PASSWORD}"
+master_password: "${RELAY_MASTER_KEY}"
 # Your address from which you specified keys
-staker_address: '0:a921453472366b7feeec15323a96b5dcf17197c88dc0d4578dfa52900b8a33cb'
+staker_address: "${RELAY_STAKER_ADDRESS}"
 bridge_settings:
   # Keystore data path
   keys_path: "/etc/relay/keys.json"
@@ -123,8 +143,11 @@ bridge_settings:
       pool_size: 10
       # Event logs polling interval
       poll_interval_sec: 10
+      # Maximum blocks range for getLogs request
+      max_block_range: 5000
     # Smart Chain
     - chain_id: 56
+      # Public endpoint
       endpoint: https://bsc-dataseed.binance.org
       get_timeout_sec: 10
       pool_size: 10
@@ -132,40 +155,35 @@ bridge_settings:
       max_block_range: 5000
     # Fantom Opera
     - chain_id: 250
+      # Public endpoint
       endpoint: https://rpc.ftm.tools
       get_timeout_sec: 10
       pool_size: 10
       poll_interval_sec: 10
+      max_block_range: 5000
     # Polygon
     - chain_id: 137
-      endpoint: https://matic-mainnet.chainstacklabs.com
+      # Public endpoint
+      endpoint: "${POLYGON_URL}"
       get_timeout_sec: 10
       pool_size: 10
       poll_interval_sec: 10
-  # ETH address verification settings (optional)
-  address_verification:
-    # Minimal balance on user's wallet to start address verification.
-    # Default: 50000000
-    min_balance_gwei: 50000000
-    # Fixed gas price. Default: 300
-    gas_price_gwei: 300
-    # Path to the file with transaction state.
-    # Default: "./verification-state.json"
-    state_path: "verification-state.json"
+      max_block_range: 5000
 node_settings:
-  # UDP port, used for ADNL node. Default: 30303
-  adnl_port: 30303
   # Root directory for relay DB. Default: "./db"
-  db_path: "/var/relay/db"
-  # Path to temporary ADNL keys. 
+  db_path: "/var/db/relay"
+  # UDP port, used for ADNL node. Default: 30303
+  adnl_port: 30000
+  # Path to temporary ADNL keys.
   # NOTE: Will be generated if it was not there.
   # Default: "./adnl-keys.json"
-  temp_keys_path: "/var/relay/adnl-keys.json"
+  temp_keys_path: "/etc/relay/adnl-keys.json"
 metrics_settings:
   # Listen address of metrics. Used by the client to gather prometheus metrics.
   # Default: "127.0.0.1:10000"
   listen_address: "127.0.0.1:10000"
   # URL path to the metrics. Default: "/"
+  # Example: `curl http://127.0.0.1:10000/`
   metrics_path: "/"
   # Metrics update interval in seconds. Default: 10
   collection_interval_sec: 10
@@ -182,18 +200,8 @@ logger_settings:
     appenders:
       - stdout
   loggers:
-    ton_indexer:
-      level: warn
-      appenders:
-        - stdout
-      additive: false
     relay:
       level: info
-      appenders:
-        - stdout
-      additive: false
-    tiny_adnl:
-      level: error
       appenders:
         - stdout
       additive: false
@@ -260,6 +268,6 @@ events, relay sees and checks them.
   > NOTE: Flags can't be changed inside an array element! This would lead to inconsistent array items ABI.
 
 The decision to make the relay a TON node was not made by chance. In the first version, several relays were connected 
-to the one "light" (4TB goes brr) node which was constantly restarted or to the graphql which also was quite unreliable.
+to the one "light" node which was constantly restarted or to the graphql which also was quite unreliable.
 As a result, relays instantly see all events and vote for them almost simultaneously in one block. The implementation is
 more optimized than C++ node, so they don't harm the network.
