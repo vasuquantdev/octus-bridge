@@ -919,7 +919,7 @@ impl Bridge {
                     ton_block::Account::AccountNone => return Ok(true),
                 };
 
-                log::info!("FOUND EVENT {:?}: {:x}", event_type, hash);
+                log::debug!("Found event {:?}: {:x}", event_type, hash);
 
                 // Extract data
                 let contract = ExistingContract {
