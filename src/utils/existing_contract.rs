@@ -1,5 +1,5 @@
 use anyhow::Result;
-use nekoton_abi::{ExecutionOutput, FunctionExt, GenTimings, LastTransactionId, TransactionId};
+use nekoton_abi::{ExecutionOutput, FunctionExt, LastTransactionId, TransactionId};
 
 pub struct ExistingContract {
     pub account: ton_block::AccountStuff,
@@ -38,8 +38,8 @@ impl ExistingContract {
             tokens,
             result_code,
         } = function.run_local(
+            &nekoton_utils::SimpleClock,
             self.account.clone(),
-            GenTimings::Unknown,
             &self.last_transaction_id,
             input,
         )?;

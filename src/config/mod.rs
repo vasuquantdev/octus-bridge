@@ -125,6 +125,9 @@ pub struct NodeConfig {
 
     /// Archives map queue. Default: 16
     pub parallel_archive_downloads: u32,
+
+    /// Whether old blocks will be removed on each new key block
+    pub blocks_gc_enabled: bool,
 }
 
 impl NodeConfig {
@@ -154,6 +157,13 @@ impl NodeConfig {
             file_db_path: self.db_path.join("files"),
             // NOTE: State GC is disabled until it is fully tested
             state_gc_options: None,
+            blocks_gc_options: self
+                .blocks_gc_enabled
+                .then(|| ton_indexer::BlocksGcOptions {
+                    kind: ton_indexer::BlocksGcKind::BeforePreviousKeyBlock,
+                    enable_for_sync: true,
+                }),
+            archives_enabled: false,
             old_blocks_policy: Default::default(),
             shard_state_cache_enabled: false,
             max_db_memory_usage: self.max_db_memory_usage,
@@ -176,6 +186,7 @@ impl Default for NodeConfig {
             temp_keys_path: "adnl-keys.json".into(),
             max_db_memory_usage: ton_indexer::default_max_db_memory_usage(),
             parallel_archive_downloads: 16,
+            blocks_gc_enabled: false, // TODO: enable by default
         }
     }
 }
