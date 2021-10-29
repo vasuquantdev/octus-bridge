@@ -84,7 +84,8 @@ NOTE: scripts are prepared and tested on **Ubuntu 20.04**. You may need to modif
    ```
    Relay will be running on UDP port `30000` by default, so make sure that this port is not blocked by firewall.
 
-   NOTE: docker installation uses port 30000 in unit file, so you may need to update the service if you decide to change it.  
+   NOTE: docker installation uses port 30000 in unit file, so you may need to update the service if you decide to change it. 
+   All environment variables must also be passed to container (e.g. `-e RELAY_MASTER_KEY`). 
 
    > Relay has a built-in Prometheus metrics exporter which is configured in the `metrics_settings` section of the config.
    > By default, metrics are available at `http://127.0.0.1:10000/`
@@ -199,7 +200,7 @@ logger_settings:
       encoder:
         pattern: "{h({l})} {M} = {m} {n}"
   root:
-    level: info
+    level: error
     appenders:
       - stdout
   loggers:

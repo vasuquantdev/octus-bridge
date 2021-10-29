@@ -75,7 +75,7 @@ logger_settings:
       encoder:
         pattern: "{h({l})} {M} = {m} {n}"
   root:
-    level: info
+    level: error
     appenders:
       - stdout
   loggers:
