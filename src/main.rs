@@ -143,7 +143,10 @@ impl CmdGenerate {
         } else {
             config.ask_password(true)?
         };
-        StoredKeysData::new(password.unsecure(), eth, ton)?.save(path)?;
+        StoredKeysData::new(password.unsecure(), eth, ton)
+            .context("Failed to generate encrypted keys data")?
+            .save(path)
+            .context("Failed to save encrypted keys data")?;
 
         Ok(())
     }
@@ -170,14 +173,17 @@ impl CmdExport {
     fn execute(self) -> Result<()> {
         let config: BriefAppConfig = read_config(self.config)?;
 
-        let data = StoredKeysData::load(&self.from)?;
+        let data =
+            StoredKeysData::load(&self.from).context("Failed to load encrypted keys data")?;
         let password = if self.empty_password {
             make_empty_password()
         } else {
             config.ask_password(false)?
         };
 
-        let (eth, ton) = data.decrypt(password.unsecure())?;
+        let (eth, ton) = data
+            .decrypt(password.unsecure())
+            .context("Failed to decrypt keys data")?;
 
         #[derive(Serialize)]
         struct ExportedKeysData {

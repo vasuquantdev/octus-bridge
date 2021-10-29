@@ -1,7 +1,7 @@
 use std::io::{Seek, SeekFrom, Write};
 use std::path::Path;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 /// ADNL keys wrapper
 pub struct TempKeys(ton_indexer::NodeKeys);
@@ -17,7 +17,8 @@ impl TempKeys {
             .create(true)
             .write(true)
             .read(true)
-            .open(path)?;
+            .open(path)
+            .context("Temp keys file is not accessible")?;
 
         let temp_keys = if force_regenerate {
             ton_indexer::NodeKeys::generate()

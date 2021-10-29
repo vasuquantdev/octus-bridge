@@ -82,7 +82,11 @@ impl EthSubscriberRegistry {
         use dashmap::mapref::entry::Entry;
 
         let chain_id = config.chain_id;
-        let subscriber = EthSubscriber::new(self.last_block_numbers.clone(), config).await?;
+        let subscriber = EthSubscriber::new(self.last_block_numbers.clone(), config)
+            .await
+            .with_context(|| {
+                format!("Failed to create EVM subscriber for chain id: {}", chain_id)
+            })?;
 
         match self.subscribers.entry(chain_id) {
             Entry::Vacant(entry) => {
@@ -190,7 +194,8 @@ impl EthSubscriber {
                         .transaction(web3::types::TransactionId::Hash(
                             state.transaction_hash.into(),
                         ))
-                        .await?
+                        .await
+                        .context("Failed to find ETH address verification transaction")?
                     {
                         // Check if found transaction was included in block
                         Some(transaction) => match transaction.block_hash {
