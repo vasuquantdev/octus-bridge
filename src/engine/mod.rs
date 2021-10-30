@@ -367,7 +367,7 @@ impl std::fmt::Display for LabeledTonSubscriberMetrics<'_> {
 
         f.begin_metric("ton_subscriber_ready")
             .label(LABEL_STAKER, &self.0.staker_account_str)
-            .value(metrics.ready)?;
+            .value(metrics.ready as u8)?;
 
         f.begin_metric("ton_subscriber_current_utime")
             .label(LABEL_STAKER, &self.0.staker_account_str)
