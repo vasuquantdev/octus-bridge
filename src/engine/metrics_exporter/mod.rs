@@ -217,7 +217,7 @@ impl<'a, 'b> PrometheusFormatter<'a, 'b> {
     #[inline]
     pub fn value<T>(self, value: T) -> std::fmt::Result
     where
-        T: std::fmt::Display,
+        T: num_traits::Num + std::fmt::Display,
     {
         self.result.and_then(|_| {
             if self.has_labels {

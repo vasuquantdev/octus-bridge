@@ -26,6 +26,7 @@ hyper = { version = "0.14", features = ["server"]}
 log = "0.4"
 log4rs = "1.0"
 num-bigint = "0.3"
+num-traits = "0.2"
 once_cell = "1.8"
 parking_lot = "0.11"
 public-ip = "0.2"

@@ -2089,6 +2089,7 @@ dependencies = [
  "nekoton-abi",
  "nekoton-utils",
  "num-bigint",
+ "num-traits",
  "once_cell",
  "parking_lot",
  "pretty_assertions",
