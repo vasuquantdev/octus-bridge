@@ -319,6 +319,7 @@ impl std::fmt::Display for LabeledStakingMetrics<'_> {
 
         f.begin_metric("staking_user_data_tokens_balance")
             .label(LABEL_STAKER, &self.context.staker_account_str)
+            .label(LABEL_ROUND_NUM, metrics.current_relay_round)
             .value(metrics.user_data_tokens_balance)?;
 
         f.begin_metric("staking_current_relay_round")
