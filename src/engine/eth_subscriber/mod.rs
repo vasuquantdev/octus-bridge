@@ -10,7 +10,7 @@ use either::Either;
 use eth_ton_abi_converter::*;
 use futures::StreamExt;
 use tiny_adnl::utils::*;
-use tokio::sync::{oneshot, Semaphore};
+use tokio::sync::{oneshot, Notify, Semaphore};
 use tokio::time::timeout;
 use ton_types::UInt256;
 use web3::api::Namespace;
@@ -113,6 +113,7 @@ pub struct EthSubscriber {
     last_block_numbers: Arc<LastBlockNumbersMap>,
     pending_confirmations: tokio::sync::Mutex<FxHashMap<EventId, PendingConfirmation>>,
     pending_confirmation_count: AtomicUsize,
+    new_events_notify: Notify,
 }
 
 impl EthSubscriber {
@@ -136,6 +137,7 @@ impl EthSubscriber {
             last_block_numbers,
             pending_confirmations: Default::default(),
             pending_confirmation_count: Default::default(),
+            new_events_notify: Notify::new(),
         });
 
         let last_processed_block = subscriber.get_current_block_number().await?;
@@ -342,6 +344,8 @@ impl EthSubscriber {
             self.pending_confirmation_count
                 .store(pending_confirmations.len(), Ordering::Release);
 
+            self.new_events_notify.notify_waiters();
+
             rx
         };
 
@@ -369,8 +373,14 @@ impl EthSubscriber {
     async fn update(&self) -> Result<()> {
         // Skip iteration when there are no pending confirmations
         if self.pending_confirmations.lock().await.is_empty() {
-            tokio::time::sleep(Duration::from_secs(self.config.poll_interval_sec)).await;
-            return Ok(());
+            tokio::select! {
+                _ = tokio::time::sleep(Duration::from_secs(self.config.poll_interval_sec)) => {
+                    return Ok(());
+                }
+                _ = self.new_events_notify.notified() => {
+                    /* continuing */
+                }
+            }
         }
 
         log::info!("Updating ETH subscriber");
