@@ -383,7 +383,7 @@ impl EthSubscriber {
             }
         }
 
-        log::info!("Updating ETH subscriber");
+        log::info!("Updating EVM-{} subscriber", self.chain_id);
 
         // Prepare tryhard config
         let api_request_strategy = generate_fixed_timeout_config(
@@ -401,10 +401,13 @@ impl EthSubscriber {
         {
             Ok(height) => height,
             Err(e) if is_incomplete_message(&e) => return Ok(()),
-            Err(e) => return Err(e).context("Failed to get  actual ethereum height"),
+            Err(e) => {
+                return Err(e)
+                    .with_context(|| format!("Failed to get actual EVM-{} height", self.chain_id))
+            }
         };
 
-        log::info!("Current ETH block: {}", current_block);
+        log::info!("Current EVM-{} block: {}", self.chain_id, current_block,);
 
         // Check last processed block
         let last_processed_block = self.last_processed_block.load(Ordering::Acquire);
@@ -417,8 +420,9 @@ impl EthSubscriber {
             if last_processed_block + max_block_range < current_block {
                 current_block = last_processed_block + max_block_range;
                 log::warn!(
-                    "Querying at most {} blocks. New current ETH block: {}",
+                    "Querying at most {} blocks. New current EVM-{} block: {}",
                     max_block_range,
+                    self.chain_id,
                     current_block
                 );
             }
@@ -441,13 +445,13 @@ impl EthSubscriber {
             Ok(Err(e)) => {
                 return Err(e).with_context(|| {
                     format!(
-                        "Failed processing eth block in the time range from {} to {}",
-                        last_processed_block, current_block
+                        "Failed processing EVM-{} block in the time range from {} to {}",
+                        self.chain_id, last_processed_block, current_block
                     )
                 })
             }
             Err(_) => {
-                log::warn!("Timed out processing eth blocks.");
+                log::warn!("Timed out processing EVM-{} blocks.", self.chain_id);
                 return Ok(());
             }
         };
@@ -499,8 +503,6 @@ impl EthSubscriber {
 
             false
         });
-        self.pending_confirmation_count
-            .store(pending_confirmations.len(), Ordering::Release);
 
         let events_to_check = events_to_check
             .collect::<Vec<(EventId, Result<Option<ParsedEthEvent>>)>>()
@@ -514,7 +516,7 @@ impl EthSubscriber {
                     Ok(Some(ParsedEthEvent::Received(event))) => entry.get_mut().check(event),
                     Ok(_) => VerificationStatus::NotExists,
                     Err(e) => {
-                        log::error!("Failed to check ETH event: {:?}", e);
+                        log::error!("Failed to check EVM-{} event: {:?}", self.chain_id, e);
                         continue;
                     }
                 };
@@ -526,6 +528,9 @@ impl EthSubscriber {
                 entry.remove();
             }
         }
+
+        self.pending_confirmation_count
+            .store(pending_confirmations.len(), Ordering::Release);
 
         drop(pending_confirmations);
 
