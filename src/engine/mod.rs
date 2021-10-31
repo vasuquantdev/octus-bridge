@@ -377,7 +377,7 @@ impl std::fmt::Display for LabeledTonSubscriberMetrics<'_> {
 
             f.begin_metric("ton_subscriber_time_diff")
                 .label(LABEL_STAKER, &self.0.staker_account_str)
-                .value(now() as i64 - metrics.current_utime as i64)?;
+                .value(metrics.current_time_diff)?;
         }
 
         f.begin_metric("ton_subscriber_pending_message_count")

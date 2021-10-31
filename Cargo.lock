@@ -1312,9 +1312,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.105"
+version = "0.2.106"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "869d572136620d55835903746bcb5cdc54cb2851fd0aeec53220b4bb65ef3013"
+checksum = "a60553f9a9e039a333b4e9b20573b9e9b9c0bb3a11e201ccc48ef4283456d673"
 
 [[package]]
 name = "libloading"
@@ -2780,7 +2780,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#ce329694618505ecf2fa3352f8c7acb4757fcc4f"
+source = "git+https://github.com/broxus/ton-indexer.git#a24e38cd2f1825ea5eeda58cf33885a53c17cdd3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2822,7 +2822,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer-alloc"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#ce329694618505ecf2fa3352f8c7acb4757fcc4f"
+source = "git+https://github.com/broxus/ton-indexer.git#a24e38cd2f1825ea5eeda58cf33885a53c17cdd3"
 dependencies = [
  "errno",
  "log",
@@ -2833,7 +2833,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer-profile"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#ce329694618505ecf2fa3352f8c7acb4757fcc4f"
+source = "git+https://github.com/broxus/ton-indexer.git#a24e38cd2f1825ea5eeda58cf33885a53c17cdd3"
 dependencies = [
  "bincode",
  "crossbeam-channel",

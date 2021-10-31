@@ -1,15 +1,15 @@
 use std::collections::{hash_map, HashMap};
 use std::ops::Deref;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicUsize, Ordering};
 use std::sync::{Arc, Weak};
 
 use anyhow::{Context, Result};
 use parking_lot::Mutex;
-use tiny_adnl::utils::FxHashMap;
+use tiny_adnl::utils::*;
 use tokio::sync::{mpsc, oneshot, watch, Notify};
 use ton_block::{BinTreeType, Deserializable, HashmapAugType};
 use ton_indexer::utils::{BlockIdExtExtension, BlockProofStuff, BlockStuff, ShardStateStuff};
-use ton_indexer::EngineStatus;
+use ton_indexer::{BriefBlockMeta, EngineStatus};
 use ton_types::{HashmapType, UInt256};
 
 use crate::utils::*;
@@ -18,6 +18,7 @@ pub struct TonSubscriber {
     ready: AtomicBool,
     ready_signal: Notify,
     current_utime: AtomicU32,
+    current_time_diff: AtomicI64,
     state_subscriptions: Mutex<HashMap<UInt256, StateSubscription>>,
     mc_block_awaiters: Mutex<FxHashMap<usize, Box<dyn BlockAwaiter>>>,
     messages_queue: Arc<PendingMessagesQueue>,
@@ -29,6 +30,7 @@ impl TonSubscriber {
             ready: AtomicBool::new(false),
             ready_signal: Notify::new(),
             current_utime: AtomicU32::new(0),
+            current_time_diff: AtomicI64::new(now() as i64),
             state_subscriptions: Mutex::new(HashMap::new()),
             mc_block_awaiters: Mutex::new(FxHashMap::with_capacity_and_hasher(
                 4,
@@ -42,6 +44,7 @@ impl TonSubscriber {
         TonSubscriberMetrics {
             ready: self.ready.load(Ordering::Acquire),
             current_utime: self.current_utime(),
+            current_time_diff: self.current_time_diff(),
             pending_message_count: self.messages_queue.len(),
         }
     }
@@ -59,6 +62,10 @@ impl TonSubscriber {
 
     pub fn current_utime(&self) -> u32 {
         self.current_utime.load(Ordering::Acquire)
+    }
+
+    pub fn current_time_diff(&self) -> i64 {
+        self.current_time_diff.load(Ordering::Acquire)
     }
 
     pub async fn wait_shards(&self, since: Option<u32>) -> Result<LatestShardBlocks> {
@@ -228,10 +235,21 @@ impl TonSubscriber {
         }
     }
 
-    fn handle_masterchain_block(&self, block: &ton_block::Block) -> Result<()> {
+    fn handle_masterchain_block(
+        &self,
+        meta: BriefBlockMeta,
+        block: &ton_block::Block,
+    ) -> Result<()> {
+        let gen_utime = meta.gen_utime();
+        self.current_utime.store(gen_utime, Ordering::Release);
+        self.current_time_diff
+            .store(now() as i64 - gen_utime as i64, Ordering::Release);
+
+        if !self.ready.load(Ordering::Acquire) {
+            return Ok(());
+        }
+
         let block_info = block.info.read_struct()?;
-        self.current_utime
-            .store(block_info.gen_utime().0, Ordering::Release);
 
         let mut mc_block_awaiters = self.mc_block_awaiters.lock();
         mc_block_awaiters.retain(
@@ -252,6 +270,10 @@ impl TonSubscriber {
         block: &ton_block::Block,
         shard_state: &ton_block::ShardStateUnsplit,
     ) -> Result<()> {
+        if !self.ready.load(Ordering::Acquire) {
+            return Ok(());
+        }
+
         let block_info = block.info.read_struct()?;
         let extra = block.extra.read_struct()?;
         let account_blocks = extra.read_account_blocks()?;
@@ -327,16 +349,13 @@ impl ton_indexer::Subscriber for TonSubscriber {
 
     async fn process_block(
         &self,
+        meta: BriefBlockMeta,
         block: &BlockStuff,
         _block_proof: Option<&BlockProofStuff>,
         shard_state: &ShardStateStuff,
     ) -> Result<()> {
-        if !self.ready.load(Ordering::Acquire) {
-            return Ok(());
-        }
-
         if block.id().is_masterchain() {
-            self.handle_masterchain_block(block.block())?;
+            self.handle_masterchain_block(meta, block.block())?;
         } else {
             self.handle_shard_block(block.block(), shard_state.state())?;
         }
@@ -349,6 +368,7 @@ impl ton_indexer::Subscriber for TonSubscriber {
 pub struct TonSubscriberMetrics {
     pub ready: bool,
     pub current_utime: u32,
+    pub current_time_diff: i64,
     pub pending_message_count: usize,
 }
 
