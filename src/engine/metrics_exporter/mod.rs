@@ -109,6 +109,8 @@ impl MetricsExporter {
         let (stopped_trigger, stopped_signal) = trigger();
         let (local_completion_trigger, local_completion_signal) = trigger();
 
+        log::info!("Metrics exporter started");
+
         // Spawn server
         tokio::spawn(async move {
             let server = server
