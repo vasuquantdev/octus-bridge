@@ -22,7 +22,7 @@ either = "1.6"
 futures = "0.3"
 hex = "0.4"
 http = "0.2"
-hyper = { version = "0.14", features = ["server"]}
+hyper = { version = "0.14", features = ["server"] }
 log = "0.4"
 log4rs = "1.0"
 num-bigint = "0.3"
@@ -33,18 +33,18 @@ public-ip = "0.2"
 rand = "0.8"
 regex = "1.5"
 secp256k1 = { version = "0.20", features = ["recovery"] }
-secstr = { version = "0.4",features = ["serde"] }
+secstr = { version = "0.4", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.8"
 tap = "1.0.1"
 thiserror = "1.0"
-tokio = { version = "1.6", features = ["sync", "fs", "rt-multi-thread", "macros"] }
+tokio = { version = "1.6", features = ["sync", "fs", "rt-multi-thread", "macros", "signal"] }
 tryhard = "0.4.0"
 url = { version = "2.2.2", features = ["serde"] }
 uuid = { version = "0.8.2", features = ["v4"] }
 
-ed25519-dalek = {git = "https://github.com/broxus/ed25519-dalek.git"}
+ed25519-dalek = { git = "https://github.com/broxus/ed25519-dalek.git" }
 tiny-bip39 = { git = "https://github.com/broxus/tiny-bip39.git" }
 tiny-hderive = { git = "https://github.com/broxus/tiny-hderive.git" }
 
