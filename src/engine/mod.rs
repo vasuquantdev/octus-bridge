@@ -37,11 +37,8 @@ impl Engine {
         global_config: ton_indexer::GlobalConfig,
         shutdown_requests_tx: ShutdownRequestsTx,
     ) -> Result<Arc<Self>> {
-        let metrics_exporter = MetricsExporter::new();
-        metrics_exporter
-            .update_config(config.metrics_settings.clone())
-            .await
-            .context("Failed to create metrics exporter")?;
+        let metrics_exporter =
+            MetricsExporter::with_config(config.metrics_settings.clone()).await?;
 
         let context = EngineContext::new(config, global_config, shutdown_requests_tx).await?;
 
@@ -96,7 +93,7 @@ impl Engine {
 
     pub async fn update_metrics_config(&self, config: Option<MetricsConfig>) -> Result<()> {
         self.metrics_exporter
-            .update_config(config)
+            .reload(config)
             .await
             .context("Failed to update metrics exporter config")
     }

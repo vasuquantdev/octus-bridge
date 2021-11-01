@@ -15,8 +15,10 @@ const BUFFER_COUNT: usize = 2;
 
 // Prometheus metrics exporter
 pub struct MetricsExporter {
+    /// Shared exporter state
     handle: Arc<MetricsExporterHandle>,
 
+    /// Triggers and signals for running exporter service
     running_endpoint: Mutex<Option<RunningEndpoint>>,
 
     completion_trigger: Trigger,
@@ -24,25 +26,36 @@ pub struct MetricsExporter {
 }
 
 impl MetricsExporter {
-    pub fn new() -> Arc<Self> {
+    pub async fn with_config(config: Option<MetricsConfig>) -> Result<Arc<Self>> {
         let (completion_trigger, completion_signal) = trigger();
 
-        Arc::new(Self {
+        let exporter = Arc::new(Self {
             handle: Default::default(),
             running_endpoint: Default::default(),
             completion_trigger,
             completion_signal,
-        })
+        });
+
+        exporter
+            .reload(config)
+            .await
+            .context("Failed to create metrics exporter")?;
+
+        Ok(exporter)
     }
 
     pub fn handle(&self) -> &Arc<MetricsExporterHandle> {
         &self.handle
     }
 
-    pub async fn update_config(&self, config: Option<MetricsConfig>) -> Result<()> {
+    pub async fn reload(&self, config: Option<MetricsConfig>) -> Result<()> {
         let mut running_endpoint = self.running_endpoint.lock().await;
+
+        // Stop running service
         if let Some(endpoint) = running_endpoint.take() {
+            // Initiate completion
             endpoint.completion_trigger.trigger();
+            // And wait until it stops completely
             endpoint.stopped_signal.await;
         }
 
@@ -56,41 +69,29 @@ impl MetricsExporter {
             }
         };
 
+        // Create http service
         let server = hyper::Server::try_bind(&config.listen_address)
             .context("Failed to bind metrics exporter server port")?;
-        let path = config.metrics_path.clone();
 
-        // Use only weak reference in service to allow completion trigger execution
-        // on `MetricsExporter` drop
-        let buffers = Arc::downgrade(&self.handle.buffers);
+        let path = config.metrics_path.clone();
+        let buffers = self.handle.buffers.clone();
 
         let make_service = hyper::service::make_service_fn(move |_| {
-            let buffers = buffers.clone();
             let path = path.clone();
+            let buffers = buffers.clone();
 
-            async {
+            async move {
                 Ok::<_, Infallible>(hyper::service::service_fn(move |req| {
                     // Allow only GET metrics_path
                     if req.method() != hyper::Method::GET || req.uri() != path.as_str() {
-                        return Either::Left(Either::Left(futures::future::ready(
+                        return Either::Left(futures::future::ready(
                             hyper::Response::builder()
                                 .status(hyper::StatusCode::NOT_FOUND)
                                 .body(hyper::Body::empty()),
-                        )));
+                        ));
                     }
 
-                    let buffers = match buffers.upgrade() {
-                        // Buffers are still alive
-                        Some(buffers) => buffers,
-                        // Buffers are already dropped
-                        None => {
-                            return Either::Left(Either::Right(futures::future::ready(
-                                hyper::Response::builder()
-                                    .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
-                                    .body(hyper::Body::empty()),
-                            )))
-                        }
-                    };
+                    let buffers = buffers.clone();
 
                     // Prepare metrics response
                     Either::Right(async move {
@@ -122,24 +123,30 @@ impl MetricsExporter {
                 log::info!("Metrics exporter stopped");
             }
 
+            // Notify when server is stopped
             stopped_trigger.trigger();
         });
 
+        // Update running endpoint
         *running_endpoint = Some(RunningEndpoint {
             completion_trigger: local_completion_trigger,
             stopped_signal,
         });
 
+        // Update interval and notify waiters
         self.handle
             .interval_sec
             .store(config.collection_interval_sec, Ordering::Release);
         self.handle.new_config_notify.notify_waiters();
+
+        // Done
         Ok(())
     }
 }
 
 impl Drop for MetricsExporter {
     fn drop(&mut self) {
+        // Trigger server shutdown on drop
         self.completion_trigger.trigger();
     }
 }
