@@ -414,6 +414,7 @@ const LABEL_STAKER: &str = "staker";
 const LABEL_CHAIN_ID: &str = "chain_id";
 const LABEL_ROUND_NUM: &str = "round_num";
 
+pub type ShutdownRequestsRx = mpsc::UnboundedReceiver<()>;
 pub type ShutdownRequestsTx = mpsc::UnboundedSender<()>;
 
 #[derive(thiserror::Error, Debug)]
