@@ -25,7 +25,7 @@ mod ton_contracts;
 mod ton_subscriber;
 
 pub struct Engine {
-    metrics_exporter: Option<Arc<MetricsExporter>>,
+    metrics_exporter: Arc<MetricsExporter>,
     context: Arc<EngineContext>,
     bridge: Mutex<Option<Arc<Bridge>>>,
     staking: Mutex<Option<Arc<Staking>>>,
@@ -37,7 +37,11 @@ impl Engine {
         global_config: ton_indexer::GlobalConfig,
         shutdown_requests_tx: ShutdownRequestsTx,
     ) -> Result<Arc<Self>> {
-        let metrics_exporter = config.metrics_settings.clone().map(MetricsExporter::new);
+        let metrics_exporter = MetricsExporter::new();
+        metrics_exporter
+            .update_config(config.metrics_settings.clone())
+            .await
+            .context("Failed to create metrics exporter")?;
 
         let context = EngineContext::new(config, global_config, shutdown_requests_tx).await?;
 
@@ -90,26 +94,23 @@ impl Engine {
         Ok(())
     }
 
+    pub async fn update_metrics_config(&self, config: Option<MetricsConfig>) -> Result<()> {
+        self.metrics_exporter
+            .update_config(config)
+            .await
+            .context("Failed to update metrics exporter config")
+    }
+
     fn start_metrics_exporter(self: &Arc<Self>) {
-        let metrics_exporter = match &self.metrics_exporter {
-            Some(metrics_exporter) => metrics_exporter,
-            None => return,
-        };
-
-        // Start exporter server
-        metrics_exporter.start();
-
-        let buffers = Arc::downgrade(metrics_exporter.buffers());
-        let interval = metrics_exporter.interval();
-
         let engine = Arc::downgrade(self);
+        let handle = Arc::downgrade(self.metrics_exporter.handle());
 
         tokio::spawn(async move {
             loop {
-                match (engine.upgrade(), buffers.upgrade()) {
+                let handle = match (engine.upgrade(), handle.upgrade()) {
                     // Update next metrics buffer
-                    (Some(engine), Some(buffers)) => {
-                        let mut buffer = buffers.acquire_buffer().await;
+                    (Some(engine), Some(handle)) => {
+                        let mut buffer = handle.buffers().acquire_buffer().await;
                         buffer.write(LabeledEthSubscriberMetrics(&engine.context));
                         buffer.write(LabeledTonSubscriberMetrics(&engine.context));
 
@@ -126,11 +127,15 @@ impl Engine {
                                 staking,
                             });
                         }
+
+                        drop(buffer);
+                        handle
                     }
-                    // Exporter or engine are already dropped
+                    // Engine is already dropped
                     _ => return,
                 };
-                tokio::time::sleep(interval).await;
+
+                handle.wait().await;
             }
         });
     }

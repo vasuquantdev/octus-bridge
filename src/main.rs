@@ -243,7 +243,7 @@ where
 struct Relay {
     config_path: std::path::PathBuf,
     logger: log4rs::Handle,
-    engine: parking_lot::Mutex<Option<Arc<Engine>>>,
+    engine: tokio::sync::Mutex<Option<Arc<Engine>>>,
 }
 
 impl Relay {
@@ -257,7 +257,7 @@ impl Relay {
         let engine = Engine::new(config, global_config, shutdown_requests_tx)
             .await
             .context("Failed to create engine")?;
-        *self.engine.lock() = Some(engine.clone());
+        *self.engine.lock().await = Some(engine.clone());
 
         engine.start().await.context("Failed to start engine")?;
 
@@ -271,7 +271,11 @@ impl Relay {
             parse_logger_config(config.logger_settings).context("Failed to parse logger config")?,
         );
 
-        // TODO: update metrics exporter settings
+        if let Some(engine) = &*self.engine.lock().await {
+            engine
+                .update_metrics_config(config.metrics_settings)
+                .await?;
+        }
 
         log::info!("Updated config");
         Ok(())

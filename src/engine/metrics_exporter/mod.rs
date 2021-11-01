@@ -1,12 +1,13 @@
 use std::convert::Infallible;
 use std::fmt::Write;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+use anyhow::{Context, Result};
 use futures::future::Either;
 use tiny_adnl::utils::*;
-use tokio::sync::{RwLock, RwLockWriteGuard};
+use tokio::sync::{Mutex, Notify, RwLock, RwLockWriteGuard};
 
 use crate::config::*;
 
@@ -14,32 +15,54 @@ const BUFFER_COUNT: usize = 2;
 
 // Prometheus metrics exporter
 pub struct MetricsExporter {
-    buffers: Arc<Buffers>,
-    settings: MetricsConfig,
+    handle: Arc<MetricsExporterHandle>,
+
+    running_endpoint: Mutex<Option<RunningEndpoint>>,
 
     completion_trigger: Trigger,
     completion_signal: TriggerReceiver,
 }
 
 impl MetricsExporter {
-    pub fn new(settings: MetricsConfig) -> Arc<Self> {
+    pub fn new() -> Arc<Self> {
         let (completion_trigger, completion_signal) = trigger();
 
         Arc::new(Self {
-            buffers: Arc::new(Default::default()),
-            settings,
+            handle: Default::default(),
+            running_endpoint: Default::default(),
             completion_trigger,
             completion_signal,
         })
     }
 
-    pub fn start(&self) {
-        let server = hyper::Server::bind(&self.settings.listen_address);
-        let path = self.settings.metrics_path.clone();
+    pub fn handle(&self) -> &Arc<MetricsExporterHandle> {
+        &self.handle
+    }
+
+    pub async fn update_config(&self, config: Option<MetricsConfig>) -> Result<()> {
+        let mut running_endpoint = self.running_endpoint.lock().await;
+        if let Some(endpoint) = running_endpoint.take() {
+            endpoint.completion_trigger.trigger();
+            endpoint.stopped_signal.await;
+        }
+
+        let config = match config {
+            Some(config) => config,
+            None => {
+                log::info!("Disable metrics exporter");
+                self.handle.interval_sec.store(0, Ordering::Release);
+                self.handle.new_config_notify.notify_waiters();
+                return Ok(());
+            }
+        };
+
+        let server = hyper::Server::try_bind(&config.listen_address)
+            .context("Failed to bind metrics exporter server port")?;
+        let path = config.metrics_path.clone();
 
         // Use only weak reference in service to allow completion trigger execution
         // on `MetricsExporter` drop
-        let buffers = Arc::downgrade(&self.buffers);
+        let buffers = Arc::downgrade(&self.handle.buffers);
 
         let make_service = hyper::service::make_service_fn(move |_| {
             let buffers = buffers.clone();
@@ -82,25 +105,36 @@ impl MetricsExporter {
 
         // Use completion signal as graceful shutdown notify
         let completion_signal = self.completion_signal.clone();
+        let (stopped_trigger, stopped_signal) = trigger();
+        let (local_completion_trigger, local_completion_signal) = trigger();
 
         // Spawn server
         tokio::spawn(async move {
             let server = server
                 .serve(make_service)
-                .with_graceful_shutdown(completion_signal);
+                .with_graceful_shutdown(async move {
+                    futures::future::select(completion_signal, local_completion_signal).await;
+                });
 
             if let Err(e) = server.await {
                 log::error!("Metrics exporter stopped: {:?}", e);
+            } else {
+                log::info!("Metrics exporter stopped");
             }
+
+            stopped_trigger.trigger();
         });
-    }
 
-    pub fn interval(&self) -> Duration {
-        Duration::from_secs(self.settings.collection_interval_sec)
-    }
+        *running_endpoint = Some(RunningEndpoint {
+            completion_trigger: local_completion_trigger,
+            stopped_signal,
+        });
 
-    pub fn buffers(&self) -> &Arc<Buffers> {
-        &self.buffers
+        self.handle
+            .interval_sec
+            .store(config.collection_interval_sec, Ordering::Release);
+        self.handle.new_config_notify.notify_waiters();
+        Ok(())
     }
 }
 
@@ -108,6 +142,54 @@ impl Drop for MetricsExporter {
     fn drop(&mut self) {
         self.completion_trigger.trigger();
     }
+}
+
+#[derive(Default)]
+pub struct MetricsExporterHandle {
+    buffers: Arc<Buffers>,
+    interval_sec: AtomicU64,
+    new_config_notify: Notify,
+}
+
+impl MetricsExporterHandle {
+    pub fn buffers(&self) -> &Arc<Buffers> {
+        &self.buffers
+    }
+
+    pub async fn wait(&self) {
+        loop {
+            // Start waiting config change
+            let new_config = self.new_config_notify.notified();
+            // Load current interval
+            let current_interval = self.interval_sec.load(Ordering::Acquire);
+
+            // Zero interval means that there is no current config and we should not
+            // do anything but waiting new value
+            if current_interval == 0 {
+                new_config.await;
+                continue;
+            }
+
+            tokio::select! {
+                // Wait current interval
+                _ = tokio::time::sleep(Duration::from_secs(current_interval)) => return,
+                // Or resolve earlier on new non-zero interval
+                _ = new_config => {
+                    if self.interval_sec.load(Ordering::Acquire) > 0 {
+                        return
+                    } else {
+                        // Wait for the new config otherwise
+                        continue
+                    }
+                },
+            }
+        }
+    }
+}
+
+struct RunningEndpoint {
+    completion_trigger: Trigger,
+    stopped_signal: TriggerReceiver,
 }
 
 #[derive(Default)]
