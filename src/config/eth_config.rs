@@ -3,6 +3,7 @@ use url::Url;
 
 /// EVM network settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EthConfig {
     /// Chain ID of EVM network
     pub chain_id: u32,
@@ -13,6 +14,9 @@ pub struct EthConfig {
     /// Timeout, used for simple getter requests. Default: 10
     #[serde(default = "default_get_timeout_sec")]
     pub get_timeout_sec: u64,
+
+    #[serde(default = "default_blocks_processing_timeout_sec")]
+    pub blocks_processing_timeout_sec: u64,
 
     /// Max simultaneous connection count. Default: 10
     #[serde(default = "default_pool_size")]
@@ -33,6 +37,10 @@ pub struct EthConfig {
 
 fn default_get_timeout_sec() -> u64 {
     10
+}
+
+fn default_blocks_processing_timeout_sec() -> u64 {
+    120
 }
 
 fn default_pool_size() -> usize {

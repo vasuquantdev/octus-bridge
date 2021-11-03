@@ -139,14 +139,16 @@ bridge_settings:
   networks:
     # Ethereum
     - chain_id: 1
-      # RPC node endpoint
+      # RPC node HTTP endpoint
       endpoint: "${ETH_MAINNET_URL}"
-      # Timeout, used for simple getter requests
+      # Timeout, used for simple getter requests. Default: 10
       get_timeout_sec: 10
-      # Max simultaneous connection count
+      # Timeout, used for processing eth_getLogs response. Default: 120
+      blocks_processing_timeout_sec: 120
+      # Max simultaneous connection count. Default: 10
       pool_size: 10
-      # Event logs polling interval
-      poll_interval_sec: 10
+      # Idle polling interval. Default: 60
+      poll_interval_sec: 60
       # Maximum blocks range for getLogs request
       max_block_range: 5000
     # Smart Chain

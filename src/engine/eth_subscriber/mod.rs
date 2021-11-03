@@ -371,23 +371,24 @@ impl EthSubscriber {
     }
 
     async fn update(&self) -> Result<()> {
-        // Skip iteration when there are no pending confirmations
         if self.pending_confirmations.lock().await.is_empty() {
+            // Wait until new events appeared or idle poll interval passed.
+            // NOTE: Idle polling is needed there to prevent large intervals from occurring (e.g. BSC)
             tokio::select! {
-                _ = tokio::time::sleep(Duration::from_secs(self.config.poll_interval_sec)) => {
-                    return Ok(());
-                }
-                _ = self.new_events_notify.notified() => {
-                    /* continuing */
-                }
+                _ = self.new_events_notify.notified() => {},
+                _ = tokio::time::sleep(Duration::from_secs(self.config.poll_interval_sec)) => {},
             }
         }
 
-        log::info!("Updating EVM-{} subscriber", self.chain_id);
+        log::info!(
+            "Updating EVM-{} subscriber. (Pending confirmations: {})",
+            self.chain_id,
+            self.pending_confirmation_count.load(Ordering::Acquire)
+        );
 
         // Prepare tryhard config
         let api_request_strategy = generate_fixed_timeout_config(
-            Duration::from_secs(self.config.poll_interval_sec),
+            Duration::from_secs(self.config.get_timeout_sec),
             Duration::from_secs(self.config.maximum_failed_responses_time_sec),
         );
 
@@ -407,12 +408,14 @@ impl EthSubscriber {
             }
         };
 
-        log::info!("Current EVM-{} block: {}", self.chain_id, current_block,);
+        log::info!("Current EVM-{} block: {}", self.chain_id, current_block);
 
         // Check last processed block
         let last_processed_block = self.last_processed_block.load(Ordering::Acquire);
         if last_processed_block == current_block {
-            tokio::time::sleep(Duration::from_secs(self.config.poll_interval_sec)).await;
+            // NOTE: tokio::select is not used here because it will retry requests immediately if
+            // there are some events in queue but the block is still the same
+            tokio::time::sleep(Duration::from_secs(self.config.get_timeout_sec)).await;
             return Ok(());
         }
 
@@ -432,8 +435,8 @@ impl EthSubscriber {
         let events = match retry(
             || {
                 timeout(
-                    Duration::from_secs(self.config.get_timeout_sec),
-                    self.process_block(last_processed_block, current_block),
+                    Duration::from_secs(self.config.blocks_processing_timeout_sec),
+                    self.process_blocks(last_processed_block, current_block),
                 )
             },
             api_request_strategy,
@@ -544,7 +547,7 @@ impl EthSubscriber {
         Ok(())
     }
 
-    async fn process_block(
+    async fn process_blocks(
         &self,
         from: u64,
         to: u64,
