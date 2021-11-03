@@ -32,7 +32,7 @@ bridge_settings:
       endpoint: https://bsc-dataseed.binance.org
       get_timeout_sec: 10
       pool_size: 10
-      poll_interval_sec: 10
+      poll_interval_sec: 60
       max_block_range: 5000
     # Fantom Opera
     - chain_id: 250
@@ -44,7 +44,6 @@ bridge_settings:
       max_block_range: 5000
     # Polygon
     - chain_id: 137
-      # Public endpoint
       endpoint: "${POLYGON_URL}"
       get_timeout_sec: 10
       pool_size: 10
