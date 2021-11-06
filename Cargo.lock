@@ -2790,7 +2790,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#a45c672b094cd1ce6d59f905b7d121d9efdf95c3"
+source = "git+https://github.com/broxus/ton-indexer.git#17565b5cb4d3a3b526f836a725114b357bdec914"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2832,7 +2832,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer-alloc"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#a45c672b094cd1ce6d59f905b7d121d9efdf95c3"
+source = "git+https://github.com/broxus/ton-indexer.git#17565b5cb4d3a3b526f836a725114b357bdec914"
 dependencies = [
  "errno",
  "log",
@@ -2843,7 +2843,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer-profile"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#a45c672b094cd1ce6d59f905b7d121d9efdf95c3"
+source = "git+https://github.com/broxus/ton-indexer.git#17565b5cb4d3a3b526f836a725114b357bdec914"
 dependencies = [
  "bincode",
  "crossbeam-channel",
