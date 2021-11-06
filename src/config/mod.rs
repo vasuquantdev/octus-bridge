@@ -160,7 +160,7 @@ impl NodeConfig {
             file_db_path: self.db_path.join("files"),
             state_gc_options: self.states_gc_enabled.then(|| ton_indexer::StateGcOptions {
                 offset_sec: 600,
-                interval_sec: 600,
+                interval_sec: 3600,
             }),
             blocks_gc_options: self
                 .blocks_gc_enabled

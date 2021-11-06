@@ -1329,7 +1329,7 @@ dependencies = [
 [[package]]
 name = "librocksdb-sys"
 version = "6.20.3"
-source = "git+https://github.com/broxus/rust-rocksdb.git#42a1c11a2aef024e6c98413d6d37bd0bf60146eb"
+source = "git+https://github.com/Rexagon/rust-rocksdb.git#bc26e7b5dbd87b7e2edf225b22646a70bc11b0ff"
 dependencies = [
  "bindgen",
  "cc",
@@ -2199,7 +2199,7 @@ dependencies = [
 [[package]]
 name = "rocksdb"
 version = "0.17.0"
-source = "git+https://github.com/broxus/rust-rocksdb.git#42a1c11a2aef024e6c98413d6d37bd0bf60146eb"
+source = "git+https://github.com/Rexagon/rust-rocksdb.git#bc26e7b5dbd87b7e2edf225b22646a70bc11b0ff"
 dependencies = [
  "libc",
  "librocksdb-sys",
@@ -2339,9 +2339,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.68"
+version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f690853975602e1bfe1ccbf50504d67174e3bcf340f23b5ea9992e0587a52d8"
+checksum = "e466864e431129c7e0d3476b92f20458e5879919a0596c6472738d9fa2d342f8"
 dependencies = [
  "itoa",
  "ryu",
@@ -2790,7 +2790,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#5340ecd2330362b442088088de474d701bd7455e"
+source = "git+https://github.com/broxus/ton-indexer.git#a45c672b094cd1ce6d59f905b7d121d9efdf95c3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2832,7 +2832,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer-alloc"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#5340ecd2330362b442088088de474d701bd7455e"
+source = "git+https://github.com/broxus/ton-indexer.git#a45c672b094cd1ce6d59f905b7d121d9efdf95c3"
 dependencies = [
  "errno",
  "log",
@@ -2843,7 +2843,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer-profile"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#5340ecd2330362b442088088de474d701bd7455e"
+source = "git+https://github.com/broxus/ton-indexer.git#a45c672b094cd1ce6d59f905b7d121d9efdf95c3"
 dependencies = [
  "bincode",
  "crossbeam-channel",
