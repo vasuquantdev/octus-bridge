@@ -2629,7 +2629,7 @@ dependencies = [
 [[package]]
 name = "tiny-adnl"
 version = "0.1.0"
-source = "git+https://github.com/broxus/tiny-adnl#399b759f84635984ff10fa22a143439f0c690b49"
+source = "git+https://github.com/broxus/tiny-adnl#0e9c7c7fe46e807860d91e1f6c1cd64fac2e99bc"
 dependencies = [
  "aes",
  "anyhow",
@@ -2790,7 +2790,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#b30e0d7cf2354e9b14a9b8052a79cba4a0d128ef"
+source = "git+https://github.com/broxus/ton-indexer.git#620909628a17d7e80737c2514af985fd8cbff225"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2832,7 +2832,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer-alloc"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#b30e0d7cf2354e9b14a9b8052a79cba4a0d128ef"
+source = "git+https://github.com/broxus/ton-indexer.git#620909628a17d7e80737c2514af985fd8cbff225"
 dependencies = [
  "errno",
  "log",
@@ -2843,7 +2843,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer-profile"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#b30e0d7cf2354e9b14a9b8052a79cba4a0d128ef"
+source = "git+https://github.com/broxus/ton-indexer.git#620909628a17d7e80737c2514af985fd8cbff225"
 dependencies = [
  "bincode",
  "crossbeam-channel",
