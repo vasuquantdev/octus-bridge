@@ -139,14 +139,16 @@ bridge_settings:
   networks:
     # Ethereum
     - chain_id: 1
-      # RPC node endpoint
+      # RPC node HTTP endpoint
       endpoint: "${ETH_MAINNET_URL}"
-      # Timeout, used for simple getter requests
+      # Timeout, used for simple getter requests. Default: 10
       get_timeout_sec: 10
-      # Max simultaneous connection count
+      # Timeout, used for processing eth_getLogs response. Default: 120
+      blocks_processing_timeout_sec: 120
+      # Max simultaneous connection count. Default: 10
       pool_size: 10
-      # Event logs polling interval
-      poll_interval_sec: 10
+      # Idle polling interval. Default: 60
+      poll_interval_sec: 60
       # Maximum blocks range for getLogs request
       max_block_range: 5000
     # Smart Chain
@@ -155,7 +157,7 @@ bridge_settings:
       endpoint: https://bsc-dataseed.binance.org
       get_timeout_sec: 10
       pool_size: 10
-      poll_interval_sec: 10
+      poll_interval_sec: 60
       max_block_range: 5000
     # Fantom Opera
     - chain_id: 250
@@ -163,15 +165,14 @@ bridge_settings:
       endpoint: https://rpc.ftm.tools
       get_timeout_sec: 10
       pool_size: 10
-      poll_interval_sec: 10
+      poll_interval_sec: 60
       max_block_range: 5000
     # Polygon
     - chain_id: 137
-      # Public endpoint
       endpoint: "${POLYGON_URL}"
       get_timeout_sec: 10
       pool_size: 10
-      poll_interval_sec: 10
+      poll_interval_sec: 60
       max_block_range: 5000
 node_settings:
   # Root directory for relay DB. Default: "./db"

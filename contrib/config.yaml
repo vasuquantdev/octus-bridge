@@ -16,12 +16,14 @@ bridge_settings:
     - chain_id: 1
       # RPC node HTTP endpoint
       endpoint: "${ETH_MAINNET_URL}"
-      # Timeout, used for simple getter requests
+      # Timeout, used for simple getter requests. Default: 10
       get_timeout_sec: 10
-      # Max simultaneous connection count
+      # Timeout, used for processing eth_getLogs response. Default: 120
+      blocks_processing_timeout_sec: 120
+      # Max simultaneous connection count. Default: 10
       pool_size: 10
-      # Event logs polling interval
-      poll_interval_sec: 10
+      # Idle polling interval. Default: 60
+      poll_interval_sec: 60
       # Maximum blocks range for getLogs request
       max_block_range: 5000
     # Smart Chain
@@ -30,7 +32,7 @@ bridge_settings:
       endpoint: https://bsc-dataseed.binance.org
       get_timeout_sec: 10
       pool_size: 10
-      poll_interval_sec: 10
+      poll_interval_sec: 60
       max_block_range: 5000
     # Fantom Opera
     - chain_id: 250
@@ -38,16 +40,25 @@ bridge_settings:
       endpoint: https://rpc.ftm.tools
       get_timeout_sec: 10
       pool_size: 10
-      poll_interval_sec: 10
+      poll_interval_sec: 60
       max_block_range: 5000
     # Polygon
     - chain_id: 137
-      # Public endpoint
       endpoint: "${POLYGON_URL}"
       get_timeout_sec: 10
       pool_size: 10
-      poll_interval_sec: 10
+      poll_interval_sec: 60
       max_block_range: 5000
+  # ETH address verification settings
+  address_verification:
+    # Minimal balance on user's wallet to start address verification
+    # Default: 50000000 (0.05 ETH)
+    min_balance_gwei: 50000000
+    # Fixed gas price. Default: 300
+    gas_price_gwei: 300
+    # Path to the file with transaction state.
+    # Default: "./verification-state.json"
+    state_path: "/etc/relay/verification-state.json"
 node_settings:
   # Root directory for relay DB. Default: "./db"
   db_path: "/var/db/relay"
@@ -60,10 +71,10 @@ node_settings:
 metrics_settings:
   # Listen address of metrics. Used by the client to gather prometheus metrics.
   # Default: "127.0.0.1:10000"
-  listen_address: "127.0.0.1:10000"
+  listen_address: "0.0.0.0:10000"
   # URL path to the metrics. Default: "/"
-  # Example: `curl http://127.0.0.1:10000/`
-  metrics_path: "/"
+  # Example: `curl http://127.0.0.1:10000/metrics`
+  metrics_path: "/metrics"
   # Metrics update interval in seconds. Default: 10
   collection_interval_sec: 10
 # log4rs settings.

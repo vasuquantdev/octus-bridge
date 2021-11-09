@@ -527,7 +527,8 @@ impl Bridge {
                         ton_abi::TokenValue::decode_params(
                             &configuration.event_abi,
                             event_init_data.vote_data.event_data.clone().into(),
-                            2,
+                            &ton_abi::contract::ABI_VERSION_2_1,
+                            false,
                         ),
                     )
                 })
@@ -918,7 +919,7 @@ impl Bridge {
                     ton_block::Account::AccountNone => return Ok(true),
                 };
 
-                log::info!("FOUND EVENT {:?}: {:x}", event_type, hash);
+                log::debug!("Found event {:?}: {:x}", event_type, hash);
 
                 // Extract data
                 let contract = ExistingContract {

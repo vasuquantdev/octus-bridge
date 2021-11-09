@@ -25,7 +25,7 @@ mod ton_contracts;
 mod ton_subscriber;
 
 pub struct Engine {
-    metrics_exporter: Option<Arc<MetricsExporter>>,
+    metrics_exporter: Arc<MetricsExporter>,
     context: Arc<EngineContext>,
     bridge: Mutex<Option<Arc<Bridge>>>,
     staking: Mutex<Option<Arc<Staking>>>,
@@ -37,7 +37,8 @@ impl Engine {
         global_config: ton_indexer::GlobalConfig,
         shutdown_requests_tx: ShutdownRequestsTx,
     ) -> Result<Arc<Self>> {
-        let metrics_exporter = config.metrics_settings.clone().map(MetricsExporter::new);
+        let metrics_exporter =
+            MetricsExporter::with_config(config.metrics_settings.clone()).await?;
 
         let context = EngineContext::new(config, global_config, shutdown_requests_tx).await?;
 
@@ -90,26 +91,23 @@ impl Engine {
         Ok(())
     }
 
+    pub async fn update_metrics_config(&self, config: Option<MetricsConfig>) -> Result<()> {
+        self.metrics_exporter
+            .reload(config)
+            .await
+            .context("Failed to update metrics exporter config")
+    }
+
     fn start_metrics_exporter(self: &Arc<Self>) {
-        let metrics_exporter = match &self.metrics_exporter {
-            Some(metrics_exporter) => metrics_exporter,
-            None => return,
-        };
-
-        // Start exporter server
-        metrics_exporter.start();
-
-        let buffers = Arc::downgrade(metrics_exporter.buffers());
-        let interval = metrics_exporter.interval();
-
         let engine = Arc::downgrade(self);
+        let handle = Arc::downgrade(self.metrics_exporter.handle());
 
         tokio::spawn(async move {
             loop {
-                match (engine.upgrade(), buffers.upgrade()) {
+                let handle = match (engine.upgrade(), handle.upgrade()) {
                     // Update next metrics buffer
-                    (Some(engine), Some(buffers)) => {
-                        let mut buffer = buffers.acquire_buffer().await;
+                    (Some(engine), Some(handle)) => {
+                        let mut buffer = handle.buffers().acquire_buffer().await;
                         buffer.write(LabeledEthSubscriberMetrics(&engine.context));
                         buffer.write(LabeledTonSubscriberMetrics(&engine.context));
 
@@ -126,11 +124,15 @@ impl Engine {
                                 staking,
                             });
                         }
+
+                        drop(buffer);
+                        handle
                     }
-                    // Exporter or engine are already dropped
+                    // Engine is already dropped
                     _ => return,
                 };
-                tokio::time::sleep(interval).await;
+
+                handle.wait().await;
             }
         });
     }
@@ -319,6 +321,7 @@ impl std::fmt::Display for LabeledStakingMetrics<'_> {
 
         f.begin_metric("staking_user_data_tokens_balance")
             .label(LABEL_STAKER, &self.context.staker_account_str)
+            .label(LABEL_ROUND_NUM, metrics.current_relay_round)
             .value(metrics.user_data_tokens_balance)?;
 
         f.begin_metric("staking_current_relay_round")
@@ -367,15 +370,17 @@ impl std::fmt::Display for LabeledTonSubscriberMetrics<'_> {
 
         f.begin_metric("ton_subscriber_ready")
             .label(LABEL_STAKER, &self.0.staker_account_str)
-            .value(metrics.ready)?;
+            .value(metrics.ready as u8)?;
 
-        f.begin_metric("ton_subscriber_current_utime")
-            .label(LABEL_STAKER, &self.0.staker_account_str)
-            .value(metrics.current_utime)?;
+        if metrics.current_utime > 0 {
+            f.begin_metric("ton_subscriber_current_utime")
+                .label(LABEL_STAKER, &self.0.staker_account_str)
+                .value(metrics.current_utime)?;
 
-        f.begin_metric("ton_subscriber_time_diff")
-            .label(LABEL_STAKER, &self.0.staker_account_str)
-            .value(now() as i64 - metrics.current_utime as i64)?;
+            f.begin_metric("ton_subscriber_time_diff")
+                .label(LABEL_STAKER, &self.0.staker_account_str)
+                .value(metrics.current_time_diff)?;
+        }
 
         f.begin_metric("ton_subscriber_pending_message_count")
             .label(LABEL_STAKER, &self.0.staker_account_str)
@@ -411,6 +416,7 @@ const LABEL_STAKER: &str = "staker";
 const LABEL_CHAIN_ID: &str = "chain_id";
 const LABEL_ROUND_NUM: &str = "round_num";
 
+pub type ShutdownRequestsRx = mpsc::UnboundedReceiver<()>;
 pub type ShutdownRequestsTx = mpsc::UnboundedSender<()>;
 
 #[derive(thiserror::Error, Debug)]

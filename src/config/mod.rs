@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use http::uri::PathAndQuery;
 use nekoton_utils::*;
+use rand::Rng;
 use secstr::SecUtf8;
 use serde::{Deserialize, Serialize};
 
@@ -125,6 +126,12 @@ pub struct NodeConfig {
 
     /// Archives map queue. Default: 16
     pub parallel_archive_downloads: u32,
+
+    /// Whether old shard states will be removed every 10 minutes
+    pub states_gc_enabled: bool,
+
+    /// Whether old blocks will be removed on each new key block
+    pub blocks_gc_enabled: bool,
 }
 
 impl NodeConfig {
@@ -152,10 +159,19 @@ impl NodeConfig {
             adnl_keys: temp_keys.into(),
             rocks_db_path: self.db_path.join("rocksdb"),
             file_db_path: self.db_path.join("files"),
-            // NOTE: State GC is disabled until it is fully tested
-            state_gc_options: None,
+            state_gc_options: self.states_gc_enabled.then(|| ton_indexer::StateGcOptions {
+                offset_sec: rand::thread_rng().gen_range(0..3600),
+                interval_sec: 3600,
+            }),
+            blocks_gc_options: self
+                .blocks_gc_enabled
+                .then(|| ton_indexer::BlocksGcOptions {
+                    kind: ton_indexer::BlocksGcKind::BeforePreviousKeyBlock,
+                    enable_for_sync: true,
+                }),
+            shard_state_cache_options: None,
+            archives_enabled: false,
             old_blocks_policy: Default::default(),
-            shard_state_cache_enabled: false,
             max_db_memory_usage: self.max_db_memory_usage,
             parallel_archive_downloads: self.parallel_archive_downloads,
             adnl_options: Default::default(),
@@ -176,6 +192,8 @@ impl Default for NodeConfig {
             temp_keys_path: "adnl-keys.json".into(),
             max_db_memory_usage: ton_indexer::default_max_db_memory_usage(),
             parallel_archive_downloads: 16,
+            states_gc_enabled: true,
+            blocks_gc_enabled: true,
         }
     }
 }

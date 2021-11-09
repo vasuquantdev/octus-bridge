@@ -7,6 +7,7 @@ StartLimitIntervalSec=0
 Type=simple
 Restart=no
 WorkingDirectory=/etc/relay
+ExecReload=kill -HUP $MAINPID
 ExecStart=/usr/local/bin/relay run --config /etc/relay/config.yaml --global-config /etc/relay/ton-global.config.json
 
 [Install]

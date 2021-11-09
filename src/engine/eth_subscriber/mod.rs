@@ -10,7 +10,7 @@ use either::Either;
 use eth_ton_abi_converter::*;
 use futures::StreamExt;
 use tiny_adnl::utils::*;
-use tokio::sync::{oneshot, Semaphore};
+use tokio::sync::{oneshot, Notify, Semaphore};
 use tokio::time::timeout;
 use ton_types::UInt256;
 use web3::api::Namespace;
@@ -113,6 +113,7 @@ pub struct EthSubscriber {
     last_block_numbers: Arc<LastBlockNumbersMap>,
     pending_confirmations: tokio::sync::Mutex<FxHashMap<EventId, PendingConfirmation>>,
     pending_confirmation_count: AtomicUsize,
+    new_events_notify: Notify,
 }
 
 impl EthSubscriber {
@@ -136,6 +137,7 @@ impl EthSubscriber {
             last_block_numbers,
             pending_confirmations: Default::default(),
             pending_confirmation_count: Default::default(),
+            new_events_notify: Notify::new(),
         });
 
         let last_processed_block = subscriber.get_current_block_number().await?;
@@ -342,6 +344,8 @@ impl EthSubscriber {
             self.pending_confirmation_count
                 .store(pending_confirmations.len(), Ordering::Release);
 
+            self.new_events_notify.notify_waiters();
+
             rx
         };
 
@@ -367,17 +371,24 @@ impl EthSubscriber {
     }
 
     async fn update(&self) -> Result<()> {
-        // Skip iteration when there are no pending confirmations
         if self.pending_confirmations.lock().await.is_empty() {
-            tokio::time::sleep(Duration::from_secs(self.config.poll_interval_sec)).await;
-            return Ok(());
+            // Wait until new events appeared or idle poll interval passed.
+            // NOTE: Idle polling is needed there to prevent large intervals from occurring (e.g. BSC)
+            tokio::select! {
+                _ = self.new_events_notify.notified() => {},
+                _ = tokio::time::sleep(Duration::from_secs(self.config.poll_interval_sec)) => {},
+            }
         }
 
-        log::info!("Updating ETH subscriber");
+        log::info!(
+            "Updating EVM-{} subscriber. (Pending confirmations: {})",
+            self.chain_id,
+            self.pending_confirmation_count.load(Ordering::Acquire)
+        );
 
         // Prepare tryhard config
         let api_request_strategy = generate_fixed_timeout_config(
-            Duration::from_secs(self.config.poll_interval_sec),
+            Duration::from_secs(self.config.get_timeout_sec),
             Duration::from_secs(self.config.maximum_failed_responses_time_sec),
         );
 
@@ -391,15 +402,20 @@ impl EthSubscriber {
         {
             Ok(height) => height,
             Err(e) if is_incomplete_message(&e) => return Ok(()),
-            Err(e) => return Err(e).context("Failed to get  actual ethereum height"),
+            Err(e) => {
+                return Err(e)
+                    .with_context(|| format!("Failed to get actual EVM-{} height", self.chain_id))
+            }
         };
 
-        log::info!("Current ETH block: {}", current_block);
+        log::info!("Current EVM-{} block: {}", self.chain_id, current_block);
 
         // Check last processed block
         let last_processed_block = self.last_processed_block.load(Ordering::Acquire);
         if last_processed_block == current_block {
-            tokio::time::sleep(Duration::from_secs(self.config.poll_interval_sec)).await;
+            // NOTE: tokio::select is not used here because it will retry requests immediately if
+            // there are some events in queue but the block is still the same
+            tokio::time::sleep(Duration::from_secs(self.config.get_timeout_sec)).await;
             return Ok(());
         }
 
@@ -407,8 +423,9 @@ impl EthSubscriber {
             if last_processed_block + max_block_range < current_block {
                 current_block = last_processed_block + max_block_range;
                 log::warn!(
-                    "Querying at most {} blocks. New current ETH block: {}",
+                    "Querying at most {} blocks. New current EVM-{} block: {}",
                     max_block_range,
+                    self.chain_id,
                     current_block
                 );
             }
@@ -418,8 +435,8 @@ impl EthSubscriber {
         let events = match retry(
             || {
                 timeout(
-                    Duration::from_secs(self.config.get_timeout_sec),
-                    self.process_block(last_processed_block, current_block),
+                    Duration::from_secs(self.config.blocks_processing_timeout_sec),
+                    self.process_blocks(last_processed_block, current_block),
                 )
             },
             api_request_strategy,
@@ -431,13 +448,13 @@ impl EthSubscriber {
             Ok(Err(e)) => {
                 return Err(e).with_context(|| {
                     format!(
-                        "Failed processing eth block in the time range from {} to {}",
-                        last_processed_block, current_block
+                        "Failed processing EVM-{} block in the time range from {} to {}",
+                        self.chain_id, last_processed_block, current_block
                     )
                 })
             }
             Err(_) => {
-                log::warn!("Timed out processing eth blocks.");
+                log::warn!("Timed out processing EVM-{} blocks.", self.chain_id);
                 return Ok(());
             }
         };
@@ -489,8 +506,6 @@ impl EthSubscriber {
 
             false
         });
-        self.pending_confirmation_count
-            .store(pending_confirmations.len(), Ordering::Release);
 
         let events_to_check = events_to_check
             .collect::<Vec<(EventId, Result<Option<ParsedEthEvent>>)>>()
@@ -504,7 +519,7 @@ impl EthSubscriber {
                     Ok(Some(ParsedEthEvent::Received(event))) => entry.get_mut().check(event),
                     Ok(_) => VerificationStatus::NotExists,
                     Err(e) => {
-                        log::error!("Failed to check ETH event: {:?}", e);
+                        log::error!("Failed to check EVM-{} event: {:?}", self.chain_id, e);
                         continue;
                     }
                 };
@@ -516,6 +531,9 @@ impl EthSubscriber {
                 entry.remove();
             }
         }
+
+        self.pending_confirmation_count
+            .store(pending_confirmations.len(), Ordering::Release);
 
         drop(pending_confirmations);
 
@@ -529,7 +547,7 @@ impl EthSubscriber {
         Ok(())
     }
 
-    async fn process_block(
+    async fn process_blocks(
         &self,
         from: u64,
         to: u64,
