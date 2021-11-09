@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use http::uri::PathAndQuery;
 use nekoton_utils::*;
+use rand::Rng;
 use secstr::SecUtf8;
 use serde::{Deserialize, Serialize};
 
@@ -159,7 +160,7 @@ impl NodeConfig {
             rocks_db_path: self.db_path.join("rocksdb"),
             file_db_path: self.db_path.join("files"),
             state_gc_options: self.states_gc_enabled.then(|| ton_indexer::StateGcOptions {
-                offset_sec: 600,
+                offset_sec: rand::thread_rng().gen_range(0..3600),
                 interval_sec: 3600,
             }),
             blocks_gc_options: self
