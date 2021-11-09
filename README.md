@@ -294,6 +294,7 @@ Bugfixes
 * Fixed event confirmation counters
 * Fixed time diff metrics
 * Reduced blocks range for `eth_getLogs`
+* Ignore descending blocks for ETH rpc
 
 ### 2.0.2
 

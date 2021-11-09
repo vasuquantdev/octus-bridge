@@ -412,7 +412,7 @@ impl EthSubscriber {
 
         // Check last processed block
         let last_processed_block = self.last_processed_block.load(Ordering::Acquire);
-        if last_processed_block == current_block {
+        if last_processed_block >= current_block {
             // NOTE: tokio::select is not used here because it will retry requests immediately if
             // there are some events in queue but the block is still the same
             tokio::time::sleep(Duration::from_secs(self.config.get_timeout_sec)).await;
