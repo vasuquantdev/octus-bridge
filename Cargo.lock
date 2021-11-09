@@ -1329,7 +1329,7 @@ dependencies = [
 [[package]]
 name = "librocksdb-sys"
 version = "6.20.3"
-source = "git+https://github.com/Rexagon/rust-rocksdb.git#bc26e7b5dbd87b7e2edf225b22646a70bc11b0ff"
+source = "git+https://github.com/Rexagon/rust-rocksdb.git#2c33f4b9d0f6aefb0d2f7781408970d1e20dc80f"
 dependencies = [
  "bindgen",
  "cc",
@@ -2199,7 +2199,7 @@ dependencies = [
 [[package]]
 name = "rocksdb"
 version = "0.17.0"
-source = "git+https://github.com/Rexagon/rust-rocksdb.git#bc26e7b5dbd87b7e2edf225b22646a70bc11b0ff"
+source = "git+https://github.com/Rexagon/rust-rocksdb.git#2c33f4b9d0f6aefb0d2f7781408970d1e20dc80f"
 dependencies = [
  "libc",
  "librocksdb-sys",
@@ -2790,7 +2790,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#620909628a17d7e80737c2514af985fd8cbff225"
+source = "git+https://github.com/broxus/ton-indexer.git#f8135c83a0e96e39063de192662cc3e74c92198d"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2832,7 +2832,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer-alloc"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#620909628a17d7e80737c2514af985fd8cbff225"
+source = "git+https://github.com/broxus/ton-indexer.git#f8135c83a0e96e39063de192662cc3e74c92198d"
 dependencies = [
  "errno",
  "log",
@@ -2843,7 +2843,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer-profile"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#620909628a17d7e80737c2514af985fd8cbff225"
+source = "git+https://github.com/broxus/ton-indexer.git#f8135c83a0e96e39063de192662cc3e74c92198d"
 dependencies = [
  "bincode",
  "crossbeam-channel",
