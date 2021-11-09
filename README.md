@@ -276,3 +276,35 @@ The decision to make the relay a TON node was not made by chance. In the first v
 to the one "light" node which was constantly restarted or to the graphql which also was quite unreliable.
 As a result, relays instantly see all events and vote for them almost simultaneously in one block. The implementation is
 more optimized than C++ node, so they don't harm the network.
+
+### Changelog
+
+### 2.0.3 (2021-11-09)
+
+Features
+
+* Hot reload for metrics exporter and logger settings (SIGHUP signal)
+* Blocks and states garbage collection
+* Additional EVM RPC timing controls
+* Improved database layout and increased data locality
+
+Bugfixes
+
+* Fixed exported metrics format
+* Fixed event confirmation counters
+* Fixed time diff metrics
+* Reduced blocks range for `eth_getLogs`
+
+### 2.0.2
+
+Features
+
+* Added setup scripts for fast deployment
+
+Bugfixes
+
+* Fixed bridge contracts interaction logic according to new changes
+
+### 2.0.1
+
+Initial release
