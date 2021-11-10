@@ -255,9 +255,9 @@ checksum = "7b02b629252fe8ef6460461409564e2c21d0c8e77e0944f3d189ff06c4e932ad"
 
 [[package]]
 name = "cc"
-version = "1.0.71"
+version = "1.0.72"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "79c2681d6594606957bbb8631c4b90a7fcaaa72cdb714743a437b156d6a7eedd"
+checksum = "22a9137b95ea06864e018375b72adfb7db6e6f68cfc8df5a04d00288050485ee"
 dependencies = [
  "jobserver",
 ]
@@ -1185,9 +1185,9 @@ dependencies = [
 
 [[package]]
 name = "impl-serde"
-version = "0.3.1"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b47ca4d2b6931707a55fce5cf66aff80e2178c8b63bbb4ecb5695cbc870ddf6f"
+checksum = "4551f042f3438e64dbd6226b20527fc84a6e1fe65688b58746a2f53623f25f5c"
 dependencies = [
  "serde",
 ]
@@ -1501,8 +1501,8 @@ dependencies = [
 
 [[package]]
 name = "nekoton-abi"
-version = "0.8.0"
-source = "git+https://github.com/broxus/nekoton.git#28fd7680f8bdfc8011fd010f92d49341b57c61a3"
+version = "0.9.0"
+source = "git+https://github.com/broxus/nekoton.git#1d49190264ac85a5df3310687342e26224c87039"
 dependencies = [
  "anyhow",
  "base64",
@@ -1527,8 +1527,8 @@ dependencies = [
 
 [[package]]
 name = "nekoton-derive"
-version = "0.8.0"
-source = "git+https://github.com/broxus/nekoton.git#28fd7680f8bdfc8011fd010f92d49341b57c61a3"
+version = "0.9.0"
+source = "git+https://github.com/broxus/nekoton.git#1d49190264ac85a5df3310687342e26224c87039"
 dependencies = [
  "either",
  "proc-macro2",
@@ -1538,8 +1538,8 @@ dependencies = [
 
 [[package]]
 name = "nekoton-utils"
-version = "0.8.0"
-source = "git+https://github.com/broxus/nekoton.git#28fd7680f8bdfc8011fd010f92d49341b57c61a3"
+version = "0.9.0"
+source = "git+https://github.com/broxus/nekoton.git#1d49190264ac85a5df3310687342e26224c87039"
 dependencies = [
  "anyhow",
  "base64",
@@ -2699,9 +2699,9 @@ dependencies = [
 
 [[package]]
 name = "tinyvec"
-version = "1.5.0"
+version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f83b2a3d4d9091d0abd7eba4dc2710b1718583bd4d8992e2190720ea38f391f7"
+checksum = "2c1c1d5a42b6245520c249549ec267180beaffcc0615401ac8e31853d4b6d8d2"
 dependencies = [
  "tinyvec_macros",
 ]

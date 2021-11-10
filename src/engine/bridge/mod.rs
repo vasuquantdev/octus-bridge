@@ -312,8 +312,17 @@ impl Bridge {
             };
 
             match event {
-                // Remove event if voting process was finished
-                (_, EventStatus::Confirmed | EventStatus::Rejected) => remove_entry(),
+                // Remove event in confirmed state if the balance is not enough.
+                //
+                // NOTE: it is not strictly necessary to collect all signatures, so the
+                // contract subscription is allowed to be dropped on nearly empty balance.
+                //
+                // This state can be achieved by calling `close` method on transfer contract
+                // or execution `confirm` or `reject` after several years so that the cost of
+                // keeping the contract almost nullifies its balance.
+                (TonEvent::Closed, EventStatus::Confirmed) => remove_entry(),
+                // Remove event if it was rejected
+                (_, EventStatus::Rejected) => remove_entry(),
                 // Handle event initialization
                 (TonEvent::ReceiveRoundRelays { keys }, _) => {
                     // Check if event contains our key
@@ -357,7 +366,10 @@ impl Bridge {
         let base_event_contract = EventBaseContract(&contract);
 
         // Check further steps based on event statuses
-        match base_event_contract.process(self.context.keystore.ton.public_key())? {
+        match base_event_contract.process(
+            self.context.keystore.ton.public_key(),
+            T::REQUIRE_ALL_SIGNATURES,
+        )? {
             // Event was not activated yet, so it will be processed in
             // event transactions subscription
             EventAction::Nop => Ok(()),
@@ -386,7 +398,7 @@ impl Bridge {
         // Wait contract state
         let contract = ton_subscriber.wait_contract_state(account).await?;
 
-        match EventBaseContract(&contract).process(keystore.ton.public_key())? {
+        match EventBaseContract(&contract).process(keystore.ton.public_key(), false)? {
             EventAction::Nop => return Ok(()),
             EventAction::Remove => {
                 self.eth_events_state.remove(&account);
@@ -500,7 +512,7 @@ impl Bridge {
         let base_event_contract = EventBaseContract(&contract);
 
         // Check further steps based on event statuses
-        match base_event_contract.process(keystore.ton.public_key())? {
+        match base_event_contract.process(keystore.ton.public_key(), true)? {
             EventAction::Nop => return Ok(()),
             EventAction::Remove => {
                 self.ton_events_state.remove(&account);
@@ -943,7 +955,9 @@ impl Bridge {
                 }
 
                 // Process event
-                match EventBaseContract(&contract).process(our_public_key) {
+                match EventBaseContract(&contract)
+                    .process(our_public_key, *event_type == EventType::Ton)
+                {
                     Ok(EventAction::Nop | EventAction::Vote) => match event_type {
                         EventType::Eth => {
                             let configuration = check_configuration!("ETH", EthEventContract);
@@ -1199,11 +1213,15 @@ struct PendingEventState<T> {
 
 #[async_trait::async_trait]
 trait EventExt {
+    const REQUIRE_ALL_SIGNATURES: bool;
+
     async fn update_event(bridge: Arc<Bridge>, account: UInt256) -> Result<()>;
 }
 
 #[async_trait::async_trait]
 impl EventExt for EthEvent {
+    const REQUIRE_ALL_SIGNATURES: bool = false;
+
     async fn update_event(bridge: Arc<Bridge>, account: UInt256) -> Result<()> {
         bridge.update_eth_event(account).await
     }
@@ -1211,6 +1229,8 @@ impl EventExt for EthEvent {
 
 #[async_trait::async_trait]
 impl EventExt for TonEvent {
+    const REQUIRE_ALL_SIGNATURES: bool = true;
+
     async fn update_event(bridge: Arc<Bridge>, account: UInt256) -> Result<()> {
         bridge.update_ton_event(account).await
     }
@@ -1325,12 +1345,20 @@ fn read_code_hash(cell: &mut ton_types::SliceData) -> Result<Option<ton_types::U
 
 impl EventBaseContract<'_> {
     /// Determine event action
-    fn process(&self, public_key: &UInt256) -> Result<EventAction> {
+    fn process(&self, public_key: &UInt256, require_all_signatures: bool) -> Result<EventAction> {
         Ok(match self.status()? {
             // If it is still initializing - postpone processing until relay keys are received
             EventStatus::Initializing => EventAction::Nop,
-            // The only status in which we can vote
+            // The main status in which we can vote
             EventStatus::Pending if self.get_voters(EventVote::Empty)?.contains(public_key) => {
+                EventAction::Vote
+            }
+            // Special case for TON-ETH event which must collect as much signatures as possible
+            EventStatus::Confirmed
+                if require_all_signatures
+                    && self.0.account.storage.balance.grams.0 >= MIN_EVENT_BALANCE
+                    && self.get_voters(EventVote::Empty)?.contains(public_key) =>
+            {
                 EventAction::Vote
             }
             // Discard event in other cases
@@ -1569,12 +1597,13 @@ enum TonEvent {
     ReceiveRoundRelays { keys: Vec<UInt256> },
     Confirm { public_key: UInt256 },
     Reject { public_key: UInt256 },
+    Closed,
 }
 
 impl ReadFromTransaction for TonEvent {
     fn read_from_transaction(ctx: &TxContext<'_>) -> Option<Self> {
         let in_msg = ctx.in_msg;
-        match in_msg.header() {
+        let event = match in_msg.header() {
             ton_block::CommonMsgInfo::ExtInMsgInfo(_) => {
                 let (public_key, body) = read_external_in_msg(&in_msg.body()?)?;
 
@@ -1604,7 +1633,16 @@ impl ReadFromTransaction for TonEvent {
                 }
             }
             ton_block::CommonMsgInfo::ExtOutMsgInfo(_) => None,
+        };
+
+        if event.is_none() {
+            let balance = ctx.get_account_state().ok()?.account.storage.balance.grams;
+            if balance.0 < MIN_EVENT_BALANCE {
+                return Some(Self::Closed);
+            }
         }
+
+        event
     }
 }
 
@@ -1614,6 +1652,8 @@ fn read_external_in_msg(body: &ton_types::SliceData) -> Option<(UInt256, ton_typ
         _ => None,
     }
 }
+
+const MIN_EVENT_BALANCE: u128 = 100_000_000; // 0.1 TON
 
 type ConnectorState = Arc<AccountObserver<ConnectorEvent>>;
 
