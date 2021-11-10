@@ -312,8 +312,8 @@ impl Bridge {
             };
 
             match event {
-                // Remove event if voting process was finished
-                (_, EventStatus::Confirmed | EventStatus::Rejected) => remove_entry(),
+                // Remove event if it was rejected
+                (_, EventStatus::Rejected) => remove_entry(),
                 // Handle event initialization
                 (TonEvent::ReceiveRoundRelays { keys }, _) => {
                     // Check if event contains our key
@@ -357,7 +357,10 @@ impl Bridge {
         let base_event_contract = EventBaseContract(&contract);
 
         // Check further steps based on event statuses
-        match base_event_contract.process(self.context.keystore.ton.public_key())? {
+        match base_event_contract.process(
+            self.context.keystore.ton.public_key(),
+            T::REQUIRE_ALL_SIGNATURES,
+        )? {
             // Event was not activated yet, so it will be processed in
             // event transactions subscription
             EventAction::Nop => Ok(()),
@@ -386,7 +389,7 @@ impl Bridge {
         // Wait contract state
         let contract = ton_subscriber.wait_contract_state(account).await?;
 
-        match EventBaseContract(&contract).process(keystore.ton.public_key())? {
+        match EventBaseContract(&contract).process(keystore.ton.public_key(), false)? {
             EventAction::Nop => return Ok(()),
             EventAction::Remove => {
                 self.eth_events_state.remove(&account);
@@ -500,7 +503,7 @@ impl Bridge {
         let base_event_contract = EventBaseContract(&contract);
 
         // Check further steps based on event statuses
-        match base_event_contract.process(keystore.ton.public_key())? {
+        match base_event_contract.process(keystore.ton.public_key(), true)? {
             EventAction::Nop => return Ok(()),
             EventAction::Remove => {
                 self.ton_events_state.remove(&account);
@@ -943,7 +946,9 @@ impl Bridge {
                 }
 
                 // Process event
-                match EventBaseContract(&contract).process(our_public_key) {
+                match EventBaseContract(&contract)
+                    .process(our_public_key, *event_type == EventType::Ton)
+                {
                     Ok(EventAction::Nop | EventAction::Vote) => match event_type {
                         EventType::Eth => {
                             let configuration = check_configuration!("ETH", EthEventContract);
@@ -1199,11 +1204,15 @@ struct PendingEventState<T> {
 
 #[async_trait::async_trait]
 trait EventExt {
+    const REQUIRE_ALL_SIGNATURES: bool;
+
     async fn update_event(bridge: Arc<Bridge>, account: UInt256) -> Result<()>;
 }
 
 #[async_trait::async_trait]
 impl EventExt for EthEvent {
+    const REQUIRE_ALL_SIGNATURES: bool = false;
+
     async fn update_event(bridge: Arc<Bridge>, account: UInt256) -> Result<()> {
         bridge.update_eth_event(account).await
     }
@@ -1211,6 +1220,8 @@ impl EventExt for EthEvent {
 
 #[async_trait::async_trait]
 impl EventExt for TonEvent {
+    const REQUIRE_ALL_SIGNATURES: bool = true;
+
     async fn update_event(bridge: Arc<Bridge>, account: UInt256) -> Result<()> {
         bridge.update_ton_event(account).await
     }
@@ -1325,12 +1336,19 @@ fn read_code_hash(cell: &mut ton_types::SliceData) -> Result<Option<ton_types::U
 
 impl EventBaseContract<'_> {
     /// Determine event action
-    fn process(&self, public_key: &UInt256) -> Result<EventAction> {
+    fn process(&self, public_key: &UInt256, require_all_signatures: bool) -> Result<EventAction> {
         Ok(match self.status()? {
             // If it is still initializing - postpone processing until relay keys are received
             EventStatus::Initializing => EventAction::Nop,
-            // The only status in which we can vote
+            // The main status in which we can vote
             EventStatus::Pending if self.get_voters(EventVote::Empty)?.contains(public_key) => {
+                EventAction::Vote
+            }
+            // Special case for TON-ETH event which must collect as much signatures as possible
+            EventStatus::Confirmed
+                if require_all_signatures
+                    && self.get_voters(EventVote::Empty)?.contains(public_key) =>
+            {
                 EventAction::Vote
             }
             // Discard event in other cases
