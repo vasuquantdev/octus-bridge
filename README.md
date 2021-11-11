@@ -279,6 +279,16 @@ more optimized than C++ node, so they don't harm the network.
 
 ### Changelog
 
+### 2.0.4 (2021-11-11)
+
+Features
+
+* Use jemalloc by default
+
+Bugfixes
+
+* Fixed blocks GC memory issues
+
 ### 2.0.3 (2021-11-09)
 
 Features
