@@ -1502,7 +1502,7 @@ dependencies = [
 [[package]]
 name = "nekoton-abi"
 version = "0.9.0"
-source = "git+https://github.com/broxus/nekoton.git#1d49190264ac85a5df3310687342e26224c87039"
+source = "git+https://github.com/broxus/nekoton.git#d843ae5c749510f901758f17a1d7b1b5c99e3d10"
 dependencies = [
  "anyhow",
  "base64",
@@ -1528,7 +1528,7 @@ dependencies = [
 [[package]]
 name = "nekoton-derive"
 version = "0.9.0"
-source = "git+https://github.com/broxus/nekoton.git#1d49190264ac85a5df3310687342e26224c87039"
+source = "git+https://github.com/broxus/nekoton.git#d843ae5c749510f901758f17a1d7b1b5c99e3d10"
 dependencies = [
  "either",
  "proc-macro2",
@@ -1539,7 +1539,7 @@ dependencies = [
 [[package]]
 name = "nekoton-utils"
 version = "0.9.0"
-source = "git+https://github.com/broxus/nekoton.git#1d49190264ac85a5df3310687342e26224c87039"
+source = "git+https://github.com/broxus/nekoton.git#d843ae5c749510f901758f17a1d7b1b5c99e3d10"
 dependencies = [
  "anyhow",
  "base64",
@@ -2790,7 +2790,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#f8135c83a0e96e39063de192662cc3e74c92198d"
+source = "git+https://github.com/broxus/ton-indexer.git#4c23512f5160392b28fb35b67e5da108ac22ac72"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2832,7 +2832,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer-alloc"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#f8135c83a0e96e39063de192662cc3e74c92198d"
+source = "git+https://github.com/broxus/ton-indexer.git#4c23512f5160392b28fb35b67e5da108ac22ac72"
 dependencies = [
  "errno",
  "log",
@@ -2843,7 +2843,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer-profile"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#f8135c83a0e96e39063de192662cc3e74c92198d"
+source = "git+https://github.com/broxus/ton-indexer.git#4c23512f5160392b28fb35b67e5da108ac22ac72"
 dependencies = [
  "bincode",
  "crossbeam-channel",

@@ -418,6 +418,7 @@ impl Bridge {
                 .map(|configuration| {
                     (
                         configuration.details.network_configuration.chain_id,
+                        configuration.details.network_configuration.event_emitter,
                         configuration.event_abi.clone(),
                         configuration
                             .details
@@ -428,12 +429,12 @@ impl Bridge {
         };
 
         // NOTE: be sure to drop `eth_event_configurations` lock before that
-        let (eth_subscriber, event_abi, blocks_to_confirm) = match data {
+        let (eth_subscriber, event_emitter, event_abi, blocks_to_confirm) = match data {
             // Configuration found
-            Some((chain_id, abi, blocks_to_confirm)) => {
+            Some((chain_id, event_emitter, abi, blocks_to_confirm)) => {
                 // Get required subscriber
                 match eth_subscribers.get_subscriber(chain_id) {
-                    Some(subscriber) => (subscriber, abi, blocks_to_confirm),
+                    Some(subscriber) => (subscriber, event_emitter, abi, blocks_to_confirm),
                     None => {
                         log::error!(
                             "ETH subscriber with chain id  {} was not found for event {:x}",
@@ -459,7 +460,12 @@ impl Bridge {
 
         // Verify ETH event and create message to event contract
         let message = match eth_subscriber
-            .verify(event_init_data.vote_data, event_abi, blocks_to_confirm)
+            .verify(
+                event_init_data.vote_data,
+                event_emitter,
+                event_abi,
+                blocks_to_confirm,
+            )
             .await
         {
             // Confirm event if transaction was found

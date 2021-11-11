@@ -168,6 +168,7 @@ impl NodeConfig {
                 .then(|| ton_indexer::BlocksGcOptions {
                     kind: ton_indexer::BlocksGcKind::BeforePreviousKeyBlock,
                     enable_for_sync: true,
+                    ..Default::default()
                 }),
             shard_state_cache_options: None,
             archives_enabled: false,
