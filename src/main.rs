@@ -11,6 +11,9 @@ use serde::{Deserialize, Serialize};
 use tokio::signal::unix;
 use tokio::sync::mpsc;
 
+#[global_allocator]
+static GLOBAL: ton_indexer::alloc::Allocator = ton_indexer::alloc::allocator();
+
 #[tokio::main]
 async fn main() -> Result<()> {
     run(argh::from_env()).await
