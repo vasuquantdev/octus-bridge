@@ -315,6 +315,7 @@ impl EthSubscriber {
     pub async fn verify(
         &self,
         vote_data: EthEventVoteData,
+        event_emitter: [u8; 20],
         event_abi: Arc<EthEventAbi>,
         blocks_to_confirm: u16,
     ) -> Result<VerificationStatus> {
@@ -333,6 +334,7 @@ impl EthSubscriber {
             pending_confirmations.insert(
                 event_id,
                 PendingConfirmation {
+                    event_emitter,
                     vote_data,
                     status_tx: Some(tx),
                     event_abi,
@@ -720,6 +722,7 @@ type LastBlockNumbersMap = FxDashMap<u32, u64>;
 struct PendingConfirmation {
     vote_data: EthEventVoteData,
     status_tx: Option<VerificationStatusTx>,
+    event_emitter: [u8; 20],
     event_abi: Arc<EthEventAbi>,
     target_block: u64,
     status: PendingConfirmationStatus,
@@ -731,7 +734,8 @@ impl PendingConfirmation {
 
         // NOTE: event_index and transaction_hash are already checked while searching
         // ETH event log, but here they are also checked just in case.
-        if event.event_index != vote_data.event_index
+        if event.address.0 != self.event_emitter
+            || event.event_index != vote_data.event_index
             || &event.transaction_hash.0 != vote_data.event_transaction.as_slice()
             || event.block_number != vote_data.event_block_number as u64
             || &event.block_hash.0 != vote_data.event_block.as_slice()

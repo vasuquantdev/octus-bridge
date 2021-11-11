@@ -2,7 +2,7 @@ use std::convert::TryFrom;
 
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
-use web3::types::{Log, H256};
+use web3::types::{Log, H160, H256};
 
 pub type EventId = (H256, u32);
 
@@ -39,6 +39,8 @@ impl TryFrom<Log> for ParsedEthEvent {
     type Error = anyhow::Error;
 
     fn try_from(log: Log) -> Result<Self, Self::Error> {
+        let address = log.address;
+
         let transaction_hash = log
             .transaction_hash
             .context("Transaction hash was not found in event")?;
@@ -50,6 +52,7 @@ impl TryFrom<Log> for ParsedEthEvent {
 
         if let Some(true) = log.removed {
             return Ok(ParsedEthEvent::Removed(RemovedEthEvent {
+                address,
                 transaction_hash,
                 event_index,
             }));
@@ -73,6 +76,7 @@ impl TryFrom<Log> for ParsedEthEvent {
         );
 
         Ok(ParsedEthEvent::Received(ReceivedEthEvent {
+            address,
             data,
             transaction_hash,
             event_index,
@@ -84,6 +88,7 @@ impl TryFrom<Log> for ParsedEthEvent {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemovedEthEvent {
+    pub address: H160,
     pub transaction_hash: H256,
     pub event_index: u32,
 }
@@ -91,6 +96,7 @@ pub struct RemovedEthEvent {
 /// Topics: `Keccak256("Method_Signature")`
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReceivedEthEvent {
+    pub address: H160,
     pub transaction_hash: H256,
     pub event_index: u32,
     pub block_number: u64,
