@@ -488,15 +488,14 @@ impl EthSubscriber {
             log::info!("Found pending confirmation to resolve");
 
             let status = match confirmation.status {
-                PendingConfirmationStatus::InProcess => {
-                    log::info!("Confirmation in process");
+                PendingConfirmationStatus::InProcess | PendingConfirmationStatus::Valid => {
+                    log::info!("Confirmation status: {:?}", confirmation.status);
                     events_to_check.push(async move {
                         let result = self.find_event(&event_id).await;
                         (event_id, result)
                     });
                     return true;
                 }
-                PendingConfirmationStatus::Valid => VerificationStatus::Exists,
                 PendingConfirmationStatus::Invalid => VerificationStatus::NotExists,
             };
 
