@@ -222,10 +222,10 @@ impl TonSubscriber {
 
             match shard_account {
                 Some(account) => match &account.account.storage.state {
-                    ton_block::AccountState::AccountActive(_) => {
+                    ton_block::AccountState::AccountActive { .. } => {
                         return Ok(account);
                     }
-                    ton_block::AccountState::AccountFrozen(_) => {
+                    ton_block::AccountState::AccountFrozen { .. } => {
                         return Err(TonSubscriberError::AccountIsFrozen.into())
                     }
                     ton_block::AccountState::AccountUninit => continue,

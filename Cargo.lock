@@ -44,9 +44,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.45"
+version = "1.0.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee10e43ae4a853c0a3591d4e2ada1719e553be18199d9da9d4a83f5927c2f5c7"
+checksum = "38d9ff5d688f1c13395289f67db01d4826b46dd694e7580accdc3e8430f2d98e"
 
 [[package]]
 name = "arc-swap"
@@ -179,9 +179,9 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "bitvec"
-version = "0.19.5"
+version = "0.19.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8942c8d352ae1838c9dda0b0ca2ab657696ef2232a20147cf1b30ae1a9cb4321"
+checksum = "55f93d0ef3363c364d5976646a38f04cf67cfe1d4c8d160cdea02cab2c116b33"
 dependencies = [
  "funty",
  "radium 0.5.3",
@@ -626,9 +626,9 @@ checksum = "56899898ce76aaf4a0f24d914c97ea6ed976d42fec6ad33fcbb0a1103e07b2b0"
 
 [[package]]
 name = "ed25519"
-version = "1.2.0"
+version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4620d40f6d2601794401d6dd95a5cf69b6c157852539470eeda433a99b3c0efc"
+checksum = "74e1069e39f1454367eb2de793ed062fac4c35c2934b76a81d90dd9abcd28816"
 dependencies = [
  "signature",
 ]
@@ -1085,9 +1085,9 @@ checksum = "acd94fdbe1d4ff688b67b04eee2e17bd50995534a61539e45adfefb45e5e5503"
 
 [[package]]
 name = "httpdate"
-version = "1.0.1"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6456b8a6c8f33fee7d958fcd1b60d55b11940a79e63ae87013e6d22e26034440"
+checksum = "c4a1e36c821dbe04574f602848a19f742f4fb3c98d40449f11bcad18d6b17421"
 
 [[package]]
 name = "humantime"
@@ -1097,9 +1097,9 @@ checksum = "9a3a5bfb195931eeb336b2a7b4d761daec841b97f947d34394601737a7bba5e4"
 
 [[package]]
 name = "hyper"
-version = "0.14.14"
+version = "0.14.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b91bb1f221b6ea1f1e4371216b70f40748774c2fb5971b450c07773fb92d26b"
+checksum = "436ec0091e4f20e655156a30a0df3770fe2900aa301e548e08446ec794b6953c"
 dependencies = [
  "bytes",
  "futures-channel",
@@ -1312,15 +1312,15 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.107"
+version = "0.2.108"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fbe5e23404da5b4f555ef85ebed98fb4083e55a00c317800bc2a50ede9f3d219"
+checksum = "8521a1b57e76b1ec69af7599e75e38e7b7fad6610f037db8c79b127201b5d119"
 
 [[package]]
 name = "libloading"
-version = "0.7.1"
+version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0cf036d15402bea3c5d4de17b3fce76b3e4a56ebc1f577be0e7a72f7c607cf0"
+checksum = "afe203d669ec979b7128619bae5a63b7b42e9203c1b29146079ee05e2f604b52"
 dependencies = [
  "cfg-if",
  "winapi",
@@ -1502,7 +1502,7 @@ dependencies = [
 [[package]]
 name = "nekoton-abi"
 version = "0.9.0"
-source = "git+https://github.com/broxus/nekoton.git#d843ae5c749510f901758f17a1d7b1b5c99e3d10"
+source = "git+https://github.com/broxus/nekoton.git#6dee589b5a470e0d6e4d9c3eae3c19cdbf5bed0d"
 dependencies = [
  "anyhow",
  "base64",
@@ -1528,7 +1528,7 @@ dependencies = [
 [[package]]
 name = "nekoton-derive"
 version = "0.9.0"
-source = "git+https://github.com/broxus/nekoton.git#d843ae5c749510f901758f17a1d7b1b5c99e3d10"
+source = "git+https://github.com/broxus/nekoton.git#6dee589b5a470e0d6e4d9c3eae3c19cdbf5bed0d"
 dependencies = [
  "either",
  "proc-macro2",
@@ -1539,7 +1539,7 @@ dependencies = [
 [[package]]
 name = "nekoton-utils"
 version = "0.9.0"
-source = "git+https://github.com/broxus/nekoton.git#d843ae5c749510f901758f17a1d7b1b5c99e3d10"
+source = "git+https://github.com/broxus/nekoton.git#6dee589b5a470e0d6e4d9c3eae3c19cdbf5bed0d"
 dependencies = [
  "anyhow",
  "base64",
@@ -1585,7 +1585,7 @@ version = "6.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e7413f999671bd4745a7b624bd370a569fb6bc574b23c83a3c5ed2e453f3d5e2"
 dependencies = [
- "bitvec 0.19.5",
+ "bitvec 0.19.6",
  "funty",
  "memchr",
  "version_check",
@@ -1928,6 +1928,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba508cc11742c0dc5c1659771673afbab7a0efab23aa17e854cbab0837ed0b43"
 dependencies = [
  "unicode-xid",
+]
+
+[[package]]
+name = "profl"
+version = "0.1.0"
+source = "git+https://github.com/broxus/profl.git#f47b5de34950cfbae2364500026c647f8ff0dbf4"
+dependencies = [
+ "bincode",
+ "crossbeam-channel",
+ "log",
+ "serde",
 ]
 
 [[package]]
@@ -2339,9 +2350,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.69"
+version = "1.0.71"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e466864e431129c7e0d3476b92f20458e5879919a0596c6472738d9fa2d342f8"
+checksum = "063bf466a64011ac24040a49009724ee60a57da1b437617ceb32e53ad61bfb19"
 dependencies = [
  "itoa",
  "ryu",
@@ -2714,9 +2725,9 @@ checksum = "cda74da7e1a664f795bb1f8a87ec406fb89a02522cf6e50620d016add6dbbf5c"
 
 [[package]]
 name = "tokio"
-version = "1.13.0"
+version = "1.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "588b2d10a336da58d877567cd8fb8a14b463e2104910f8132cd054b4b96e29ee"
+checksum = "70e992e41e0d2fb9f755b37446f20900f64446ef54874f40a60c78f021ac6144"
 dependencies = [
  "autocfg",
  "bytes",
@@ -2744,9 +2755,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-macros"
-version = "1.5.1"
+version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "114383b041aa6212c579467afa0075fbbdd0718de036100bc0ba7961d8cb9095"
+checksum = "c9efc1aba077437943f7515666aa2b882dfabfbfdf89c819ea75a8d6e9eaba5e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2790,7 +2801,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#4c23512f5160392b28fb35b67e5da108ac22ac72"
+source = "git+https://github.com/broxus/ton-indexer.git#1b1491bf56ee0c40a27b9d68f8d8c3436b356fd4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2812,6 +2823,7 @@ dependencies = [
  "num_cpus",
  "parking_lot",
  "pin-project-lite",
+ "profl",
  "rand",
  "rlimit",
  "rocksdb",
@@ -2823,7 +2835,6 @@ dependencies = [
  "tiny-adnl",
  "tokio",
  "ton-indexer-alloc",
- "ton-indexer-profile",
  "ton_api",
  "ton_block",
  "ton_types",
@@ -2832,23 +2843,12 @@ dependencies = [
 [[package]]
 name = "ton-indexer-alloc"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#4c23512f5160392b28fb35b67e5da108ac22ac72"
+source = "git+https://github.com/broxus/ton-indexer.git#1b1491bf56ee0c40a27b9d68f8d8c3436b356fd4"
 dependencies = [
  "errno",
  "log",
  "tikv-jemalloc-sys",
  "tikv-jemallocator",
-]
-
-[[package]]
-name = "ton-indexer-profile"
-version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#4c23512f5160392b28fb35b67e5da108ac22ac72"
-dependencies = [
- "bincode",
- "crossbeam-channel",
- "log",
- "serde",
 ]
 
 [[package]]
@@ -2897,7 +2897,7 @@ dependencies = [
 [[package]]
 name = "ton_block"
 version = "1.7.14"
-source = "git+https://github.com/broxus/ton-labs-block#226fc3e158762aa3852c5ef681a027c6a676cd1b"
+source = "git+https://github.com/broxus/ton-labs-block#7d7a06ae90c7602a3544b720aac472307b820346"
 dependencies = [
  "anyhow",
  "base64",
@@ -2918,8 +2918,8 @@ dependencies = [
 
 [[package]]
 name = "ton_executor"
-version = "1.0.0"
-source = "git+https://github.com/broxus/ton-labs-executor.git#34a25d80d0a7fa8bb5ed4b3e71684198322ad2ea"
+version = "1.15.34"
+source = "git+https://github.com/broxus/ton-labs-executor.git#dbdf43da28045abf41fe11d817bb89e7c2739c00"
 dependencies = [
  "anyhow",
  "base64",
@@ -2949,7 +2949,7 @@ dependencies = [
 [[package]]
 name = "ton_types"
 version = "1.10.2"
-source = "git+https://github.com/broxus/ton-labs-types#7f6c82071b3d7976b1fef628c4129fc3775ec765"
+source = "git+https://github.com/broxus/ton-labs-types#002e2eaffa29f5f7c3a829bfd70e8e7a90e4efde"
 dependencies = [
  "anyhow",
  "base64",
@@ -2968,13 +2968,14 @@ dependencies = [
 
 [[package]]
 name = "ton_vm"
-version = "1.0.0"
-source = "git+https://github.com/broxus/ton-labs-vm.git#c9b4644a2aca3b50c74bd4cf8b68c02638235f3a"
+version = "1.8.20"
+source = "git+https://github.com/broxus/ton-labs-vm.git#b4d9455e9a3cc781f6649a2b15e98f84abde576e"
 dependencies = [
  "anyhow",
  "ed25519",
  "ed25519-dalek",
  "hex",
+ "lazy_static",
  "log",
  "num",
  "num-traits",
