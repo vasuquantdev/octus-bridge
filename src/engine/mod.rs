@@ -366,20 +366,45 @@ struct LabeledTonSubscriberMetrics<'a>(&'a EngineContext);
 
 impl std::fmt::Display for LabeledTonSubscriberMetrics<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use std::sync::atomic::Ordering;
+
         let metrics = self.0.ton_subscriber.metrics();
+        let indexer_metrics = self.0.ton_engine.metrics();
 
         f.begin_metric("ton_subscriber_ready")
             .label(LABEL_STAKER, &self.0.staker_account_str)
             .value(metrics.ready as u8)?;
 
         if metrics.current_utime > 0 {
+            let mc_time_diff = indexer_metrics.mc_time_diff.load(Ordering::Acquire);
+            let shard_client_time_diff = indexer_metrics
+                .shard_client_time_diff
+                .load(Ordering::Acquire);
+
+            let last_mc_block_seqno = indexer_metrics.last_mc_block_seqno.load(Ordering::Acquire);
+            let last_shard_client_mc_block_seqno = indexer_metrics
+                .last_shard_client_mc_block_seqno
+                .load(Ordering::Acquire);
+
             f.begin_metric("ton_subscriber_current_utime")
                 .label(LABEL_STAKER, &self.0.staker_account_str)
                 .value(metrics.current_utime)?;
 
             f.begin_metric("ton_subscriber_time_diff")
                 .label(LABEL_STAKER, &self.0.staker_account_str)
-                .value(metrics.current_time_diff)?;
+                .value(mc_time_diff)?;
+
+            f.begin_metric("ton_subscriber_shard_client_time_diff")
+                .label(LABEL_STAKER, &self.0.staker_account_str)
+                .value(shard_client_time_diff)?;
+
+            f.begin_metric("ton_subscriber_mc_block_seqno")
+                .label(LABEL_STAKER, &self.0.staker_account_str)
+                .value(last_mc_block_seqno)?;
+
+            f.begin_metric("ton_subscriber_shard_client_mc_block_seqno")
+                .label(LABEL_STAKER, &self.0.staker_account_str)
+                .value(last_shard_client_mc_block_seqno)?;
         }
 
         f.begin_metric("ton_subscriber_pending_message_count")
