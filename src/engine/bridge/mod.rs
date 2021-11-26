@@ -458,6 +458,8 @@ impl Bridge {
             }
         };
 
+        let account_addr = ton_block::MsgAddrStd::with_address(None, 0, account.into());
+
         // Verify ETH event and create message to event contract
         let message = match eth_subscriber
             .verify(
@@ -470,11 +472,11 @@ impl Bridge {
         {
             // Confirm event if transaction was found
             Ok(VerificationStatus::Exists) => {
-                UnsignedMessage::new(eth_event_contract::confirm(), account)
+                UnsignedMessage::new(eth_event_contract::confirm(), account).arg(account_addr)
             }
             // Reject event if transaction not found
             Ok(VerificationStatus::NotExists) => {
-                UnsignedMessage::new(eth_event_contract::reject(), account)
+                UnsignedMessage::new(eth_event_contract::reject(), account).arg(account_addr)
             }
             // Skip event otherwise
             Err(e) => {
@@ -577,12 +579,15 @@ impl Bridge {
             }
         };
 
+        let account_addr = ton_block::MsgAddrStd::with_address(None, 0, account.into());
+
         let message = match decoded_data {
             // Confirm with signature
             Ok(data) => {
                 log::info!("Signing event data: {}", hex::encode(&data));
                 UnsignedMessage::new(ton_event_contract::confirm(), account)
                     .arg(keystore.eth.sign(&data).to_vec())
+                    .arg(account_addr)
             }
 
             // Reject if event data is invalid
@@ -592,7 +597,7 @@ impl Bridge {
                     account,
                     e
                 );
-                UnsignedMessage::new(ton_event_contract::reject(), account)
+                UnsignedMessage::new(ton_event_contract::reject(), account).arg(account_addr)
             }
         };
 

@@ -21,6 +21,7 @@ pub fn confirm() -> &'static ton_abi::Function {
         FunctionBuilder::new("confirm")
             .default_headers()
             .input("signature", ton_abi::ParamType::Bytes)
+            .input("voteReceiver", ton_abi::ParamType::Address)
             .build()
     })
 }
@@ -28,5 +29,10 @@ pub fn confirm() -> &'static ton_abi::Function {
 /// External function
 pub fn reject() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
-    FUNCTION.get_or_init(|| FunctionBuilder::new("reject").default_headers().build())
+    FUNCTION.get_or_init(|| {
+        FunctionBuilder::new("reject")
+            .default_headers()
+            .input("voteReceiver", ton_abi::ParamType::Address)
+            .build()
+    })
 }
