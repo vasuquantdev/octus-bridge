@@ -1357,18 +1357,24 @@ fn read_code_hash(cell: &mut ton_types::SliceData) -> Result<Option<ton_types::U
 impl EventBaseContract<'_> {
     /// Determine event action
     fn process(&self, public_key: &UInt256, require_all_signatures: bool) -> Result<EventAction> {
+        const SUPPORTED_API_VERSION: u32 = 2;
+
         Ok(match self.status()? {
             // If it is still initializing - postpone processing until relay keys are received
             EventStatus::Initializing => EventAction::Nop,
             // The main status in which we can vote
-            EventStatus::Pending if self.get_voters(EventVote::Empty)?.contains(public_key) => {
+            EventStatus::Pending
+                if self.get_voters(EventVote::Empty)?.contains(public_key)
+                    && self.get_api_version().unwrap_or_default() == SUPPORTED_API_VERSION =>
+            {
                 EventAction::Vote
             }
             // Special case for TON-ETH event which must collect as much signatures as possible
             EventStatus::Confirmed
                 if require_all_signatures
                     && self.0.account.storage.balance.grams.0 >= MIN_EVENT_BALANCE
-                    && self.get_voters(EventVote::Empty)?.contains(public_key) =>
+                    && self.get_voters(EventVote::Empty)?.contains(public_key)
+                    && self.get_api_version().unwrap_or_default() == SUPPORTED_API_VERSION =>
             {
                 EventAction::Vote
             }

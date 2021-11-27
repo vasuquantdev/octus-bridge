@@ -14,6 +14,7 @@ pub fn status() -> &'static ton_abi::Function {
     })
 }
 
+/// External function
 pub fn round_number() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
     FUNCTION.get_or_init(|| {
@@ -32,6 +33,17 @@ pub fn get_voters() -> &'static ton_abi::Function {
             .default_headers()
             .input("vote", EventVote::param_type())
             .outputs(RelayKeys::param_type())
+            .build()
+    })
+}
+
+/// External responsible function
+pub fn get_api_version() -> &'static ton_abi::Function {
+    static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
+    FUNCTION.get_or_init(|| {
+        FunctionBuilder::new_responsible("getApiVersion")
+            .default_headers()
+            .output("version", u32::param_type())
             .build()
     })
 }
