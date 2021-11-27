@@ -279,6 +279,15 @@ more optimized than C++ node, so they don't harm the network.
 
 ### Changelog
 
+### 2.0.5 (2021-11-27)
+
+Features
+
+* Improved ETH events verification
+* Updated events ABI
+* Added `ton_subscriber_shard_client_time_diff`, `ton_subscriber_mc_block_seqno` and `ton_subscriber_shard_client_mc_block_seqno`
+  values into metrics
+
 ### 2.0.4 (2021-11-11)
 
 Features
