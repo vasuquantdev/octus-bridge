@@ -41,6 +41,9 @@ pub struct Bridge {
     connectors_tx: AccountEventsTx<ConnectorEvent>,
     eth_event_configurations_tx: AccountEventsTx<EthEventConfigurationEvent>,
     ton_event_configurations_tx: AccountEventsTx<TonEventConfigurationEvent>,
+
+    total_active_eth_event_configurations: AtomicUsize,
+    total_active_ton_event_configurations: AtomicUsize,
 }
 
 impl Bridge {
@@ -65,6 +68,8 @@ impl Bridge {
             connectors_tx,
             eth_event_configurations_tx,
             ton_event_configurations_tx,
+            total_active_eth_event_configurations: Default::default(),
+            total_active_ton_event_configurations: Default::default(),
         });
 
         // Prepare listeners
@@ -128,6 +133,12 @@ impl Bridge {
         BridgeMetrics {
             pending_eth_event_count: self.eth_events_state.count.load(Ordering::Acquire),
             pending_ton_event_count: self.ton_events_state.count.load(Ordering::Acquire),
+            total_active_eth_event_configurations: self
+                .total_active_eth_event_configurations
+                .load(Ordering::Acquire),
+            total_active_ton_event_configurations: self
+                .total_active_ton_event_configurations
+                .load(Ordering::Acquire),
         }
     }
 
@@ -825,6 +836,9 @@ impl Bridge {
             hash_map::Entry::Vacant(entry) => {
                 log::info!("Added new ETH event configuration: {:?}", details);
 
+                self.total_active_eth_event_configurations
+                    .fetch_add(1, Ordering::Release);
+
                 entry.insert(EthEventConfigurationState {
                     details,
                     event_abi,
@@ -889,6 +903,9 @@ impl Bridge {
         match state.ton_event_configurations.entry(*account) {
             hash_map::Entry::Vacant(entry) => {
                 log::info!("Added new TON event configuration: {:?}", details);
+
+                self.total_active_ton_event_configurations
+                    .fetch_add(1, Ordering::Release);
 
                 entry.insert(TonEventConfigurationState {
                     details,
@@ -1124,14 +1141,20 @@ impl Bridge {
 
                 // Remove all expired configurations
                 let mut state = bridge.state.write().await;
+                let mut total_removed = 0;
                 state.ton_event_configurations.retain(|account, state| {
                     if state.details.is_expired(current_utime) {
                         log::warn!("Removing TON event configuration {:x}", account);
+                        total_removed += 1;
                         false
                     } else {
                         true
                     }
                 });
+
+                bridge
+                    .total_active_ton_event_configurations
+                    .fetch_sub(total_removed, Ordering::Release);
             }
         });
     }
@@ -1182,6 +1205,8 @@ impl Bridge {
 pub struct BridgeMetrics {
     pub pending_eth_event_count: usize,
     pub pending_ton_event_count: usize,
+    pub total_active_eth_event_configurations: usize,
+    pub total_active_ton_event_configurations: usize,
 }
 
 struct EventsState<T> {

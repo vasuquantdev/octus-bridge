@@ -306,6 +306,14 @@ impl std::fmt::Display for LabeledBridgeMetrics<'_> {
             .label(LABEL_STAKER, &self.context.staker_account_str)
             .value(metrics.pending_ton_event_count)?;
 
+        f.begin_metric("bridge_total_active_eth_event_configurations")
+            .label(LABEL_STAKER, &self.context.staker_account_str)
+            .value(metrics.total_active_eth_event_configurations)?;
+
+        f.begin_metric("bridge_total_active_ton_event_configurations")
+            .label(LABEL_STAKER, &self.context.staker_account_str)
+            .value(metrics.total_active_ton_event_configurations)?;
+
         Ok(())
     }
 }
