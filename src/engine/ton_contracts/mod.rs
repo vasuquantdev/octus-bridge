@@ -41,6 +41,13 @@ impl EventBaseContract<'_> {
         let RelayKeys { items } = self.0.run_local(function, &inputs)?.unpack()?;
         Ok(items)
     }
+
+    pub fn get_api_version(&self) -> Result<u32> {
+        let function = base_event_contract::get_api_version();
+        let inputs = [answer_id()];
+        let version = self.0.run_local(function, &inputs)?.unpack_first()?;
+        Ok(version)
+    }
 }
 
 pub struct EthEventContract<'a>(pub &'a ExistingContract);

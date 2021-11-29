@@ -458,6 +458,8 @@ impl Bridge {
             }
         };
 
+        let account_addr = ton_block::MsgAddrStd::with_address(None, 0, account.into());
+
         // Verify ETH event and create message to event contract
         let message = match eth_subscriber
             .verify(
@@ -470,11 +472,11 @@ impl Bridge {
         {
             // Confirm event if transaction was found
             Ok(VerificationStatus::Exists) => {
-                UnsignedMessage::new(eth_event_contract::confirm(), account)
+                UnsignedMessage::new(eth_event_contract::confirm(), account).arg(account_addr)
             }
             // Reject event if transaction not found
             Ok(VerificationStatus::NotExists) => {
-                UnsignedMessage::new(eth_event_contract::reject(), account)
+                UnsignedMessage::new(eth_event_contract::reject(), account).arg(account_addr)
             }
             // Skip event otherwise
             Err(e) => {
@@ -577,12 +579,15 @@ impl Bridge {
             }
         };
 
+        let account_addr = ton_block::MsgAddrStd::with_address(None, 0, account.into());
+
         let message = match decoded_data {
             // Confirm with signature
             Ok(data) => {
                 log::info!("Signing event data: {}", hex::encode(&data));
                 UnsignedMessage::new(ton_event_contract::confirm(), account)
                     .arg(keystore.eth.sign(&data).to_vec())
+                    .arg(account_addr)
             }
 
             // Reject if event data is invalid
@@ -592,7 +597,7 @@ impl Bridge {
                     account,
                     e
                 );
-                UnsignedMessage::new(ton_event_contract::reject(), account)
+                UnsignedMessage::new(ton_event_contract::reject(), account).arg(account_addr)
             }
         };
 
@@ -1352,18 +1357,24 @@ fn read_code_hash(cell: &mut ton_types::SliceData) -> Result<Option<ton_types::U
 impl EventBaseContract<'_> {
     /// Determine event action
     fn process(&self, public_key: &UInt256, require_all_signatures: bool) -> Result<EventAction> {
+        const SUPPORTED_API_VERSION: u32 = 2;
+
         Ok(match self.status()? {
             // If it is still initializing - postpone processing until relay keys are received
             EventStatus::Initializing => EventAction::Nop,
             // The main status in which we can vote
-            EventStatus::Pending if self.get_voters(EventVote::Empty)?.contains(public_key) => {
+            EventStatus::Pending
+                if self.get_voters(EventVote::Empty)?.contains(public_key)
+                    && self.get_api_version().unwrap_or_default() == SUPPORTED_API_VERSION =>
+            {
                 EventAction::Vote
             }
             // Special case for TON-ETH event which must collect as much signatures as possible
             EventStatus::Confirmed
                 if require_all_signatures
                     && self.0.account.storage.balance.grams.0 >= MIN_EVENT_BALANCE
-                    && self.get_voters(EventVote::Empty)?.contains(public_key) =>
+                    && self.get_voters(EventVote::Empty)?.contains(public_key)
+                    && self.get_api_version().unwrap_or_default() == SUPPORTED_API_VERSION =>
             {
                 EventAction::Vote
             }

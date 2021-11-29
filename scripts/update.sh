@@ -9,6 +9,8 @@ function print_help() {
   echo ''
   echo 'Options:'
   echo '  -h,--help         Print this help message and exit'
+  echo '  -f,--force        Clear "/var/db/relay" on update'
+  echo '  -s,--sync         Restart "timesyncd" service'
   echo '  -t,--type TYPE    One of two types of installation:'
   echo '                    native - A little more complex way, but gives some'
   echo '                             performance gain and reduces the load.'
@@ -17,12 +19,22 @@ function print_help() {
   echo '                             specs than required.'
 }
 
+force="false"
+restart_timesyncd="false"
 while [[ $# -gt 0 ]]; do
   key="$1"
   case $key in
       -h|--help)
         print_help
         exit 0
+      ;;
+      -f|--force)
+        force="true"
+        shift # past argument
+      ;;
+      -s|--sync)
+        restart_timesyncd="true"
+        shift # past argument
       ;;
       -t|--type)
         setup_type="$2"
@@ -54,8 +66,12 @@ fi
 echo "INFO: stopping relay service"
 sudo systemctl stop relay
 
-echo "INFO: removing relay db"
-sudo rm -rf /var/db/relay
+if [[ "$force" == "true" ]]; then
+  echo "INFO: removing relay db"
+  sudo rm -rf /var/db/relay
+else
+  echo 'INFO: skipping "/var/db/relay" deletion'
+fi
 
 if [[ "$setup_type" == "native" ]]; then
   echo 'INFO: running update for native installation'
@@ -85,8 +101,10 @@ fi
 echo "INFO: preparing environment"
 sudo mkdir -p /var/db/relay
 
-echo 'INFO: restarting timesyncd'
-sudo systemctl restart systemd-timesyncd.service
+if [[ "$restart_timesyncd" == "true" ]]; then
+  echo 'INFO: restarting timesyncd'
+  sudo systemctl restart systemd-timesyncd.service
+fi
 
 echo 'INFO: restarting relay service'
 sudo systemctl restart relay

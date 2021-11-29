@@ -17,11 +17,21 @@ pub fn get_event_init_data() -> &'static ton_abi::Function {
 /// External function
 pub fn confirm() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
-    FUNCTION.get_or_init(|| FunctionBuilder::new("confirm").default_headers().build())
+    FUNCTION.get_or_init(|| {
+        FunctionBuilder::new("confirm")
+            .default_headers()
+            .input("voteReceiver", ton_abi::ParamType::Address)
+            .build()
+    })
 }
 
 /// External function
 pub fn reject() -> &'static ton_abi::Function {
     static FUNCTION: OnceCell<ton_abi::Function> = OnceCell::new();
-    FUNCTION.get_or_init(|| FunctionBuilder::new("reject").default_headers().build())
+    FUNCTION.get_or_init(|| {
+        FunctionBuilder::new("reject")
+            .default_headers()
+            .input("voteReceiver", ton_abi::ParamType::Address)
+            .build()
+    })
 }
