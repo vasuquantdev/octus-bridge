@@ -1,4 +1,4 @@
-use std::collections::{hash_map, HashMap};
+use std::collections::hash_map;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::{Arc, Weak};
@@ -18,7 +18,7 @@ pub struct TonSubscriber {
     ready: AtomicBool,
     ready_signal: Notify,
     current_utime: AtomicU32,
-    state_subscriptions: Mutex<HashMap<UInt256, StateSubscription>>,
+    state_subscriptions: Mutex<FxHashMap<UInt256, StateSubscription>>,
     mc_block_awaiters: Mutex<FxHashMap<usize, Box<dyn BlockAwaiter>>>,
     messages_queue: Arc<PendingMessagesQueue>,
 }
@@ -29,7 +29,10 @@ impl TonSubscriber {
             ready: AtomicBool::new(false),
             ready_signal: Notify::new(),
             current_utime: AtomicU32::new(0),
-            state_subscriptions: Mutex::new(HashMap::new()),
+            state_subscriptions: Mutex::new(FxHashMap::with_capacity_and_hasher(
+                128,
+                Default::default(),
+            )),
             mc_block_awaiters: Mutex::new(FxHashMap::with_capacity_and_hasher(
                 4,
                 Default::default(),
@@ -100,7 +103,7 @@ impl TonSubscriber {
                 }
             };
 
-            let mut block_ids = HashMap::with_capacity(16);
+            let mut block_ids = FxHashMap::with_capacity_and_hasher(16, Default::default());
 
             custom.shards().iterate_with_keys(
                 |wc_id: i32, ton_block::InRefValue(shards_tree)| {
