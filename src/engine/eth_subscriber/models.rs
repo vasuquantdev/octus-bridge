@@ -58,6 +58,12 @@ impl TryFrom<Log> for ParsedEthEvent {
             }));
         }
 
+        let topic_hash = log
+            .topics
+            .into_iter()
+            .next()
+            .context("Topic hash not found")?;
+
         let block_number = log
             .block_number
             .map(|x| x.as_u64())
@@ -77,11 +83,12 @@ impl TryFrom<Log> for ParsedEthEvent {
 
         Ok(ParsedEthEvent::Received(ReceivedEthEvent {
             address,
-            data,
+            topic_hash,
             transaction_hash,
             event_index,
             block_number,
             block_hash,
+            data,
         }))
     }
 }
@@ -97,6 +104,7 @@ pub struct RemovedEthEvent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReceivedEthEvent {
     pub address: H160,
+    pub topic_hash: H256,
     pub transaction_hash: H256,
     pub event_index: u32,
     pub block_number: u64,

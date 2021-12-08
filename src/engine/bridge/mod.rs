@@ -813,7 +813,7 @@ impl Bridge {
 
         // Verify and prepare abi
         let event_abi = Arc::new(EthEventAbi::new(&details.basic_configuration.event_abi)?);
-        let topic_hash = event_abi.get_eth_topic_hash();
+        let topic_hash = event_abi.get_eth_topic_hash().to_fixed_bytes();
         let eth_contract_address = details.network_configuration.event_emitter;
 
         // Get suitable ETH subscriber for specified chain id
@@ -842,7 +842,6 @@ impl Bridge {
                 entry.insert(EthEventConfigurationState {
                     details,
                     event_abi,
-                    topic_hash,
                     _observer: observer.clone(),
                 });
             }
@@ -1425,8 +1424,6 @@ struct EthEventConfigurationState {
     details: EthEventConfigurationDetails,
     /// Parsed and mapped event ABI
     event_abi: Arc<EthEventAbi>,
-    /// ETH event topic
-    topic_hash: [u8; 32],
 
     /// Observer must live as long as configuration lives
     _observer: Arc<AccountObserver<EthEventConfigurationEvent>>,
