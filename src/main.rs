@@ -82,7 +82,11 @@ impl CmdRun {
         tokio::select! {
             res = engine => res,
             signal = any_signal => {
-                log::warn!("Received signal {:?}. Flushing state...", signal);
+                if let Ok(signal) = signal {
+                    log::warn!("Received signal ({:?}). Flushing state...", signal);
+                }
+                // NOTE: engine future is safely dropped here so rocksdb method
+                // `rocksdb_close` is called in DB object destructor
                 Ok(())
             }
         }
