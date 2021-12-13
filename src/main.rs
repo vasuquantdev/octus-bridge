@@ -62,12 +62,34 @@ impl CmdRun {
         let global_config = ton_indexer::GlobalConfig::from_file(&self.global_config)
             .context("Failed to open global config")?;
 
-        log::info!("Initializing relay...");
-        let mut shutdown_requests_rx = relay.init(config, global_config).await?;
-        log::info!("Initialized relay");
+        let engine = async move {
+            log::info!("Initializing relay...");
+            let mut shutdown_requests_rx = relay.init(config, global_config).await?;
+            log::info!("Initialized relay");
 
-        shutdown_requests_rx.recv().await;
-        Ok(())
+            shutdown_requests_rx.recv().await;
+            Ok(())
+        };
+
+        let any_signal = any_signal([
+            unix::SignalKind::interrupt(),
+            unix::SignalKind::terminate(),
+            unix::SignalKind::quit(),
+            unix::SignalKind::from_raw(6),  // SIGABRT/SIGIOT
+            unix::SignalKind::from_raw(20), // SIGTSTP
+        ]);
+
+        tokio::select! {
+            res = engine => res,
+            signal = any_signal => {
+                if let Ok(signal) = signal {
+                    log::warn!("Received signal ({:?}). Flushing state...", signal);
+                }
+                // NOTE: engine future is safely dropped here so rocksdb method
+                // `rocksdb_close` is called in DB object destructor
+                Ok(())
+            }
+        }
     }
 }
 
@@ -283,6 +305,30 @@ impl Relay {
         log::info!("Updated config");
         Ok(())
     }
+}
+
+fn any_signal<I>(signals: I) -> tokio::sync::oneshot::Receiver<unix::SignalKind>
+where
+    I: IntoIterator<Item = unix::SignalKind>,
+{
+    let (tx, rx) = tokio::sync::oneshot::channel();
+
+    let any_signal = futures::future::select_all(signals.into_iter().map(|signal| {
+        Box::pin(async move {
+            unix::signal(signal)
+                .expect("Failed subscribing on unix signals")
+                .recv()
+                .await;
+            signal
+        })
+    }));
+
+    tokio::spawn(async move {
+        let signal = any_signal.await.0;
+        tx.send(signal).ok();
+    });
+
+    rx
 }
 
 fn start_listening_reloads<F, R>(mut on_reload: F) -> Result<()>

@@ -1,5 +1,4 @@
 use std::borrow::Borrow;
-use std::collections::HashMap;
 
 use anyhow::{Context, Result};
 use tiny_adnl::utils::*;
@@ -8,7 +7,7 @@ use ton_types::UInt256;
 
 use super::existing_contract::*;
 
-pub type ShardsMap = HashMap<ton_block::ShardIdent, ton_block::BlockIdExt>;
+pub type ShardsMap = FxHashMap<ton_block::ShardIdent, ton_block::BlockIdExt>;
 
 #[derive(Debug, Clone)]
 pub struct LatestShardBlocks {

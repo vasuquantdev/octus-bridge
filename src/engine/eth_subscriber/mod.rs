@@ -734,6 +734,7 @@ impl PendingConfirmation {
         // NOTE: event_index and transaction_hash are already checked while searching
         // ETH event log, but here they are also checked just in case.
         if event.address.0 != self.event_emitter
+            || &event.topic_hash != self.event_abi.get_eth_topic_hash()
             || event.event_index != vote_data.event_index
             || &event.transaction_hash.0 != vote_data.event_transaction.as_slice()
             || event.block_number != vote_data.event_block_number as u64
@@ -742,7 +743,8 @@ impl PendingConfirmation {
             return VerificationStatus::NotExists;
         }
 
-        // Event data is checked last, because it is quite expensive
+        // Event data is checked last, because it is quite expensive. `topic_hash`
+        // is checked earlier to also skip this without decoding data.
         match self.event_abi.decode_and_map(&event.data) {
             Ok(data) if data.repr_hash() == vote_data.event_data.repr_hash() => {
                 VerificationStatus::Exists
