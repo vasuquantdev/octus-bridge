@@ -49,8 +49,11 @@ impl Pkey {
         }
     }
 
-    pub fn make_region<T>(self: &Arc<Self>) -> std::io::Result<ProtectedRegion<T>> {
-        ProtectedRegion::new(self)
+    pub fn make_region<T>(self: &Arc<Self>, initial: T) -> std::io::Result<Arc<ProtectedRegion<T>>>
+    where
+        T: Sized,
+    {
+        ProtectedRegion::new(self, initial)
     }
 
     fn set(&self, rights: usize) {
@@ -86,7 +89,10 @@ pub struct ProtectedRegion<T> {
 }
 
 impl<T> ProtectedRegion<T> {
-    fn new(pkey: &Arc<Pkey>) -> std::io::Result<Self> {
+    fn new(pkey: &Arc<Pkey>, initial: T) -> std::io::Result<Arc<Self>>
+    where
+        T: Sized,
+    {
         if std::mem::size_of::<T>() > PAGE_SIZE {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::Unsupported,
@@ -125,11 +131,20 @@ impl<T> ProtectedRegion<T> {
             return Err(std::io::Error::last_os_error());
         }
 
-        Ok(Self {
+        // Enable memory access
+        pkey.set(0);
+
+        // SAFETY: ptr is always aligned to PAGE_SIZE (4KB) and not null
+        unsafe { (ptr as *mut T).write(initial) };
+
+        // Disable memory access
+        pkey.set(PKEY_DISABLE_ACCESS);
+
+        Ok(Arc::new(Self {
             pkey: pkey.clone(),
             ptr,
             _marker: std::marker::PhantomData::default(),
-        })
+        }))
     }
 
     pub fn lock(&'_ self) -> ProtectedRegionGuard<'_, T> {
@@ -139,6 +154,15 @@ impl<T> ProtectedRegion<T> {
 
 impl<T> Drop for ProtectedRegion<T> {
     fn drop(&mut self) {
+        // Enable memory access to run destructor
+        self.pkey.set(0);
+
+        // SAFETY: region still exists, properly aligned and accessible to read/write
+        unsafe { std::ptr::drop_in_place(self.ptr as *mut T) };
+
+        // Disable memory access
+        self.pkey.set(PKEY_DISABLE_ACCESS);
+
         // SAFETY: region still exists, ptr and length were initialized once on creation
         if unsafe { libc::munmap(self.ptr, PAGE_SIZE) } < 0 {
             log::error!("failed to unmap file: {}", std::io::Error::last_os_error());
@@ -221,14 +245,34 @@ const PAGE_SIZE: usize = 4096;
 mod tests {
     use super::*;
 
+    struct TestStruct {
+        test: bool,
+        value: u32,
+    }
+
+    impl Drop for TestStruct {
+        fn drop(&mut self) {
+            println!("dropped {}", self.value);
+        }
+    }
+
     #[test]
     fn test_protected_region() {
         assert!(is_ospke_supported());
 
         let pkey = Pkey::new(false).unwrap();
+
         {
-            let region = pkey.make_region::<[u8; 1024]>().unwrap();
+            let region = Arc::new(
+                pkey.make_region(TestStruct {
+                    test: true,
+                    value: 123,
+                })
+                .unwrap(),
+            );
+
             let guard = region.lock();
+            println!("{}", guard.value);
         }
     }
 }
