@@ -4,9 +4,9 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use argh::FromArgs;
 use dialoguer::{Confirm, Input, Password};
-use futures::future::Future;
 use relay::config::*;
 use relay::engine::*;
+use relay::utils::*;
 use serde::{Deserialize, Serialize};
 use tokio::signal::unix;
 use tokio::sync::mpsc;
@@ -16,17 +16,8 @@ static GLOBAL: ton_indexer::alloc::Allocator = ton_indexer::alloc::allocator();
 
 fn main() -> Result<()> {
     let app = argh::from_env::<App>();
-
     match app.command {
-        Subcommand::Run(run) => {
-            // TODO: create keys
-
-            tokio::runtime::Builder::new_multi_thread()
-                .enable_all()
-                .build()
-                .expect("Failed building the Runtime")
-                .block_on(run.execute())
-        }
+        Subcommand::Run(run) => run.execute(),
         Subcommand::Generate(generate) => generate.execute(),
         Subcommand::Export(export) => export.execute(),
     }
@@ -61,40 +52,59 @@ struct CmdRun {
 }
 
 impl CmdRun {
-    async fn execute(self) -> Result<()> {
+    fn execute(self) -> Result<()> {
         let (relay, config) = create_relay(&self.config)?;
 
         let global_config = ton_indexer::GlobalConfig::from_file(&self.global_config)
             .context("Failed to open global config")?;
 
+        // NOTE: protection keys must be called in the main thread
+        let protection_keys = ProtectionKeys::new(config.require_protected_keystore)
+            .context("Failed to create protection keys")?;
+
+        // Create engine future
         let engine = async move {
+            // Spawn SIGHUP signal listener
+            relay.start_listening_reloads()?;
+
             log::info!("Initializing relay...");
-            let mut shutdown_requests_rx = relay.init(config, global_config).await?;
+            let mut shutdown_requests_rx =
+                relay.init(config, global_config, protection_keys).await?;
             log::info!("Initialized relay");
 
             shutdown_requests_rx.recv().await;
             Ok(())
         };
 
-        let any_signal = any_signal([
-            unix::SignalKind::interrupt(),
-            unix::SignalKind::terminate(),
-            unix::SignalKind::quit(),
-            unix::SignalKind::from_raw(6),  // SIGABRT/SIGIOT
-            unix::SignalKind::from_raw(20), // SIGTSTP
-        ]);
+        // Create main future
+        let future = async move {
+            let any_signal = any_signal([
+                unix::SignalKind::interrupt(),
+                unix::SignalKind::terminate(),
+                unix::SignalKind::quit(),
+                unix::SignalKind::from_raw(6),  // SIGABRT/SIGIOT
+                unix::SignalKind::from_raw(20), // SIGTSTP
+            ]);
 
-        tokio::select! {
-            res = engine => res,
-            signal = any_signal => {
-                if let Ok(signal) = signal {
-                    log::warn!("Received signal ({:?}). Flushing state...", signal);
+            tokio::select! {
+                res = engine => res,
+                signal = any_signal => {
+                    if let Ok(signal) = signal {
+                        log::warn!("Received signal ({:?}). Flushing state...", signal);
+                    }
+                    // NOTE: engine future is safely dropped here so rocksdb method
+                    // `rocksdb_close` is called in DB object destructor
+                    Ok(())
                 }
-                // NOTE: engine future is safely dropped here so rocksdb method
-                // `rocksdb_close` is called in DB object destructor
-                Ok(())
             }
-        }
+        };
+
+        // Manually create an executor and run the main future
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("Failed building the Runtime")
+            .block_on(future)
     }
 }
 
@@ -258,15 +268,6 @@ where
         engine: Default::default(),
     });
 
-    // Spawn SIGHUP signal listener
-    start_listening_reloads({
-        let state = state.clone();
-        move || {
-            let state = state.clone();
-            async move { state.reload().await }
-        }
-    })?;
-
     Ok((state, config))
 }
 
@@ -281,10 +282,11 @@ impl Relay {
         &self,
         config: AppConfig,
         global_config: ton_indexer::GlobalConfig,
+        protection_keys: Arc<ProtectionKeys>,
     ) -> Result<ShutdownRequestsRx> {
         let (shutdown_requests_tx, shutdown_requests_rx) = mpsc::unbounded_channel();
 
-        let engine = Engine::new(config, global_config, shutdown_requests_tx)
+        let engine = Engine::new(config, global_config, protection_keys, shutdown_requests_tx)
             .await
             .context("Failed to create engine")?;
         *self.engine.lock().await = Some(engine.clone());
@@ -292,6 +294,22 @@ impl Relay {
         engine.start().await.context("Failed to start engine")?;
 
         Ok(shutdown_requests_rx)
+    }
+
+    fn start_listening_reloads(self: &Arc<Self>) -> Result<()> {
+        let mut signals_stream = unix::signal(unix::SignalKind::hangup())
+            .context("Failed to subscribe to SIGHUP signal")?;
+
+        let state = self.clone();
+        tokio::spawn(async move {
+            while let Some(()) = signals_stream.recv().await {
+                if let Err(e) = state.reload().await {
+                    log::error!("Failed to reload config: {:?}", e);
+                };
+            }
+        });
+
+        Ok(())
     }
 
     async fn reload(&self) -> Result<()> {
@@ -334,25 +352,6 @@ where
     });
 
     rx
-}
-
-fn start_listening_reloads<F, R>(mut on_reload: F) -> Result<()>
-where
-    F: FnMut() -> R + Send + Sync + 'static,
-    R: Future<Output = Result<()>> + Send,
-{
-    let mut signals_stream =
-        unix::signal(unix::SignalKind::hangup()).context("Failed to subscribe to SIGHUP signal")?;
-
-    tokio::spawn(async move {
-        while let Some(()) = signals_stream.recv().await {
-            if let Err(e) = on_reload().await {
-                log::error!("Failed to reload config: {:?}", e);
-            };
-        }
-    });
-
-    Ok(())
 }
 
 fn make_empty_password<'a>() -> Cow<'a, secstr::SecUtf8> {

@@ -6,27 +6,27 @@ use ::core::arch::x86 as arch;
 #[cfg(all(target_arch = "x86_64", not(target_env = "sgx")))]
 use ::core::arch::x86_64 as arch;
 
-pub struct Pkey {
+pub struct ProtectionKeys {
     handle: Option<libc::c_int>,
 }
 
-impl Pkey {
-    pub fn new(allow_unprotected: bool) -> std::io::Result<Arc<Self>> {
+impl ProtectionKeys {
+    pub fn new(require_protected: bool) -> std::io::Result<Arc<Self>> {
         // Check if protection keys are supported
         if !is_ospke_supported() {
-            return if allow_unprotected {
+            return if require_protected {
+                // Return an error
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::Unsupported,
+                    "protection keys are not supported by this CPU",
+                ))
+            } else {
                 // Return an empty handle if protection keys are not supported
                 log::error!(
                     "Protections keys are not supported by this CPU. \
                     Skipping keystore memory protection"
                 );
                 Ok(Arc::new(Self { handle: None }))
-            } else {
-                // Return an error
-                Err(std::io::Error::new(
-                    std::io::ErrorKind::Unsupported,
-                    "protection keys are not supported by this CPU",
-                ))
             };
         }
 
@@ -34,7 +34,7 @@ impl Pkey {
         // or return result according to https://man7.org/linux/man-pages/man2/pkey_alloc.2.html
         let pkey = unsafe { libc::syscall(libc::SYS_pkey_alloc, 0usize, PKEY_DISABLE_ACCESS) };
 
-        if pkey < 0 && allow_unprotected {
+        if pkey < 0 && !require_protected {
             // Return an empty handle if no protection keys left
             log::error!("Protection keys allocation failed. Skipping keystore memory protection");
             Ok(Arc::new(Self { handle: None }))
@@ -64,7 +64,7 @@ impl Pkey {
     }
 }
 
-impl Drop for Pkey {
+impl Drop for ProtectionKeys {
     fn drop(&mut self) {
         let handle = match self.handle {
             Some(handle) => handle as usize,
@@ -83,13 +83,13 @@ impl Drop for Pkey {
 }
 
 pub struct ProtectedRegion<T> {
-    pkey: Arc<Pkey>,
+    pkey: Arc<ProtectionKeys>,
     ptr: *mut libc::c_void,
     _marker: std::marker::PhantomData<T>,
 }
 
 impl<T> ProtectedRegion<T> {
-    fn new(pkey: &Arc<Pkey>, initial: T) -> std::io::Result<Arc<Self>>
+    fn new(pkey: &Arc<ProtectionKeys>, initial: T) -> std::io::Result<Arc<Self>>
     where
         T: Sized,
     {
@@ -169,6 +169,9 @@ impl<T> Drop for ProtectedRegion<T> {
         }
     }
 }
+
+unsafe impl<T: Sync> Sync for ProtectedRegion<T> {}
+unsafe impl<T> Send for ProtectedRegion<T> {}
 
 pub struct ProtectedRegionGuard<'a, T> {
     region: &'a ProtectedRegion<T>,
@@ -258,21 +261,18 @@ mod tests {
 
     #[test]
     fn test_protected_region() {
-        assert!(is_ospke_supported());
-
-        let pkey = Pkey::new(false).unwrap();
+        let pkey = ProtectionKeys::new(false).unwrap();
 
         {
-            let region = Arc::new(
-                pkey.make_region(TestStruct {
+            let region = pkey
+                .make_region(TestStruct {
                     test: true,
                     value: 123,
                 })
-                .unwrap(),
-            );
+                .unwrap();
 
             let guard = region.lock();
-            println!("{}", guard.value);
+            println!("{}, {}", guard.test, guard.value);
         }
     }
 }
