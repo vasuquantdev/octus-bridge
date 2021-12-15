@@ -11,6 +11,8 @@ use ton_types::UInt256;
 use crate::config::{FromPhraseAndPath, StoredKeysData, UnencryptedEthData, UnencryptedTonData};
 use crate::utils::*;
 
+mod protected_region;
+
 /// A collection of signers
 pub struct KeyStore {
     pub eth: EthSigner,
@@ -34,6 +36,10 @@ impl KeyStore {
                 UnencryptedEthData::generate()?,
                 UnencryptedTonData::generate()?,
             )?;
+
+            // NOTE: UnencryptedEthData and UnencryptedTonData will be dropped and zeroed
+            // here because they use `SecUtf8` for phrase and path
+
             data.save(keys_path)?;
             data
         };

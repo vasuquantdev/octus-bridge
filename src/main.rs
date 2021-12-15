@@ -14,14 +14,19 @@ use tokio::sync::mpsc;
 #[global_allocator]
 static GLOBAL: ton_indexer::alloc::Allocator = ton_indexer::alloc::allocator();
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    run(argh::from_env()).await
-}
+fn main() -> Result<()> {
+    let app = argh::from_env::<App>();
 
-async fn run(app: App) -> Result<()> {
     match app.command {
-        Subcommand::Run(run) => run.execute().await,
+        Subcommand::Run(run) => {
+            // TODO: create keys
+
+            tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .expect("Failed building the Runtime")
+                .block_on(run.execute())
+        }
         Subcommand::Generate(generate) => generate.execute(),
         Subcommand::Export(export) => export.execute(),
     }

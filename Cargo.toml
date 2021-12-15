@@ -23,6 +23,7 @@ futures = "0.3"
 hex = "0.4"
 http = "0.2"
 hyper = { version = "0.14", features = ["server"] }
+libc = "0.2"
 log = "0.4"
 log4rs = "1.0"
 num-bigint = "0.3"
@@ -67,6 +68,9 @@ nekoton-utils = { git = "https://github.com/broxus/nekoton.git", features = ["en
 
 # Indexer engine
 ton-indexer = { git = "https://github.com/broxus/ton-indexer.git" }
+
+[build-dependencies]
+cc = "1.0.3"
 
 [dev-dependencies]
 cargo-husky = { version = "1", features = ["default", "run-cargo-fmt", "run-cargo-check"] }
