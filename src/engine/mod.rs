@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use parking_lot::Mutex;
+use pkey_mprotect::*;
 use tiny_adnl::utils::*;
 use tokio::sync::mpsc;
 use ton_block::Serializable;

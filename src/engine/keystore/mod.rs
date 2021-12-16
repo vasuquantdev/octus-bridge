@@ -5,6 +5,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use nekoton_abi::*;
 use nekoton_utils::TrustMe;
+use pkey_mprotect::*;
 use secstr::SecUtf8;
 use ton_types::UInt256;
 
