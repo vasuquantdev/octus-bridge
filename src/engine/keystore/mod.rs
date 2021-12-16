@@ -2,9 +2,10 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use nekoton_abi::*;
 use nekoton_utils::TrustMe;
+use pkey_mprotect::*;
 use secstr::SecUtf8;
 use ton_types::UInt256;
 
@@ -19,7 +20,11 @@ pub struct KeyStore {
 
 impl KeyStore {
     /// Loads and decrypts keystore state
-    pub fn new<P>(keys_path: P, password: SecUtf8) -> Result<Arc<Self>>
+    pub fn new<P>(
+        keys_path: P,
+        password: SecUtf8,
+        protection_keys: Arc<ProtectionKeys>,
+    ) -> Result<Arc<Self>>
     where
         P: AsRef<Path>,
     {
@@ -34,18 +39,30 @@ impl KeyStore {
                 UnencryptedEthData::generate()?,
                 UnencryptedTonData::generate()?,
             )?;
+
+            // NOTE: UnencryptedEthData and UnencryptedTonData will be dropped and zeroed
+            // here because they use `SecUtf8` for phrase and path
+
             data.save(keys_path)?;
             data
         };
 
         let (eth_secret_key, ton_secret_key) =
             stored_data.decrypt_only_keys(password.unsecure())?;
-        let eth_secret_key = secp256k1::SecretKey::from_slice(&eth_secret_key)?;
-        let ton_secret_key = ed25519_dalek::SecretKey::from_bytes(&ton_secret_key)?;
+        let keys = protection_keys
+            .make_region(Keys {
+                eth_secret_key: secp256k1::SecretKey::from_slice(&eth_secret_key)?,
+                ton_keypair: {
+                    let secret = ed25519_dalek::SecretKey::from_bytes(&ton_secret_key)?;
+                    let public = ed25519_dalek::PublicKey::from(&secret);
+                    ed25519_dalek::Keypair { secret, public }
+                },
+            })
+            .context("Failed to create protected region")?;
 
         let keystore = Arc::new(Self {
-            eth: EthSigner::new(eth_secret_key),
-            ton: TonSigner::new(ton_secret_key),
+            eth: EthSigner::new(keys.clone()),
+            ton: TonSigner::new(keys),
         });
 
         // Print ETH address and TON public key
@@ -60,22 +77,23 @@ impl KeyStore {
 }
 
 pub struct EthSigner {
+    keys: Arc<ProtectedRegion<Keys>>,
     secp256k1: secp256k1::Secp256k1<secp256k1::All>,
-    secret_key: secp256k1::SecretKey,
-    public_key: secp256k1::PublicKey,
     address: ethabi::Address,
 }
 
 impl EthSigner {
-    fn new(secret_key: secp256k1::SecretKey) -> Self {
+    fn new(keys: Arc<ProtectedRegion<Keys>>) -> Self {
         let secp256k1 = secp256k1::Secp256k1::new();
-        let public_key = secp256k1::PublicKey::from_secret_key(&secp256k1, &secret_key);
+        let public_key = {
+            let keys = keys.lock();
+            secp256k1::PublicKey::from_secret_key(&secp256k1, &keys.eth_secret_key)
+        };
         let address = compute_eth_address(&public_key);
 
         Self {
+            keys,
             secp256k1,
-            secret_key,
-            public_key,
             address,
         }
     }
@@ -94,7 +112,7 @@ impl EthSigner {
         // 3. Sign
         let (id, signature) = self
             .secp256k1
-            .sign_recoverable(&message, &self.secret_key)
+            .sign_recoverable(&message, &self.keys.lock().eth_secret_key)
             .serialize_compact();
 
         // 4. Prepare for ETH
@@ -107,12 +125,8 @@ impl EthSigner {
         ex_sign
     }
 
-    pub fn secret_key(&self) -> &secp256k1::SecretKey {
-        &self.secret_key
-    }
-
-    pub fn pubkey(&self) -> &secp256k1::PublicKey {
-        &self.public_key
+    pub fn handle(&self) -> EthSignerHandle {
+        EthSignerHandle(self.keys.clone())
     }
 
     pub fn address(&self) -> &ethabi::Address {
@@ -120,20 +134,38 @@ impl EthSigner {
     }
 }
 
+#[derive(Clone)]
+pub struct EthSignerHandle(Arc<ProtectedRegion<Keys>>);
+
+impl EthSignerHandle {
+    pub fn secret_key(&'_ self) -> EthSignerHandleGuard<'_> {
+        EthSignerHandleGuard(self.0.lock())
+    }
+}
+
+pub struct EthSignerHandleGuard<'a>(ProtectedRegionGuard<'a, Keys>);
+
+impl std::ops::Deref for EthSignerHandleGuard<'_> {
+    type Target = secp256k1::SecretKey;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0.eth_secret_key
+    }
+}
+
 pub struct TonSigner {
-    pair: ed25519_dalek::Keypair,
+    keys: Arc<ProtectedRegion<Keys>>,
+    public_key: ed25519_dalek::PublicKey,
     public_key_bytes: UInt256,
 }
 
 impl TonSigner {
-    fn new(secret_key: ed25519_dalek::SecretKey) -> Self {
-        let public_key = ed25519_dalek::PublicKey::from(&secret_key);
+    fn new(keys: Arc<ProtectedRegion<Keys>>) -> Self {
+        let public_key = keys.lock().ton_keypair.public;
 
         Self {
-            pair: ed25519_dalek::Keypair {
-                secret: secret_key,
-                public: public_key,
-            },
+            keys,
+            public_key,
             public_key_bytes: UInt256::from(public_key.to_bytes()),
         }
     }
@@ -143,19 +175,19 @@ impl TonSigner {
     }
 
     pub fn raw_public_key(&self) -> &ed25519_dalek::PublicKey {
-        &self.pair.public
+        &self.public_key
     }
 
     pub fn sign(&self, unsigned_message: &UnsignedMessage) -> Result<SignedMessage> {
         let time = chrono::Utc::now().timestamp_millis() as u64;
         let expire_at = (time / 1000) as u32 + MESSAGE_TTL_SEC;
 
-        let headers = default_headers(time, expire_at, &self.pair.public);
+        let headers = default_headers(time, expire_at, &self.public_key);
         let body = unsigned_message.function.encode_input(
             &headers,
             &unsigned_message.inputs,
             false,
-            Some(&self.pair),
+            Some(&self.keys.lock().ton_keypair),
         )?;
 
         let message = ton_block::Message::with_ext_in_header_and_body(
@@ -172,6 +204,11 @@ impl TonSigner {
             expire_at,
         })
     }
+}
+
+struct Keys {
+    eth_secret_key: secp256k1::SecretKey,
+    ton_keypair: ed25519_dalek::Keypair,
 }
 
 pub struct UnsignedMessage {
@@ -297,8 +334,10 @@ mod tst {
 
     #[test]
     fn check_ok_passwd() {
+        let protection_keys = ProtectionKeys::new(false).unwrap();
+
         let (_dir, path) = create_file();
-        let store = KeyStore::new(path, "lol".into()).unwrap();
+        let store = KeyStore::new(path, "lol".into(), protection_keys).unwrap();
 
         let expected_ton_key =
             hex::decode("6be37687497f5b54ffc9fec5c17e24be08e6cbcf8e240155b1735aa6da634183")
@@ -307,14 +346,22 @@ mod tst {
             hex::decode("89d0fdd4e8ad43c60e5130741febe7c070e0e19223b011d99254fd2f0d206489")
                 .unwrap();
 
-        assert_eq!(store.ton.pair.secret.as_ref(), &expected_ton_key);
-        assert_eq!(&store.eth.secret_key.as_ref()[..], &expected_eth_key);
+        assert_eq!(
+            store.ton.keys.lock().ton_keypair.secret.as_ref(),
+            &expected_ton_key
+        );
+        assert_eq!(
+            &store.eth.keys.lock().eth_secret_key.as_ref()[..],
+            &expected_eth_key
+        );
     }
 
     #[test]
     fn check_bad_password() {
+        let protection_keys = ProtectionKeys::new(false).unwrap();
+
         let (_dir, path) = create_file();
-        assert!(KeyStore::new(path, "kek".into()).is_err())
+        assert!(KeyStore::new(path, "kek".into(), protection_keys).is_err())
     }
 
     fn create_file() -> (TempDir, PathBuf) {
@@ -329,28 +376,40 @@ mod tst {
         (dir, path)
     }
 
-    fn default_keys() -> (secp256k1::SecretKey, ed25519_dalek::SecretKey) {
-        let eth_private_key = secp256k1::SecretKey::from_slice(
+    fn default_keys() -> Arc<ProtectedRegion<Keys>> {
+        let protection_keys = ProtectionKeys::new(false).unwrap();
+
+        let eth_secret_key = secp256k1::SecretKey::from_slice(
             &hex::decode("416ddb82736d0ddf80cc50eda0639a2dd9f104aef121fb9c8af647ad8944a8b1")
                 .unwrap(),
         )
         .unwrap();
 
-        let ton_private_key = ed25519_dalek::SecretKey::from_bytes(
+        let ton_secret_key = ed25519_dalek::SecretKey::from_bytes(
             &hex::decode("e371ef1d7266fc47b30d49dc886861598f09e2e6294d7f0520fe9aa460114e51")
                 .unwrap(),
         )
         .unwrap();
+        let ton_public_key = ed25519_dalek::PublicKey::from(&ton_secret_key);
 
-        (eth_private_key, ton_private_key)
+        protection_keys
+            .make_region(Keys {
+                eth_secret_key,
+                ton_keypair: {
+                    ed25519_dalek::Keypair {
+                        secret: ton_secret_key,
+                        public: ton_public_key,
+                    }
+                },
+            })
+            .unwrap()
     }
 
     #[test]
     fn test_sign() {
         let message_text = b"hello_world1";
 
-        let (private_key, _) = default_keys();
-        let signer = EthSigner::new(private_key);
+        let signer = EthSigner::new(default_keys());
         let res = signer.sign(message_text);
         let expected = hex::decode("ff244ad5573d02bc6ead270d5ff48c490b0113225dd61617791ba6610ed1e56a007ec790f8fca53243907b888e6b33ad15c52fed3bc6a7ee5da2fa287ea4f8211b").unwrap();
         assert_eq!(expected.len(), res.len());
@@ -359,8 +418,7 @@ mod tst {
 
     #[test]
     fn test_address_derive() {
-        let (key, _) = default_keys();
-        let signer = EthSigner::new(key);
+        let signer = EthSigner::new(default_keys());
         let address = signer.address();
         let expected =
             ethabi::Address::from_str("9c5a095ae311cad1b09bc36ac8635f4ed4765dcf").unwrap();
