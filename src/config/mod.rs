@@ -10,13 +10,11 @@ use serde::{Deserialize, Serialize};
 
 pub use self::eth_config::*;
 pub use self::stored_keys::*;
-use self::temp_keys::*;
 pub use self::verification_state::*;
 use crate::utils::*;
 
 mod eth_config;
 mod stored_keys;
-mod temp_keys;
 mod verification_state;
 
 /// Main application config (full). Used to run relay
@@ -150,9 +148,8 @@ impl NodeConfig {
         log::info!("Using public ip: {}", ip_address);
 
         // Generate temp keys
-        // TODO: add param to generate new temp keys
-        let temp_keys =
-            TempKeys::load(self.temp_keys_path, false).context("Failed to load temp keys")?;
+        let adnl_keys = ton_indexer::NodeKeys::load(self.temp_keys_path, false)
+            .context("Failed to load temp keys")?;
 
         // Prepare DB folder
         std::fs::create_dir_all(&self.db_path)?;
@@ -160,7 +157,7 @@ impl NodeConfig {
         // Done
         Ok(ton_indexer::NodeConfig {
             ip_address: SocketAddrV4::new(ip_address, self.adnl_port),
-            adnl_keys: temp_keys.into(),
+            adnl_keys,
             rocks_db_path: self.db_path.join("rocksdb"),
             file_db_path: self.db_path.join("files"),
             state_gc_options: self.states_gc_enabled.then(|| ton_indexer::StateGcOptions {
