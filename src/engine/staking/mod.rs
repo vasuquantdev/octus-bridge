@@ -1,4 +1,3 @@
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -36,9 +35,9 @@ pub struct Staking {
     user_data_balance_changed_notify: Notify,
 
     /// Whether relay participates in current round
-    participates_in_round: AtomicBool,
-    /// Whether relay was elected during elections in current round
-    elected: AtomicBool,
+    participates_in_round: Tristate,
+    /// Whether relay was elected during elections in current round.
+    elected: Tristate,
 
     /// Staking contract address
     staking_account: UInt256,
@@ -59,19 +58,57 @@ impl Staking {
             .context("Failed to ensure that user data is confirmed")?;
 
         // Prepare initial data
-        let shard_accounts = ctx.get_all_shard_accounts().await?;
-        let staking_contract = shard_accounts
-            .find_account(&staking_account)?
-            .context("Staking contract not found")?;
-        let staking_contract = StakingContract(&staking_contract);
+        let (shard_accounts, relay_round_details, relay_round_state, user_data_account) = loop {
+            // Load all shard states
+            let shard_accounts = ctx.get_all_shard_accounts().await?;
 
-        let relay_round_state = staking_contract
-            .get_round_state()
-            .context("Current relay round not found")?;
+            // Get all info from staking contract
+            let staking_contract = shard_accounts
+                .find_account(&staking_account)?
+                .context("Staking contract not found")?;
+            let staking_contract = StakingContract(&staking_contract);
 
-        let user_data_account = staking_contract
-            .get_user_data_address(&ctx.staker_account)
-            .context("User data account not found")?;
+            let relay_round_state = staking_contract
+                .get_round_state()
+                .context("Current relay round not found")?;
+
+            let relay_round_address = staking_contract
+                .get_relay_round_address(relay_round_state.number)
+                .context("Failed to get current relay round address")?;
+
+            // Get all info from current relay round contract
+            let relay_round_details = match shard_accounts.find_account(&relay_round_address)? {
+                Some(contract) => RelayRoundContract(&contract)
+                    .get_details()
+                    .context("Failed to get relay round details")?,
+                None => {
+                    // Wait for the next state
+                    log::warn!("Current relay round contract not found");
+                    continue;
+                }
+            };
+
+            if !relay_round_details.relays_installed {
+                // Wait for the next state
+                log::warn!("Relay round was not initialized yet");
+                continue;
+            }
+
+            let user_data_account = staking_contract
+                .get_user_data_address(&ctx.staker_account)
+                .context("User data account not found")?;
+
+            break (
+                shard_accounts,
+                relay_round_details,
+                relay_round_state,
+                user_data_account,
+            );
+        };
+
+        let participates_in_round = relay_round_details
+            .staker_addrs
+            .contains(&ctx.staker_account);
 
         let user_data_contract = shard_accounts
             .find_account(&user_data_account)?
@@ -81,50 +118,26 @@ impl Staking {
             .context("Failed to get user data details")?
             .token_balance;
 
-        struct VoteStats {
-            should_vote: bool,
-            elected: bool,
-        }
-
-        let check_elected = |elections_account_address: &UInt256| {
+        let check_elected = |elections_account_address: &UInt256| -> anyhow::Result<bool> {
             let elections_contract = shard_accounts
                 .find_account(elections_account_address)?
-                .context("Elections contract not found")?;
+                .context("Next elections contract not found")?;
             let elections_contract = ElectionsContract(&elections_contract);
-            Result::<_, anyhow::Error>::Ok(
-                elections_contract
-                    .staker_addrs()
-                    .context("Failed to get staker addresses")?
-                    .contains(&ctx.staker_account),
-            )
+            Ok(elections_contract
+                .staker_addrs()
+                .context("Failed to get staker addresses from next elections contract")?
+                .contains(&ctx.staker_account))
         };
 
-        let participates_in_round = check_elected(&relay_round_state.previous_elections_account)
-            .context("Failed to check previous elections")?;
-
-        let VoteStats {
-            should_vote,
-            elected,
-        } = match &relay_round_state.elections_state {
-            ElectionsState::NotStarted { .. } => VoteStats {
-                should_vote: false,
-                elected: false,
-            },
+        let (should_vote, elected) = match &relay_round_state.elections_state {
+            ElectionsState::NotStarted { .. } => (false, None),
             ElectionsState::Started { .. } => {
-                let elected = check_elected(&relay_round_state.next_elections_account)
-                    .context("Failed to check next elections")?;
-                VoteStats {
-                    should_vote: !ctx.settings.ignore_elections && !elected,
-                    elected,
-                }
+                let elected = check_elected(&relay_round_state.next_elections_account)?;
+                (!ctx.settings.ignore_elections && !elected, Some(elected))
             }
             ElectionsState::Finished => {
-                let elected = check_elected(&relay_round_state.next_elections_account)
-                    .context("Failed to check next elections")?;
-                VoteStats {
-                    should_vote: false,
-                    elected,
-                }
+                let elected = check_elected(&relay_round_state.next_elections_account)?;
+                (false, Some(elected))
             }
         };
 
@@ -143,8 +156,8 @@ impl Staking {
             elections_end_notify: Default::default(),
             relay_config_updated_notify: Default::default(),
             user_data_balance_changed_notify: Default::default(),
-            participates_in_round: AtomicBool::new(participates_in_round),
-            elected: AtomicBool::new(elected),
+            participates_in_round: Tristate::new(Some(participates_in_round)),
+            elected: Tristate::new(elected),
             staking_account,
             staking_observer: AccountObserver::new(&staking_events_tx),
             user_data_account,
@@ -200,8 +213,8 @@ impl Staking {
             user_data_tokens_balance: current_relay_round.user_data_balance,
             elections_state: current_relay_round.state.elections_state,
             ignore_elections: self.context.settings.ignore_elections,
-            participates_in_round: self.participates_in_round.load(Ordering::Acquire),
-            elected: self.elected.load(Ordering::Acquire),
+            participates_in_round: self.participates_in_round.load(),
+            elected: self.elected.load(),
         }
     }
 
@@ -288,6 +301,14 @@ impl Staking {
         // NOTE: at this time it can also be locked in elections management loop
         let mut current_relay_round = self.current_relay_round.lock();
         current_relay_round.state = round_state;
+
+        // Reset `elected` flag if elections were not started yet
+        if matches!(
+            &current_relay_round.state.elections_state,
+            ElectionsState::NotStarted { .. }
+        ) {
+            self.elected.store(None);
+        }
 
         match event {
             StakingEvent::ElectionStarted(_) => {
@@ -625,8 +646,8 @@ pub struct StakingMetrics {
     pub user_data_tokens_balance: u128,
     pub elections_state: ElectionsState,
     pub ignore_elections: bool,
-    pub participates_in_round: bool,
-    pub elected: bool,
+    pub participates_in_round: Option<bool>,
+    pub elected: Option<bool>,
 }
 
 /// Relay round and user data params
@@ -819,14 +840,6 @@ impl<'a> StakingContract<'a> {
             .context("Failed to get relay_rounds_details")?;
         log::info!("Relay round details: {:?}", relay_rounds_details);
 
-        let previous_elections_account = self
-            .get_election_address(relay_rounds_details.current_relay_round)
-            .context("Failed to get previous election address")?;
-        log::info!(
-            "current_elections_account: {:x}",
-            previous_elections_account
-        );
-
         let next_elections_account = self
             .get_election_address(relay_rounds_details.current_relay_round + 1)
             .context("Failed to get next election address")?;
@@ -856,7 +869,6 @@ impl<'a> StakingContract<'a> {
         Ok(RoundState {
             number: relay_rounds_details.current_relay_round,
             elections_state,
-            previous_elections_account,
             next_elections_account,
             min_relay_deposit: relay_config.min_relay_deposit,
         })
@@ -867,7 +879,6 @@ impl<'a> StakingContract<'a> {
 struct RoundState {
     number: u32,
     elections_state: ElectionsState,
-    previous_elections_account: UInt256,
     next_elections_account: UInt256,
     min_relay_deposit: u128,
 }
