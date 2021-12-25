@@ -460,15 +460,3 @@ pub mod array_uint128_number {
         ton_abi::ParamType::Array(Box::new(ton_abi::ParamType::Uint(128)))
     }
 }
-
-#[derive(Debug, Clone, UnpackAbiPlain, KnownParamTypePlain)]
-pub struct RelayRoundEntry {
-    #[abi(with = "uint256_bytes")]
-    pub ton_pubkey: UInt256,
-    #[abi(with = "uint160_bytes")]
-    pub eth_address: [u8; 20],
-    #[abi(with = "address_only_hash")]
-    pub staker_addr: UInt256,
-    #[abi(uint128)]
-    pub staked_tokens: u128,
-}
