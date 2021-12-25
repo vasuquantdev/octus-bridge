@@ -98,6 +98,9 @@ else
   exit 1
 fi
 
+sudo wget -O /etc/relay/ton-global.config.json \
+  https://raw.githubusercontent.com/tonlabs/main.ton.dev/master/configs/ton-global.config.json
+
 echo "INFO: preparing environment"
 sudo mkdir -p /var/db/relay
 

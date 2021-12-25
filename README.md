@@ -94,24 +94,33 @@ NOTE: scripts are prepared and tested on **Ubuntu 20.04**. You may need to modif
    > <p>
    >
    > ```
-   > eth_subscriber_last_processed_block{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",chain_id="250"} 19757952
-   > eth_subscriber_pending_confirmation_count{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",chain_id="250"} 0
-   > eth_subscriber_last_processed_block{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",chain_id="1"} 13467334
-   > eth_subscriber_pending_confirmation_count{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",chain_id="1"} 0
-   > eth_subscriber_last_processed_block{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",chain_id="137"} 20486774
-   > eth_subscriber_pending_confirmation_count{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",chain_id="137"} 0
-   > eth_subscriber_last_processed_block{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",chain_id="56"} 12140031
+   > eth_subscriber_last_processed_block{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",chain_id="56"} 13790361
    > eth_subscriber_pending_confirmation_count{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",chain_id="56"} 0
-   > ton_subscriber_ready{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} true
-   > ton_subscriber_current_utime{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 1635368353
-   > ton_subscriber_time_diff{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 5
+   > eth_subscriber_last_processed_block{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",chain_id="137"} 22954791
+   > eth_subscriber_pending_confirmation_count{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",chain_id="137"} 0
+   > eth_subscriber_last_processed_block{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",chain_id="250"} 26020394
+   > eth_subscriber_pending_confirmation_count{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",chain_id="250"} 0
+   > eth_subscriber_last_processed_block{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",chain_id="1"} 13875962
+   > eth_subscriber_pending_confirmation_count{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",chain_id="1"} 0
+   > ton_subscriber_ready{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 1
+   > ton_subscriber_current_utime{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 1640456699
+   > ton_subscriber_time_diff{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 3
+   > ton_subscriber_shard_client_time_diff{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 7
+   > ton_subscriber_mc_block_seqno{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 13426600
+   > ton_subscriber_shard_client_mc_block_seqno{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 13426600
    > ton_subscriber_pending_message_count{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 0
    > bridge_pending_eth_event_count{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 0
    > bridge_pending_ton_event_count{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 0
-   > staking_user_data_tokens_balance{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 100000000000000
-   > staking_current_relay_round{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 5
-   > staking_elections_start_time{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",round_num="5"} 1635541843
-   > staking_elections_status{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",round_num="5"} 0
+   > bridge_total_active_eth_event_configurations{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 86
+   > bridge_total_active_ton_event_configurations{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 11
+   > staking_user_data_tokens_balance{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",round_num="13"} 100000000000000
+   > staking_current_relay_round{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 13
+   > staking_elections_start_time{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",round_num="13"} 1640380268
+   > staking_elections_end_time{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",round_num="13"} 1640553068
+   > staking_elections_status{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",round_num="13"} 1
+   > staking_ignore_elections{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",round_num="13"} 0
+   > staking_participates_in_round{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",round_num="13"} 1
+   > staking_elected{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",round_num="13"} 1
    > ```
    > 
    > </p>

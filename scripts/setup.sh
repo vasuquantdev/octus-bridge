@@ -108,8 +108,9 @@ if [[ -f "$config_path" ]]; then
 else
   sudo cp -n "$REPO_DIR/contrib/config.yaml" "$config_path"
 fi
+
 sudo wget -O /etc/relay/ton-global.config.json \
-  https://raw.githubusercontent.com/tonlabs/main.ton.dev/master/configs/main.ton.dev/ton-global.config.json
+  https://raw.githubusercontent.com/tonlabs/main.ton.dev/master/configs/ton-global.config.json
 
 echo 'INFO: restarting timesyncd'
 sudo systemctl restart systemd-timesyncd.service
