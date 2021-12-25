@@ -398,3 +398,65 @@ pub struct RelayKeysUpdatedEvent {
     #[abi(with = "uint160_bytes")]
     pub eth_address: [u8; 20],
 }
+
+#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
+pub struct RelayMembershipRequestedEvent {
+    #[abi(uint32)]
+    pub round_num: u32,
+    #[abi(uint128)]
+    pub tokens: u128,
+    #[abi(with = "uint256_bytes")]
+    pub ton_pubkey: UInt256,
+    #[abi(with = "uint160_bytes")]
+    pub eth_address: [u8; 20],
+    #[abi(uint32)]
+    pub lock_until: u32,
+}
+
+#[derive(Debug, Clone, UnpackAbi, KnownParamType)]
+pub struct RelayRoundDetails {
+    #[abi(with = "address_only_hash")]
+    pub root: UInt256,
+    #[abi(uint32)]
+    pub round_num: u32,
+    #[abi(with = "array_uint256_bytes")]
+    pub ton_keys: Vec<UInt256>,
+    #[abi(with = "array_uint160_bytes")]
+    pub eth_addrs: Vec<[u8; 20]>,
+    #[abi(with = "array_address_only_hash")]
+    pub staker_addrs: Vec<UInt256>,
+    #[abi(with = "array_uint128_number")]
+    pub staked_tokens: Vec<u128>,
+    #[abi(bool)]
+    pub relays_installed: bool,
+    #[abi(uint32)]
+    pub code_version: u32,
+}
+
+pub mod array_uint128_number {
+    use num_traits::ToPrimitive;
+
+    use super::*;
+
+    pub fn unpack(value: &ton_abi::TokenValue) -> UnpackerResult<Vec<u128>> {
+        match value {
+            ton_abi::TokenValue::Array(_, values) => {
+                let mut result = Vec::with_capacity(values.len());
+                for value in values {
+                    result.push(match value {
+                        ton_abi::TokenValue::Uint(ton_abi::Uint { number, size: 128 }) => {
+                            number.to_u128().ok_or(UnpackerError::InvalidAbi)?
+                        }
+                        _ => return Err(UnpackerError::InvalidAbi),
+                    });
+                }
+                Ok(result)
+            }
+            _ => Err(UnpackerError::InvalidAbi),
+        }
+    }
+
+    pub fn param_type() -> ton_abi::ParamType {
+        ton_abi::ParamType::Array(Box::new(ton_abi::ParamType::Uint(128)))
+    }
+}

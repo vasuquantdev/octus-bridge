@@ -371,6 +371,25 @@ impl std::fmt::Display for LabeledStakingMetrics<'_> {
             .label(LABEL_ROUND_NUM, &metrics.current_relay_round)
             .value(status)?;
 
+        f.begin_metric("staking_ignore_elections")
+            .label(LABEL_STAKER, &self.context.staker_account_str)
+            .label(LABEL_ROUND_NUM, &metrics.current_relay_round)
+            .value(metrics.ignore_elections as u8)?;
+
+        if let Some(participates_in_round) = metrics.participates_in_round {
+            f.begin_metric("staking_participates_in_round")
+                .label(LABEL_STAKER, &self.context.staker_account_str)
+                .label(LABEL_ROUND_NUM, &metrics.current_relay_round)
+                .value(participates_in_round as u8)?;
+        }
+
+        if let Some(elected) = metrics.elected {
+            f.begin_metric("staking_elected")
+                .label(LABEL_STAKER, &self.context.staker_account_str)
+                .label(LABEL_ROUND_NUM, metrics.current_relay_round)
+                .value(elected as u8)?;
+        }
+
         Ok(())
     }
 }

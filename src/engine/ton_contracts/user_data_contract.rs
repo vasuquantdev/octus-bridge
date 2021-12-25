@@ -62,6 +62,14 @@ pub mod events {
         })
     }
 
+    pub fn relay_membership_requested() -> &'static ton_abi::Event {
+        crate::once!(ton_abi::Event, || {
+            EventBuilder::new("RelayMembershipRequested")
+                .inputs(RelayMembershipRequestedEvent::param_type())
+                .build()
+        })
+    }
+
     pub fn deposit_processed() -> &'static ton_abi::Event {
         crate::once!(ton_abi::Event, || {
             EventBuilder::new("DepositProcessed")

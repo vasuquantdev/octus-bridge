@@ -208,6 +208,13 @@ impl ElectionsContract<'_> {
 pub struct RelayRoundContract<'a>(pub &'a ExistingContract);
 
 impl RelayRoundContract<'_> {
+    pub fn get_details(&self) -> Result<RelayRoundDetails> {
+        let function = relay_round_contract::get_details();
+        let inputs = [answer_id()];
+        let details = self.0.run_local(function, &inputs)?.unpack_first()?;
+        Ok(details)
+    }
+
     pub fn has_unclaimed_reward(&self, staker_addr: UInt256) -> Result<bool> {
         let function = relay_round_contract::has_unclaimed_reward();
         let inputs = [

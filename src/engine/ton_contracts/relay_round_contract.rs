@@ -1,5 +1,17 @@
 use nekoton_abi::*;
 
+use super::models::*;
+
+/// External responsible function
+pub fn get_details() -> &'static ton_abi::Function {
+    crate::once!(ton_abi::Function, || {
+        FunctionBuilder::new_responsible("getDetails")
+            .time_header()
+            .output("details", RelayRoundDetails::param_type())
+            .build()
+    })
+}
+
 /// External responsible function
 pub fn has_unclaimed_reward() -> &'static ton_abi::Function {
     crate::once!(ton_abi::Function, || {

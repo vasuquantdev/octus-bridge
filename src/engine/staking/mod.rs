@@ -34,6 +34,11 @@ pub struct Staking {
     /// Notifier for `DepositProcessed` events
     user_data_balance_changed_notify: Notify,
 
+    /// Whether relay participates in current round
+    participates_in_round: Tristate,
+    /// Whether relay was elected during elections in current round.
+    elected: Tristate,
+
     /// Staking contract address
     staking_account: UInt256,
     /// Staking events listener
@@ -53,19 +58,57 @@ impl Staking {
             .context("Failed to ensure that user data is confirmed")?;
 
         // Prepare initial data
-        let shard_accounts = ctx.get_all_shard_accounts().await?;
-        let staking_contract = shard_accounts
-            .find_account(&staking_account)?
-            .context("Staking contract not found")?;
-        let staking_contract = StakingContract(&staking_contract);
+        let (shard_accounts, relay_round_details, relay_round_state, user_data_account) = loop {
+            // Load all shard states
+            let shard_accounts = ctx.get_all_shard_accounts().await?;
 
-        let relay_round_state = staking_contract
-            .get_round_state()
-            .context("Current relay round not found")?;
+            // Get all info from staking contract
+            let staking_contract = shard_accounts
+                .find_account(&staking_account)?
+                .context("Staking contract not found")?;
+            let staking_contract = StakingContract(&staking_contract);
 
-        let user_data_account = staking_contract
-            .get_user_data_address(&ctx.staker_account)
-            .context("User data account not found")?;
+            let relay_round_state = staking_contract
+                .get_round_state()
+                .context("Current relay round not found")?;
+
+            let relay_round_address = staking_contract
+                .get_relay_round_address(relay_round_state.number)
+                .context("Failed to get current relay round address")?;
+
+            // Get all info from current relay round contract
+            let relay_round_details = match shard_accounts.find_account(&relay_round_address)? {
+                Some(contract) => RelayRoundContract(&contract)
+                    .get_details()
+                    .context("Failed to get relay round details")?,
+                None => {
+                    // Wait for the next state
+                    log::warn!("Current relay round contract not found");
+                    continue;
+                }
+            };
+
+            if !relay_round_details.relays_installed {
+                // Wait for the next state
+                log::warn!("Relay round was not initialized yet");
+                continue;
+            }
+
+            let user_data_account = staking_contract
+                .get_user_data_address(&ctx.staker_account)
+                .context("User data account not found")?;
+
+            break (
+                shard_accounts,
+                relay_round_details,
+                relay_round_state,
+                user_data_account,
+            );
+        };
+
+        let participates_in_round = relay_round_details
+            .staker_addrs
+            .contains(&ctx.staker_account);
 
         let user_data_contract = shard_accounts
             .find_account(&user_data_account)?
@@ -75,19 +118,27 @@ impl Staking {
             .context("Failed to get user data details")?
             .token_balance;
 
-        let should_vote = match &relay_round_state.elections_state {
-            ElectionsState::Started { .. } if !ctx.settings.ignore_elections => {
-                let elections_contract = shard_accounts
-                    .find_account(&relay_round_state.next_elections_account)?
-                    .context("Next elections contract not found")?;
-                let elections_contract = ElectionsContract(&elections_contract);
-                let elected = elections_contract
-                    .staker_addrs()
-                    .context("Failed to get staker addresses")?
-                    .contains(&ctx.staker_account);
-                !elected
+        let check_elected = |elections_account_address: &UInt256| -> anyhow::Result<bool> {
+            let elections_contract = shard_accounts
+                .find_account(elections_account_address)?
+                .context("Next elections contract not found")?;
+            let elections_contract = ElectionsContract(&elections_contract);
+            Ok(elections_contract
+                .staker_addrs()
+                .context("Failed to get staker addresses from next elections contract")?
+                .contains(&ctx.staker_account))
+        };
+
+        let (should_vote, elected) = match &relay_round_state.elections_state {
+            ElectionsState::NotStarted { .. } => (false, None),
+            ElectionsState::Started { .. } => {
+                let elected = check_elected(&relay_round_state.next_elections_account)?;
+                (!ctx.settings.ignore_elections && !elected, Some(elected))
             }
-            _ => false,
+            ElectionsState::Finished => {
+                let elected = check_elected(&relay_round_state.next_elections_account)?;
+                (false, Some(elected))
+            }
         };
 
         let (staking_events_tx, staking_events_rx) = mpsc::unbounded_channel();
@@ -105,6 +156,8 @@ impl Staking {
             elections_end_notify: Default::default(),
             relay_config_updated_notify: Default::default(),
             user_data_balance_changed_notify: Default::default(),
+            participates_in_round: Tristate::new(Some(participates_in_round)),
+            elected: Tristate::new(elected),
             staking_account,
             staking_observer: AccountObserver::new(&staking_events_tx),
             user_data_account,
@@ -159,6 +212,9 @@ impl Staking {
             current_relay_round: current_relay_round.state.number,
             user_data_tokens_balance: current_relay_round.user_data_balance,
             elections_state: current_relay_round.state.elections_state,
+            ignore_elections: self.context.settings.ignore_elections,
+            participates_in_round: self.participates_in_round.load(),
+            elected: self.elected.load(),
         }
     }
 
@@ -246,9 +302,20 @@ impl Staking {
         let mut current_relay_round = self.current_relay_round.lock();
         current_relay_round.state = round_state;
 
+        // Reset `elected` flag if elections were not started yet
+        if matches!(
+            &current_relay_round.state.elections_state,
+            ElectionsState::NotStarted { .. }
+        ) {
+            self.elected.store(None);
+        }
+
         match event {
             StakingEvent::ElectionStarted(_) => {
                 self.elections_start_notify.notify_waiters();
+
+                // Set `elected` as `false` on each election start
+                self.elected.store_if_empty(false);
 
                 // Do nothing if elections are ignored
                 if self.context.settings.ignore_elections {
@@ -276,6 +343,17 @@ impl Staking {
             }
             StakingEvent::RelayRoundInitialized(event) => {
                 self.relay_round_started_notify.notify_waiters();
+
+                // Reset `participates_in_round` flag on each round start
+                self.participates_in_round.store(None);
+
+                // Spawn participation status checker
+                let staking = self.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = staking.update_participates_in_round_status().await {
+                        log::error!("Failed to update `participates_in_round` flag: {:?}", e);
+                    }
+                });
 
                 // Spawn delayed reward collection
                 let staking = self.clone();
@@ -318,6 +396,14 @@ impl Staking {
                     );
                     self.context.shutdown_requests_tx.send(())?;
                 }
+            }
+            UserDataEvent::RelayMembershipRequested(event) => {
+                log::info!(
+                    "Relay membership requested with TON pubkey 0x{:x} and ETH address {}",
+                    event.ton_pubkey,
+                    hex::encode(event.eth_address)
+                );
+                self.elected.store(Some(true));
             }
             UserDataEvent::DepositProcessed(event) => {
                 let mut current_relay_round = self.current_relay_round.lock();
@@ -575,12 +661,46 @@ impl Staking {
             )
             .await
     }
+
+    /// Checks whether this relay is in current relay round
+    async fn update_participates_in_round_status(&self) -> Result<()> {
+        let shard_accounts = self.context.get_all_shard_accounts().await?;
+        let staking_contract = shard_accounts
+            .find_account(&self.staking_account)?
+            .context("Staking contract not found")?;
+        let staking_contract = StakingContract(&staking_contract);
+
+        let relay_rounds_details = staking_contract
+            .get_relay_rounds_details()
+            .context("Failed to get relay_rounds_details")?;
+
+        let relay_round_address = staking_contract
+            .get_relay_round_address(relay_rounds_details.current_relay_round)
+            .context("Failed to compute relay round address")?;
+        let relay_round_contract = shard_accounts
+            .find_account(&relay_round_address)?
+            .context("Current relay round contract not found")?;
+        let relay_round_contract = RelayRoundContract(&relay_round_contract);
+
+        self.participates_in_round.store_if_empty(
+            relay_round_contract
+                .get_details()
+                .context("Failed to get relay round details")?
+                .staker_addrs
+                .contains(&self.staking_account),
+        );
+
+        Ok(())
+    }
 }
 
 pub struct StakingMetrics {
     pub current_relay_round: u32,
     pub user_data_tokens_balance: u128,
     pub elections_state: ElectionsState,
+    pub ignore_elections: bool,
+    pub participates_in_round: Option<bool>,
+    pub elected: Option<bool>,
 }
 
 /// Relay round and user data params
@@ -686,6 +806,7 @@ impl UserDataContract<'_> {
                                 log::error!("Confirmed ETH address mismatch");
                             }
                         }
+                        UserDataEvent::RelayMembershipRequested(_) => { /* ignore */ }
                         UserDataEvent::DepositProcessed(_) => { /* ignore */ }
                     }
                 }
@@ -775,7 +896,7 @@ impl<'a> StakingContract<'a> {
 
         let next_elections_account = self
             .get_election_address(relay_rounds_details.current_relay_round + 1)
-            .context("Failed to get election address")?;
+            .context("Failed to get next election address")?;
         log::info!("next_elections_account: {:x}", next_elections_account);
 
         let elections_state = match relay_rounds_details.current_election_start_time {
@@ -905,6 +1026,7 @@ enum UserDataEvent {
     RelayKeysUpdated(RelayKeysUpdatedEvent),
     TonPubkeyConfirmed(TonPubkeyConfirmedEvent),
     EthAddressConfirmed(EthAddressConfirmedEvent),
+    RelayMembershipRequested(RelayMembershipRequestedEvent),
     DepositProcessed(DepositProcessedEvent),
 }
 
@@ -913,6 +1035,7 @@ impl ReadFromTransaction for UserDataEvent {
         let keys_updated = user_data_contract::events::relay_keys_updated();
         let ton_confirmed = user_data_contract::events::ton_pubkey_confirmed();
         let eth_confirmed = user_data_contract::events::eth_address_confirmed();
+        let membership_requested = user_data_contract::events::relay_membership_requested();
         let deposit = user_data_contract::events::deposit_processed();
 
         let mut res = None;
@@ -923,6 +1046,13 @@ impl ReadFromTransaction for UserDataEvent {
                 parse_tokens!(res, ton_confirmed, body, UserDataEvent::TonPubkeyConfirmed)
             } else if id == eth_confirmed.id {
                 parse_tokens!(res, eth_confirmed, body, UserDataEvent::EthAddressConfirmed)
+            } else if id == membership_requested.id {
+                parse_tokens!(
+                    res,
+                    membership_requested,
+                    body,
+                    UserDataEvent::RelayMembershipRequested
+                )
             } else if id == deposit.id {
                 parse_tokens!(res, deposit, body, UserDataEvent::DepositProcessed)
             }
