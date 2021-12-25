@@ -344,6 +344,17 @@ impl Staking {
             StakingEvent::RelayRoundInitialized(event) => {
                 self.relay_round_started_notify.notify_waiters();
 
+                // Reset `participates_in_round` flag on each round start
+                self.participates_in_round.store(None);
+
+                // Spawn participation status checker
+                let staking = self.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = staking.update_participates_in_round_status().await {
+                        log::error!("Failed to update `participates_in_round` flag: {:?}", e);
+                    }
+                });
+
                 // Spawn delayed reward collection
                 let staking = self.clone();
                 tokio::spawn(async move {
@@ -649,6 +660,37 @@ impl Staking {
                 || true,
             )
             .await
+    }
+
+    /// Checks whether this relay is in current relay round
+    async fn update_participates_in_round_status(&self) -> Result<()> {
+        let shard_accounts = self.context.get_all_shard_accounts().await?;
+        let staking_contract = shard_accounts
+            .find_account(&self.staking_account)?
+            .context("Staking contract not found")?;
+        let staking_contract = StakingContract(&staking_contract);
+
+        let relay_rounds_details = staking_contract
+            .get_relay_rounds_details()
+            .context("Failed to get relay_rounds_details")?;
+
+        let relay_round_address = staking_contract
+            .get_relay_round_address(relay_rounds_details.current_relay_round)
+            .context("Failed to compute relay round address")?;
+        let relay_round_contract = shard_accounts
+            .find_account(&relay_round_address)?
+            .context("Current relay round contract not found")?;
+        let relay_round_contract = RelayRoundContract(&relay_round_contract);
+
+        self.participates_in_round.store_if_empty(
+            relay_round_contract
+                .get_details()
+                .context("Failed to get relay round details")?
+                .staker_addrs
+                .contains(&self.staking_account),
+        );
+
+        Ok(())
     }
 }
 
