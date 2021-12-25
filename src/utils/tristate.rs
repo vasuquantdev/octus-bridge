@@ -21,6 +21,12 @@ impl Tristate {
         );
     }
 
+    pub fn store_if_empty(&self, data: bool) {
+        self.0
+            .compare_exchange(2, data as u8, Ordering::Release, Ordering::Relaxed)
+            .ok();
+    }
+
     pub fn load(&self) -> Option<bool> {
         match self.0.load(Ordering::Acquire) {
             0 => Some(false),

@@ -399,6 +399,20 @@ pub struct RelayKeysUpdatedEvent {
     pub eth_address: [u8; 20],
 }
 
+#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
+pub struct RelayMembershipRequestedEvent {
+    #[abi(uint32)]
+    pub round_num: u32,
+    #[abi(uint128)]
+    pub tokens: u128,
+    #[abi(with = "uint256_bytes")]
+    pub ton_pubkey: UInt256,
+    #[abi(with = "uint160_bytes")]
+    pub eth_address: [u8; 20],
+    #[abi(uint32)]
+    pub lock_until: u32,
+}
+
 #[derive(Debug, Clone, UnpackAbi, KnownParamType)]
 pub struct RelayRoundDetails {
     #[abi(with = "address_only_hash")]

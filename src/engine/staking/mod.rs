@@ -314,6 +314,9 @@ impl Staking {
             StakingEvent::ElectionStarted(_) => {
                 self.elections_start_notify.notify_waiters();
 
+                // Set `elected` as `false` on each election start
+                self.elected.store_if_empty(false);
+
                 // Do nothing if elections are ignored
                 if self.context.settings.ignore_elections {
                     return Ok(());
@@ -382,6 +385,14 @@ impl Staking {
                     );
                     self.context.shutdown_requests_tx.send(())?;
                 }
+            }
+            UserDataEvent::RelayMembershipRequested(event) => {
+                log::info!(
+                    "Relay membership requested with TON pubkey 0x{:x} and ETH address {}",
+                    event.ton_pubkey,
+                    hex::encode(event.eth_address)
+                );
+                self.elected.store(Some(true));
             }
             UserDataEvent::DepositProcessed(event) => {
                 let mut current_relay_round = self.current_relay_round.lock();
@@ -753,6 +764,7 @@ impl UserDataContract<'_> {
                                 log::error!("Confirmed ETH address mismatch");
                             }
                         }
+                        UserDataEvent::RelayMembershipRequested(_) => { /* ignore */ }
                         UserDataEvent::DepositProcessed(_) => { /* ignore */ }
                     }
                 }
@@ -972,6 +984,7 @@ enum UserDataEvent {
     RelayKeysUpdated(RelayKeysUpdatedEvent),
     TonPubkeyConfirmed(TonPubkeyConfirmedEvent),
     EthAddressConfirmed(EthAddressConfirmedEvent),
+    RelayMembershipRequested(RelayMembershipRequestedEvent),
     DepositProcessed(DepositProcessedEvent),
 }
 
@@ -980,6 +993,7 @@ impl ReadFromTransaction for UserDataEvent {
         let keys_updated = user_data_contract::events::relay_keys_updated();
         let ton_confirmed = user_data_contract::events::ton_pubkey_confirmed();
         let eth_confirmed = user_data_contract::events::eth_address_confirmed();
+        let membership_requested = user_data_contract::events::relay_membership_requested();
         let deposit = user_data_contract::events::deposit_processed();
 
         let mut res = None;
@@ -990,6 +1004,13 @@ impl ReadFromTransaction for UserDataEvent {
                 parse_tokens!(res, ton_confirmed, body, UserDataEvent::TonPubkeyConfirmed)
             } else if id == eth_confirmed.id {
                 parse_tokens!(res, eth_confirmed, body, UserDataEvent::EthAddressConfirmed)
+            } else if id == membership_requested.id {
+                parse_tokens!(
+                    res,
+                    membership_requested,
+                    body,
+                    UserDataEvent::RelayMembershipRequested
+                )
             } else if id == deposit.id {
                 parse_tokens!(res, deposit, body, UserDataEvent::DepositProcessed)
             }

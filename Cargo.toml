@@ -11,8 +11,6 @@ anyhow = "1.0"
 argh = "0.1"
 async-trait = "0.1"
 base64 = "0.13"
-bb8 = "0.7"
-bincode = "1.3.3"
 chacha20poly1305 = "0.9"
 chrono = "0.4.19"
 config = { version = "0.11", default-features = false, features = ["yaml"] }
@@ -38,7 +36,6 @@ secstr = { version = "0.4", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.8"
-tap = "1.0.1"
 thiserror = "1.0"
 tokio = { version = "1.6", features = ["sync", "fs", "rt-multi-thread", "macros", "signal"] }
 tryhard = "0.4.0"
