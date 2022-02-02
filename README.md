@@ -288,6 +288,18 @@ more optimized than C++ node, so they don't harm the network.
 
 ### Changelog
 
+### 2.0.7 (2021-02-02)
+
+Features
+
+* ADNL security improvements
+
+### 2.0.6 (2021-12-31)
+
+Features
+
+* Optimized DB structure
+
 ### 2.0.5 (2021-11-27)
 
 Features
