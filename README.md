@@ -288,6 +288,12 @@ more optimized than C++ node, so they don't harm the network.
 
 ### Changelog
 
+### 2.0.8 (2021-02-12)
+
+Features
+
+* Updated ABI version to 2.2
+
 ### 2.0.7 (2021-02-02)
 
 Features

@@ -6,6 +6,7 @@ use super::models::*;
 pub fn status() -> &'static ton_abi::Function {
     crate::once!(ton_abi::Function, || {
         FunctionBuilder::new("status")
+            .abi_version(ton_abi::contract::ABI_VERSION_2_2)
             .default_headers()
             .output("status", EventStatus::param_type())
             .build()
@@ -16,6 +17,7 @@ pub fn status() -> &'static ton_abi::Function {
 pub fn round_number() -> &'static ton_abi::Function {
     crate::once!(ton_abi::Function, || {
         FunctionBuilder::new("round_number")
+            .abi_version(ton_abi::contract::ABI_VERSION_2_2)
             .default_headers()
             .output("round_number", u32::param_type())
             .build()
@@ -26,6 +28,7 @@ pub fn round_number() -> &'static ton_abi::Function {
 pub fn get_voters() -> &'static ton_abi::Function {
     crate::once!(ton_abi::Function, || {
         FunctionBuilder::new_responsible("getVoters")
+            .abi_version(ton_abi::contract::ABI_VERSION_2_2)
             .default_headers()
             .input("vote", EventVote::param_type())
             .outputs(RelayKeys::param_type())
@@ -37,6 +40,7 @@ pub fn get_voters() -> &'static ton_abi::Function {
 pub fn get_api_version() -> &'static ton_abi::Function {
     crate::once!(ton_abi::Function, || {
         FunctionBuilder::new_responsible("getApiVersion")
+            .abi_version(ton_abi::contract::ABI_VERSION_2_2)
             .default_headers()
             .output("version", u32::param_type())
             .build()
@@ -47,6 +51,7 @@ pub fn get_api_version() -> &'static ton_abi::Function {
 pub fn receive_round_relays() -> &'static ton_abi::Function {
     crate::once!(ton_abi::Function, || {
         FunctionBuilder::new("receiveRoundRelays")
+            .abi_version(ton_abi::contract::ABI_VERSION_2_2)
             .inputs(RelayKeys::param_type())
             .build()
     })

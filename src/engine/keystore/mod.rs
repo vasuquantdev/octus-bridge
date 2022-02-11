@@ -112,7 +112,7 @@ impl EthSigner {
         // 3. Sign
         let (id, signature) = self
             .secp256k1
-            .sign_recoverable(&message, &self.keys.lock().eth_secret_key)
+            .sign_ecdsa_recoverable(&message, &self.keys.lock().eth_secret_key)
             .serialize_compact();
 
         // 4. Prepare for ETH

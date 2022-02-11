@@ -558,7 +558,7 @@ impl Bridge {
                         ton_abi::TokenValue::decode_params(
                             &configuration.event_abi,
                             event_init_data.vote_data.event_data.clone().into(),
-                            &ton_abi::contract::ABI_VERSION_2_1,
+                            &ton_abi::contract::ABI_VERSION_2_2,
                             false,
                         ),
                     )
