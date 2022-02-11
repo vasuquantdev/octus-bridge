@@ -233,6 +233,8 @@ pub struct UserDataDetails {
     pub token_balance: u128,
     #[abi(uint32)]
     pub relay_lock_until: u32,
+    #[abi(uint32)]
+    pub current_version: u32,
     #[abi(array)]
     pub reward_rounds: Vec<UserDataRewardRound>,
     #[abi(with = "uint160_bytes")]
