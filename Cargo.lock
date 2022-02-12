@@ -981,7 +981,7 @@ checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
 [[package]]
 name = "global-config"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#2eabd1d963a4359b116e51fcbf07b9499c108c0d"
+source = "git+https://github.com/broxus/ton-indexer.git#5686975af02a7519573dd26039ec2a510febc88e"
 dependencies = [
  "anyhow",
  "base64",
@@ -2419,9 +2419,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.78"
+version = "1.0.79"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d23c1ba4cf0efd44be32017709280b32d1cea5c3f1275c3b6d9e8bc54f758085"
+checksum = "8e8d9fa5c3b304765ce1fd9c4c8a3de2c8db365a5b91be52f186efc675681d95"
 dependencies = [
  "itoa",
  "ryu",
@@ -2877,7 +2877,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#2eabd1d963a4359b116e51fcbf07b9499c108c0d"
+source = "git+https://github.com/broxus/ton-indexer.git#5686975af02a7519573dd26039ec2a510febc88e"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2920,7 +2920,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer-alloc"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#2eabd1d963a4359b116e51fcbf07b9499c108c0d"
+source = "git+https://github.com/broxus/ton-indexer.git#5686975af02a7519573dd26039ec2a510febc88e"
 dependencies = [
  "errno",
  "log",

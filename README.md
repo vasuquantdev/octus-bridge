@@ -293,6 +293,7 @@ more optimized than C++ node, so they don't harm the network.
 Features
 
 * Updated ABI version to 2.2
+* Fix memory leaks. (Shard states were slowly filling with loaded storage cells).
 
 ### 2.0.7 (2021-02-02)
 
