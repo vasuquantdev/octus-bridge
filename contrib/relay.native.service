@@ -5,7 +5,8 @@ StartLimitIntervalSec=0
 
 [Service]
 Type=simple
-Restart=no
+Restart=always
+RestartSec=3
 WorkingDirectory=/etc/relay
 ExecReload=kill -HUP $MAINPID
 ExecStart=/usr/local/bin/relay run --config /etc/relay/config.yaml --global-config /etc/relay/ton-global.config.json
