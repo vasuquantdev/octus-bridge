@@ -478,8 +478,7 @@ impl StateSubscription {
     ) -> impl Iterator<Item = Arc<dyn TransactionsSubscription>> + '_ {
         self.transaction_subscriptions
             .iter()
-            .map(Weak::upgrade)
-            .flatten()
+            .filter_map(Weak::upgrade)
     }
 }
 
