@@ -375,13 +375,15 @@ where
         }
     });
 
-    let mut config = config::Config::new();
-    config.merge(config::File::from_str(
-        result.as_ref(),
-        config::FileFormat::Yaml,
-    ))?;
-
-    config.try_into().context("Failed to parse config")
+    config::Config::builder()
+        .add_source(config::File::from_str(
+            result.as_ref(),
+            config::FileFormat::Yaml,
+        ))
+        .build()
+        .context("Failed to load config")?
+        .try_deserialize()
+        .context("Failed to parse config")
 }
 
 fn init_logger(initial_value: &serde_yaml::Value) -> Result<log4rs::Handle> {
