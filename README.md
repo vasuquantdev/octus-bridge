@@ -1,9 +1,8 @@
 <p align="center">
-    <h3 align="center">relay</h3>
-    <p align="center">ETH-TON bridge connecting link</p>
+    <h3 align="center">Octus Bridge relay</h3>
     <p align="center">
         <a href="/LICENSE">
-            <img alt="GitHub" src="https://img.shields.io/github/license/broxus/ton-eth-bridge-relay" />
+            <img alt="GitHub" src="https://img.shields.io/github/license/broxus/octusbridge-relay" />
         </a>
     </p>
 </p>
@@ -33,7 +32,7 @@ NOTE: scripts are prepared and tested on **Ubuntu 20.04**. You may need to modif
      Not recommended for machines with lower specs than required
 
    > At this stage, a systemd service `relay` is created. Configs and keys will be in `/etc/relay` and
-   > TON node DB will be in `/var/db/relay`. 
+   > Everscale node DB will be in `/var/db/relay`. 
 
    **Do not start this service yet!**
 2. ##### Prepare config
@@ -64,8 +63,8 @@ NOTE: scripts are prepared and tested on **Ubuntu 20.04**. You may need to modif
    This script will print unencrypted data. **Be sure to write it down somewhere! And also make a backup of the `/etc/relay` folder!**
 
 4. ##### Link relay keys
-   Use ETH address and TON public key from the previous step to link this relay setup
-   with your staker address at https://v2.tonbridge.io/relayers/create. When you start the linking process go to step 5 and start the relay. It will begin to confirm the public key and address on the air.
+   Use ETH address and Everscale public key from the previous step to link this relay setup
+   with your staker address at https://octusbridge.io/relayers/create. When you start the linking process go to step 5 and start the relay. It will begin to confirm the public key and address on the air.
    It may take some time to sync at first (~40 minutes).
 
    > During linking you will need to send at least **0.05 ETH** to your relay ETH address so that the relay can confirm his ownership.
@@ -223,21 +222,21 @@ logger_settings:
 
 ### Architecture overview
 
-The relay is simultaneously the TON node and can communicate with all EVM networks specified in the config. 
+The relay is simultaneously the Everscale node and can communicate with all EVM networks specified in the config. 
 Its purpose is to check and sign transaction events.
 
-At startup, it synchronizes the TON node and downloads blockchain state. It searches Bridge contract state in it,
-all connectors, active configurations and pending events. Then it subscribes to the Bridge contract in TON and 
+At startup, it synchronizes the Everscale node and downloads blockchain state. It searches Bridge contract state in it,
+all connectors, active configurations and pending events. Then it subscribes to the Bridge contract in Everscale and 
 listens for connector deployment events. Each new connector can produce activation event which signals that relay
 should subscribe to the event configuration contract. Each configuration contract produces event deployment 
 events, relay sees and checks them.
 
-- For TON-to-EVM events, only the correctness of data packing is checked (all other stuff is verified on the contracts 
+- For Everscale-to-EVM events, only the correctness of data packing is checked (all other stuff is verified on the contracts 
   side). If the event is correct, the relay converts this data into ETH ABI encoded bytes and signs it with its
   ETH key. This signature is sent along with a confirmation message. If the data in the event was invalid then the 
   relay sends a rejection message.
   
-  ##### TON-to-EVM ABI mapping rules:
+  ##### Everscale-to-EVM ABI mapping rules:
   ```
   bytes => same
   string => same
@@ -251,11 +250,14 @@ events, relay sees and checks them.
   _ => unsupported
   ```
 
-- For EVM-to-TON events, all event parameters are checked on the relay side. It waits for or looking for a transaction
+- For EVM-to-Everscale events, all event parameters are checked on the relay side. It waits for or looking for a transaction
   on the specified EVM network, converts event data to the TVM cell and sends a confirmation message if everything was
   correct. Otherwise, it sends a rejection message.
 
-  ##### ETH-to-TON ABI mapping rules:
+  ##### ETH-to-Everscale ABI mapping rules:
+
+  > You can use https://github.com/broxus/eth-ton-abi-converter to convert data from web page
+
   ```
   address => bytes (of length 20)
   bytes => bytes or cell (*)
@@ -271,7 +273,7 @@ events, relay sees and checks them.
   _ => unsupported
   ```
 
-  > When converting ABI from EVM format to TON, there is a mechanism for controlling this process.
+  > When converting ABI from EVM format to Everscale, there is a mechanism for controlling this process.
   > You can add a `bytes1` *(\*\*)* element which sets context flags to its value.
   > 
   > Currently, there are only three flags:
@@ -281,7 +283,7 @@ events, relay sees and checks them.
   > 
   > NOTE: Flags can't be changed inside an array element! This would lead to inconsistent array items ABI.
 
-The decision to make the relay a TON node was not made by chance. In the first version, several relays were connected 
+The decision to make the relay an Everscale node was not made by chance. In the first version, several relays were connected 
 to the one "light" node which was constantly restarted or to the graphql which also was quite unreliable.
 As a result, relays instantly see all events and vote for them almost simultaneously in one block. The implementation is
 more optimized than C++ node, so they don't harm the network.
