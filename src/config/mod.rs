@@ -203,10 +203,16 @@ impl Default for NodeConfig {
             states_gc_enabled: true,
             blocks_gc_enabled: true,
             adnl_options: Default::default(),
-            rldp_options: Default::default(),
+            rldp_options: tiny_adnl::RldpNodeOptions {
+                force_compression: true,
+                ..Default::default()
+            },
             dht_options: Default::default(),
             neighbours_options: Default::default(),
-            overlay_shard_options: Default::default(),
+            overlay_shard_options: tiny_adnl::OverlayShardOptions {
+                force_compression: true,
+                ..Default::default()
+            },
         }
     }
 }

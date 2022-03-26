@@ -290,6 +290,13 @@ more optimized than C++ node, so they don't harm the network.
 
 ### Changelog
 
+### 2.0.9 (2021-03-26)
+
+Features
+
+* Add packets compression support (enabled by default).
+* Various optimizations.
+
 ### 2.0.8 (2021-02-12)
 
 Features
