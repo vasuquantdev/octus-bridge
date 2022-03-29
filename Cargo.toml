@@ -38,9 +38,11 @@ serde_json = "1.0"
 serde_yaml = "0.8"
 thiserror = "1.0"
 tokio = { version = "1.16.1", features = ["sync", "fs", "rt-multi-thread", "macros", "signal", "parking_lot"] }
+tokio-util = "0.7.1"
 tryhard = "0.4.0"
 url = { version = "2.2.2", features = ["serde"] }
 uuid = { version = "0.8.2", features = ["v4"] }
+zeroize = "1.3.0"
 
 ed25519-dalek = { git = "https://github.com/broxus/ed25519-dalek.git" }
 tiny-bip39 = { git = "https://github.com/broxus/tiny-bip39.git" }

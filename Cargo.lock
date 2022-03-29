@@ -960,9 +960,9 @@ dependencies = [
 
 [[package]]
 name = "getrandom"
-version = "0.2.5"
+version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d39cd93900197114fa1fcb7ae84ca742095eed9442088988ae74fa744e930e77"
+checksum = "9be70c98951c83b8d2f8f60d7065fa6d5146873094452a1008da8c2f1e4205ad"
 dependencies = [
  "cfg-if",
  "libc",
@@ -978,7 +978,7 @@ checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
 [[package]]
 name = "global-config"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#8f7790342c20439e32e28baf492e9aaa23b49f50"
+source = "git+https://github.com/broxus/ton-indexer.git#3d12b1607d162b1189c4246f50ef1bfb7c59e124"
 dependencies = [
  "anyhow",
  "base64",
@@ -1003,7 +1003,7 @@ dependencies = [
  "indexmap",
  "slab",
  "tokio",
- "tokio-util",
+ "tokio-util 0.6.9",
  "tracing",
 ]
 
@@ -1538,7 +1538,7 @@ dependencies = [
 [[package]]
 name = "nekoton-abi"
 version = "0.11.0"
-source = "git+https://github.com/broxus/nekoton.git#c7dfc4161d1d4466215a3f0ed3b7100cdbc8f3c6"
+source = "git+https://github.com/broxus/nekoton.git#2b8672db55da89696fbef2962f40687098f449b8"
 dependencies = [
  "anyhow",
  "base64",
@@ -1564,7 +1564,7 @@ dependencies = [
 [[package]]
 name = "nekoton-derive"
 version = "0.10.0"
-source = "git+https://github.com/broxus/nekoton.git#c7dfc4161d1d4466215a3f0ed3b7100cdbc8f3c6"
+source = "git+https://github.com/broxus/nekoton.git#2b8672db55da89696fbef2962f40687098f449b8"
 dependencies = [
  "either",
  "proc-macro2",
@@ -1575,7 +1575,7 @@ dependencies = [
 [[package]]
 name = "nekoton-utils"
 version = "0.10.0"
-source = "git+https://github.com/broxus/nekoton.git#c7dfc4161d1d4466215a3f0ed3b7100cdbc8f3c6"
+source = "git+https://github.com/broxus/nekoton.git#2b8672db55da89696fbef2962f40687098f449b8"
 dependencies = [
  "anyhow",
  "base64",
@@ -1846,9 +1846,9 @@ dependencies = [
 
 [[package]]
 name = "paste"
-version = "1.0.6"
+version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0744126afe1a6dd7f394cb50a716dbe086cb06e255e53d8d0185d82828358fb5"
+checksum = "0c520e05135d6e763148b6426a837e239041653ba7becd2e538c076c738025fc"
 
 [[package]]
 name = "pathdiff"
@@ -2164,6 +2164,7 @@ dependencies = [
  "tiny-bip39",
  "tiny-hderive",
  "tokio",
+ "tokio-util 0.7.1",
  "ton-indexer",
  "ton_abi",
  "ton_block",
@@ -2172,6 +2173,7 @@ dependencies = [
  "url",
  "uuid",
  "web3",
+ "zeroize",
 ]
 
 [[package]]
@@ -2358,9 +2360,9 @@ dependencies = [
 
 [[package]]
 name = "semver"
-version = "1.0.6"
+version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4a3381e03edd24287172047536f20cabde766e2cd3e65e6b00fb3af51c4f38d"
+checksum = "d65bd28f48be7196d222d95b9243287f48d27aca604e08497513019ff0502cc4"
 
 [[package]]
 name = "serde"
@@ -2541,9 +2543,9 @@ checksum = "734676eb262c623cec13c3155096e08d1f8f29adce39ba17948b18dad1e54142"
 
 [[package]]
 name = "syn"
-version = "1.0.89"
+version = "1.0.90"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea297be220d52398dcc07ce15a209fce436d361735ac1db700cab3b6cdfb9f54"
+checksum = "704df27628939572cd88d33f171cd6f896f4eaca85252c6e0a72d8d8287ee86f"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2693,7 +2695,7 @@ dependencies = [
 [[package]]
 name = "tiny-adnl"
 version = "0.1.0"
-source = "git+https://github.com/broxus/tiny-adnl#b582b40199cb9af4553d4e9e74611013017aff41"
+source = "git+https://github.com/broxus/tiny-adnl#f9a13e41de500ca62d519cf8f86b012c06393594"
 dependencies = [
  "aes",
  "anyhow",
@@ -2717,6 +2719,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-io-timeout",
+ "tokio-util 0.7.1",
  "ton_api",
  "ton_types",
  "x25519-dalek-ng",
@@ -2726,7 +2729,7 @@ dependencies = [
 [[package]]
 name = "tiny-bip39"
 version = "0.8.0"
-source = "git+https://github.com/broxus/tiny-bip39.git#ce92105dd2c6ffaaeabe7605ac565b6739564e9c"
+source = "git+https://github.com/broxus/tiny-bip39.git#f4fcd0fb9a009d77fe64705d38eb02a8dcd9285c"
 dependencies = [
  "anyhow",
  "hmac",
@@ -2843,6 +2846,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-util"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0edfdeb067411dba2044da6d1cb2df793dd35add7888d73c16e3381ded401764"
+dependencies = [
+ "bytes",
+ "futures-core",
+ "futures-sink",
+ "pin-project-lite",
+ "tokio",
+]
+
+[[package]]
 name = "toml"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2854,7 +2870,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#8f7790342c20439e32e28baf492e9aaa23b49f50"
+source = "git+https://github.com/broxus/ton-indexer.git#3d12b1607d162b1189c4246f50ef1bfb7c59e124"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2889,6 +2905,7 @@ dependencies = [
  "thiserror",
  "tiny-adnl",
  "tokio",
+ "tokio-util 0.7.1",
  "ton-indexer-alloc",
  "ton_api",
  "ton_block",
@@ -2898,7 +2915,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer-alloc"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#8f7790342c20439e32e28baf492e9aaa23b49f50"
+source = "git+https://github.com/broxus/ton-indexer.git#3d12b1607d162b1189c4246f50ef1bfb7c59e124"
 dependencies = [
  "anyhow",
  "errno",

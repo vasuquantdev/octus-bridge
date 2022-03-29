@@ -6,8 +6,8 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use futures::future::Either;
-use tiny_adnl::utils::*;
 use tokio::sync::{Mutex, Notify, RwLock, RwLockWriteGuard};
+use tokio_util::sync::CancellationToken;
 
 use crate::config::*;
 
@@ -21,19 +21,15 @@ pub struct MetricsExporter {
     /// Triggers and signals for running exporter service
     running_endpoint: Mutex<Option<RunningEndpoint>>,
 
-    completion_trigger: Trigger,
-    completion_signal: TriggerReceiver,
+    completion_signal: CancellationToken,
 }
 
 impl MetricsExporter {
     pub async fn with_config(config: Option<MetricsConfig>) -> Result<Arc<Self>> {
-        let (completion_trigger, completion_signal) = trigger();
-
         let exporter = Arc::new(Self {
             handle: Default::default(),
             running_endpoint: Default::default(),
-            completion_trigger,
-            completion_signal,
+            completion_signal: Default::default(),
         });
 
         exporter
@@ -54,9 +50,9 @@ impl MetricsExporter {
         // Stop running service
         if let Some(endpoint) = running_endpoint.take() {
             // Initiate completion
-            endpoint.completion_trigger.trigger();
+            endpoint.local_completion_signal.cancel();
             // And wait until it stops completely
-            endpoint.stopped_signal.await;
+            endpoint.stopped_signal.cancelled().await;
         }
 
         let config = match config {
@@ -104,34 +100,43 @@ impl MetricsExporter {
             }
         });
 
-        // Use completion signal as graceful shutdown notify
-        let completion_signal = self.completion_signal.clone();
-        let (stopped_trigger, stopped_signal) = trigger();
-        let (local_completion_trigger, local_completion_signal) = trigger();
+        let stopped_signal = CancellationToken::new();
+        let local_completion_signal = CancellationToken::new();
 
         log::info!("Metrics exporter started");
 
         // Spawn server
-        tokio::spawn(async move {
-            let server = server
-                .serve(make_service)
-                .with_graceful_shutdown(async move {
-                    futures::future::select(completion_signal, local_completion_signal).await;
-                });
+        tokio::spawn({
+            // Use completion signal as graceful shutdown notify
+            let completion_signal = self.completion_signal.clone();
+            let stopped_signal = stopped_signal.clone();
+            let local_completion_signal = local_completion_signal.clone();
 
-            if let Err(e) = server.await {
-                log::error!("Metrics exporter stopped: {:?}", e);
-            } else {
-                log::info!("Metrics exporter stopped");
+            async move {
+                let server = server
+                    .serve(make_service)
+                    .with_graceful_shutdown(async move {
+                        tokio::pin!(
+                            let completion_signal = completion_signal.cancelled();
+                            let local_completion_signal = local_completion_signal.cancelled();
+                        );
+                        futures::future::select(completion_signal, local_completion_signal).await;
+                    });
+
+                if let Err(e) = server.await {
+                    log::error!("Metrics exporter stopped: {:?}", e);
+                } else {
+                    log::info!("Metrics exporter stopped");
+                }
+
+                // Notify when server is stopped
+                stopped_signal.cancel();
             }
-
-            // Notify when server is stopped
-            stopped_trigger.trigger();
         });
 
         // Update running endpoint
         *running_endpoint = Some(RunningEndpoint {
-            completion_trigger: local_completion_trigger,
+            local_completion_signal,
             stopped_signal,
         });
 
@@ -149,7 +154,7 @@ impl MetricsExporter {
 impl Drop for MetricsExporter {
     fn drop(&mut self) {
         // Trigger server shutdown on drop
-        self.completion_trigger.trigger();
+        self.completion_signal.cancel();
     }
 }
 
@@ -197,8 +202,8 @@ impl MetricsExporterHandle {
 }
 
 struct RunningEndpoint {
-    completion_trigger: Trigger,
-    stopped_signal: TriggerReceiver,
+    local_completion_signal: CancellationToken,
+    stopped_signal: CancellationToken,
 }
 
 #[derive(Default)]
