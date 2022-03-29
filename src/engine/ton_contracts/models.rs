@@ -2,9 +2,9 @@ use nekoton_abi::*;
 use ton_types::UInt256;
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
-pub struct EthEventInitData {
+pub struct EthTonEventInitData {
     #[abi]
-    pub vote_data: EthEventVoteData,
+    pub vote_data: EthTonEventVoteData,
     #[abi(with = "address_only_hash")]
     pub configuration: UInt256,
     #[abi(with = "address_only_hash")]
@@ -14,7 +14,7 @@ pub struct EthEventInitData {
 }
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
-pub struct EthEventVoteData {
+pub struct EthTonEventVoteData {
     #[abi(with = "uint256_bytes")]
     pub event_transaction: UInt256,
     #[abi(uint32)]
@@ -28,9 +28,9 @@ pub struct EthEventVoteData {
 }
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
-pub struct TonEventInitData {
+pub struct TonEthEventInitData {
     #[abi]
-    pub vote_data: TonEventVoteData,
+    pub vote_data: TonEthEventVoteData,
     #[abi(with = "address_only_hash")]
     pub configuration: UInt256,
     #[abi(with = "address_only_hash")]
@@ -38,7 +38,7 @@ pub struct TonEventInitData {
 }
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
-pub struct TonEventVoteData {
+pub struct TonEthEventVoteData {
     #[abi(uint64)]
     pub event_transaction_lt: u64,
     #[abi(uint32)]
@@ -64,21 +64,21 @@ pub enum EventVote {
 }
 
 #[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
-pub struct EthEventConfigurationDetails {
+pub struct EthTonEventConfigurationDetails {
     #[abi]
     pub basic_configuration: BasicConfiguration,
     #[abi]
-    pub network_configuration: EthEventConfiguration,
+    pub network_configuration: EthTonEventConfiguration,
     #[abi(cell)]
     pub meta: ton_types::Cell,
 }
 
 #[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
-pub struct TonEventConfigurationDetails {
+pub struct TonEthEventConfigurationDetails {
     #[abi]
     pub basic_configuration: BasicConfiguration,
     #[abi]
-    pub network_configuration: TonEventConfiguration,
+    pub network_configuration: TonEthEventConfiguration,
     #[abi(cell)]
     pub meta: ton_types::Cell,
 }
@@ -96,7 +96,7 @@ pub struct BasicConfiguration {
 }
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
-pub struct EthEventConfiguration {
+pub struct EthTonEventConfiguration {
     #[abi(uint32)]
     pub chain_id: u32,
     #[abi(with = "uint160_bytes")]
@@ -112,7 +112,7 @@ pub struct EthEventConfiguration {
 }
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
-pub struct TonEventConfiguration {
+pub struct TonEthEventConfiguration {
     #[abi(with = "address_only_hash")]
     pub event_emitter: UInt256,
     #[abi(with = "uint160_bytes")]
@@ -125,15 +125,15 @@ pub struct TonEventConfiguration {
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, PackAbi, UnpackAbi, KnownParamType)]
 pub enum EventType {
-    Eth = 0,
-    Ton = 1,
+    EthTon = 0,
+    TonEth = 1,
 }
 
 impl std::fmt::Display for EventType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Eth => f.write_str("ETH"),
-            Self::Ton => f.write_str("TON"),
+            Self::EthTon => f.write_str("ETH->TON"),
+            Self::TonEth => f.write_str("TON->ETH"),
         }
     }
 }

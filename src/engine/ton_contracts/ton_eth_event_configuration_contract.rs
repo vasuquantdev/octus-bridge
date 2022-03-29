@@ -9,7 +9,7 @@ pub fn get_details() -> &'static ton_abi::Function {
             .abi_version(ton_abi::contract::ABI_VERSION_2_2)
             .time_header()
             .expire_header()
-            .outputs(TonEventConfigurationDetails::param_type())
+            .outputs(TonEthEventConfigurationDetails::param_type())
             .build()
     })
 }
@@ -29,7 +29,7 @@ pub fn deploy_event() -> &'static ton_abi::Function {
     crate::once!(ton_abi::Function, || {
         FunctionBuilder::new("deployEvent")
             .abi_version(ton_abi::contract::ABI_VERSION_2_2)
-            .input("vote_data", TonEventVoteData::param_type())
+            .input("vote_data", TonEthEventVoteData::param_type())
             .build()
     })
 }

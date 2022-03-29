@@ -317,7 +317,7 @@ impl EthSubscriber {
 
     pub async fn verify(
         &self,
-        vote_data: EthEventVoteData,
+        vote_data: EthTonEventVoteData,
         event_emitter: [u8; 20],
         event_abi: Arc<EthEventAbi>,
         blocks_to_confirm: u16,
@@ -726,7 +726,7 @@ type EthApi = web3::api::Eth<Http>;
 type LastBlockNumbersMap = FxDashMap<u32, u64>;
 
 struct PendingConfirmation {
-    vote_data: EthEventVoteData,
+    vote_data: EthTonEventVoteData,
     status_tx: Option<VerificationStatusTx>,
     event_emitter: [u8; 20],
     event_abi: Arc<EthEventAbi>,

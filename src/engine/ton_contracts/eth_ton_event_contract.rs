@@ -8,7 +8,7 @@ pub fn get_event_init_data() -> &'static ton_abi::Function {
         FunctionBuilder::new_responsible("getEventInitData")
             .abi_version(ton_abi::contract::ABI_VERSION_2_2)
             .default_headers()
-            .output("details", EthEventInitData::param_type())
+            .output("details", EthTonEventInitData::param_type())
             .build()
     })
 }
