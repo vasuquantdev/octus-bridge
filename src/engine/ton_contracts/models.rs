@@ -47,6 +47,50 @@ pub struct TonEthEventVoteData {
     pub event_data: ton_types::Cell,
 }
 
+#[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
+pub struct SolTonEventInitData {
+    #[abi]
+    pub vote_data: SolTonEventVoteData,
+    #[abi(with = "address_only_hash")]
+    pub configuration: UInt256,
+    #[abi(with = "address_only_hash")]
+    pub staking: UInt256,
+}
+
+#[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
+pub struct SolTonEventVoteData {
+    #[abi(with = "uint256_bytes")]
+    pub event_transaction: UInt256,
+    #[abi(uint32)]
+    pub event_index: u32,
+    #[abi(cell)]
+    pub event_data: ton_types::Cell,
+    #[abi(uint32)]
+    pub event_block_number: u32,
+    #[abi(with = "uint256_bytes")]
+    pub event_block: UInt256,
+}
+
+#[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
+pub struct TonSolEventInitData {
+    #[abi]
+    pub vote_data: TonSolEventVoteData,
+    #[abi(with = "address_only_hash")]
+    pub configuration: UInt256,
+    #[abi(with = "address_only_hash")]
+    pub staking: UInt256,
+}
+
+#[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
+pub struct TonSolEventVoteData {
+    #[abi(uint64)]
+    pub event_transaction_lt: u64,
+    #[abi(uint32)]
+    pub event_timestamp: u32,
+    #[abi(cell)]
+    pub event_data: ton_types::Cell,
+}
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq, PackAbi, UnpackAbi, KnownParamType)]
 pub enum EventStatus {
     Initializing = 0,
@@ -79,6 +123,26 @@ pub struct TonEthEventConfigurationDetails {
     pub basic_configuration: BasicConfiguration,
     #[abi]
     pub network_configuration: TonEthEventConfiguration,
+    #[abi(cell)]
+    pub meta: ton_types::Cell,
+}
+
+#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
+pub struct SolTonEventConfigurationDetails {
+    #[abi]
+    pub basic_configuration: BasicConfiguration,
+    #[abi]
+    pub network_configuration: SolTonEventConfiguration,
+    #[abi(cell)]
+    pub meta: ton_types::Cell,
+}
+
+#[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
+pub struct TonSolEventConfigurationDetails {
+    #[abi]
+    pub basic_configuration: BasicConfiguration,
+    #[abi]
+    pub network_configuration: TonSolEventConfiguration,
     #[abi(cell)]
     pub meta: ton_types::Cell,
 }
@@ -123,10 +187,34 @@ pub struct TonEthEventConfiguration {
     pub end_timestamp: u32,
 }
 
+#[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
+pub struct SolTonEventConfiguration {
+    #[abi(with = "uint256_bytes")]
+    pub event_emitter: UInt256,
+    #[abi(with = "address_only_hash")]
+    pub proxy: UInt256,
+    #[abi(uint32)]
+    pub start_block_number: u32,
+    #[abi(uint32)]
+    pub end_block_number: u32,
+}
+
+#[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
+pub struct TonSolEventConfiguration {
+    #[abi(with = "address_only_hash")]
+    pub event_emitter: UInt256,
+    #[abi(uint32)]
+    pub start_timestamp: u32,
+    #[abi(uint32)]
+    pub end_timestamp: u32,
+}
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq, PackAbi, UnpackAbi, KnownParamType)]
 pub enum EventType {
     EthTon = 0,
     TonEth = 1,
+    SolTon = 2,
+    TonSol = 3,
 }
 
 impl std::fmt::Display for EventType {
@@ -134,6 +222,8 @@ impl std::fmt::Display for EventType {
         match self {
             Self::EthTon => f.write_str("ETH->TON"),
             Self::TonEth => f.write_str("TON->ETH"),
+            Self::SolTon => f.write_str("SOL->TON"),
+            Self::TonSol => f.write_str("TON->SOL"),
         }
     }
 }

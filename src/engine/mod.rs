@@ -178,7 +178,7 @@ impl EngineContext {
         .await
         .context("Failed to start TON node")?;
 
-        let eth_subscribers = EthSubscriberRegistry::new(settings.networks.clone())
+        let eth_subscribers = EthSubscriberRegistry::new(settings.evm_networks.clone())
             .await
             .context("Failed to create EVM networks registry")?;
 

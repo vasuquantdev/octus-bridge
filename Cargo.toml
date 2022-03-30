@@ -48,6 +48,12 @@ tiny-hderive = { git = "https://github.com/broxus/tiny-hderive.git" }
 web3 = { version = "0.18.0", default-features = false, features = ["http-rustls-tls", "signing"] }
 ethabi = "16.0.0"
 
+# Solana dependencies
+solana-sdk = { git = "https://github.com/pashinov/solana.git", branch = "relay" }
+solana-client = { git = "https://github.com/pashinov/solana.git", branch = "relay" }
+solana-account-decoder = { git = "https://github.com/pashinov/solana.git", branch = "relay" }
+solana-transaction-status = { git = "https://github.com/pashinov/solana.git", branch = "relay" }
+
 # TON specific dependencies
 ton_block = { git = "https://github.com/broxus/ton-labs-block" }
 ton_abi = { git = "https://github.com/broxus/ton-labs-abi" }

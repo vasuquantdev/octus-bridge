@@ -39,9 +39,17 @@ pub struct Bridge {
     // Observers for pending TON->ETH events
     ton_eth_events_state: Arc<EventsState<TonEthEvent>>,
 
+    // Observers for pending SOL->TON events
+    sol_ton_events_state: Arc<EventsState<SolTonEvent>>,
+
+    // Observers for pending TON->SOL events
+    ton_sol_events_state: Arc<EventsState<TonSolEvent>>,
+
     connectors_tx: AccountEventsTx<ConnectorEvent>,
     eth_ton_event_configurations_tx: AccountEventsTx<EthTonEventConfigurationEvent>,
     ton_eth_event_configurations_tx: AccountEventsTx<TonEthEventConfigurationEvent>,
+    sol_ton_event_configurations_tx: AccountEventsTx<SolTonEventConfigurationEvent>,
+    ton_sol_event_configurations_tx: AccountEventsTx<TonSolEventConfigurationEvent>,
 
     total_active_eth_event_configurations: AtomicUsize,
     total_active_ton_event_configurations: AtomicUsize,
@@ -56,8 +64,14 @@ impl Bridge {
             mpsc::unbounded_channel();
         let (ton_eth_event_configurations_tx, ton_eth_event_configurations_rx) =
             mpsc::unbounded_channel();
+        let (sol_ton_event_configurations_tx, sol_ton_event_configurations_rx) =
+            mpsc::unbounded_channel();
+        let (ton_sol_event_configurations_tx, ton_sol_event_configurations_rx) =
+            mpsc::unbounded_channel();
         let (eth_ton_events_tx, eth_ton_events_rx) = mpsc::unbounded_channel();
         let (ton_eth_events_tx, ton_eth_events_rx) = mpsc::unbounded_channel();
+        let (sol_ton_events_tx, sol_ton_events_rx) = mpsc::unbounded_channel();
+        let (ton_sol_events_tx, ton_sol_events_rx) = mpsc::unbounded_channel();
 
         let bridge_observer = AccountObserver::new(&bridge_events_tx);
 
@@ -68,9 +82,13 @@ impl Bridge {
             state: Default::default(),
             eth_ton_events_state: EventsState::new(eth_ton_events_tx),
             ton_eth_events_state: EventsState::new(ton_eth_events_tx),
+            sol_ton_events_state: EventsState::new(sol_ton_events_tx),
+            ton_sol_events_state: EventsState::new(ton_sol_events_tx),
             connectors_tx,
             eth_ton_event_configurations_tx,
             ton_eth_event_configurations_tx,
+            sol_ton_event_configurations_tx,
+            ton_sol_event_configurations_tx,
             total_active_eth_event_configurations: Default::default(),
             total_active_ton_event_configurations: Default::default(),
         });
@@ -106,15 +124,44 @@ impl Bridge {
 
         start_listening_events(
             &bridge,
+            "SolEventConfigurationContract",
+            sol_ton_event_configurations_rx,
+            Self::process_sol_ton_event_configuration_event,
+        );
+
+        start_listening_events(
+            &bridge,
+            "TonSolEventConfigurationContract",
+            ton_sol_event_configurations_rx,
+            Self::process_ton_sol_event_configuration_event,
+        );
+
+        start_listening_events(
+            &bridge,
             "EthTonEventContract",
             eth_ton_events_rx,
             Self::process_eth_ton_event,
         );
+
         start_listening_events(
             &bridge,
             "TonEthEventContract",
             ton_eth_events_rx,
             Self::process_ton_eth_event,
+        );
+
+        start_listening_events(
+            &bridge,
+            "EthTonEventContract",
+            sol_ton_events_rx,
+            Self::process_sol_ton_event,
+        );
+
+        start_listening_events(
+            &bridge,
+            "TonSolEventContract",
+            ton_sol_events_rx,
+            Self::process_ton_sol_event,
         );
 
         // Subscribe bridge account to transactions
@@ -203,7 +250,7 @@ impl Bridge {
             EthTonEventConfigurationEvent::EventDeployed { address } => {
                 if self.add_pending_event(address, &self.eth_ton_events_state) {
                     let this = self.clone();
-                    self.spawn_background_task("preprocess ETH event", async move {
+                    self.spawn_background_task("preprocess ETH->TON event", async move {
                         this.preprocess_event(address, &this.eth_ton_events_state)
                             .await
                     });
@@ -247,6 +294,67 @@ impl Bridge {
                 let mut state = self.state.write().await;
                 let configuration = state
                     .ton_eth_event_configurations
+                    .get_mut(&account)
+                    .ok_or(BridgeError::UnknownConfiguration)?;
+                configuration.details.network_configuration.end_timestamp = end_timestamp;
+            }
+        }
+        Ok(())
+    }
+
+    async fn process_sol_ton_event_configuration_event(
+        self: Arc<Self>,
+        (account, event): (UInt256, SolTonEventConfigurationEvent),
+    ) -> Result<()> {
+        match event {
+            // Create observer on each deployment event
+            SolTonEventConfigurationEvent::EventDeployed { address } => {
+                if self.add_pending_event(address, &self.sol_ton_events_state) {
+                    let this = self.clone();
+                    self.spawn_background_task("preprocess SOL->TON event", async move {
+                        this.preprocess_event(address, &this.sol_ton_events_state)
+                            .await
+                    });
+                }
+            }
+            // Update configuration state
+            SolTonEventConfigurationEvent::SetEndBlockNumber { end_block_number } => {
+                let mut state = self.state.write().await;
+                let configuration = state
+                    .sol_ton_event_configurations
+                    .get_mut(&account)
+                    .ok_or(BridgeError::UnknownConfiguration)?;
+                configuration.details.network_configuration.end_block_number = end_block_number;
+            }
+        }
+        Ok(())
+    }
+
+    async fn process_ton_sol_event_configuration_event(
+        self: Arc<Self>,
+        (account, event): (UInt256, TonSolEventConfigurationEvent),
+    ) -> Result<()> {
+        match event {
+            // Create observer on each deployment event
+            TonSolEventConfigurationEvent::EventDeployed { address, .. } => {
+                if self.add_pending_event(address, &self.ton_sol_events_state) {
+                    let this = self.clone();
+                    self.spawn_background_task("preprocess TON->SOL event", async move {
+                        this.preprocess_event(address, &this.ton_sol_events_state)
+                            .await
+                    });
+                } else {
+                    // NOTE: Each TON event must be unique on the contracts level,
+                    // so receiving message with duplicated address is
+                    // a signal that something went wrong
+                    log::warn!("Got deployment message for pending event: {:x}", account);
+                }
+            }
+            // Update configuration state
+            TonSolEventConfigurationEvent::SetEndTimestamp { end_timestamp } => {
+                let mut state = self.state.write().await;
+                let configuration = state
+                    .ton_sol_event_configurations
                     .get_mut(&account)
                     .ok_or(BridgeError::UnknownConfiguration)?;
                 configuration.details.network_configuration.end_timestamp = end_timestamp;
@@ -374,6 +482,20 @@ impl Bridge {
         }
 
         Ok(())
+    }
+
+    async fn process_sol_ton_event(
+        self: Arc<Self>,
+        (_account, _event): (UInt256, (SolTonEvent, EventStatus)),
+    ) -> Result<()> {
+        todo!()
+    }
+
+    async fn process_ton_sol_event(
+        self: Arc<Self>,
+        (_account, _event): (UInt256, (TonSolEvent, EventStatus)),
+    ) -> Result<()> {
+        todo!()
     }
 
     /// Check deployed event contract in parallel with transactions processing
@@ -644,6 +766,14 @@ impl Bridge {
         Ok(())
     }
 
+    async fn update_sol_ton_event(self: Arc<Self>, _account: UInt256) -> Result<()> {
+        todo!()
+    }
+
+    async fn update_ton_sol_event(self: Arc<Self>, _account: UInt256) -> Result<()> {
+        todo!()
+    }
+
     async fn check_connector_contract(&self, connector_account: UInt256) -> Result<()> {
         let ton_subscriber = &self.context.ton_subscriber;
 
@@ -797,7 +927,7 @@ impl Bridge {
         }
 
         match event_type {
-            // Extract and populate ETH event configuration details
+            // Extract and populate ETH->TON event configuration details
             EventType::EthTon => self
                 .add_eth_ton_event_configuration(
                     state,
@@ -813,6 +943,22 @@ impl Bridge {
                     configuration_contract,
                 )
                 .context("Failed to add TON->ETH event configuration")?,
+            // Extract and populate SOL->TON event configuration details
+            EventType::SolTon => self
+                .add_sol_ton_event_configuration(
+                    state,
+                    configuration_account,
+                    configuration_contract,
+                )
+                .context("Failed to add SOL->TON event configuration")?,
+            // Extract and populate TON->SOL event configuration details
+            EventType::TonSol => self
+                .add_ton_sol_event_configuration(
+                    state,
+                    configuration_account,
+                    configuration_contract,
+                )
+                .context("Failed to add TON->SOL event configuration")?,
         };
 
         // Done
@@ -946,6 +1092,24 @@ impl Bridge {
         Ok(())
     }
 
+    fn add_sol_ton_event_configuration(
+        &self,
+        _state: &mut BridgeState,
+        _account: &UInt256,
+        _contract: &ExistingContract,
+    ) -> Result<()> {
+        todo!()
+    }
+
+    fn add_ton_sol_event_configuration(
+        &self,
+        _state: &mut BridgeState,
+        _account: &UInt256,
+        _contract: &ExistingContract,
+    ) -> Result<()> {
+        todo!()
+    }
+
     async fn get_all_events(self: &Arc<Self>) -> Result<()> {
         type AccountsSet = FxHashSet<UInt256>;
 
@@ -955,6 +1119,8 @@ impl Bridge {
             event_code_hashes: Arc<EventCodeHashesMap>,
             unique_eth_ton_event_configurations: Arc<AccountsSet>,
             unique_ton_eth_event_configurations: Arc<AccountsSet>,
+            unique_sol_ton_event_configurations: Arc<AccountsSet>,
+            unique_ton_sol_event_configurations: Arc<AccountsSet>,
         ) -> Result<bool> {
             let our_public_key = bridge.context.keystore.ton.public_key();
 
@@ -1006,16 +1172,17 @@ impl Bridge {
                 {
                     Ok(EventAction::Nop | EventAction::Vote) => match event_type {
                         EventType::EthTon => {
-                            let configuration = check_configuration!("ETH", EthTonEventContract);
+                            let configuration =
+                                check_configuration!("ETH->TON", EthTonEventContract);
 
                             if !unique_eth_ton_event_configurations.contains(&configuration) {
-                                log::warn!("ETH event configuration not found: {:x}", hash);
+                                log::warn!("ETH->TON event configuration not found: {:x}", hash);
                                 return Ok(true);
                             }
 
                             if bridge.add_pending_event(hash, &bridge.eth_ton_events_state) {
                                 bridge.spawn_background_task(
-                                    "initial update ETH event",
+                                    "initial update ETH->TON event",
                                     bridge.clone().update_eth_ton_event(hash),
                                 );
                             }
@@ -1033,6 +1200,38 @@ impl Bridge {
                                 bridge.spawn_background_task(
                                     "initial update TON->ETH event",
                                     bridge.clone().update_ton_eth_event(hash),
+                                );
+                            }
+                        }
+                        EventType::SolTon => {
+                            let configuration =
+                                check_configuration!("SOL->TON", SolTonEventContract);
+
+                            if !unique_sol_ton_event_configurations.contains(&configuration) {
+                                log::warn!("SOL->TON event configuration not found: {:x}", hash);
+                                return Ok(true);
+                            }
+
+                            if bridge.add_pending_event(hash, &bridge.sol_ton_events_state) {
+                                bridge.spawn_background_task(
+                                    "initial update SOL->TON event",
+                                    bridge.clone().update_sol_ton_event(hash),
+                                );
+                            }
+                        }
+                        EventType::TonSol => {
+                            let configuration =
+                                check_configuration!("TON->SOL", TonSolEventContract);
+
+                            if !unique_ton_sol_event_configurations.contains(&configuration) {
+                                log::warn!("TON->SOL event configuration not found: {:x}", hash);
+                                return Ok(true);
+                            }
+
+                            if bridge.add_pending_event(hash, &bridge.ton_sol_events_state) {
+                                bridge.spawn_background_task(
+                                    "initial update TON->SOL event",
+                                    bridge.clone().update_ton_sol_event(hash),
                                 );
                             }
                         }
@@ -1065,6 +1264,10 @@ impl Bridge {
             Arc::new(state.unique_eth_ton_event_configurations());
         let unique_ton_eth_event_configurations =
             Arc::new(state.unique_ton_eth_event_configurations());
+        let unique_sol_ton_event_configurations =
+            Arc::new(state.unique_sol_ton_event_configurations());
+        let unique_ton_sol_event_configurations =
+            Arc::new(state.unique_ton_sol_event_configurations());
 
         // Process shards in parallel
         log::info!("Started searching for all events...");
@@ -1074,8 +1277,14 @@ impl Bridge {
             for (shard_ident, accounts) in shard_accounts {
                 let bridge = self.clone();
                 let event_code_hashes = event_code_hashes.clone();
-                let unique_eth_event_configurations = unique_eth_ton_event_configurations.clone();
-                let unique_ton_event_configurations = unique_ton_eth_event_configurations.clone();
+                let unique_eth_ton_event_configurations =
+                    unique_eth_ton_event_configurations.clone();
+                let unique_ton_eth_event_configurations =
+                    unique_ton_eth_event_configurations.clone();
+                let unique_sol_ton_event_configurations =
+                    unique_sol_ton_event_configurations.clone();
+                let unique_ton_sol_event_configurations =
+                    unique_ton_sol_event_configurations.clone();
                 let results_tx = results_tx.clone();
 
                 tokio::spawn(tokio::task::spawn_blocking(move || {
@@ -1084,8 +1293,10 @@ impl Bridge {
                         bridge,
                         accounts,
                         event_code_hashes,
-                        unique_eth_event_configurations,
-                        unique_ton_event_configurations,
+                        unique_eth_ton_event_configurations,
+                        unique_ton_eth_event_configurations,
+                        unique_sol_ton_event_configurations,
+                        unique_ton_sol_event_configurations,
                     );
                     log::info!(
                         "Processed accounts in shard {} in {} seconds",
@@ -1135,7 +1346,8 @@ impl Bridge {
                 // Check expired configurations
                 let has_expired_configurations = {
                     let state = bridge.state.read().await;
-                    state.has_expired_ton_event_configurations(current_utime)
+                    state.has_expired_ton_eth_event_configurations(current_utime)
+                        || state.has_expired_ton_sol_event_configurations(current_utime)
                 };
 
                 // Do nothing if there are not expired configurations
@@ -1293,12 +1505,32 @@ impl EventExt for TonEthEvent {
     }
 }
 
+#[async_trait::async_trait]
+impl EventExt for SolTonEvent {
+    const REQUIRE_ALL_SIGNATURES: bool = false;
+
+    async fn update_event(bridge: Arc<Bridge>, account: UInt256) -> Result<()> {
+        bridge.update_sol_ton_event(account).await
+    }
+}
+
+#[async_trait::async_trait]
+impl EventExt for TonSolEvent {
+    const REQUIRE_ALL_SIGNATURES: bool = true;
+
+    async fn update_event(bridge: Arc<Bridge>, account: UInt256) -> Result<()> {
+        bridge.update_ton_sol_event(account).await
+    }
+}
+
 /// Semi-persistent bridge contracts collection
 #[derive(Default)]
 struct BridgeState {
     connectors: ConnectorsMap,
     eth_ton_event_configurations: EthTonEventConfigurationsMap,
     ton_eth_event_configurations: TonEthEventConfigurationsMap,
+    sol_ton_event_configurations: SolTonEventConfigurationsMap,
+    ton_sol_event_configurations: TonSolEventConfigurationsMap,
 
     /// Unique event contracts code hashes.
     ///
@@ -1309,8 +1541,14 @@ struct BridgeState {
 }
 
 impl BridgeState {
-    fn has_expired_ton_event_configurations(&self, current_timestamp: u32) -> bool {
+    fn has_expired_ton_eth_event_configurations(&self, current_timestamp: u32) -> bool {
         self.ton_eth_event_configurations
+            .iter()
+            .any(|(_, state)| state.details.is_expired(current_timestamp))
+    }
+
+    fn has_expired_ton_sol_event_configurations(&self, current_timestamp: u32) -> bool {
+        self.ton_sol_event_configurations
             .iter()
             .any(|(_, state)| state.details.is_expired(current_timestamp))
     }
@@ -1324,6 +1562,20 @@ impl BridgeState {
 
     fn unique_ton_eth_event_configurations(&self) -> FxHashSet<UInt256> {
         self.ton_eth_event_configurations
+            .iter()
+            .map(|(key, _)| *key)
+            .collect()
+    }
+
+    fn unique_sol_ton_event_configurations(&self) -> FxHashSet<UInt256> {
+        self.sol_ton_event_configurations
+            .iter()
+            .map(|(key, _)| *key)
+            .collect()
+    }
+
+    fn unique_ton_sol_event_configurations(&self) -> FxHashSet<UInt256> {
+        self.ton_sol_event_configurations
             .iter()
             .map(|(key, _)| *key)
             .collect()
@@ -1440,7 +1692,7 @@ enum EventAction {
     Vote,
 }
 
-/// ETH event configuration data
+/// ETH->TON event configuration data
 #[derive(Clone)]
 struct EthTonEventConfigurationState {
     /// Configuration details
@@ -1452,7 +1704,7 @@ struct EthTonEventConfigurationState {
     _observer: Arc<AccountObserver<EthTonEventConfigurationEvent>>,
 }
 
-/// TON event configuration data
+/// TON->ETH event configuration data
 #[derive(Clone)]
 struct TonEthEventConfigurationState {
     /// Configuration details
@@ -1465,6 +1717,36 @@ struct TonEthEventConfigurationState {
 }
 
 impl TonEthEventConfigurationDetails {
+    fn is_expired(&self, current_timestamp: u32) -> bool {
+        (1..current_timestamp).contains(&self.network_configuration.end_timestamp)
+    }
+}
+
+/// ETH->TON event configuration data
+#[derive(Clone)]
+struct SolTonEventConfigurationState {
+    /// Configuration details
+    details: SolTonEventConfigurationDetails,
+    /// Parsed and mapped event ABI
+    event_abi: Vec<ton_abi::Param>,
+
+    /// Observer must live as long as configuration lives
+    _observer: Arc<AccountObserver<SolTonEventConfigurationEvent>>,
+}
+
+/// TON->SOL event configuration data
+#[derive(Clone)]
+struct TonSolEventConfigurationState {
+    /// Configuration details
+    details: TonSolEventConfigurationDetails,
+    /// Parsed `eventData` ABI
+    event_abi: Vec<ton_abi::Param>,
+
+    /// Observer must live as long as configuration lives
+    _observer: Arc<AccountObserver<TonSolEventConfigurationEvent>>,
+}
+
+impl TonSolEventConfigurationDetails {
     fn is_expired(&self, current_timestamp: u32) -> bool {
         (1..current_timestamp).contains(&self.network_configuration.end_timestamp)
     }
@@ -1603,6 +1885,66 @@ impl ReadFromTransaction for EthTonEventConfigurationEvent {
     }
 }
 
+#[derive(Debug, Clone)]
+enum TonSolEventConfigurationEvent {
+    EventDeployed { address: UInt256 },
+    SetEndTimestamp { end_timestamp: u32 },
+}
+
+impl ReadFromTransaction for TonSolEventConfigurationEvent {
+    fn read_from_transaction(ctx: &TxContext<'_>) -> Option<Self> {
+        let in_msg_body = ctx.in_msg_internal()?.body()?;
+
+        let deploy_event = ton_sol_event_configuration_contract::deploy_event();
+        let set_end_timestamp = ton_sol_event_configuration_contract::set_end_timestamp();
+
+        match nekoton_abi::read_function_id(&in_msg_body).ok()? {
+            id if id == deploy_event.input_id => Some(Self::EventDeployed {
+                address: ctx.find_new_event_contract_address()?,
+            }),
+            id if id == set_end_timestamp.input_id => {
+                let end_timestamp = set_end_timestamp
+                    .decode_input(in_msg_body, true)
+                    .and_then(|tokens| tokens.unpack_first().map_err(anyhow::Error::from))
+                    .ok()?;
+
+                Some(Self::SetEndTimestamp { end_timestamp })
+            }
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+enum SolTonEventConfigurationEvent {
+    EventDeployed { address: UInt256 },
+    SetEndBlockNumber { end_block_number: u32 },
+}
+
+impl ReadFromTransaction for SolTonEventConfigurationEvent {
+    fn read_from_transaction(ctx: &TxContext<'_>) -> Option<Self> {
+        let in_msg_body = ctx.in_msg_internal()?.body()?;
+
+        let deploy_event = sol_ton_event_configuration_contract::deploy_event();
+        let set_end_block_number = sol_ton_event_configuration_contract::set_end_block_number();
+
+        match nekoton_abi::read_function_id(&in_msg_body).ok()? {
+            id if id == deploy_event.input_id => Some(Self::EventDeployed {
+                address: ctx.find_new_event_contract_address()?,
+            }),
+            id if id == set_end_block_number.input_id => {
+                let end_block_number = set_end_block_number
+                    .decode_input(in_msg_body, true)
+                    .and_then(|tokens| tokens.unpack_first().map_err(anyhow::Error::from))
+                    .ok()?;
+
+                Some(Self::SetEndBlockNumber { end_block_number })
+            }
+            _ => None,
+        }
+    }
+}
+
 impl ReadFromTransaction for EventStatus {
     fn read_from_transaction(ctx: &TxContext<'_>) -> Option<Self> {
         let state = ctx.get_account_state().ok()?;
@@ -1718,6 +2060,104 @@ impl ReadFromTransaction for TonEthEvent {
     }
 }
 
+#[derive(Debug, Clone)]
+enum SolTonEvent {
+    ReceiveRoundRelays { keys: Vec<UInt256> },
+    Confirm { public_key: UInt256 },
+    Reject { public_key: UInt256 },
+}
+
+impl ReadFromTransaction for SolTonEvent {
+    fn read_from_transaction(ctx: &TxContext<'_>) -> Option<Self> {
+        let in_msg = ctx.in_msg;
+        match in_msg.header() {
+            ton_block::CommonMsgInfo::ExtInMsgInfo(_) => {
+                let (public_key, body) = read_external_in_msg(&in_msg.body()?)?;
+
+                match read_function_id(&body) {
+                    Ok(id) if id == sol_ton_event_contract::confirm().input_id => {
+                        Some(SolTonEvent::Confirm { public_key })
+                    }
+                    Ok(id) if id == sol_ton_event_contract::reject().input_id => {
+                        Some(SolTonEvent::Reject { public_key })
+                    }
+                    _ => None,
+                }
+            }
+            ton_block::CommonMsgInfo::IntMsgInfo(_) => {
+                let body = in_msg.body()?;
+
+                match read_function_id(&body) {
+                    Ok(id) if id == base_event_contract::receive_round_relays().input_id => {
+                        let RelayKeys { items } = base_event_contract::receive_round_relays()
+                            .decode_input(body, true)
+                            .and_then(|tokens| tokens.unpack().map_err(anyhow::Error::from))
+                            .ok()?;
+
+                        Some(SolTonEvent::ReceiveRoundRelays { keys: items })
+                    }
+                    _ => None,
+                }
+            }
+            ton_block::CommonMsgInfo::ExtOutMsgInfo(_) => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+enum TonSolEvent {
+    ReceiveRoundRelays { keys: Vec<UInt256> },
+    Confirm { public_key: UInt256 },
+    Reject { public_key: UInt256 },
+    Closed,
+}
+
+impl ReadFromTransaction for TonSolEvent {
+    fn read_from_transaction(ctx: &TxContext<'_>) -> Option<Self> {
+        let in_msg = ctx.in_msg;
+        let event = match in_msg.header() {
+            ton_block::CommonMsgInfo::ExtInMsgInfo(_) => {
+                let (public_key, body) = read_external_in_msg(&in_msg.body()?)?;
+
+                match read_function_id(&body) {
+                    Ok(id) if id == ton_sol_event_contract::confirm().input_id => {
+                        Some(TonSolEvent::Confirm { public_key })
+                    }
+                    Ok(id) if id == ton_sol_event_contract::reject().input_id => {
+                        Some(TonSolEvent::Reject { public_key })
+                    }
+                    _ => None,
+                }
+            }
+            ton_block::CommonMsgInfo::IntMsgInfo(_) => {
+                let body = in_msg.body()?;
+
+                match read_function_id(&body) {
+                    Ok(id) if id == base_event_contract::receive_round_relays().input_id => {
+                        let RelayKeys { items } = base_event_contract::receive_round_relays()
+                            .decode_input(body, true)
+                            .and_then(|tokens| tokens.unpack().map_err(anyhow::Error::from))
+                            .ok()?;
+
+                        Some(TonSolEvent::ReceiveRoundRelays { keys: items })
+                    }
+                    _ => None,
+                }
+            }
+            ton_block::CommonMsgInfo::ExtOutMsgInfo(_) => None,
+        };
+
+        if event.is_none() {
+            let balance = ctx.get_account_state().ok()?.account.storage.balance.grams;
+            if balance.0 < MIN_EVENT_BALANCE {
+                return Some(Self::Closed);
+            }
+        }
+
+        event
+    }
+}
+
 fn read_external_in_msg(body: &ton_types::SliceData) -> Option<(UInt256, ton_types::SliceData)> {
     match unpack_headers::<DefaultHeaders>(body) {
         Ok(((Some(public_key), _, _), body)) => Some((public_key, body)),
@@ -1744,6 +2184,8 @@ type DefaultHeaders = (PubkeyHeader, TimeHeader, ExpireHeader);
 type ConnectorsMap = FxHashMap<UInt256, ConnectorState>;
 type EthTonEventConfigurationsMap = FxHashMap<UInt256, EthTonEventConfigurationState>;
 type TonEthEventConfigurationsMap = FxHashMap<UInt256, TonEthEventConfigurationState>;
+type SolTonEventConfigurationsMap = FxHashMap<UInt256, SolTonEventConfigurationState>;
+type TonSolEventConfigurationsMap = FxHashMap<UInt256, TonSolEventConfigurationState>;
 type EventCodeHashesMap = FxHashMap<UInt256, EventType>;
 
 #[derive(thiserror::Error, Debug)]

@@ -13,9 +13,13 @@ pub mod elections_contract;
 pub mod eth_ton_event_configuration_contract;
 pub mod eth_ton_event_contract;
 pub mod relay_round_contract;
+pub mod sol_ton_event_configuration_contract;
+pub mod sol_ton_event_contract;
 pub mod staking_contract;
 pub mod ton_eth_event_configuration_contract;
 pub mod ton_eth_event_contract;
+pub mod ton_sol_event_configuration_contract;
+pub mod ton_sol_event_contract;
 pub mod user_data_contract;
 
 mod models;
@@ -72,6 +76,28 @@ impl TonEthEventContract<'_> {
     }
 }
 
+pub struct SolTonEventContract<'a>(pub &'a ExistingContract);
+
+impl SolTonEventContract<'_> {
+    pub fn event_init_data(&self) -> Result<SolTonEventInitData> {
+        let function = sol_ton_event_contract::get_event_init_data();
+        let inputs = [answer_id()];
+        let event_init_data = self.0.run_local(function, &inputs)?.unpack_first()?;
+        Ok(event_init_data)
+    }
+}
+
+pub struct TonSolEventContract<'a>(pub &'a ExistingContract);
+
+impl TonSolEventContract<'_> {
+    pub fn event_init_data(&self) -> Result<TonSolEventInitData> {
+        let function = ton_sol_event_contract::get_event_init_data();
+        let inputs = [answer_id()];
+        let event_init_data = self.0.run_local(function, &inputs)?.unpack_first()?;
+        Ok(event_init_data)
+    }
+}
+
 pub struct EventConfigurationBaseContract<'a>(pub &'a ExistingContract);
 
 impl EventConfigurationBaseContract<'_> {
@@ -97,6 +123,16 @@ pub struct TonEthEventConfigurationContract<'a>(pub &'a ExistingContract);
 impl TonEthEventConfigurationContract<'_> {
     pub fn get_details(&self) -> Result<TonEthEventConfigurationDetails> {
         let function = ton_eth_event_configuration_contract::get_details();
+        let details = self.0.run_local(function, &[answer_id()])?.unpack()?;
+        Ok(details)
+    }
+}
+
+pub struct SolTonEventConfigurationContract<'a>(pub &'a ExistingContract);
+
+impl SolTonEventConfigurationContract<'_> {
+    pub fn get_details(&self) -> Result<SolTonEventConfigurationDetails> {
+        let function = sol_ton_event_configuration_contract::get_details();
         let details = self.0.run_local(function, &[answer_id()])?.unpack()?;
         Ok(details)
     }

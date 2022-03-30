@@ -9,10 +9,12 @@ use secstr::SecUtf8;
 use serde::{Deserialize, Serialize};
 
 pub use self::eth_config::*;
+pub use self::sol_config::*;
 pub use self::stored_keys::*;
 pub use self::verification_state::*;
 
 mod eth_config;
+mod sol_config;
 mod stored_keys;
 mod verification_state;
 
@@ -72,7 +74,10 @@ pub struct BridgeConfig {
     pub ignore_elections: bool,
 
     /// EVM networks settings
-    pub networks: Vec<EthConfig>,
+    pub evm_networks: Vec<EthConfig>,
+
+    /// Solana network settings
+    pub sol_network: SolConfig,
 
     /// ETH address verification settings
     #[serde(default)]
