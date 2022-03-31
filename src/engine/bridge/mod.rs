@@ -384,9 +384,8 @@ impl Bridge {
 
             match event {
                 // Remove event if voting process was finished
-                (EthEvent::Rejected, _) | (_, EventStatus::Confirmed | EventStatus::Rejected) => {
-                    remove_entry()
-                }
+                (EthTonEvent::Rejected, _)
+                | (_, EventStatus::Confirmed | EventStatus::Rejected) => remove_entry(),
                 // Handle event initialization
                 (EthTonEvent::ReceiveRoundRelays { keys }, _) => {
                     // Check if event contains our key
@@ -450,7 +449,7 @@ impl Bridge {
                 // keeping the contract almost nullifies its balance.
                 (TonEthEvent::Closed, EventStatus::Confirmed) => remove_entry(),
                 // Remove event if it was rejected
-                (TonEvent::Rejected, _) | (_, EventStatus::Rejected) => remove_entry(),
+                (TonEthEvent::Rejected, _) | (_, EventStatus::Rejected) => remove_entry(),
                 // Handle event initialization
                 (TonEthEvent::ReceiveRoundRelays { keys }, _) => {
                     // Check if event contains our key
@@ -581,7 +580,7 @@ impl Bridge {
                     Some(subscriber) => (subscriber, event_emitter, abi, blocks_to_confirm),
                     None => {
                         log::error!(
-                            "ETH subscriber with chain id  {} was not found for event {:x}",
+                            "ETH->TON subscriber with chain id  {} was not found for event {:x}",
                             chain_id,
                             account
                         );
@@ -593,7 +592,7 @@ impl Bridge {
             // Configuration not found
             None => {
                 log::error!(
-                    "ETH event configuration {:x} not found for event {:x}",
+                    "ETH->TON event configuration {:x} not found for event {:x}",
                     event_init_data.configuration,
                     account
                 );
@@ -624,7 +623,7 @@ impl Bridge {
             }
             // Skip event otherwise
             Err(e) => {
-                log::error!("Failed to verify ETH event {:x}: {:?}", account, e);
+                log::error!("Failed to verify ETH->TON event {:x}: {:?}", account, e);
                 self.eth_ton_events_state.remove(&account);
                 return Ok(());
             }
@@ -766,8 +765,122 @@ impl Bridge {
         Ok(())
     }
 
-    async fn update_sol_ton_event(self: Arc<Self>, _account: UInt256) -> Result<()> {
+    async fn update_sol_ton_event(self: Arc<Self>, account: UInt256) -> Result<()> {
         todo!()
+
+        /*if !self.sol_ton_events_state.start_processing(&account) {
+            return Ok(());
+        }
+
+        let keystore = &self.context.keystore;
+        let ton_subscriber = &self.context.ton_subscriber;
+        let sol_subscriber = &self.context.sol_subscriber;
+
+        // Wait contract state
+        let contract = ton_subscriber.wait_contract_state(account).await?;
+
+        match EventBaseContract(&contract).process(keystore.ton.public_key(), false)? {
+            EventAction::Nop => return Ok(()),
+            EventAction::Remove => {
+                self.sol_ton_events_state.remove(&account);
+                return Ok(());
+            }
+            EventAction::Vote => { /* continue voting */ }
+        }
+
+        let event_init_data = SolTonEventContract(&contract).event_init_data()?;
+
+        // Get event configuration data
+        let data = {
+            let state = self.state.read().await;
+            state
+                .sol_ton_event_configurations
+                .get(&event_init_data.configuration)
+                .map(|configuration| {
+                    (
+                        configuration.details.network_configuration.event_emitter,
+                        configuration.event_abi.clone(),
+                    )
+                })
+        };
+
+        // NOTE: be sure to drop `eth_event_configurations` lock before that
+        let (event_emitter, event_abi) = match data {
+            // Configuration found
+            Some((event_emitter, abi)) => {
+                // Get required subscriber
+                match eth_subscribers.get_subscriber(chain_id) {
+                    Some(subscriber) => (subscriber, event_emitter, abi, blocks_to_confirm),
+                    None => {
+                        log::error!(
+                            "ETH subscriber with chain id  {} was not found for event {:x}",
+                            chain_id,
+                            account
+                        );
+                        self.eth_ton_events_state.remove(&account);
+                        return Ok(());
+                    }
+                }
+            }
+            // Configuration not found
+            None => {
+                log::error!(
+                    "SOL->TON event configuration {:x} not found for event {:x}",
+                    event_init_data.configuration,
+                    account
+                );
+                self.eth_ton_events_state.remove(&account);
+                return Ok(());
+            }
+        };
+
+        let account_addr = ton_block::MsgAddrStd::with_address(None, 0, account.into());
+
+        // Verify ETH event and create message to event contract
+        let message = match eth_subscriber
+            .verify(
+                event_init_data.vote_data,
+                event_emitter,
+                event_abi,
+                blocks_to_confirm,
+            )
+            .await
+        {
+            // Confirm event if transaction was found
+            Ok(VerificationStatus::Exists) => {
+                UnsignedMessage::new(eth_ton_event_contract::confirm(), account).arg(account_addr)
+            }
+            // Reject event if transaction not found
+            Ok(VerificationStatus::NotExists) => {
+                UnsignedMessage::new(eth_ton_event_contract::reject(), account).arg(account_addr)
+            }
+            // Skip event otherwise
+            Err(e) => {
+                log::error!("Failed to verify ETH event {:x}: {:?}", account, e);
+                self.eth_ton_events_state.remove(&account);
+                return Ok(());
+            }
+        };
+
+        // Clone events observer and deliver message to the contract
+        let eth_ton_event_observer = match self.eth_ton_events_state.pending.get(&account) {
+            Some(entry) => entry.observer.clone(),
+            None => return Ok(()),
+        };
+        let eth_ton_events_state = Arc::downgrade(&self.eth_ton_events_state);
+
+        self.context
+            .deliver_message(
+                eth_ton_event_observer,
+                message,
+                // Stop voting for the contract if it was removed
+                move || match eth_ton_events_state.upgrade() {
+                    Some(state) => state.pending.contains_key(&account),
+                    None => false,
+                },
+            )
+            .await?;
+        Ok(())*/
     }
 
     async fn update_ton_sol_event(self: Arc<Self>, _account: UInt256) -> Result<()> {

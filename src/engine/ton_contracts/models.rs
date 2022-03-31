@@ -60,15 +60,9 @@ pub struct SolTonEventInitData {
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct SolTonEventVoteData {
     #[abi(with = "uint256_bytes")]
-    pub event_transaction: UInt256,
-    #[abi(uint32)]
-    pub event_index: u32,
+    pub payload_id: UInt256,
     #[abi(cell)]
     pub event_data: ton_types::Cell,
-    #[abi(uint32)]
-    pub event_block_number: u32,
-    #[abi(with = "uint256_bytes")]
-    pub event_block: UInt256,
 }
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
