@@ -14,7 +14,6 @@ use tokio::sync::RwLock;
 use ton_block::{Deserializable, HashmapAugType};
 use ton_types::UInt256;
 
-use crate::engine::eth_subscriber::*;
 use crate::engine::keystore::*;
 use crate::engine::ton_contracts::*;
 use crate::engine::ton_subscriber::*;
@@ -765,10 +764,12 @@ impl Bridge {
         Ok(())
     }
 
-    async fn update_sol_ton_event(self: Arc<Self>, account: UInt256) -> Result<()> {
+    async fn update_sol_ton_event(self: Arc<Self>, _account: UInt256) -> Result<()> {
         todo!()
+    }
 
-        /*if !self.sol_ton_events_state.start_processing(&account) {
+    async fn update_ton_sol_event(self: Arc<Self>, account: UInt256) -> Result<()> {
+        if !self.ton_sol_events_state.start_processing(&account) {
             return Ok(());
         }
 
@@ -778,113 +779,39 @@ impl Bridge {
 
         // Wait contract state
         let contract = ton_subscriber.wait_contract_state(account).await?;
+        let base_event_contract = EventBaseContract(&contract);
 
         match EventBaseContract(&contract).process(keystore.ton.public_key(), false)? {
             EventAction::Nop => return Ok(()),
             EventAction::Remove => {
-                self.sol_ton_events_state.remove(&account);
+                self.ton_sol_events_state.remove(&account);
                 return Ok(());
             }
             EventAction::Vote => { /* continue voting */ }
         }
 
-        let event_init_data = SolTonEventContract(&contract).event_init_data()?;
+        let event_init_data = TonSolEventContract(&contract).event_init_data()?;
 
-        // Get event configuration data
-        let data = {
-            let state = self.state.read().await;
-            state
-                .sol_ton_event_configurations
-                .get(&event_init_data.configuration)
-                .map(|configuration| {
-                    (
-                        configuration.details.network_configuration.event_emitter,
-                        configuration.event_abi.clone(),
-                    )
-                })
-        };
+        let _payload_id = Hash::new_from_array(event_init_data.vote_data.payload_id.inner());
+        let _round_number = base_event_contract.round_number()?;
 
-        // NOTE: be sure to drop `eth_event_configurations` lock before that
-        let (event_emitter, event_abi) = match data {
-            // Configuration found
-            Some((event_emitter, abi)) => {
-                // Get required subscriber
-                match eth_subscribers.get_subscriber(chain_id) {
-                    Some(subscriber) => (subscriber, event_emitter, abi, blocks_to_confirm),
-                    None => {
-                        log::error!(
-                            "ETH subscriber with chain id  {} was not found for event {:x}",
-                            chain_id,
-                            account
-                        );
-                        self.eth_ton_events_state.remove(&account);
-                        return Ok(());
-                    }
-                }
-            }
-            // Configuration not found
-            None => {
-                log::error!(
-                    "SOL->TON event configuration {:x} not found for event {:x}",
-                    event_init_data.configuration,
-                    account
-                );
-                self.eth_ton_events_state.remove(&account);
-                return Ok(());
-            }
-        };
-
-        let account_addr = ton_block::MsgAddrStd::with_address(None, 0, account.into());
-
-        // Verify ETH event and create message to event contract
-        let message = match eth_subscriber
-            .verify(
-                event_init_data.vote_data,
-                event_emitter,
-                event_abi,
-                blocks_to_confirm,
-            )
+        match sol_subscriber
+            .verify_ton_sol_event(event_init_data.vote_data)
             .await
         {
             // Confirm event if transaction was found
             Ok(VerificationStatus::Exists) => {
-                UnsignedMessage::new(eth_ton_event_contract::confirm(), account).arg(account_addr)
-            }
-            // Reject event if transaction not found
-            Ok(VerificationStatus::NotExists) => {
-                UnsignedMessage::new(eth_ton_event_contract::reject(), account).arg(account_addr)
+                // sol_subscriber.verify_ton_sol_event(?, payload_id, round_number) // TODO
             }
             // Skip event otherwise
-            Err(e) => {
-                log::error!("Failed to verify ETH event {:x}: {:?}", account, e);
-                self.eth_ton_events_state.remove(&account);
+            Ok(VerificationStatus::NotExists) | Err(_) => {
+                log::error!("Failed to verify TON->SOL event {:x}", account);
+                self.ton_sol_events_state.remove(&account);
                 return Ok(());
             }
         };
 
-        // Clone events observer and deliver message to the contract
-        let eth_ton_event_observer = match self.eth_ton_events_state.pending.get(&account) {
-            Some(entry) => entry.observer.clone(),
-            None => return Ok(()),
-        };
-        let eth_ton_events_state = Arc::downgrade(&self.eth_ton_events_state);
-
-        self.context
-            .deliver_message(
-                eth_ton_event_observer,
-                message,
-                // Stop voting for the contract if it was removed
-                move || match eth_ton_events_state.upgrade() {
-                    Some(state) => state.pending.contains_key(&account),
-                    None => false,
-                },
-            )
-            .await?;
-        Ok(())*/
-    }
-
-    async fn update_ton_sol_event(self: Arc<Self>, _account: UInt256) -> Result<()> {
-        todo!()
+        Ok(())
     }
 
     async fn check_connector_contract(&self, connector_account: UInt256) -> Result<()> {
@@ -2300,6 +2227,12 @@ type TonEthEventConfigurationsMap = FxHashMap<UInt256, TonEthEventConfigurationS
 type SolTonEventConfigurationsMap = FxHashMap<UInt256, SolTonEventConfigurationState>;
 type TonSolEventConfigurationsMap = FxHashMap<UInt256, TonSolEventConfigurationState>;
 type EventCodeHashesMap = FxHashMap<UInt256, EventType>;
+
+#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
+pub enum VerificationStatus {
+    Exists,
+    NotExists,
+}
 
 #[derive(thiserror::Error, Debug)]
 enum BridgeError {

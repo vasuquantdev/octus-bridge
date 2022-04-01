@@ -28,7 +28,7 @@ pub struct SolConfig {
 }
 
 fn default_poll_interval_sec() -> u64 {
-    60
+    10
 }
 
 fn default_get_timeout_sec() -> u64 {
