@@ -178,8 +178,16 @@ impl TonSigner {
         &self.public_key
     }
 
-    pub fn keypair(&self) -> [u8; 64] {
-        self.keys.lock().ton_keypair.to_bytes()
+    pub fn sign_solana_transaction(
+        &self,
+        transaction: &mut solana_sdk::transaction::Transaction,
+        latest_blockhash: solana_sdk::hash::Hash,
+    ) -> Result<()> {
+        let keypair =
+            solana_sdk::signature::Keypair::from_bytes(&self.keys.lock().ton_keypair.to_bytes())?;
+        transaction.sign(&[&keypair], latest_blockhash);
+
+        Ok(())
     }
 
     pub fn sign(&self, unsigned_message: &UnsignedMessage) -> Result<SignedMessage> {

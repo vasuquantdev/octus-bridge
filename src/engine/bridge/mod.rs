@@ -918,9 +918,8 @@ impl Bridge {
         {
             // Confirm event if transaction was found
             Ok(VerificationStatus::Exists) => {
-                let keypair = Keypair::from_bytes(&self.context.keystore.ton.keypair())?;
                 sol_subscriber
-                    .vote_for_withdraw_request(&keypair, payload_id, round_number)
+                    .vote_for_withdraw_request(&self.context.keystore.ton, payload_id, round_number)
                     .await?
             }
             // Skip event otherwise

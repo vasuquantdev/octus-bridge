@@ -13,12 +13,13 @@ use solana_program::program_pack::Pack;
 use solana_sdk::account::{Account, ReadableAccount};
 use solana_sdk::hash::Hash;
 use solana_sdk::pubkey::Pubkey;
-use solana_sdk::signature::{Keypair, Signature, Signer};
+use solana_sdk::signature::Signature;
 use solana_sdk::transaction::Transaction;
 use token_proxy::WithdrawalPattern;
 
 use crate::config::*;
 use crate::engine::bridge::*;
+use crate::engine::keystore::*;
 use crate::engine::ton_contracts::*;
 use crate::utils::*;
 
@@ -198,11 +199,12 @@ impl SolSubscriber {
 
     pub async fn vote_for_withdraw_request(
         &self,
-        relay: &Keypair,
+        ton_signer: &TonSigner,
         payload_id: Hash,
         round_number: u32,
     ) -> Result<()> {
-        let ix = token_proxy::confirm_withdrawal_request(&relay.pubkey(), payload_id, round_number);
+        let pubkey = Pubkey::new_from_array(ton_signer.raw_public_key().to_bytes());
+        let ix = token_proxy::confirm_withdrawal_request(&pubkey, payload_id, round_number);
 
         // Prepare tryhard config
         let api_request_strategy = generate_fixed_timeout_config(
@@ -223,13 +225,13 @@ impl SolSubscriber {
             }
         };
 
-        let mut transaction = Transaction::new_with_payer(&[ix], Some(&relay.pubkey()));
-        transaction.sign(&[relay], latest_blockhash);
+        let mut transaction = Transaction::new_with_payer(&[ix], Some(&pubkey));
+        ton_signer.sign_solana_transaction(&mut transaction, latest_blockhash)?;
 
         match retry(
             || self.send_and_confirm_transaction(&transaction),
             api_request_strategy,
-            "send Solana transaction",
+            "send solana transaction",
         )
         .await
         {
