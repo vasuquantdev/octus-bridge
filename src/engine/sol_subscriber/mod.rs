@@ -154,14 +154,31 @@ impl SolSubscriber {
             if let Some(transaction) = transaction.transaction.decode() {
                 let account_keys = transaction.message.static_account_keys();
                 for instruction in transaction.message.instructions() {
-                    if let Some(token_proxy::TokenProxyInstruction::ConfirmWithdrawRequest {
+                    if let Some(token_proxy::TokenProxyInstruction::WithdrawRequest {
                         payload_id,
                         ..
                     }) =
                         decode_token_proxy_instruction(program_pubkey, instruction, account_keys)
                     {
-                        let pending_confirmations = self.pending_confirmations.lock().await;
-                        if pending_confirmations.contains_key(&payload_id) {
+                        let mut pending_confirmations = self.pending_confirmations.lock().await;
+
+                        let is_ready_to_verify =
+                            pending_confirmations
+                                .iter_mut()
+                                .any(|(hash, confirmation)| {
+                                    if *hash == payload_id
+                                        && confirmation.status == PendingConfirmationStatus::New
+                                    {
+                                        confirmation.status = PendingConfirmationStatus::InProcess;
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                });
+
+                        drop(pending_confirmations);
+
+                        if is_ready_to_verify {
                             let account_pubkey =
                                 token_proxy::get_associated_withdrawal_address(&payload_id);
 
@@ -192,7 +209,7 @@ impl SolSubscriber {
                             let account_data =
                                 token_proxy::WithdrawalPattern::unpack(account.data())?;
 
-                            // TODO:
+                            // TODO: validation event
                         }
                     }
                 }
@@ -202,10 +219,63 @@ impl SolSubscriber {
         Ok(())
     }
 
+    async fn update(&self) -> Result<()> {
+        log::info!(
+            "Updating Solana subscriber. (Pending confirmations: {})",
+            self.pending_confirmation_count.load(Ordering::Acquire)
+        );
+
+        let pending_confirmations = self.pending_confirmations.lock().await;
+        let pending_payload_ids: Vec<Hash> = pending_confirmations
+            .iter()
+            .filter(|(hash, confirmation)| confirmation.status == PendingConfirmationStatus::New)
+            .map(|(hash, _)| *hash)
+            .collect();
+        drop(pending_confirmations);
+
+        for pending_payload_id in pending_payload_ids {
+            let account_pubkey =
+                token_proxy::get_associated_withdrawal_address(&pending_payload_id);
+
+            // Prepare tryhard config
+            let api_request_strategy = generate_fixed_timeout_config(
+                Duration::from_secs(self.config.get_timeout_sec),
+                Duration::from_secs(self.config.maximum_failed_responses_time_sec),
+            );
+
+            let account = match retry(
+                || self.get_account(&account_pubkey),
+                api_request_strategy,
+                "get solana account",
+            )
+            .await
+            {
+                Ok(account) => account,
+                Err(e) if is_account_not_found(&e, &account_pubkey) => {
+                    log::info!(
+                        "Withdrawal Solana account 0x{} not created yet",
+                        account_pubkey
+                    );
+                    continue;
+                }
+                Err(e) => {
+                    log::error!("Failed to get solana account 0x{}: {}", account_pubkey, e);
+                    continue;
+                }
+            };
+
+            let account_data = token_proxy::WithdrawalPattern::unpack(account.data())?;
+
+            // TODO: verify event
+        }
+
+        Ok(())
+    }
+
     async fn get_account(&self, account_pubkey: &Pubkey) -> Result<Account> {
         self.rpc_client
             .get_account(account_pubkey)
-            .context("Failed getting solana account")
+            .map_err(anyhow::Error::new)
     }
 
     /*pub async fn verify_relay_staker_address(
@@ -799,8 +869,10 @@ impl PendingConfirmation {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 enum PendingConfirmationStatus {
+    New,
+    Exist,
     InProcess,
     Valid,
     Invalid,
@@ -830,19 +902,10 @@ pub enum VerificationStatus {
     NotExists,
 }
 
-impl From<VerificationStatus> for PendingConfirmationStatus {
-    fn from(status: VerificationStatus) -> Self {
-        match status {
-            VerificationStatus::Exists => Self::Valid,
-            VerificationStatus::NotExists => Self::Invalid,
-        }
-    }
-}
-
-fn is_incomplete_message(error: &anyhow::Error) -> bool {
+fn is_account_not_found(error: &anyhow::Error, pubkey: &Pubkey) -> bool {
     error
         .to_string()
-        .contains("hyper::Error(IncompleteMessage)")
+        .contains(format!("AccountNotFound: pubkey={}", pubkey).as_str())
 }
 
 #[derive(thiserror::Error, Debug)]
