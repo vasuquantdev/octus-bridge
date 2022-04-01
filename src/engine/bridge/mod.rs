@@ -50,8 +50,10 @@ pub struct Bridge {
     sol_ton_event_configurations_tx: AccountEventsTx<SolTonEventConfigurationEvent>,
     ton_sol_event_configurations_tx: AccountEventsTx<TonSolEventConfigurationEvent>,
 
-    total_active_eth_event_configurations: AtomicUsize,
-    total_active_ton_event_configurations: AtomicUsize,
+    total_active_eth_ton_event_configurations: AtomicUsize,
+    total_active_ton_eth_event_configurations: AtomicUsize,
+    total_active_sol_ton_event_configurations: AtomicUsize,
+    total_active_ton_sol_event_configurations: AtomicUsize,
 }
 
 impl Bridge {
@@ -88,8 +90,10 @@ impl Bridge {
             ton_eth_event_configurations_tx,
             sol_ton_event_configurations_tx,
             ton_sol_event_configurations_tx,
-            total_active_eth_event_configurations: Default::default(),
-            total_active_ton_event_configurations: Default::default(),
+            total_active_eth_ton_event_configurations: Default::default(),
+            total_active_ton_eth_event_configurations: Default::default(),
+            total_active_sol_ton_event_configurations: Default::default(),
+            total_active_ton_sol_event_configurations: Default::default(),
         });
 
         // Prepare listeners
@@ -173,20 +177,28 @@ impl Bridge {
         bridge.get_all_configurations().await?;
         bridge.get_all_events().await?;
 
-        bridge.start_ton_event_configurations_gc();
+        bridge.start_ton_eth_event_configurations_gc();
 
         Ok(bridge)
     }
 
     pub fn metrics(&self) -> BridgeMetrics {
         BridgeMetrics {
-            pending_eth_event_count: self.eth_ton_events_state.count.load(Ordering::Acquire),
-            pending_ton_event_count: self.ton_eth_events_state.count.load(Ordering::Acquire),
-            total_active_eth_event_configurations: self
-                .total_active_eth_event_configurations
+            pending_eth_ton_event_count: self.eth_ton_events_state.count.load(Ordering::Acquire),
+            pending_ton_eth_event_count: self.ton_eth_events_state.count.load(Ordering::Acquire),
+            pending_sol_ton_event_count: self.sol_ton_events_state.count.load(Ordering::Acquire),
+            pending_ton_sol_event_count: self.ton_sol_events_state.count.load(Ordering::Acquire),
+            total_active_eth_ton_event_configurations: self
+                .total_active_eth_ton_event_configurations
                 .load(Ordering::Acquire),
-            total_active_ton_event_configurations: self
-                .total_active_ton_event_configurations
+            total_active_ton_eth_event_configurations: self
+                .total_active_ton_eth_event_configurations
+                .load(Ordering::Acquire),
+            total_active_sol_ton_event_configurations: self
+                .total_active_sol_ton_event_configurations
+                .load(Ordering::Acquire),
+            total_active_ton_sol_event_configurations: self
+                .total_active_ton_sol_event_configurations
                 .load(Ordering::Acquire),
         }
     }
@@ -391,7 +403,7 @@ impl Bridge {
                     if keys.contains(our_public_key) {
                         // Start voting
                         self.spawn_background_task(
-                            "update ETH event",
+                            "update ETH->TON event",
                             self.clone().update_eth_ton_event(account),
                         );
                     } else {
@@ -484,16 +496,121 @@ impl Bridge {
 
     async fn process_sol_ton_event(
         self: Arc<Self>,
-        (_account, _event): (UInt256, (SolTonEvent, EventStatus)),
+        (account, event): (UInt256, (SolTonEvent, EventStatus)),
     ) -> Result<()> {
-        todo!()
+        use dashmap::mapref::entry::Entry;
+
+        let our_public_key = self.context.keystore.ton.public_key();
+
+        // Use flag to update counter outside events map lock to reduce its duration
+        let mut event_removed = false;
+
+        // Handle only known ETH events
+        if let Entry::Occupied(entry) = self.sol_ton_events_state.pending.entry(account) {
+            let remove_entry = || {
+                // Remove pending event
+                entry.remove();
+                event_removed = true;
+            };
+
+            match event {
+                // Remove event if voting process was finished
+                (_, EventStatus::Confirmed | EventStatus::Rejected) => remove_entry(),
+                // Handle event initialization
+                (SolTonEvent::ReceiveRoundRelays { keys }, _) => {
+                    // Check if event contains our key
+                    if keys.contains(our_public_key) {
+                        // Start voting
+                        self.spawn_background_task(
+                            "update SOL->TON event",
+                            self.clone().update_sol_ton_event(account),
+                        );
+                    } else {
+                        remove_entry();
+                    }
+                }
+                // Handle our confirmation or rejection
+                (SolTonEvent::Confirm { public_key } | SolTonEvent::Reject { public_key }, _)
+                    if public_key == our_public_key =>
+                {
+                    remove_entry()
+                }
+                _ => { /* Ignore other events */ }
+            }
+        }
+
+        // Update metrics
+        if event_removed {
+            self.sol_ton_events_state
+                .count
+                .fetch_sub(1, Ordering::Release);
+        }
+
+        Ok(())
     }
 
     async fn process_ton_sol_event(
         self: Arc<Self>,
-        (_account, _event): (UInt256, (TonSolEvent, EventStatus)),
+        (account, event): (UInt256, (TonSolEvent, EventStatus)),
     ) -> Result<()> {
-        todo!()
+        use dashmap::mapref::entry::Entry;
+
+        let our_public_key = self.context.keystore.ton.public_key();
+
+        // Use flag to update counter outside events map lock to reduce its duration
+        let mut event_removed = false;
+
+        // Handle only known TON events
+        if let Entry::Occupied(entry) = self.ton_sol_events_state.pending.entry(account) {
+            let remove_entry = || {
+                // Remove pending event
+                entry.remove();
+                event_removed = true;
+            };
+
+            match event {
+                // Remove event in confirmed state if the balance is not enough.
+                //
+                // NOTE: it is not strictly necessary to collect all signatures, so the
+                // contract subscription is allowed to be dropped on nearly empty balance.
+                //
+                // This state can be achieved by calling `close` method on transfer contract
+                // or execution `confirm` or `reject` after several years so that the cost of
+                // keeping the contract almost nullifies its balance.
+                (TonSolEvent::Closed, EventStatus::Confirmed) => remove_entry(),
+                // Remove event if it was rejected
+                (_, EventStatus::Rejected) => remove_entry(),
+                // Handle event initialization
+                (TonSolEvent::ReceiveRoundRelays { keys }, _) => {
+                    // Check if event contains our key
+                    if keys.contains(our_public_key) {
+                        // Start voting
+                        self.spawn_background_task(
+                            "update TON->SOL event",
+                            self.clone().update_ton_sol_event(account),
+                        );
+                    } else {
+                        remove_entry();
+                    }
+                }
+                // Handle our confirmation or rejection
+                (TonSolEvent::Confirm { public_key } | TonSolEvent::Reject { public_key }, _)
+                    if public_key == our_public_key =>
+                {
+                    remove_entry();
+                }
+                _ => { /* Ignore other events */ }
+            }
+        }
+
+        // Update metrics
+        if event_removed {
+            self.ton_sol_events_state
+                .count
+                .fetch_sub(1, Ordering::Release);
+        }
+
+        Ok(())
     }
 
     /// Check deployed event contract in parallel with transactions processing
@@ -801,7 +918,7 @@ impl Bridge {
         {
             // Confirm event if transaction was found
             Ok(VerificationStatus::Exists) => {
-                // sol_subscriber.verify_ton_sol_event(?, payload_id, round_number) // TODO
+                // sol_subscriber.vote_for_withdraw_request(?, payload_id, round_number) // TODO
             }
             // Skip event otherwise
             Ok(VerificationStatus::NotExists) | Err(_) => {
@@ -1041,7 +1158,7 @@ impl Bridge {
             hash_map::Entry::Vacant(entry) => {
                 log::info!("Added new ETH->TON event configuration: {:?}", details);
 
-                self.total_active_eth_event_configurations
+                self.total_active_eth_ton_event_configurations
                     .fetch_add(1, Ordering::Release);
 
                 entry.insert(EthTonEventConfigurationState {
@@ -1108,7 +1225,7 @@ impl Bridge {
             hash_map::Entry::Vacant(entry) => {
                 log::info!("Added new TON->ETH event configuration: {:?}", details);
 
-                self.total_active_ton_event_configurations
+                self.total_active_ton_eth_event_configurations
                     .fetch_add(1, Ordering::Release);
 
                 entry.insert(TonEthEventConfigurationState {
@@ -1365,7 +1482,7 @@ impl Bridge {
         Ok(())
     }
 
-    fn start_ton_event_configurations_gc(self: &Arc<Self>) {
+    fn start_ton_eth_event_configurations_gc(self: &Arc<Self>) {
         let bridge = Arc::downgrade(self);
 
         tokio::spawn(async move {
@@ -1426,7 +1543,7 @@ impl Bridge {
                 });
 
                 bridge
-                    .total_active_ton_event_configurations
+                    .total_active_ton_eth_event_configurations
                     .fetch_sub(total_removed, Ordering::Release);
             }
         });
@@ -1476,10 +1593,14 @@ impl Bridge {
 }
 
 pub struct BridgeMetrics {
-    pub pending_eth_event_count: usize,
-    pub pending_ton_event_count: usize,
-    pub total_active_eth_event_configurations: usize,
-    pub total_active_ton_event_configurations: usize,
+    pub pending_eth_ton_event_count: usize,
+    pub pending_ton_eth_event_count: usize,
+    pub pending_sol_ton_event_count: usize,
+    pub pending_ton_sol_event_count: usize,
+    pub total_active_eth_ton_event_configurations: usize,
+    pub total_active_ton_eth_event_configurations: usize,
+    pub total_active_sol_ton_event_configurations: usize,
+    pub total_active_ton_sol_event_configurations: usize,
 }
 
 struct EventsState<T> {
