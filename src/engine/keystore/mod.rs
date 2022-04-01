@@ -319,17 +319,17 @@ mod tst {
     }
 
     const JSON: &str = r#"{
-        "salt": "G+g0tWMEE0RkAKZq5MMuJOLT5Yw=",
-        "eth": {
-            "encrypted_seed_phrase": "qZ+9nriQ/HMWcIPL2nFDGYmDT12y/Z4SasoKK/86iqellvPrDjIqss1+5Hr26cVJtRMAieWqzwvyxa9ryXQ/zE/HY38lhXLfDNRplW7IxuUAwS5jp/npeA==",
-            "encrypted_derivation_path": "t8DwiuveuTdUf8OJmyAAXUyzmmGAQBz3ykWpD2moS28=",
-            "nonce": "db4f2c4b6a0abca6f77427e1"
-        },
-        "ton": {
-            "encrypted_seed_phrase": "J0Mg2qJE6+Q0DJq/O2kqsVyJAkzeWVhqj9GkJrOBGE/uzg777q4zSzfDTfsqGYc4kHITaQdJBIu6DCVmo9ePpYJEoUBuew1zKAVe+kVMczebcQKXqrTEwA==",
-            "encrypted_derivation_path": "ORxtzvEKq6lnC8Xqcid26hUXNpvckrijIEP+8YMgaVx8",
-            "nonce": "dafbcbf23f77131d1e62a80b"
-        }
+          "salt": "R6fXVwOEHM0krZdN5tkV7GANS4I=",
+          "eth": {
+                "encrypted_seed_phrase": "pBYvQ7Hwz6Y6AdlR2Efuw0oCkLr13vpiW8zwT6PiZgr9EZ6nJlVw6jd1DLmb87488cQPkbn+WgzfaKPtrW2OY9VEnLTQW3jvTEJ83A4cX34KPm3aavI4fw==",
+                "encrypted_derivation_path": "ukliV+K+iuJ4DpkTmRath7cYwcoJk0gGyvGTz4CYGOE=",
+                "nonce": "21b9a0f8cd32819c87690e99"
+          },
+          "ton": {
+                "encrypted_seed_phrase": "F7eN49ZiCihQ0zitYxzpcmJrqI4usQNzi6aXzDU7fAaRIdP/EpjhET/ejKWiGxXDYvrDuGrR0Egf5V4lT5FeZpvIiOTn+HDqjj4qbM5LQ0k14rY7x0h8bg==",
+                "encrypted_derivation_path": "CejA94UsSmUD1Gf4KlK1KSvAwzjvaxvw+CFL9f5uSc90",
+                "nonce": "42f6b252f74728eca66abe0b"
+          }
     }"#;
 
     #[test]
