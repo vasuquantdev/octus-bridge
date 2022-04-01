@@ -178,6 +178,10 @@ impl TonSigner {
         &self.public_key
     }
 
+    pub fn keypair(&self) -> [u8; 64] {
+        self.keys.lock().ton_keypair.to_bytes()
+    }
+
     pub fn sign(&self, unsigned_message: &UnsignedMessage) -> Result<SignedMessage> {
         let time = chrono::Utc::now().timestamp_millis() as u64;
         let expire_at = (time / 1000) as u32 + MESSAGE_TTL_SEC;
