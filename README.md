@@ -290,11 +290,17 @@ more optimized than C++ node, so they don't harm the network.
 
 ### Changelog
 
+### 2.0.10 (2021-04-03)
+
+Bugfixes
+
+* Fixed memory leaks. (New peers queue was read at a fixed rate).
+
 ### 2.0.9 (2021-03-26)
 
 Features
 
-* Add packets compression support (enabled by default).
+* Added packets compression support (enabled by default).
 * Various optimizations.
 
 ### 2.0.8 (2021-02-12)
@@ -302,7 +308,7 @@ Features
 Features
 
 * Updated ABI version to 2.2
-* Fix memory leaks. (Shard states were slowly filling with loaded storage cells).
+* Fixed memory leaks. (Shard states were slowly filling with loaded storage cells).
 
 ### 2.0.7 (2021-02-02)
 
