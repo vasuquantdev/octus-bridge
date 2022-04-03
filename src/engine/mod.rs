@@ -3,6 +3,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use parking_lot::Mutex;
 use pkey_mprotect::*;
+use pomfrit::formatter::*;
 use tiny_adnl::utils::*;
 use tokio::sync::mpsc;
 use ton_block::Serializable;
@@ -10,7 +11,6 @@ use ton_block::Serializable;
 use self::bridge::*;
 use self::eth_subscriber::*;
 use self::keystore::*;
-use self::metrics_exporter::*;
 use self::staking::*;
 use self::ton_contracts::*;
 use self::ton_subscriber::*;
@@ -20,13 +20,12 @@ use crate::utils::*;
 mod bridge;
 mod eth_subscriber;
 mod keystore;
-mod metrics_exporter;
 mod staking;
 mod ton_contracts;
 mod ton_subscriber;
 
 pub struct Engine {
-    metrics_exporter: Arc<MetricsExporter>,
+    metrics_exporter: Arc<pomfrit::MetricsExporter>,
     context: Arc<EngineContext>,
     bridge: Mutex<Option<Arc<Bridge>>>,
     staking: Mutex<Option<Arc<Staking>>>,
@@ -39,24 +38,52 @@ impl Engine {
         protection_keys: Arc<ProtectionKeys>,
         shutdown_requests_tx: ShutdownRequestsTx,
     ) -> Result<Arc<Self>> {
-        let metrics_exporter =
-            MetricsExporter::with_config(config.metrics_settings.clone()).await?;
+        let (metrics_exporter, metrics_writer) =
+            pomfrit::create_exporter(config.metrics_settings.clone()).await?;
 
         let context =
             EngineContext::new(config, global_config, protection_keys, shutdown_requests_tx)
                 .await?;
 
-        Ok(Arc::new(Self {
+        let engine = Arc::new(Self {
             metrics_exporter,
             context,
             bridge: Mutex::new(None),
             staking: Mutex::new(None),
-        }))
+        });
+
+        metrics_writer.spawn({
+            let engine = Arc::downgrade(&engine);
+            move |buffer| {
+                let engine = match engine.upgrade() {
+                    Some(engine) => engine,
+                    None => return,
+                };
+
+                buffer
+                    .write(LabeledEthSubscriberMetrics(&engine.context))
+                    .write(LabeledTonSubscriberMetrics(&engine.context));
+
+                if let Some(bridge) = &*engine.bridge.lock() {
+                    buffer.write(LabeledBridgeMetrics {
+                        context: &engine.context,
+                        bridge,
+                    });
+                };
+
+                if let Some(staking) = &*engine.staking.lock() {
+                    buffer.write(LabeledStakingMetrics {
+                        context: &engine.context,
+                        staking,
+                    });
+                };
+            }
+        });
+
+        Ok(engine)
     }
 
     pub async fn start(self: &Arc<Self>) -> Result<()> {
-        self.start_metrics_exporter();
-
         // Sync node and subscribers
         self.context.start().await?;
 
@@ -95,50 +122,11 @@ impl Engine {
         Ok(())
     }
 
-    pub async fn update_metrics_config(&self, config: Option<MetricsConfig>) -> Result<()> {
+    pub async fn update_metrics_config(&self, config: Option<pomfrit::Config>) -> Result<()> {
         self.metrics_exporter
             .reload(config)
             .await
             .context("Failed to update metrics exporter config")
-    }
-
-    fn start_metrics_exporter(self: &Arc<Self>) {
-        let engine = Arc::downgrade(self);
-        let handle = Arc::downgrade(self.metrics_exporter.handle());
-
-        tokio::spawn(async move {
-            loop {
-                let handle = match (engine.upgrade(), handle.upgrade()) {
-                    // Update next metrics buffer
-                    (Some(engine), Some(handle)) => {
-                        let mut buffer = handle.buffers().acquire_buffer().await;
-                        buffer.write(LabeledEthSubscriberMetrics(&engine.context));
-                        buffer.write(LabeledTonSubscriberMetrics(&engine.context));
-
-                        if let Some(bridge) = &*engine.bridge.lock() {
-                            buffer.write(LabeledBridgeMetrics {
-                                context: &engine.context,
-                                bridge,
-                            });
-                        }
-
-                        if let Some(staking) = &*engine.staking.lock() {
-                            buffer.write(LabeledStakingMetrics {
-                                context: &engine.context,
-                                staking,
-                            });
-                        }
-
-                        drop(buffer);
-                        handle
-                    }
-                    // Engine is already dropped
-                    _ => return,
-                };
-
-                handle.wait().await;
-            }
-        });
     }
 }
 

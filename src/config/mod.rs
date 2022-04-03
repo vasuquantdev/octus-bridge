@@ -1,8 +1,7 @@
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::net::{Ipv4Addr, SocketAddrV4};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use http::uri::PathAndQuery;
 use nekoton_utils::*;
 use rand::Rng;
 use secstr::SecUtf8;
@@ -11,7 +10,6 @@ use serde::{Deserialize, Serialize};
 pub use self::eth_config::*;
 pub use self::stored_keys::*;
 pub use self::verification_state::*;
-use crate::utils::*;
 
 mod eth_config;
 mod stored_keys;
@@ -41,7 +39,7 @@ pub struct AppConfig {
     /// Prometheus metrics exporter settings.
     /// Completely disable when not specified
     #[serde(default)]
-    pub metrics_settings: Option<MetricsConfig>,
+    pub metrics_settings: Option<pomfrit::Config>,
 
     /// log4rs settings.
     /// See [docs](https://docs.rs/log4rs/1.0.0/log4rs/) for more details
@@ -213,32 +211,6 @@ impl Default for NodeConfig {
                 force_compression: true,
                 ..Default::default()
             },
-        }
-    }
-}
-
-#[derive(Deserialize, Serialize, Clone, Debug)]
-#[serde(default)]
-pub struct MetricsConfig {
-    /// Listen address of metrics. Used by the client to gather prometheus metrics.
-    /// Default: `127.0.0.1:10000`
-    pub listen_address: SocketAddr,
-
-    /// Path to the metrics.
-    /// Default: `/`
-    #[serde(with = "serde_url")]
-    pub metrics_path: PathAndQuery,
-
-    /// Metrics update interval in seconds. Default: 10
-    pub collection_interval_sec: u64,
-}
-
-impl Default for MetricsConfig {
-    fn default() -> Self {
-        Self {
-            listen_address: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 10000),
-            metrics_path: PathAndQuery::from_static("/"),
-            collection_interval_sec: 10,
         }
     }
 }
