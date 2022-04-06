@@ -138,6 +138,16 @@ impl SolTonEventConfigurationContract<'_> {
     }
 }
 
+pub struct TonSolEventConfigurationContract<'a>(pub &'a ExistingContract);
+
+impl TonSolEventConfigurationContract<'_> {
+    pub fn get_details(&self) -> Result<TonSolEventConfigurationDetails> {
+        let function = ton_sol_event_configuration_contract::get_details();
+        let details = self.0.run_local(function, &[answer_id()])?.unpack()?;
+        Ok(details)
+    }
+}
+
 pub struct BridgeContract<'a>(pub &'a ExistingContract);
 
 impl BridgeContract<'_> {

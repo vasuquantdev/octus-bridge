@@ -16,6 +16,7 @@ use crate::utils::*;
 pub struct KeyStore {
     pub eth: EthSigner,
     pub ton: TonSigner,
+    pub sol: SolSigner,
 }
 
 impl KeyStore {
@@ -62,7 +63,8 @@ impl KeyStore {
 
         let keystore = Arc::new(Self {
             eth: EthSigner::new(keys.clone()),
-            ton: TonSigner::new(keys),
+            ton: TonSigner::new(keys.clone()),
+            sol: SolSigner::new(keys),
         });
 
         // Print ETH address and TON public key
@@ -71,6 +73,7 @@ impl KeyStore {
             "Using ETH address: {}",
             EthAddressWrapper(keystore.eth.address())
         );
+        log::warn!("Using SOL public key: 0x{}", keystore.sol.public_key());
 
         Ok(keystore)
     }
@@ -178,18 +181,6 @@ impl TonSigner {
         &self.public_key
     }
 
-    pub fn sign_solana_transaction(
-        &self,
-        transaction: &mut solana_sdk::transaction::Transaction,
-        latest_blockhash: solana_sdk::hash::Hash,
-    ) -> Result<()> {
-        let keypair =
-            solana_sdk::signature::Keypair::from_bytes(&self.keys.lock().ton_keypair.to_bytes())?;
-        transaction.sign(&[&keypair], latest_blockhash);
-
-        Ok(())
-    }
-
     pub fn sign(&self, unsigned_message: &UnsignedMessage) -> Result<SignedMessage> {
         let time = chrono::Utc::now().timestamp_millis() as u64;
         let expire_at = (time / 1000) as u32 + MESSAGE_TTL_SEC;
@@ -216,6 +207,47 @@ impl TonSigner {
             message,
             expire_at,
         })
+    }
+}
+
+pub struct SolSigner {
+    keys: Arc<ProtectedRegion<Keys>>,
+    public_key: solana_program::pubkey::Pubkey,
+    public_key_bytes: UInt256,
+}
+
+impl SolSigner {
+    fn new(keys: Arc<ProtectedRegion<Keys>>) -> Self {
+        let public_key = keys.lock().ton_keypair.public;
+
+        Self {
+            keys,
+            public_key: solana_program::pubkey::Pubkey::new_from_array(public_key.to_bytes()),
+            public_key_bytes: UInt256::from(public_key.to_bytes()),
+        }
+    }
+
+    pub fn public_key(&self) -> solana_program::pubkey::Pubkey {
+        self.public_key
+    }
+
+    pub fn public_key_bytes(&self) -> &UInt256 {
+        &self.public_key_bytes
+    }
+
+    pub fn sign(
+        &self,
+        message: solana_program::message::Message,
+        recent_blockhash: solana_sdk::hash::Hash,
+    ) -> Result<solana_sdk::transaction::Transaction> {
+        let keypair =
+            solana_sdk::signature::Keypair::from_bytes(&self.keys.lock().ton_keypair.to_bytes())?;
+
+        Ok(solana_sdk::transaction::Transaction::new(
+            &[&keypair],
+            message,
+            recent_blockhash,
+        ))
     }
 }
 

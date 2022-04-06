@@ -11,8 +11,10 @@ use nekoton_abi::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 use tokio::sync::mpsc;
 use tokio::sync::RwLock;
+use ton_abi::TokenValue;
 use ton_block::{Deserializable, HashmapAugType};
 use ton_types::UInt256;
+use web3::signing::Key;
 
 use crate::engine::keystore::*;
 use crate::engine::ton_contracts::*;
@@ -500,7 +502,7 @@ impl Bridge {
     ) -> Result<()> {
         use dashmap::mapref::entry::Entry;
 
-        let our_public_key = self.context.keystore.ton.public_key();
+        let our_public_key = self.context.keystore.sol.public_key_bytes();
 
         // Use flag to update counter outside events map lock to reduce its duration
         let mut event_removed = false;
@@ -898,7 +900,8 @@ impl Bridge {
         let contract = ton_subscriber.wait_contract_state(account).await?;
         let base_event_contract = EventBaseContract(&contract);
 
-        match EventBaseContract(&contract).process(keystore.ton.public_key(), false)? {
+        // Check further steps based on event statuses
+        match base_event_contract.process(keystore.ton.public_key(), true)? {
             EventAction::Nop => return Ok(()),
             EventAction::Remove => {
                 self.ton_sol_events_state.remove(&account);
@@ -907,28 +910,79 @@ impl Bridge {
             EventAction::Vote => { /* continue voting */ }
         }
 
+        // Get event details
         let event_init_data = TonSolEventContract(&contract).event_init_data()?;
 
-        let payload_id = Hash::new_from_array(event_init_data.vote_data.payload_id.inner());
-        let round_number = base_event_contract.round_number()?;
+        // Find suitable configuration
+        // NOTE: be sure to drop `self.state` lock before removing pending ton event.
+        // It may deadlock otherwise!
+        let data = {
+            let state = self.state.read().await;
+            state
+                .ton_sol_event_configurations
+                .get(&event_init_data.configuration)
+                .map(|configuration| {
+                    ton_abi::TokenValue::decode_params(
+                        &configuration.event_abi,
+                        event_init_data.vote_data.event_data.clone().into(),
+                        &ton_abi::contract::ABI_VERSION_2_2,
+                        false,
+                    )
+                })
+        };
 
-        match sol_subscriber
-            .verify_ton_sol_event(event_init_data.vote_data)
+        let decoded_data = match data {
+            // Decode event data with event abi from configuration
+            Some(data) => data.and_then(|data| {
+                let data: Vec<TokenValue> = data.into_iter().map(|token| token.value).collect();
+
+                borsh::serialize_tokens(&data)
+                //borsh::serialize_tokens(&data.into_iter().map(|token| token.value).collect())
+                //Ok(Vec::new())
+            }),
+            // Do nothing when configuration was not found
+            None => {
+                log::error!(
+                    "TON->SOL event configuration {:x} not found for event {:x}",
+                    event_init_data.configuration,
+                    account
+                );
+                self.ton_eth_events_state.remove(&account);
+                return Ok(());
+            }
+        }?;
+
+        let payload_id = solana_program::hash::hash(&decoded_data);
+
+        // Verify SOL event and create message to token-proxy contract
+        let transaction = match sol_subscriber
+            .verify_ton_event(
+                payload_id,
+                event_init_data.vote_data.event_timestamp,
+                event_init_data.vote_data.event_transaction_lt,
+            )
             .await
         {
             // Confirm event if transaction was found
             Ok(VerificationStatus::Exists) => {
-                sol_subscriber
-                    .vote_for_withdraw_request(&self.context.keystore.ton, payload_id, round_number)
-                    .await?
+                let round_number = base_event_contract.round_number()?;
+
+                let relay_pubkey = self.context.keystore.sol.public_key();
+
+                let message =
+                    create_confirm_message(&relay_pubkey, &relay_pubkey, payload_id, round_number);
+                let recent_blockhash = sol_subscriber.get_recent_blockhash().await?;
+                self.context.keystore.sol.sign(message, recent_blockhash)?
             }
-            // Skip event otherwise
+            // Skip event
             Ok(VerificationStatus::NotExists) | Err(_) => {
                 log::error!("Failed to verify TON->SOL event {:x}", account);
                 self.ton_sol_events_state.remove(&account);
                 return Ok(());
             }
         };
+
+        sol_subscriber.send_transaction(transaction).await?;
 
         Ok(())
     }

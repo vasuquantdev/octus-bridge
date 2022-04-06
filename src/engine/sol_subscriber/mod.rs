@@ -6,7 +6,6 @@ use anyhow::{Context, Result};
 use tiny_adnl::utils::*;
 use tokio::sync::{mpsc, oneshot, Notify};
 
-use solana_client::nonblocking::pubsub_client::PubsubClient;
 use solana_client::rpc_client::RpcClient;
 use solana_client::rpc_response::{Response, RpcKeyedAccount};
 use solana_program::program_pack::Pack;
@@ -19,17 +18,15 @@ use token_proxy::WithdrawalPattern;
 
 use crate::config::*;
 use crate::engine::bridge::*;
-use crate::engine::keystore::*;
 use crate::engine::ton_contracts::*;
 use crate::utils::*;
 
 pub struct SolSubscriber {
     config: SolConfig,
     rpc_client: Arc<RpcClient>,
-    pubsub_client: Arc<PubsubClient>,
-    ton_sol_pending_confirmations: tokio::sync::Mutex<FxHashMap<Hash, TonSolPendingConfirmation>>,
-    ton_sol_pending_confirmation_count: AtomicUsize,
-    ton_sol_new_events_notify: Notify,
+    ton_pending_confirmations: tokio::sync::Mutex<FxHashMap<Hash, TonSolPendingConfirmation>>,
+    ton_pending_confirmation_count: AtomicUsize,
+    ton_new_events_notify: Notify,
 }
 
 impl SolSubscriber {
@@ -38,15 +35,13 @@ impl SolSubscriber {
             &config.url,
             config.commitment_config,
         ));
-        let pubsub_client = Arc::new(PubsubClient::new(&config.ws_url).await?);
 
         let subscriber = Arc::new(Self {
             config,
             rpc_client,
-            pubsub_client,
-            ton_sol_pending_confirmations: Default::default(),
-            ton_sol_pending_confirmation_count: Default::default(),
-            ton_sol_new_events_notify: Notify::new(),
+            ton_pending_confirmations: Default::default(),
+            ton_pending_confirmation_count: Default::default(),
+            ton_new_events_notify: Notify::new(),
         });
 
         Ok(subscriber)
@@ -54,8 +49,8 @@ impl SolSubscriber {
 
     pub fn metrics(&self) -> SolSubscriberMetrics {
         SolSubscriberMetrics {
-            ton_sol_pending_confirmation_count: self
-                .ton_sol_pending_confirmation_count
+            ton_pending_confirmation_count: self
+                .ton_pending_confirmation_count
                 .load(Ordering::Acquire),
         }
     }
@@ -71,25 +66,24 @@ impl SolSubscriber {
                 };
 
                 tokio::select! {
-                    _ = subscriber.ton_sol_new_events_notify.notified() => {},
+                    _ = subscriber.ton_new_events_notify.notified() => {},
                     _ = tokio::time::sleep(Duration::from_secs(subscriber.config.poll_interval_sec)) => {},
                 };
 
-                if let Err(e) = subscriber.ton_sol_update().await {
+                if let Err(e) = subscriber.ton_update().await {
                     log::error!("Error occurred during Solana event update: {:?}", e);
                 }
             }
         });
     }
 
-    async fn ton_sol_update(&self) -> Result<()> {
+    async fn ton_update(&self) -> Result<()> {
         log::info!(
-            "Updating Solana subscriber. (TON->SOL pending confirmations: {})",
-            self.ton_sol_pending_confirmation_count
-                .load(Ordering::Acquire)
+            "TON->SOL pending confirmations: {}",
+            self.ton_pending_confirmation_count.load(Ordering::Acquire)
         );
 
-        let pending_confirmations = self.ton_sol_pending_confirmations.lock().await;
+        let pending_confirmations = self.ton_pending_confirmations.lock().await;
         let payload_ids: Vec<Hash> = pending_confirmations
             .iter()
             .map(|(hash, _)| *hash)
@@ -132,7 +126,7 @@ impl SolSubscriber {
 
             let account_data = token_proxy::WithdrawalPattern::unpack(account.data())?;
 
-            let mut pending_confirmations = self.ton_sol_pending_confirmations.lock().await;
+            let mut pending_confirmations = self.ton_pending_confirmations.lock().await;
             if let Some(confirmation) = pending_confirmations.get_mut(&payload_id) {
                 let status = confirmation.check(account_data);
 
@@ -166,29 +160,30 @@ impl SolSubscriber {
             .map_err(anyhow::Error::new)
     }
 
-    pub async fn verify_ton_sol_event(
+    pub async fn verify_ton_event(
         &self,
-        vote_data: TonSolEventVoteData,
+        payload_id: Hash,
+        event_timestamp: u32,
+        event_transaction_lt: u64,
     ) -> Result<VerificationStatus> {
         let rx = {
-            let mut pending_confirmations = self.ton_sol_pending_confirmations.lock().await;
-
-            let payload_id = Hash::new_from_array(vote_data.payload_id.inner());
-
             let (tx, rx) = oneshot::channel();
 
+            let mut pending_confirmations = self.ton_pending_confirmations.lock().await;
             pending_confirmations.insert(
                 payload_id,
                 TonSolPendingConfirmation {
-                    vote_data,
+                    payload_id,
+                    event_timestamp,
+                    event_transaction_lt,
                     status_tx: Some(tx),
                 },
             );
 
-            self.ton_sol_pending_confirmation_count
+            self.ton_pending_confirmation_count
                 .store(pending_confirmations.len(), Ordering::Release);
 
-            self.ton_sol_new_events_notify.notify_waiters();
+            self.ton_new_events_notify.notify_waiters();
 
             rx
         };
@@ -197,16 +192,7 @@ impl SolSubscriber {
         Ok(status)
     }
 
-    pub async fn vote_for_withdraw_request(
-        &self,
-        ton_signer: &TonSigner,
-        payload_id: Hash,
-        round_number: u32,
-    ) -> Result<()> {
-        let pubkey = Pubkey::new_from_array(ton_signer.raw_public_key().to_bytes());
-        let ix = token_proxy::confirm_withdrawal_request(&pubkey, payload_id, round_number);
-
-        // Prepare tryhard config
+    pub async fn get_recent_blockhash(&self) -> Result<Hash> {
         let api_request_strategy = generate_fixed_timeout_config(
             Duration::from_secs(self.config.get_timeout_sec),
             Duration::from_secs(self.config.maximum_failed_responses_time_sec),
@@ -215,7 +201,7 @@ impl SolSubscriber {
         let latest_blockhash = match retry(
             || self.get_latest_blockhash(),
             api_request_strategy,
-            "get solana latest blockhash",
+            "get latest blockhash",
         )
         .await
         {
@@ -225,8 +211,15 @@ impl SolSubscriber {
             }
         };
 
-        let mut transaction = Transaction::new_with_payer(&[ix], Some(&pubkey));
-        ton_signer.sign_solana_transaction(&mut transaction, latest_blockhash)?;
+        Ok(latest_blockhash)
+    }
+
+    pub async fn send_transaction(&self, transaction: Transaction) -> Result<()> {
+        // Prepare tryhard config
+        let api_request_strategy = generate_fixed_timeout_config(
+            Duration::from_secs(self.config.get_timeout_sec),
+            Duration::from_secs(self.config.maximum_failed_responses_time_sec),
+        );
 
         match retry(
             || self.send_and_confirm_transaction(&transaction),
@@ -247,17 +240,26 @@ impl SolSubscriber {
 
 #[derive(Debug, Copy, Clone)]
 pub struct SolSubscriberMetrics {
-    pub ton_sol_pending_confirmation_count: usize,
+    pub ton_pending_confirmation_count: usize,
 }
 
 struct TonSolPendingConfirmation {
-    vote_data: TonSolEventVoteData,
+    payload_id: Hash,
+    event_timestamp: u32,
+    event_transaction_lt: u64,
     status_tx: Option<VerificationStatusTx>,
 }
 
 impl TonSolPendingConfirmation {
-    fn check(&self, _account: WithdrawalPattern) -> VerificationStatus {
-        todo!()
+    fn check(&self, account: WithdrawalPattern) -> VerificationStatus {
+        if self.payload_id != solana_program::hash::hash(&account.event)
+            || self.event_timestamp != account.event_timestamp
+            || self.event_transaction_lt != account.event_transaction_lt
+        {
+            return VerificationStatus::NotExists;
+        }
+
+        VerificationStatus::Exists
     }
 }
 

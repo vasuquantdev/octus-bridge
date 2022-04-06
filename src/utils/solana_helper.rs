@@ -1,5 +1,7 @@
 use borsh::BorshDeserialize;
+use solana_program::hash::Hash;
 
+use solana_program::message::Message;
 use solana_sdk::instruction::CompiledInstruction;
 use solana_sdk::pubkey::Pubkey;
 use token_proxy::TokenProxyInstruction;
@@ -16,4 +18,14 @@ pub fn decode_token_proxy_instruction(
     } else {
         None
     }
+}
+
+pub fn create_confirm_message(
+    payer: &Pubkey,
+    relay_pubkey: &Pubkey,
+    payload_id: Hash,
+    round_number: u32,
+) -> Message {
+    let ix = token_proxy::confirm_withdrawal_request(relay_pubkey, payload_id, round_number);
+    Message::new(&[ix], Some(payer))
 }
