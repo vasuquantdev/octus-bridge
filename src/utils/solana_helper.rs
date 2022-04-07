@@ -2,8 +2,8 @@ use borsh::BorshDeserialize;
 use token_proxy::{TokenProxyInstruction, Vote};
 use ton_types::UInt256;
 
-use solana_program::message::Message;
 use solana_sdk::instruction::CompiledInstruction;
+use solana_sdk::message::Message;
 use solana_sdk::pubkey::Pubkey;
 
 pub fn decode_token_proxy_instruction(

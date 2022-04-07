@@ -212,7 +212,7 @@ impl TonSigner {
 
 pub struct SolSigner {
     keys: Arc<ProtectedRegion<Keys>>,
-    public_key: solana_program::pubkey::Pubkey,
+    public_key: solana_sdk::pubkey::Pubkey,
     public_key_bytes: UInt256,
 }
 
@@ -222,12 +222,12 @@ impl SolSigner {
 
         Self {
             keys,
-            public_key: solana_program::pubkey::Pubkey::new_from_array(public_key.to_bytes()),
+            public_key: solana_sdk::pubkey::Pubkey::new_from_array(public_key.to_bytes()),
             public_key_bytes: UInt256::from(public_key.to_bytes()),
         }
     }
 
-    pub fn public_key(&self) -> solana_program::pubkey::Pubkey {
+    pub fn public_key(&self) -> solana_sdk::pubkey::Pubkey {
         self.public_key
     }
 
@@ -237,7 +237,7 @@ impl SolSigner {
 
     pub fn sign(
         &self,
-        message: solana_program::message::Message,
+        message: solana_sdk::message::Message,
         recent_blockhash: solana_sdk::hash::Hash,
     ) -> Result<solana_sdk::transaction::Transaction> {
         let keypair =
