@@ -14,7 +14,6 @@ use tokio::sync::RwLock;
 use ton_abi::TokenValue;
 use ton_block::{Deserializable, HashmapAugType};
 use ton_types::UInt256;
-use web3::signing::Key;
 
 use crate::engine::keystore::*;
 use crate::engine::ton_contracts::*;
@@ -507,7 +506,7 @@ impl Bridge {
         // Use flag to update counter outside events map lock to reduce its duration
         let mut event_removed = false;
 
-        // Handle only known ETH events
+        // Handle only known SOL events
         if let Entry::Occupied(entry) = self.sol_ton_events_state.pending.entry(account) {
             let remove_entry = || {
                 // Remove pending event
@@ -571,18 +570,6 @@ impl Bridge {
             };
 
             match event {
-                // Remove event in confirmed state if the balance is not enough.
-                //
-                // NOTE: it is not strictly necessary to collect all signatures, so the
-                // contract subscription is allowed to be dropped on nearly empty balance.
-                //
-                // This state can be achieved by calling `close` method on transfer contract
-                // or execution `confirm` or `reject` after several years so that the cost of
-                // keeping the contract almost nullifies its balance.
-                (TonSolEvent::Closed, EventStatus::Confirmed) => remove_entry(),
-                // Remove event if it was rejected
-                (_, EventStatus::Rejected) => remove_entry(),
-                // Handle event initialization
                 (TonSolEvent::ReceiveRoundRelays { keys }, _) => {
                     // Check if event contains our key
                     if keys.contains(our_public_key) {
@@ -595,13 +582,6 @@ impl Bridge {
                         remove_entry();
                     }
                 }
-                // Handle our confirmation or rejection
-                (TonSolEvent::Confirm { public_key } | TonSolEvent::Reject { public_key }, _)
-                    if public_key == our_public_key =>
-                {
-                    remove_entry();
-                }
-                _ => { /* Ignore other events */ }
             }
         }
 
@@ -931,14 +911,11 @@ impl Bridge {
                 })
         };
 
-        let decoded_data = match data {
+        let decoded_event_data = match data {
             // Decode event data with event abi from configuration
             Some(data) => data.and_then(|data| {
                 let data: Vec<TokenValue> = data.into_iter().map(|token| token.value).collect();
-
                 borsh::serialize_tokens(&data)
-                //borsh::serialize_tokens(&data.into_iter().map(|token| token.value).collect())
-                //Ok(Vec::new())
             }),
             // Do nothing when configuration was not found
             None => {
@@ -952,37 +929,59 @@ impl Bridge {
             }
         }?;
 
-        let payload_id = solana_program::hash::hash(&decoded_data);
+        let round_number = base_event_contract.round_number()?;
+        let relay_pubkey = self.context.keystore.sol.public_key();
 
         // Verify SOL event and create message to token-proxy contract
         let transaction = match sol_subscriber
             .verify_ton_event(
-                payload_id,
-                event_init_data.vote_data.event_timestamp,
+                event_init_data.configuration,
                 event_init_data.vote_data.event_transaction_lt,
+                decoded_event_data,
             )
             .await
         {
             // Confirm event if transaction was found
             Ok(VerificationStatus::Exists) => {
-                let round_number = base_event_contract.round_number()?;
+                let message = create_vote_message(
+                    &relay_pubkey,
+                    round_number,
+                    &event_init_data.configuration,
+                    event_init_data.vote_data.event_transaction_lt,
+                    Vote::Confirm,
+                );
 
-                let relay_pubkey = self.context.keystore.sol.public_key();
-
-                let message =
-                    create_confirm_message(&relay_pubkey, &relay_pubkey, payload_id, round_number);
-                let recent_blockhash = sol_subscriber.get_recent_blockhash().await?;
-                self.context.keystore.sol.sign(message, recent_blockhash)?
+                self.context
+                    .keystore
+                    .sol
+                    .sign(message, sol_subscriber.get_recent_blockhash().await?)?
             }
-            // Skip event
-            Ok(VerificationStatus::NotExists) | Err(_) => {
-                log::error!("Failed to verify TON->SOL event {:x}", account);
+            // Reject event if transaction not found
+            Ok(VerificationStatus::NotExists) => {
+                let message = create_vote_message(
+                    &relay_pubkey,
+                    round_number,
+                    &event_init_data.configuration,
+                    event_init_data.vote_data.event_transaction_lt,
+                    Vote::Reject,
+                );
+
+                self.context
+                    .keystore
+                    .sol
+                    .sign(message, sol_subscriber.get_recent_blockhash().await?)?
+            }
+            // Skip event otherwise
+            Err(e) => {
+                log::error!("Failed to verify TON->SOL event {:x}: {:?}", account, e);
                 self.ton_sol_events_state.remove(&account);
                 return Ok(());
             }
         };
 
         sol_subscriber.send_transaction(transaction).await?;
+
+        self.ton_sol_events_state.remove(&account);
 
         Ok(())
     }
@@ -1316,11 +1315,66 @@ impl Bridge {
 
     fn add_ton_sol_event_configuration(
         &self,
-        _state: &mut BridgeState,
-        _account: &UInt256,
-        _contract: &ExistingContract,
+        state: &mut BridgeState,
+        account: &UInt256,
+        contract: &ExistingContract,
     ) -> Result<()> {
-        todo!()
+        // Get configuration details
+        let details = TonSolEventConfigurationContract(contract)
+            .get_details()
+            .context("Failed to get TON->SOL event configuration details")?;
+
+        // Check if configuration is expired
+        let current_timestamp = self.context.ton_subscriber.current_utime();
+        if details.is_expired(current_timestamp) {
+            // Do nothing in that case
+            log::warn!(
+                "Ignoring TON->SOL event configuration {:x}: end timestamp {} is less then current {}",
+                account,
+                details.network_configuration.end_timestamp,
+                current_timestamp
+            );
+            return Ok(());
+        };
+
+        // Verify and prepare abi
+        let event_abi = decode_ton_event_abi(&details.basic_configuration.event_abi)?;
+
+        // Add unique event hash
+        add_event_code_hash(
+            &mut state.event_code_hashes,
+            &details.basic_configuration.event_code,
+            EventType::TonSol,
+        )?;
+
+        // Add configuration entry
+        let observer = AccountObserver::new(&self.ton_sol_event_configurations_tx);
+        match state.ton_sol_event_configurations.entry(*account) {
+            hash_map::Entry::Vacant(entry) => {
+                log::info!("Added new TON->SOL event configuration: {:?}", details);
+
+                self.total_active_ton_sol_event_configurations
+                    .fetch_add(1, Ordering::Release);
+
+                entry.insert(TonSolEventConfigurationState {
+                    details,
+                    event_abi,
+                    _observer: observer.clone(),
+                });
+            }
+            hash_map::Entry::Occupied(_) => {
+                log::info!("TON->SOL event configuration already exists: {:x}", account);
+                return Err(BridgeError::EventConfigurationAlreadyExists.into());
+            }
+        };
+
+        // Subscribe to TON events
+        self.context
+            .ton_subscriber
+            .add_transactions_subscription([*account], &observer);
+
+        // Done
+        Ok(())
     }
 
     async fn get_all_events(self: &Arc<Self>) -> Result<()> {
@@ -2324,28 +2378,12 @@ impl ReadFromTransaction for SolTonEvent {
 #[derive(Debug, Clone)]
 enum TonSolEvent {
     ReceiveRoundRelays { keys: Vec<UInt256> },
-    Confirm { public_key: UInt256 },
-    Reject { public_key: UInt256 },
-    Closed,
 }
 
 impl ReadFromTransaction for TonSolEvent {
     fn read_from_transaction(ctx: &TxContext<'_>) -> Option<Self> {
         let in_msg = ctx.in_msg;
         let event = match in_msg.header() {
-            ton_block::CommonMsgInfo::ExtInMsgInfo(_) => {
-                let (public_key, body) = read_external_in_msg(&in_msg.body()?)?;
-
-                match read_function_id(&body) {
-                    Ok(id) if id == ton_sol_event_contract::confirm().input_id => {
-                        Some(TonSolEvent::Confirm { public_key })
-                    }
-                    Ok(id) if id == ton_sol_event_contract::reject().input_id => {
-                        Some(TonSolEvent::Reject { public_key })
-                    }
-                    _ => None,
-                }
-            }
             ton_block::CommonMsgInfo::IntMsgInfo(_) => {
                 let body = in_msg.body()?;
 
@@ -2361,15 +2399,9 @@ impl ReadFromTransaction for TonSolEvent {
                     _ => None,
                 }
             }
-            ton_block::CommonMsgInfo::ExtOutMsgInfo(_) => None,
+            ton_block::CommonMsgInfo::ExtInMsgInfo(_)
+            | ton_block::CommonMsgInfo::ExtOutMsgInfo(_) => None,
         };
-
-        if event.is_none() {
-            let balance = ctx.get_account_state().ok()?.account.storage.balance.grams;
-            if balance.0 < MIN_EVENT_BALANCE {
-                return Some(Self::Closed);
-            }
-        }
 
         event
     }

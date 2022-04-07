@@ -1,10 +1,10 @@
 use borsh::BorshDeserialize;
-use solana_program::hash::Hash;
+use token_proxy::{TokenProxyInstruction, Vote};
+use ton_types::UInt256;
 
 use solana_program::message::Message;
 use solana_sdk::instruction::CompiledInstruction;
 use solana_sdk::pubkey::Pubkey;
-use token_proxy::TokenProxyInstruction;
 
 pub fn decode_token_proxy_instruction(
     program_pubkey: Pubkey,
@@ -20,12 +20,19 @@ pub fn decode_token_proxy_instruction(
     }
 }
 
-pub fn create_confirm_message(
-    payer: &Pubkey,
+pub fn create_vote_message(
     relay_pubkey: &Pubkey,
-    payload_id: Hash,
     round_number: u32,
+    event_configuration: &UInt256,
+    event_transaction_lt: u64,
+    vote: Vote,
 ) -> Message {
-    let ix = token_proxy::confirm_withdrawal_request(relay_pubkey, payload_id, round_number);
-    Message::new(&[ix], Some(payer))
+    let ix = token_proxy::confirm_withdrawal_request(
+        relay_pubkey,
+        round_number,
+        event_configuration,
+        event_transaction_lt,
+        vote,
+    );
+    Message::new(&[ix], Some(relay_pubkey))
 }

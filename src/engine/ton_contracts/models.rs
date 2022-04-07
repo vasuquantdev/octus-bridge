@@ -77,8 +77,6 @@ pub struct TonSolEventInitData {
 pub struct TonSolEventVoteData {
     #[abi(uint64)]
     pub event_transaction_lt: u64,
-    #[abi(uint32)]
-    pub event_timestamp: u32,
     #[abi(cell)]
     pub event_data: ton_types::Cell,
 }

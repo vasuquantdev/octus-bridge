@@ -4,10 +4,9 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use tiny_adnl::utils::*;
-use tokio::sync::{mpsc, oneshot, Notify};
+use tokio::sync::{oneshot, Notify};
 
 use solana_client::rpc_client::RpcClient;
-use solana_client::rpc_response::{Response, RpcKeyedAccount};
 use solana_program::program_pack::Pack;
 use solana_sdk::account::{Account, ReadableAccount};
 use solana_sdk::hash::Hash;
@@ -15,16 +14,16 @@ use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Signature;
 use solana_sdk::transaction::Transaction;
 use token_proxy::WithdrawalPattern;
+use ton_types::UInt256;
 
 use crate::config::*;
 use crate::engine::bridge::*;
-use crate::engine::ton_contracts::*;
 use crate::utils::*;
 
 pub struct SolSubscriber {
     config: SolConfig,
     rpc_client: Arc<RpcClient>,
-    ton_pending_confirmations: tokio::sync::Mutex<FxHashMap<Hash, TonSolPendingConfirmation>>,
+    ton_pending_confirmations: tokio::sync::Mutex<FxHashMap<EventId, TonSolPendingConfirmation>>,
     ton_pending_confirmation_count: AtomicUsize,
     ton_new_events_notify: Notify,
 }
@@ -84,14 +83,15 @@ impl SolSubscriber {
         );
 
         let pending_confirmations = self.ton_pending_confirmations.lock().await;
-        let payload_ids: Vec<Hash> = pending_confirmations
+        let event_ids = pending_confirmations
             .iter()
-            .map(|(hash, _)| *hash)
-            .collect();
+            .map(|(event_id, _)| *event_id)
+            .collect::<Vec<EventId>>();
         drop(pending_confirmations);
 
-        for payload_id in payload_ids {
-            let account_pubkey = token_proxy::get_associated_withdrawal_address(&payload_id);
+        for event_id in event_ids {
+            let account_pubkey =
+                token_proxy::get_associated_withdrawal_address(&event_id.0, event_id.1);
 
             // Prepare tryhard config
             let api_request_strategy = generate_fixed_timeout_config(
@@ -127,7 +127,7 @@ impl SolSubscriber {
             let account_data = token_proxy::WithdrawalPattern::unpack(account.data())?;
 
             let mut pending_confirmations = self.ton_pending_confirmations.lock().await;
-            if let Some(confirmation) = pending_confirmations.get_mut(&payload_id) {
+            if let Some(confirmation) = pending_confirmations.get_mut(&event_id) {
                 let status = confirmation.check(account_data);
 
                 log::info!("Confirmation status: {:?}", status);
@@ -162,20 +162,20 @@ impl SolSubscriber {
 
     pub async fn verify_ton_event(
         &self,
-        payload_id: Hash,
-        event_timestamp: u32,
+        configuration: UInt256,
         event_transaction_lt: u64,
+        event_data: Vec<u8>,
     ) -> Result<VerificationStatus> {
         let rx = {
             let (tx, rx) = oneshot::channel();
 
+            let event_id = (configuration, event_transaction_lt);
+
             let mut pending_confirmations = self.ton_pending_confirmations.lock().await;
             pending_confirmations.insert(
-                payload_id,
+                event_id,
                 TonSolPendingConfirmation {
-                    payload_id,
-                    event_timestamp,
-                    event_transaction_lt,
+                    event_data,
                     status_tx: Some(tx),
                 },
             );
@@ -244,18 +244,13 @@ pub struct SolSubscriberMetrics {
 }
 
 struct TonSolPendingConfirmation {
-    payload_id: Hash,
-    event_timestamp: u32,
-    event_transaction_lt: u64,
+    event_data: Vec<u8>,
     status_tx: Option<VerificationStatusTx>,
 }
 
 impl TonSolPendingConfirmation {
     fn check(&self, account: WithdrawalPattern) -> VerificationStatus {
-        if self.payload_id != solana_program::hash::hash(&account.event)
-            || self.event_timestamp != account.event_timestamp
-            || self.event_transaction_lt != account.event_transaction_lt
-        {
+        if self.event_data != account.event {
             return VerificationStatus::NotExists;
         }
 
@@ -265,10 +260,10 @@ impl TonSolPendingConfirmation {
 
 type VerificationStatusTx = oneshot::Sender<VerificationStatus>;
 
-type SubscribeResponseTx = mpsc::UnboundedSender<(Pubkey, Response<RpcKeyedAccount>)>;
-
 fn is_account_not_found(error: &anyhow::Error, pubkey: &Pubkey) -> bool {
     error
         .to_string()
         .contains(format!("AccountNotFound: pubkey={}", pubkey).as_str())
 }
+
+pub type EventId = (UInt256, u64);

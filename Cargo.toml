@@ -13,7 +13,6 @@ async-trait = "0.1"
 borsh = "0.9.3"
 broxus-util = { version = "0.1.4", features = ["serde", "config", "alloc", "public-ip"] }
 chacha20poly1305 = "0.10.1"
-chacha20poly1305 = "0.10.0-pre"
 chrono = "0.4.19"
 config = { version = "0.13.1", default-features = false, features = ["yaml"] }
 dashmap = "5.3"
@@ -61,10 +60,10 @@ ton_block = { git = "https://github.com/broxus/ton-labs-block" }
 ton_abi = { git = "https://github.com/broxus/ton-labs-abi" }
 ton_types = { git = "https://github.com/broxus/ton-labs-types" }
 
-eth-ton-abi-converter = { git = "https://github.com/broxus/eth-ton-abi-converter.git" }
+eth-ton-abi-converter = { git = "https://github.com/broxus/eth-ton-abi-converter.git", branch = "dev" }
 
 # Solana Token Proxy lib
-token-proxy = { version = "0.1", git = "ssh://git@gitlab.dexpa.io/solana-everscale-bridge/solana-bridge", features = ["no-entrypoint"] }
+token-proxy = { version = "0.1", git = "ssh://git@gitlab.dexpa.io/solana-everscale-bridge/solana-bridge", features = ["no-entrypoint", "bindings"] }
 
 # Nekoton SDK
 nekoton-abi = { git = "https://github.com/broxus/nekoton.git", features = ["derive"] }
