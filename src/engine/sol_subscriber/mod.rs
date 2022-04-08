@@ -5,6 +5,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use tiny_adnl::utils::*;
 use tokio::sync::{oneshot, Notify};
+use ton_types::UInt256;
 
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::account::{Account, ReadableAccount};
@@ -13,8 +14,6 @@ use solana_sdk::program_pack::Pack;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Signature;
 use solana_sdk::transaction::Transaction;
-use token_proxy::WithdrawalPattern;
-use ton_types::UInt256;
 
 use crate::config::*;
 use crate::engine::bridge::*;
@@ -23,9 +22,9 @@ use crate::utils::*;
 pub struct SolSubscriber {
     config: SolConfig,
     rpc_client: Arc<RpcClient>,
-    ton_pending_confirmations: tokio::sync::Mutex<FxHashMap<EventId, TonSolPendingConfirmation>>,
-    ton_pending_confirmation_count: AtomicUsize,
-    ton_new_events_notify: Notify,
+    pending_confirmations: tokio::sync::Mutex<FxHashMap<EventId, PendingConfirmation>>,
+    pending_confirmation_count: AtomicUsize,
+    new_events_notify: Notify,
 }
 
 impl SolSubscriber {
@@ -38,9 +37,9 @@ impl SolSubscriber {
         let subscriber = Arc::new(Self {
             config,
             rpc_client,
-            ton_pending_confirmations: Default::default(),
-            ton_pending_confirmation_count: Default::default(),
-            ton_new_events_notify: Notify::new(),
+            pending_confirmations: Default::default(),
+            pending_confirmation_count: Default::default(),
+            new_events_notify: Notify::new(),
         });
 
         Ok(subscriber)
@@ -48,9 +47,7 @@ impl SolSubscriber {
 
     pub fn metrics(&self) -> SolSubscriberMetrics {
         SolSubscriberMetrics {
-            ton_pending_confirmation_count: self
-                .ton_pending_confirmation_count
-                .load(Ordering::Acquire),
+            pending_confirmation_count: self.pending_confirmation_count.load(Ordering::Acquire),
         }
     }
 
@@ -65,7 +62,7 @@ impl SolSubscriber {
                 };
 
                 tokio::select! {
-                    _ = subscriber.ton_new_events_notify.notified() => {},
+                    _ = subscriber.new_events_notify.notified() => {},
                     _ = tokio::time::sleep(Duration::from_secs(subscriber.config.poll_interval_sec)) => {},
                 };
 
@@ -79,10 +76,10 @@ impl SolSubscriber {
     async fn ton_update(&self) -> Result<()> {
         log::info!(
             "TON->SOL pending confirmations: {}",
-            self.ton_pending_confirmation_count.load(Ordering::Acquire)
+            self.pending_confirmation_count.load(Ordering::Acquire)
         );
 
-        let pending_confirmations = self.ton_pending_confirmations.lock().await;
+        let pending_confirmations = self.pending_confirmations.lock().await;
         let event_ids = pending_confirmations
             .iter()
             .map(|(event_id, _)| *event_id)
@@ -124,9 +121,9 @@ impl SolSubscriber {
                 }
             };
 
-            let account_data = token_proxy::WithdrawalPattern::unpack(account.data())?;
+            let account_data = token_proxy::Withdrawal::unpack(account.data())?;
 
-            let mut pending_confirmations = self.ton_pending_confirmations.lock().await;
+            let mut pending_confirmations = self.pending_confirmations.lock().await;
             if let Some(confirmation) = pending_confirmations.get_mut(&event_id) {
                 let status = confirmation.check(account_data);
 
@@ -160,7 +157,7 @@ impl SolSubscriber {
             .map_err(anyhow::Error::new)
     }
 
-    pub async fn verify_ton_event(
+    pub async fn verify_withdrawal_event(
         &self,
         configuration: UInt256,
         event_transaction_lt: u64,
@@ -171,25 +168,68 @@ impl SolSubscriber {
 
             let event_id = (configuration, event_transaction_lt);
 
-            let mut pending_confirmations = self.ton_pending_confirmations.lock().await;
+            let mut pending_confirmations = self.pending_confirmations.lock().await;
             pending_confirmations.insert(
                 event_id,
-                TonSolPendingConfirmation {
+                PendingConfirmation {
                     event_data,
                     status_tx: Some(tx),
                 },
             );
 
-            self.ton_pending_confirmation_count
+            self.pending_confirmation_count
                 .store(pending_confirmations.len(), Ordering::Release);
 
-            self.ton_new_events_notify.notify_waiters();
+            self.new_events_notify.notify_waiters();
 
             rx
         };
 
         let status = rx.await?;
         Ok(status)
+    }
+
+    pub async fn verify_deposit_event(
+        &self,
+        seed: u64,
+        event_data: Vec<u8>,
+    ) -> Result<VerificationStatus> {
+        let account_pubkey = token_proxy::get_associated_deposit_address(seed);
+
+        // Prepare tryhard config
+        let api_request_strategy = generate_fixed_timeout_config(
+            Duration::from_secs(self.config.get_timeout_sec),
+            Duration::from_secs(self.config.maximum_failed_responses_time_sec),
+        );
+
+        let account = match retry(
+            || self.get_account(&account_pubkey),
+            api_request_strategy,
+            "get solana account",
+        )
+        .await
+        {
+            Ok(account) => account,
+            Err(e) => {
+                log::error!(
+                    "Failed to get Deposit Solana Account 0x{}: {}",
+                    account_pubkey,
+                    e
+                );
+                return Ok(VerificationStatus::NotExists);
+            }
+        };
+
+        let account_data = match token_proxy::Deposit::unpack(account.data()) {
+            Ok(data) => data,
+            Err(_) => return Ok(VerificationStatus::NotExists),
+        };
+
+        if event_data != account_data.event {
+            return Ok(VerificationStatus::NotExists);
+        }
+
+        Ok(VerificationStatus::Exists)
     }
 
     pub async fn get_recent_blockhash(&self) -> Result<Hash> {
@@ -240,17 +280,17 @@ impl SolSubscriber {
 
 #[derive(Debug, Copy, Clone)]
 pub struct SolSubscriberMetrics {
-    pub ton_pending_confirmation_count: usize,
+    pub pending_confirmation_count: usize,
 }
 
-struct TonSolPendingConfirmation {
+struct PendingConfirmation {
     event_data: Vec<u8>,
     status_tx: Option<VerificationStatusTx>,
 }
 
-impl TonSolPendingConfirmation {
-    fn check(&self, account: WithdrawalPattern) -> VerificationStatus {
-        if self.event_data != account.event {
+impl PendingConfirmation {
+    fn check(&self, account_data: token_proxy::Withdrawal) -> VerificationStatus {
+        if self.event_data != account_data.event {
             return VerificationStatus::NotExists;
         }
 

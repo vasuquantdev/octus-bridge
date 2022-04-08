@@ -8,9 +8,6 @@ pub struct SolConfig {
     /// RPC endpoint
     pub url: String,
 
-    /// RPC WS endpoint
-    pub ws_url: String,
-
     /// Commitment level
     pub commitment_config: CommitmentConfig,
 

@@ -59,6 +59,8 @@ pub struct SolTonEventInitData {
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct SolTonEventVoteData {
+    #[abi(uint64)]
+    pub account_seed: u64,
     #[abi(cell)]
     pub event_data: ton_types::Cell,
 }
