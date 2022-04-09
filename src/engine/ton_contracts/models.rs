@@ -186,15 +186,15 @@ pub struct SolTonEventConfiguration {
     #[abi(with = "address_only_hash")]
     pub proxy: UInt256,
     #[abi(uint32)]
-    pub start_block_number: u32,
-    #[abi(uint32)]
-    pub end_block_number: u32,
+    pub end_timestamp: u32,
 }
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct TonSolEventConfiguration {
-    #[abi(with = "address_only_hash")]
+    #[abi(with = "uint256_bytes")]
     pub event_emitter: UInt256,
+    #[abi(with = "address_only_hash")]
+    pub proxy: UInt256,
     #[abi(uint32)]
     pub start_timestamp: u32,
     #[abi(uint32)]

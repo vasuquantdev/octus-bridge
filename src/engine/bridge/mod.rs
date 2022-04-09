@@ -330,13 +330,13 @@ impl Bridge {
                 }
             }
             // Update configuration state
-            SolTonEventConfigurationEvent::SetEndBlockNumber { end_block_number } => {
+            SolTonEventConfigurationEvent::SetEndTimestamp { end_timestamp } => {
                 let mut state = self.state.write().await;
                 let configuration = state
                     .sol_ton_event_configurations
                     .get_mut(&account)
                     .ok_or(BridgeError::UnknownConfiguration)?;
-                configuration.details.network_configuration.end_block_number = end_block_number;
+                configuration.details.network_configuration.end_timestamp = end_timestamp;
             }
         }
         Ok(())
@@ -1078,9 +1078,10 @@ impl Bridge {
             }
         };
 
-        sol_subscriber.send_transaction(transaction).await?;
-
+        // Remove event subscription regardless result of sending transaction
         self.ton_sol_events_state.remove(&account);
+
+        sol_subscriber.send_transaction(transaction).await?;
 
         Ok(())
     }
@@ -1405,11 +1406,66 @@ impl Bridge {
 
     fn add_sol_ton_event_configuration(
         &self,
-        _state: &mut BridgeState,
-        _account: &UInt256,
-        _contract: &ExistingContract,
+        state: &mut BridgeState,
+        account: &UInt256,
+        contract: &ExistingContract,
     ) -> Result<()> {
-        todo!()
+        // Get configuration details
+        let details = SolTonEventConfigurationContract(contract)
+            .get_details()
+            .context("Failed to get SOL->TON event configuration details")?;
+
+        // Check if configuration is expired
+        let current_timestamp = self.context.ton_subscriber.current_utime();
+        if details.is_expired(current_timestamp) {
+            // Do nothing in that case
+            log::warn!(
+                "Ignoring SOL->TON event configuration {:x}: end timestamp {} is less then current {}",
+                account,
+                details.network_configuration.end_timestamp,
+                current_timestamp
+            );
+            return Ok(());
+        };
+
+        // Verify and prepare abi
+        let event_abi = decode_ton_event_abi(&details.basic_configuration.event_abi)?;
+
+        // Add unique event hash
+        add_event_code_hash(
+            &mut state.event_code_hashes,
+            &details.basic_configuration.event_code,
+            EventType::SolTon,
+        )?;
+
+        // Add configuration entry
+        let observer = AccountObserver::new(&self.sol_ton_event_configurations_tx);
+        match state.sol_ton_event_configurations.entry(*account) {
+            hash_map::Entry::Vacant(entry) => {
+                log::info!("Added new SOl->TON event configuration: {:?}", details);
+
+                self.total_active_sol_ton_event_configurations
+                    .fetch_add(1, Ordering::Release);
+
+                entry.insert(SolTonEventConfigurationState {
+                    details,
+                    event_abi,
+                    _observer: observer.clone(),
+                });
+            }
+            hash_map::Entry::Occupied(_) => {
+                log::info!("SOl->TON event configuration already exists: {:x}", account);
+                return Err(BridgeError::EventConfigurationAlreadyExists.into());
+            }
+        };
+
+        // Subscribe to TON events
+        self.context
+            .ton_subscriber
+            .add_transactions_subscription([*account], &observer);
+
+        // Done
+        Ok(())
     }
 
     fn add_ton_sol_event_configuration(
@@ -2104,6 +2160,12 @@ struct SolTonEventConfigurationState {
     _observer: Arc<AccountObserver<SolTonEventConfigurationEvent>>,
 }
 
+impl SolTonEventConfigurationDetails {
+    fn is_expired(&self, current_timestamp: u32) -> bool {
+        (1..current_timestamp).contains(&self.network_configuration.end_timestamp)
+    }
+}
+
 /// TON->SOL event configuration data
 #[derive(Clone)]
 struct TonSolEventConfigurationState {
@@ -2288,7 +2350,7 @@ impl ReadFromTransaction for TonSolEventConfigurationEvent {
 #[derive(Debug, Clone)]
 enum SolTonEventConfigurationEvent {
     EventDeployed { address: UInt256 },
-    SetEndBlockNumber { end_block_number: u32 },
+    SetEndTimestamp { end_timestamp: u32 },
 }
 
 impl ReadFromTransaction for SolTonEventConfigurationEvent {
@@ -2296,19 +2358,19 @@ impl ReadFromTransaction for SolTonEventConfigurationEvent {
         let in_msg_body = ctx.in_msg_internal()?.body()?;
 
         let deploy_event = sol_ton_event_configuration_contract::deploy_event();
-        let set_end_block_number = sol_ton_event_configuration_contract::set_end_block_number();
+        let set_end_timestamp = sol_ton_event_configuration_contract::set_end_timestamp();
 
         match nekoton_abi::read_function_id(&in_msg_body).ok()? {
             id if id == deploy_event.input_id => Some(Self::EventDeployed {
                 address: ctx.find_new_event_contract_address()?,
             }),
-            id if id == set_end_block_number.input_id => {
-                let end_block_number = set_end_block_number
+            id if id == set_end_timestamp.input_id => {
+                let end_timestamp = set_end_timestamp
                     .decode_input(in_msg_body, true)
                     .and_then(|tokens| tokens.unpack_first().map_err(anyhow::Error::from))
                     .ok()?;
 
-                Some(Self::SetEndBlockNumber { end_block_number })
+                Some(Self::SetEndTimestamp { end_timestamp })
             }
             _ => None,
         }
