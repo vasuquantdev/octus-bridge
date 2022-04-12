@@ -125,7 +125,7 @@ pub struct NodeConfig {
     pub max_db_memory_usage: usize,
 
     /// Archives map queue. Default: 16
-    pub parallel_archive_downloads: u32,
+    pub parallel_archive_downloads: usize,
 
     /// Whether old shard states will be removed every 10 minutes
     pub states_gc_enabled: bool,
@@ -176,10 +176,12 @@ impl NodeConfig {
                     ..Default::default()
                 }),
             shard_state_cache_options: None,
-            archives_enabled: false,
-            old_blocks_policy: Default::default(),
             max_db_memory_usage: self.max_db_memory_usage,
-            parallel_archive_downloads: self.parallel_archive_downloads,
+            archive_options: Some(Default::default()),
+            sync_options: ton_indexer::SyncOptions {
+                parallel_archive_downloads: self.parallel_archive_downloads,
+                ..Default::default()
+            },
             adnl_options: self.adnl_options,
             rldp_options: self.rldp_options,
             dht_options: self.dht_options,

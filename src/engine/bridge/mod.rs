@@ -1330,7 +1330,8 @@ fn add_event_code_hash(
 
 fn read_code_hash(cell: &mut ton_types::SliceData) -> Result<Option<ton_types::UInt256>> {
     // 1. Read account
-    if !cell.get_next_bit()? {
+    if !cell.get_next_bit()? && (cell.remaining_bits() == 0 || cell.get_next_int(3)? != 1) {
+        // Empty account
         return Ok(None);
     }
 
