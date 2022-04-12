@@ -896,7 +896,6 @@ impl Bridge {
                 .get(&event_init_data.configuration)
                 .map(|configuration| {
                     (
-                        configuration.details.network_configuration.proxy,
                         configuration.details.network_configuration.event_emitter,
                         ton_abi::TokenValue::decode_params(
                             &configuration.event_abi,
@@ -908,10 +907,9 @@ impl Bridge {
                 })
         };
 
-        let (proxy, event_emitter, decoded_event_data) = match data {
+        let (event_emitter, decoded_event_data) = match data {
             // Decode event data with event abi from configuration
-            Some((proxy, event_emitter, data)) => (
-                proxy,
+            Some((event_emitter, data)) => (
                 event_emitter,
                 data.and_then(|data| {
                     let data: Vec<TokenValue> = data.into_iter().map(|token| token.value).collect();
@@ -936,7 +934,6 @@ impl Bridge {
         let message = match sol_subscriber
             .verify_deposit_event(
                 event_init_data.vote_data.account_seed,
-                proxy,
                 event_emitter,
                 decoded_event_data,
             )
@@ -1014,29 +1011,21 @@ impl Bridge {
                 .ton_sol_event_configurations
                 .get(&event_init_data.configuration)
                 .map(|configuration| {
-                    (
-                        configuration.details.network_configuration.proxy,
-                        configuration.details.network_configuration.event_emitter,
-                        ton_abi::TokenValue::decode_params(
-                            &configuration.event_abi,
-                            event_init_data.vote_data.event_data.clone().into(),
-                            &ton_abi::contract::ABI_VERSION_2_2,
-                            false,
-                        ),
+                    ton_abi::TokenValue::decode_params(
+                        &configuration.event_abi,
+                        event_init_data.vote_data.event_data.clone().into(),
+                        &ton_abi::contract::ABI_VERSION_2_2,
+                        false,
                     )
                 })
         };
 
-        let (proxy, event_emitter, decoded_event_data) = match data {
+        let decoded_event_data = match data {
             // Decode event data with event abi from configuration
-            Some((proxy, event_emitter, data)) => (
-                proxy,
-                event_emitter,
-                data.and_then(|data| {
-                    let data: Vec<TokenValue> = data.into_iter().map(|token| token.value).collect();
-                    borsh::serialize_tokens(&data)
-                })?,
-            ),
+            Some(data) => data.and_then(|data| {
+                let data: Vec<TokenValue> = data.into_iter().map(|token| token.value).collect();
+                borsh::serialize_tokens(&data)
+            })?,
             // Do nothing when configuration was not found
             None => {
                 log::error!(
@@ -1057,8 +1046,6 @@ impl Bridge {
             .verify_withdrawal_event(
                 event_init_data.configuration,
                 event_init_data.vote_data.event_transaction_lt,
-                proxy,
-                event_emitter,
                 decoded_event_data,
             )
             .await

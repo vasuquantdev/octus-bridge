@@ -123,14 +123,9 @@ impl SolSubscriber {
 
             let account_data = token_proxy::Withdrawal::unpack(account.data())?;
 
-            let event_emitter = match account_data.kind {
-                token_proxy::TokenKind::Solana { vault, .. } => vault,
-                token_proxy::TokenKind::Ever { mint } => mint,
-            };
-
             let mut pending_confirmations = self.pending_confirmations.lock().await;
             if let Some(confirmation) = pending_confirmations.get_mut(&event_id) {
-                let status = confirmation.check(token_proxy::id(), event_emitter, account_data);
+                let status = confirmation.check(account_data);
 
                 log::info!("Confirmation status: {:?}", status);
 
@@ -179,8 +174,6 @@ impl SolSubscriber {
         &self,
         configuration: UInt256,
         event_transaction_lt: u64,
-        proxy: UInt256,
-        event_emitter: UInt256,
         event_data: Vec<u8>,
     ) -> Result<VerificationStatus> {
         let rx = {
@@ -192,8 +185,6 @@ impl SolSubscriber {
             pending_confirmations.insert(
                 event_id,
                 PendingConfirmation {
-                    proxy,
-                    event_emitter,
                     event_data,
                     status_tx: Some(tx),
                 },
@@ -214,7 +205,6 @@ impl SolSubscriber {
     pub async fn verify_deposit_event(
         &self,
         seed: u64,
-        proxy: UInt256,
         event_emitter: UInt256,
         event_data: Vec<u8>,
     ) -> Result<VerificationStatus> {
@@ -246,14 +236,13 @@ impl SolSubscriber {
 
         let account_data = token_proxy::Deposit::unpack(account.data())?;
 
-        let deposit_event_emitter = match account_data.kind {
+        let account_event_emitter = match account_data.kind {
             token_proxy::TokenKind::Solana { vault, .. } => vault,
             token_proxy::TokenKind::Ever { mint } => mint,
         };
 
         if event_data != account_data.event
-            || proxy.inner() != token_proxy::id().to_bytes()
-            || event_emitter.inner() != deposit_event_emitter.to_bytes()
+            || event_emitter.inner() != account_event_emitter.to_bytes()
         {
             return Ok(VerificationStatus::NotExists);
         }
@@ -339,23 +328,13 @@ pub struct SolSubscriberMetrics {
 }
 
 struct PendingConfirmation {
-    proxy: UInt256,
-    event_emitter: UInt256,
     event_data: Vec<u8>,
     status_tx: Option<VerificationStatusTx>,
 }
 
 impl PendingConfirmation {
-    fn check(
-        &self,
-        proxy: Pubkey,
-        event_emitter: Pubkey,
-        account_data: token_proxy::Withdrawal,
-    ) -> VerificationStatus {
-        if self.event_data != account_data.event
-            || self.proxy.inner() != proxy.to_bytes()
-            || self.event_emitter.inner() != event_emitter.to_bytes()
-        {
+    fn check(&self, account_data: token_proxy::Withdrawal) -> VerificationStatus {
+        if self.event_data != account_data.event {
             return VerificationStatus::NotExists;
         }
 
