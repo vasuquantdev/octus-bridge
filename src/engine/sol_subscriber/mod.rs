@@ -66,14 +66,14 @@ impl SolSubscriber {
                     _ = tokio::time::sleep(Duration::from_secs(subscriber.config.poll_interval_sec)) => {},
                 };
 
-                if let Err(e) = subscriber.ton_update().await {
+                if let Err(e) = subscriber.sol_update().await {
                     log::error!("Error occurred during Solana event update: {:?}", e);
                 }
             }
         });
     }
 
-    async fn ton_update(&self) -> Result<()> {
+    async fn sol_update(&self) -> Result<()> {
         log::info!(
             "TON->SOL pending confirmations: {}",
             self.pending_confirmation_count.load(Ordering::Acquire)
@@ -123,9 +123,14 @@ impl SolSubscriber {
 
             let account_data = token_proxy::Withdrawal::unpack(account.data())?;
 
+            let event_emitter = match account_data.kind {
+                token_proxy::TokenKind::Solana { vault, .. } => vault,
+                token_proxy::TokenKind::Ever { mint } => mint,
+            };
+
             let mut pending_confirmations = self.pending_confirmations.lock().await;
             if let Some(confirmation) = pending_confirmations.get_mut(&event_id) {
-                let status = confirmation.check(account_data);
+                let status = confirmation.check(token_proxy::id(), event_emitter, account_data);
 
                 log::info!("Confirmation status: {:?}", status);
 
@@ -157,10 +162,25 @@ impl SolSubscriber {
             .map_err(anyhow::Error::new)
     }
 
+    async fn get_slot(&self) -> Result<solana_sdk::clock::Slot> {
+        self.rpc_client.get_slot().map_err(anyhow::Error::new)
+    }
+
+    async fn get_block_time(
+        &self,
+        slot: solana_sdk::clock::Slot,
+    ) -> Result<solana_sdk::clock::UnixTimestamp> {
+        self.rpc_client
+            .get_block_time(slot)
+            .map_err(anyhow::Error::new)
+    }
+
     pub async fn verify_withdrawal_event(
         &self,
         configuration: UInt256,
         event_transaction_lt: u64,
+        proxy: UInt256,
+        event_emitter: UInt256,
         event_data: Vec<u8>,
     ) -> Result<VerificationStatus> {
         let rx = {
@@ -172,6 +192,8 @@ impl SolSubscriber {
             pending_confirmations.insert(
                 event_id,
                 PendingConfirmation {
+                    proxy,
+                    event_emitter,
                     event_data,
                     status_tx: Some(tx),
                 },
@@ -192,6 +214,8 @@ impl SolSubscriber {
     pub async fn verify_deposit_event(
         &self,
         seed: u64,
+        proxy: UInt256,
+        event_emitter: UInt256,
         event_data: Vec<u8>,
     ) -> Result<VerificationStatus> {
         let account_pubkey = token_proxy::get_associated_deposit_address(seed);
@@ -220,12 +244,17 @@ impl SolSubscriber {
             }
         };
 
-        let account_data = match token_proxy::Deposit::unpack(account.data()) {
-            Ok(data) => data,
-            Err(_) => return Ok(VerificationStatus::NotExists),
+        let account_data = token_proxy::Deposit::unpack(account.data())?;
+
+        let deposit_event_emitter = match account_data.kind {
+            token_proxy::TokenKind::Solana { vault, .. } => vault,
+            token_proxy::TokenKind::Ever { mint } => mint,
         };
 
-        if event_data != account_data.event {
+        if event_data != account_data.event
+            || proxy.inner() != token_proxy::id().to_bytes()
+            || event_emitter.inner() != deposit_event_emitter.to_bytes()
+        {
             return Ok(VerificationStatus::NotExists);
         }
 
@@ -276,6 +305,32 @@ impl SolSubscriber {
 
         Ok(())
     }
+
+    pub async fn current_time(&self) -> Result<u32> {
+        // Prepare tryhard config
+        let api_request_strategy = generate_fixed_timeout_config(
+            Duration::from_secs(self.config.get_timeout_sec),
+            Duration::from_secs(self.config.maximum_failed_responses_time_sec),
+        );
+
+        let slot = match retry(|| self.get_slot(), api_request_strategy, "get solana slot").await {
+            Ok(slot) => slot,
+            Err(e) => return Err(e).with_context(|| "Failed to get Solana slot".to_string()),
+        };
+
+        let block_time = match retry(
+            || self.get_block_time(slot),
+            api_request_strategy,
+            "send solana block time",
+        )
+        .await
+        {
+            Ok(block_time) => block_time,
+            Err(e) => return Err(e).with_context(|| "Failed to get Solana block time".to_string()),
+        };
+
+        Ok(block_time as u32)
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -284,13 +339,23 @@ pub struct SolSubscriberMetrics {
 }
 
 struct PendingConfirmation {
+    proxy: UInt256,
+    event_emitter: UInt256,
     event_data: Vec<u8>,
     status_tx: Option<VerificationStatusTx>,
 }
 
 impl PendingConfirmation {
-    fn check(&self, account_data: token_proxy::Withdrawal) -> VerificationStatus {
-        if self.event_data != account_data.event {
+    fn check(
+        &self,
+        proxy: Pubkey,
+        event_emitter: Pubkey,
+        account_data: token_proxy::Withdrawal,
+    ) -> VerificationStatus {
+        if self.event_data != account_data.event
+            || self.proxy.inner() != proxy.to_bytes()
+            || self.event_emitter.inner() != event_emitter.to_bytes()
+        {
             return VerificationStatus::NotExists;
         }
 

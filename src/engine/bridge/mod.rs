@@ -895,21 +895,29 @@ impl Bridge {
                 .sol_ton_event_configurations
                 .get(&event_init_data.configuration)
                 .map(|configuration| {
-                    ton_abi::TokenValue::decode_params(
-                        &configuration.event_abi,
-                        event_init_data.vote_data.event_data.clone().into(),
-                        &ton_abi::contract::ABI_VERSION_2_2,
-                        false,
+                    (
+                        configuration.details.network_configuration.proxy,
+                        configuration.details.network_configuration.event_emitter,
+                        ton_abi::TokenValue::decode_params(
+                            &configuration.event_abi,
+                            event_init_data.vote_data.event_data.clone().into(),
+                            &ton_abi::contract::ABI_VERSION_2_2,
+                            false,
+                        ),
                     )
                 })
         };
 
-        let decoded_event_data = match data {
+        let (proxy, event_emitter, decoded_event_data) = match data {
             // Decode event data with event abi from configuration
-            Some(data) => data.and_then(|data| {
-                let data: Vec<TokenValue> = data.into_iter().map(|token| token.value).collect();
-                borsh::serialize_tokens(&data)
-            }),
+            Some((proxy, event_emitter, data)) => (
+                proxy,
+                event_emitter,
+                data.and_then(|data| {
+                    let data: Vec<TokenValue> = data.into_iter().map(|token| token.value).collect();
+                    borsh::serialize_tokens(&data)
+                })?,
+            ),
             // Do nothing when configuration was not found
             None => {
                 log::error!(
@@ -920,13 +928,18 @@ impl Bridge {
                 self.sol_ton_events_state.remove(&account);
                 return Ok(());
             }
-        }?;
+        };
 
         let account_addr = ton_block::MsgAddrStd::with_address(None, 0, account.into());
 
         // Verify SOL->TON event and create message to event contract
         let message = match sol_subscriber
-            .verify_deposit_event(event_init_data.vote_data.account_seed, decoded_event_data)
+            .verify_deposit_event(
+                event_init_data.vote_data.account_seed,
+                proxy,
+                event_emitter,
+                decoded_event_data,
+            )
             .await
         {
             // Confirm event if transaction was found
@@ -1001,21 +1014,29 @@ impl Bridge {
                 .ton_sol_event_configurations
                 .get(&event_init_data.configuration)
                 .map(|configuration| {
-                    ton_abi::TokenValue::decode_params(
-                        &configuration.event_abi,
-                        event_init_data.vote_data.event_data.clone().into(),
-                        &ton_abi::contract::ABI_VERSION_2_2,
-                        false,
+                    (
+                        configuration.details.network_configuration.proxy,
+                        configuration.details.network_configuration.event_emitter,
+                        ton_abi::TokenValue::decode_params(
+                            &configuration.event_abi,
+                            event_init_data.vote_data.event_data.clone().into(),
+                            &ton_abi::contract::ABI_VERSION_2_2,
+                            false,
+                        ),
                     )
                 })
         };
 
-        let decoded_event_data = match data {
+        let (proxy, event_emitter, decoded_event_data) = match data {
             // Decode event data with event abi from configuration
-            Some(data) => data.and_then(|data| {
-                let data: Vec<TokenValue> = data.into_iter().map(|token| token.value).collect();
-                borsh::serialize_tokens(&data)
-            }),
+            Some((proxy, event_emitter, data)) => (
+                proxy,
+                event_emitter,
+                data.and_then(|data| {
+                    let data: Vec<TokenValue> = data.into_iter().map(|token| token.value).collect();
+                    borsh::serialize_tokens(&data)
+                })?,
+            ),
             // Do nothing when configuration was not found
             None => {
                 log::error!(
@@ -1026,7 +1047,7 @@ impl Bridge {
                 self.ton_sol_events_state.remove(&account);
                 return Ok(());
             }
-        }?;
+        };
 
         let round_number = base_event_contract.round_number()?;
         let relay_pubkey = self.context.keystore.sol.public_key();
@@ -1036,6 +1057,8 @@ impl Bridge {
             .verify_withdrawal_event(
                 event_init_data.configuration,
                 event_init_data.vote_data.event_transaction_lt,
+                proxy,
+                event_emitter,
                 decoded_event_data,
             )
             .await
@@ -1416,7 +1439,7 @@ impl Bridge {
             .context("Failed to get SOL->TON event configuration details")?;
 
         // Check if configuration is expired
-        let current_timestamp = self.context.ton_subscriber.current_utime();
+        let current_timestamp = chrono::Utc::now().timestamp() as u32;
         if details.is_expired(current_timestamp) {
             // Do nothing in that case
             log::warn!(
@@ -1769,7 +1792,6 @@ impl Bridge {
                 let has_expired_configurations = {
                     let state = bridge.state.read().await;
                     state.has_expired_ton_eth_event_configurations(current_utime)
-                        || state.has_expired_ton_sol_event_configurations(current_utime)
                 };
 
                 // Do nothing if there are not expired configurations
@@ -1969,12 +1991,6 @@ struct BridgeState {
 impl BridgeState {
     fn has_expired_ton_eth_event_configurations(&self, current_timestamp: u32) -> bool {
         self.ton_eth_event_configurations
-            .iter()
-            .any(|(_, state)| state.details.is_expired(current_timestamp))
-    }
-
-    fn has_expired_ton_sol_event_configurations(&self, current_timestamp: u32) -> bool {
-        self.ton_sol_event_configurations
             .iter()
             .any(|(_, state)| state.details.is_expired(current_timestamp))
     }

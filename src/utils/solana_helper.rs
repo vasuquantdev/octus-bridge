@@ -27,7 +27,7 @@ pub fn create_vote_message(
     event_transaction_lt: u64,
     vote: Vote,
 ) -> Message {
-    let ix = token_proxy::confirm_withdrawal_request(
+    let ix = token_proxy::vote_for_withdrawal_request(
         relay_pubkey,
         round_number,
         event_configuration,
