@@ -8,8 +8,7 @@ use parking_lot::Mutex;
 use tiny_adnl::utils::*;
 use tokio::sync::{mpsc, oneshot, watch, Notify};
 use ton_block::{BinTreeType, Deserializable, HashmapAugType};
-use ton_indexer::utils::{BlockIdExtExtension, BlockProofStuff, BlockStuff, ShardStateStuff};
-use ton_indexer::{BriefBlockMeta, EngineStatus};
+use ton_indexer::{BriefBlockMeta, EngineStatus, ProcessBlockContext};
 use ton_types::{HashmapType, UInt256};
 
 use crate::utils::*;
@@ -341,19 +340,14 @@ impl ton_indexer::Subscriber for TonSubscriber {
         }
     }
 
-    async fn process_block(
-        &self,
-        meta: BriefBlockMeta,
-        block: &BlockStuff,
-        _block_proof: Option<&BlockProofStuff>,
-        shard_state: &ShardStateStuff,
-    ) -> Result<()> {
-        if block.id().is_masterchain() {
-            self.handle_masterchain_block(meta, block.block())?;
-        } else {
-            self.handle_shard_block(block.block(), shard_state.state())?;
+    async fn process_block(&self, ctx: ProcessBlockContext<'_>) -> Result<()> {
+        if let Some(shard_state) = ctx.shard_state() {
+            if ctx.is_masterchain() {
+                self.handle_masterchain_block(ctx.meta(), ctx.block())?;
+            } else {
+                self.handle_shard_block(ctx.block(), shard_state)?;
+            }
         }
-
         Ok(())
     }
 }
