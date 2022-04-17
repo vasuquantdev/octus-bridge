@@ -896,7 +896,7 @@ impl Bridge {
                 .get(&event_init_data.configuration)
                 .map(|configuration| {
                     (
-                        configuration.details.network_configuration.event_emitter,
+                        configuration.details.network_configuration.program,
                         ton_abi::TokenValue::decode_params(
                             &configuration.event_abi,
                             event_init_data.vote_data.event_data.clone().into(),
@@ -907,10 +907,10 @@ impl Bridge {
                 })
         };
 
-        let (event_emitter, decoded_event_data) = match data {
+        let (program, decoded_event_data) = match data {
             // Decode event data with event abi from configuration
-            Some((event_emitter, data)) => (
-                event_emitter,
+            Some((program, data)) => (
+                program,
                 data.and_then(|data| {
                     let data: Vec<TokenValue> = data.into_iter().map(|token| token.value).collect();
                     borsh::serialize_tokens(&data)
@@ -928,13 +928,14 @@ impl Bridge {
             }
         };
 
+        let solana_program = Pubkey::new_from_array(program.inner());
         let account_addr = ton_block::MsgAddrStd::with_address(None, 0, account.into());
 
         // Verify SOL->TON event and create message to event contract
         let message = match sol_subscriber
             .verify_deposit_event(
                 event_init_data.vote_data.account_seed,
-                event_emitter,
+                solana_program,
                 decoded_event_data,
             )
             .await
@@ -1011,21 +1012,29 @@ impl Bridge {
                 .ton_sol_event_configurations
                 .get(&event_init_data.configuration)
                 .map(|configuration| {
-                    ton_abi::TokenValue::decode_params(
-                        &configuration.event_abi,
-                        event_init_data.vote_data.event_data.clone().into(),
-                        &ton_abi::contract::ABI_VERSION_2_2,
-                        false,
+                    (
+                        configuration.details.network_configuration.program,
+                        configuration.details.network_configuration.instruction,
+                        ton_abi::TokenValue::decode_params(
+                            &configuration.event_abi,
+                            event_init_data.vote_data.event_data.clone().into(),
+                            &ton_abi::contract::ABI_VERSION_2_2,
+                            false,
+                        ),
                     )
                 })
         };
 
-        let decoded_event_data = match data {
+        let (program, instruction, decoded_event_data) = match data {
             // Decode event data with event abi from configuration
-            Some(data) => data.and_then(|data| {
-                let data: Vec<TokenValue> = data.into_iter().map(|token| token.value).collect();
-                borsh::serialize_tokens(&data)
-            })?,
+            Some((program, instruction, data)) => (
+                program,
+                instruction,
+                data.and_then(|data| {
+                    let data: Vec<TokenValue> = data.into_iter().map(|token| token.value).collect();
+                    borsh::serialize_tokens(&data)
+                })?,
+            ),
             // Do nothing when configuration was not found
             None => {
                 log::error!(
@@ -1038,27 +1047,36 @@ impl Bridge {
             }
         };
 
+        let program = Pubkey::new_from_array(program.inner());
+        let voter_pubkey = self.context.keystore.sol.public_key();
         let round_number = base_event_contract.round_number()?;
-        let relay_pubkey = self.context.keystore.sol.public_key();
+        let event_configuration =
+            solana_bridge::bridge_types::UInt256::from(event_init_data.configuration.inner());
+        let event_transaction_lt = event_init_data.vote_data.event_transaction_lt;
 
         // Verify SOL->TON event and create message to token-proxy contract
         let transaction = match sol_subscriber
             .verify_withdrawal_event(
-                event_init_data.configuration,
+                event_configuration,
                 event_init_data.vote_data.event_transaction_lt,
+                program,
                 decoded_event_data,
             )
             .await
         {
             // Confirm event if transaction was found
             Ok(VerificationStatus::Exists) => {
-                let message = create_vote_message(
-                    &relay_pubkey,
+                let ix = solana_bridge::instructions::vote_for_proposal_ix(
+                    program,
+                    voter_pubkey,
+                    instruction,
+                    event_configuration,
+                    event_transaction_lt,
                     round_number,
-                    &event_init_data.configuration,
-                    event_init_data.vote_data.event_transaction_lt,
-                    Vote::Confirm,
+                    solana_bridge::bridge_types::Vote::Confirm,
                 );
+
+                let message = solana_sdk::message::Message::new(&[ix], Some(&voter_pubkey));
 
                 self.context
                     .keystore
@@ -1067,13 +1085,17 @@ impl Bridge {
             }
             // Reject event if transaction not found
             Ok(VerificationStatus::NotExists) => {
-                let message = create_vote_message(
-                    &relay_pubkey,
+                let ix = solana_bridge::instructions::vote_for_proposal_ix(
+                    program,
+                    voter_pubkey,
+                    instruction,
+                    event_configuration,
+                    event_transaction_lt,
                     round_number,
-                    &event_init_data.configuration,
-                    event_init_data.vote_data.event_transaction_lt,
-                    Vote::Reject,
+                    solana_bridge::bridge_types::Vote::Reject,
                 );
+
+                let message = solana_sdk::message::Message::new(&[ix], Some(&voter_pubkey));
 
                 self.context
                     .keystore

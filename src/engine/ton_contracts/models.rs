@@ -181,20 +181,22 @@ pub struct TonEthEventConfiguration {
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct SolTonEventConfiguration {
-    #[abi(with = "uint256_bytes")]
-    pub event_emitter: UInt256,
     #[abi(with = "address_only_hash")]
-    pub proxy: UInt256,
+    pub event_emitter: UInt256,
+    #[abi(with = "uint256_bytes")]
+    pub program: UInt256,
     #[abi(uint32)]
     pub end_timestamp: u32,
 }
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct TonSolEventConfiguration {
-    #[abi(with = "uint256_bytes")]
-    pub event_emitter: UInt256,
     #[abi(with = "address_only_hash")]
-    pub proxy: UInt256,
+    pub event_emitter: UInt256,
+    #[abi(with = "uint256_bytes")]
+    pub program: UInt256,
+    #[abi(uint8)]
+    pub instruction: u8,
     #[abi(uint32)]
     pub start_timestamp: u32,
     #[abi(uint32)]
