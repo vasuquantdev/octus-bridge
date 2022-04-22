@@ -59,8 +59,8 @@ pub struct SolTonEventInitData {
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct SolTonEventVoteData {
-    #[abi(uint64)]
-    pub account_seed: u64,
+    #[abi(uint128)]
+    pub account_seed: u128,
     #[abi(cell)]
     pub event_data: ton_types::Cell,
 }
@@ -77,8 +77,8 @@ pub struct TonSolEventInitData {
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct TonSolEventVoteData {
-    #[abi(uint64)]
-    pub event_transaction_lt: u64,
+    #[abi(uint128)]
+    pub account_seed: u128,
     #[abi(cell)]
     pub event_data: ton_types::Cell,
 }
@@ -181,20 +181,24 @@ pub struct TonEthEventConfiguration {
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct SolTonEventConfiguration {
-    #[abi(with = "address_only_hash")]
-    pub event_emitter: UInt256,
     #[abi(with = "uint256_bytes")]
     pub program: UInt256,
+    #[abi(with = "uint256_bytes")]
+    pub settings: UInt256,
+    #[abi(with = "address_only_hash")]
+    pub proxy: UInt256,
     #[abi(uint32)]
     pub end_timestamp: u32,
 }
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct TonSolEventConfiguration {
-    #[abi(with = "address_only_hash")]
-    pub event_emitter: UInt256,
     #[abi(with = "uint256_bytes")]
     pub program: UInt256,
+    #[abi(with = "uint256_bytes")]
+    pub settings: UInt256,
+    #[abi(with = "address_only_hash")]
+    pub event_emitter: UInt256,
     #[abi(uint8)]
     pub instruction: u8,
     #[abi(uint32)]

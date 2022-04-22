@@ -63,7 +63,6 @@ ton_types = { git = "https://github.com/broxus/ton-labs-types" }
 eth-ton-abi-converter = { git = "https://github.com/broxus/eth-ton-abi-converter.git", branch = "dev" }
 
 # Solana Token Proxy lib
-#token-proxy = { version = "0.1", git = "ssh://git@gitlab.dexpa.io/solana-everscale-bridge/solana-bridge", features = ["no-entrypoint", "bindings"] }
 solana-bridge = { version = "0.1", git = "ssh://git@gitlab.dexpa.io/solana-everscale-bridge/solana-bridge" }
 
 # Nekoton SDK

@@ -897,6 +897,7 @@ impl Bridge {
                 .map(|configuration| {
                     (
                         configuration.details.network_configuration.program,
+                        configuration.details.network_configuration.settings,
                         ton_abi::TokenValue::decode_params(
                             &configuration.event_abi,
                             event_init_data.vote_data.event_data.clone().into(),
@@ -907,10 +908,11 @@ impl Bridge {
                 })
         };
 
-        let (program, decoded_event_data) = match data {
+        let (program, settings, decoded_event_data) = match data {
             // Decode event data with event abi from configuration
-            Some((program, data)) => (
+            Some((program, settings, data)) => (
                 program,
+                settings,
                 data.and_then(|data| {
                     let data: Vec<TokenValue> = data.into_iter().map(|token| token.value).collect();
                     borsh::serialize_tokens(&data)
@@ -928,14 +930,17 @@ impl Bridge {
             }
         };
 
-        let solana_program = Pubkey::new_from_array(program.inner());
+        let proposal_seed = event_init_data.vote_data.account_seed;
+        let program_id = Pubkey::new_from_array(program.inner());
+        let settings_address = Pubkey::new_from_array(settings.inner());
         let account_addr = ton_block::MsgAddrStd::with_address(None, 0, account.into());
 
         // Verify SOL->TON event and create message to event contract
         let message = match sol_subscriber
-            .verify_deposit_event(
-                event_init_data.vote_data.account_seed,
-                solana_program,
+            .verify_sol_ton_event(
+                proposal_seed,
+                program_id,
+                settings_address,
                 decoded_event_data,
             )
             .await
@@ -1014,6 +1019,7 @@ impl Bridge {
                 .map(|configuration| {
                     (
                         configuration.details.network_configuration.program,
+                        configuration.details.network_configuration.settings,
                         configuration.details.network_configuration.instruction,
                         ton_abi::TokenValue::decode_params(
                             &configuration.event_abi,
@@ -1025,10 +1031,11 @@ impl Bridge {
                 })
         };
 
-        let (program, instruction, decoded_event_data) = match data {
+        let (program, settings, instruction, decoded_event_data) = match data {
             // Decode event data with event abi from configuration
-            Some((program, instruction, data)) => (
+            Some((program, settings, instruction, data)) => (
                 program,
+                settings,
                 instruction,
                 data.and_then(|data| {
                     let data: Vec<TokenValue> = data.into_iter().map(|token| token.value).collect();
@@ -1047,19 +1054,18 @@ impl Bridge {
             }
         };
 
-        let program = Pubkey::new_from_array(program.inner());
+        let program_id = Pubkey::new_from_array(program.inner());
+        let settings_address = Pubkey::new_from_array(settings.inner());
+        let proposal_seed = event_init_data.vote_data.account_seed;
         let voter_pubkey = self.context.keystore.sol.public_key();
         let round_number = base_event_contract.round_number()?;
-        let event_configuration =
-            solana_bridge::bridge_types::UInt256::from(event_init_data.configuration.inner());
-        let event_transaction_lt = event_init_data.vote_data.event_transaction_lt;
 
-        // Verify SOL->TON event and create message to token-proxy contract
+        // Verify TON->SOL event and create message to token-proxy contract
         let transaction = match sol_subscriber
-            .verify_withdrawal_event(
-                event_configuration,
-                event_init_data.vote_data.event_transaction_lt,
-                program,
+            .verify_ton_sol_event(
+                event_init_data.vote_data.account_seed,
+                program_id,
+                settings_address,
                 decoded_event_data,
             )
             .await
@@ -1067,11 +1073,11 @@ impl Bridge {
             // Confirm event if transaction was found
             Ok(VerificationStatus::Exists) => {
                 let ix = solana_bridge::instructions::vote_for_proposal_ix(
-                    program,
+                    program_id,
                     voter_pubkey,
                     instruction,
-                    event_configuration,
-                    event_transaction_lt,
+                    proposal_seed,
+                    settings_address,
                     round_number,
                     solana_bridge::bridge_types::Vote::Confirm,
                 );
@@ -1086,11 +1092,11 @@ impl Bridge {
             // Reject event if transaction not found
             Ok(VerificationStatus::NotExists) => {
                 let ix = solana_bridge::instructions::vote_for_proposal_ix(
-                    program,
+                    program_id,
                     voter_pubkey,
                     instruction,
-                    event_configuration,
-                    event_transaction_lt,
+                    proposal_seed,
+                    settings_address,
                     round_number,
                     solana_bridge::bridge_types::Vote::Reject,
                 );

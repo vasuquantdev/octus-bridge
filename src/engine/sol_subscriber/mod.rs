@@ -9,7 +9,6 @@ use tiny_adnl::utils::*;
 use tokio::sync::{oneshot, Notify};
 use tokio::time::timeout;
 
-use solana_bridge::bridge_types::UInt256;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::account::{Account, ReadableAccount};
 use solana_sdk::hash::Hash;
@@ -89,16 +88,12 @@ impl SolSubscriber {
 
         let accounts_to_check = futures::stream::FuturesUnordered::new();
         for (&account_id, confirmation) in pending_confirmations.iter() {
-            accounts_to_check.push(async move {
-                let account_pubkey = solana_bridge::bridge_helper::get_associated_proposal_address(
-                    &confirmation.program,
-                    account_id.0,
-                    account_id.1,
-                );
-
-                let result = self.get_account(&account_pubkey).await;
-                (account_id, result)
-            });
+            if confirmation.status == PendingConfirmationStatus::New {
+                accounts_to_check.push(async move {
+                    let result = self.get_account(&account_id).await;
+                    (account_id, result)
+                });
+            }
         }
 
         let accounts_to_check = accounts_to_check
@@ -111,11 +106,23 @@ impl SolSubscriber {
             if let hash_map::Entry::Occupied(mut entry) = pending_confirmations.entry(account_id) {
                 let status = match result {
                     Ok(Some(account)) => {
-                        let account_data =
-                            solana_bridge::bridge_state::Proposal::unpack(account.data())?;
-                        entry.get().check(account_data)
+                        match solana_bridge::bridge_state::Proposal::unpack(account.data()) {
+                            Ok(account_data) => entry.get().check(account_data),
+                            Err(err) => {
+                                log::error!(
+                                    "Failed to unpack Solana account 0x{}: {}",
+                                    entry.key(),
+                                    err
+                                );
+                                VerificationStatus::NotExists
+                            }
+                        }
                     }
-                    Ok(None) => VerificationStatus::NotExists,
+                    Ok(None) => {
+                        entry.get_mut().status = PendingConfirmationStatus::WaitForAccount;
+                        log::info!("Wait for preparing of Solana account 0x{}", entry.key());
+                        continue;
+                    }
                     Err(e) => {
                         log::error!("Failed to check Solana event: {:?}", e);
                         continue;
@@ -185,24 +192,28 @@ impl SolSubscriber {
         Ok(account)
     }
 
-    pub async fn verify_withdrawal_event(
+    pub async fn verify_ton_sol_event(
         &self,
-        configuration: UInt256,
-        event_transaction_lt: u64,
-        program: Pubkey,
+        seed: u128,
+        program_id: Pubkey,
+        settings_address: Pubkey,
         event_data: Vec<u8>,
     ) -> Result<VerificationStatus> {
         let rx = {
             let (tx, rx) = oneshot::channel();
 
-            let account_id = (configuration, event_transaction_lt);
+            let account_id = solana_bridge::bridge_helper::get_associated_proposal_address(
+                &program_id,
+                seed,
+                &settings_address,
+            );
 
             let mut pending_confirmations = self.pending_confirmations.lock().await;
             pending_confirmations.insert(
                 account_id,
                 PendingConfirmation {
-                    program,
                     event_data,
+                    status: PendingConfirmationStatus::New,
                     status_tx: Some(tx),
                 },
             );
@@ -219,25 +230,24 @@ impl SolSubscriber {
         Ok(status)
     }
 
-    pub async fn verify_deposit_event(
+    pub async fn verify_sol_ton_event(
         &self,
-        seed: u64,
-        program: Pubkey,
+        seed: u128,
+        program_id: Pubkey,
+        settings_address: Pubkey,
         event_data: Vec<u8>,
     ) -> Result<VerificationStatus> {
-        let account_pubkey =
-            solana_bridge::token_proxy::get_associated_deposit_address(&program, seed);
+        let account_pubkey = solana_bridge::bridge_helper::get_associated_proposal_address(
+            &program_id,
+            seed,
+            &settings_address,
+        );
 
-        let result = self.get_account(&account_pubkey).await;
+        let result = self.get_account(&account_pubkey).await?;
         let account = match result {
-            Ok(Some(account)) => account,
-            Ok(None) => return Ok(VerificationStatus::NotExists),
-            Err(err) => {
-                log::error!(
-                    "Failed to get Deposit Solana Account 0x{}: {}",
-                    account_pubkey,
-                    err
-                );
+            Some(account) => account,
+            None => {
+                log::error!("Solana account 0x{} not exist", account_pubkey);
                 return Ok(VerificationStatus::NotExists);
             }
         };
@@ -302,8 +312,8 @@ pub struct SolSubscriberMetrics {
 }
 
 struct PendingConfirmation {
-    program: Pubkey,
     event_data: Vec<u8>,
+    status: PendingConfirmationStatus,
     status_tx: Option<VerificationStatusTx>,
 }
 
@@ -317,6 +327,12 @@ impl PendingConfirmation {
     }
 }
 
+#[derive(PartialEq, Eq)]
+enum PendingConfirmationStatus {
+    New,
+    WaitForAccount,
+}
+
 type VerificationStatusTx = oneshot::Sender<VerificationStatus>;
 
-pub type AccountId = (UInt256, u64);
+pub type AccountId = Pubkey;
