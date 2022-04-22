@@ -1,15 +1,20 @@
 use std::collections::hash_map;
+use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
 use futures::StreamExt;
+use solana_account_decoder::{UiAccountData, UiAccountEncoding};
 use tiny_adnl::utils::*;
-use tokio::sync::{oneshot, Notify};
+use tokio::sync::{mpsc, oneshot, Notify};
 use tokio::time::timeout;
 
+use solana_client::nonblocking::pubsub_client::PubsubClient;
 use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_client::rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig};
+use solana_client::rpc_response::{Response, RpcKeyedAccount};
 use solana_sdk::account::{Account, ReadableAccount};
 use solana_sdk::hash::Hash;
 use solana_sdk::program_pack::Pack;
@@ -24,6 +29,7 @@ use crate::utils::*;
 pub struct SolSubscriber {
     config: SolConfig,
     rpc_client: Arc<RpcClient>,
+    pubsub_client: Arc<PubsubClient>,
     pending_confirmations: tokio::sync::Mutex<FxHashMap<AccountId, PendingConfirmation>>,
     pending_confirmation_count: AtomicUsize,
     new_events_notify: Notify,
@@ -36,9 +42,12 @@ impl SolSubscriber {
             config.commitment_config,
         ));
 
+        let pubsub_client = Arc::new(PubsubClient::new(&config.ws_url).await?);
+
         let subscriber = Arc::new(Self {
             config,
             rpc_client,
+            pubsub_client,
             pending_confirmations: Default::default(),
             pending_confirmation_count: Default::default(),
             new_events_notify: Notify::new(),
@@ -54,6 +63,42 @@ impl SolSubscriber {
     }
 
     pub fn start(self: &Arc<Self>) {
+        let (tx, rx) = mpsc::unbounded_channel();
+
+        for program_id in self
+            .config
+            .program_ids
+            .iter()
+            .map(|program_id| Pubkey::from_str(program_id).unwrap())
+        {
+            let tx = tx.clone();
+            let subscriber = Arc::downgrade(self);
+
+            tokio::spawn(async move {
+                let subscriber = match subscriber.upgrade() {
+                    Some(subscriber) => subscriber,
+                    None => return,
+                };
+
+                if let Err(e) = subscriber.subscribe(program_id, tx).await {
+                    log::error!("Error occurred during Solana subscribe: {:?}", e);
+                }
+            });
+        }
+
+        let subscriber = Arc::downgrade(self);
+
+        tokio::spawn(async move {
+            let subscriber = match subscriber.upgrade() {
+                Some(subscriber) => subscriber,
+                None => return,
+            };
+
+            if let Err(e) = subscriber.handle(rx).await {
+                log::error!("Error occurred during Solana event handle: {:?}", e);
+            }
+        });
+
         let subscriber = Arc::downgrade(self);
 
         tokio::spawn(async move {
@@ -68,6 +113,55 @@ impl SolSubscriber {
                 }
             }
         });
+    }
+
+    pub async fn subscribe(&self, program_id: Pubkey, tx: SubscribeResponseTx) -> Result<()> {
+        let (mut program_notifications, program_unsubscribe) = self
+            .pubsub_client
+            .program_subscribe(
+                &program_id,
+                Some(RpcProgramAccountsConfig {
+                    account_config: RpcAccountInfoConfig {
+                        commitment: Some(self.config.commitment_config),
+                        encoding: Some(UiAccountEncoding::Base64),
+                        ..RpcAccountInfoConfig::default()
+                    },
+                    ..RpcProgramAccountsConfig::default()
+                }),
+            )
+            .await?;
+
+        while let Some(response) = program_notifications.next().await {
+            tx.send(response)?;
+        }
+
+        program_unsubscribe().await;
+
+        Ok(())
+    }
+
+    pub async fn handle(&self, mut rx: SubscribeResponseRx) -> Result<()> {
+        while let Some(response) = rx.recv().await {
+            if let UiAccountData::Binary(s, UiAccountEncoding::Base64) = response.value.account.data
+            {
+                if let Ok(bytes) = base64::decode(s) {
+                    if let Ok(account_data) = solana_bridge::token_proxy::Deposit::unpack(&bytes) {
+                        if account_data.account_kind
+                            == solana_bridge::bridge_state::AccountKind::Deposit
+                        {
+                            let account_id = Pubkey::from_str(&response.value.pubkey)?;
+
+                            let mut pending_confirmations = self.pending_confirmations.lock().await;
+                            if let Some(confirmation) = pending_confirmations.get_mut(&account_id) {
+                                confirmation.status = PendingConfirmationStatus::New;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 
     async fn update(&self) -> Result<()> {
@@ -334,5 +428,7 @@ enum PendingConfirmationStatus {
 }
 
 type VerificationStatusTx = oneshot::Sender<VerificationStatus>;
+type SubscribeResponseTx = mpsc::UnboundedSender<Response<RpcKeyedAccount>>;
+type SubscribeResponseRx = mpsc::UnboundedReceiver<Response<RpcKeyedAccount>>;
 
 pub type AccountId = Pubkey;
