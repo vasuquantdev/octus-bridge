@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use futures::StreamExt;
+use parking_lot::Mutex;
 use solana_account_decoder::{UiAccountData, UiAccountEncoding};
 use tokio::sync::{mpsc, Notify};
 use tokio::time::timeout;
@@ -32,6 +33,7 @@ pub struct SolSubscriber {
     pending_events: tokio::sync::Mutex<VecDeque<(Pubkey, PendingEvent)>>,
     pending_event_count: AtomicUsize,
     new_events_notify: Notify,
+    events_tx: Mutex<Option<SubscribeResponseTx>>,
 }
 
 impl SolSubscriber {
@@ -50,6 +52,7 @@ impl SolSubscriber {
             pending_events: Default::default(),
             pending_event_count: Default::default(),
             new_events_notify: Notify::new(),
+            events_tx: Mutex::new(None),
         });
 
         Ok(subscriber)
@@ -62,29 +65,6 @@ impl SolSubscriber {
     }
 
     pub fn start(self: &Arc<Self>) {
-        let (tx, rx) = mpsc::unbounded_channel();
-
-        for program_id in self
-            .config
-            .program_ids
-            .iter()
-            .map(|program_id| Pubkey::from_str(program_id).unwrap())
-        {
-            let tx = tx.clone();
-            let subscriber = Arc::downgrade(self);
-
-            tokio::spawn(async move {
-                let subscriber = match subscriber.upgrade() {
-                    Some(subscriber) => subscriber,
-                    None => return,
-                };
-
-                if let Err(e) = subscriber.subscribe(program_id, tx).await {
-                    log::error!("Error occurred during Solana subscribe: {:?}", e);
-                }
-            });
-        }
-
         let subscriber = Arc::downgrade(self);
 
         tokio::spawn(async move {
@@ -93,13 +73,32 @@ impl SolSubscriber {
                 None => return,
             };
 
-            if let Err(e) = subscriber.handle(rx).await {
+            let (tx, rx) = mpsc::unbounded_channel();
+
+            *subscriber.events_tx.lock() = Some(tx);
+
+            if let Err(e) = subscriber.update(rx).await {
                 log::error!("Error occurred during Solana event handle: {:?}", e);
             }
         });
     }
 
-    async fn subscribe(&self, program_id: Pubkey, tx: SubscribeResponseTx) -> Result<()> {
+    pub fn subscribe(self: &Arc<Self>, program_id: Pubkey) {
+        let subscriber = Arc::downgrade(self);
+
+        tokio::spawn(async move {
+            let subscriber = match subscriber.upgrade() {
+                Some(subscriber) => subscriber,
+                None => return,
+            };
+
+            if let Err(e) = subscriber.program_subscribe(program_id).await {
+                log::error!("Error occurred during Solana subscribe: {:?}", e);
+            }
+        });
+    }
+
+    async fn program_subscribe(&self, program_id: Pubkey) -> Result<()> {
         let (mut program_notifications, program_unsubscribe) = self
             .pubsub_client
             .program_subscribe(
@@ -116,7 +115,9 @@ impl SolSubscriber {
             .await?;
 
         while let Some(response) = program_notifications.next().await {
-            tx.send(response)?;
+            if let Some(tx) = &*self.events_tx.lock() {
+                tx.send(response)?;
+            }
         }
 
         program_unsubscribe().await;
@@ -124,7 +125,7 @@ impl SolSubscriber {
         Ok(())
     }
 
-    async fn handle(&self, mut rx: SubscribeResponseRx) -> Result<()> {
+    async fn update(&self, mut rx: SubscribeResponseRx) -> Result<()> {
         while let Some(response) = rx.recv().await {
             if let UiAccountData::Binary(s, UiAccountEncoding::Base64) = response.value.account.data
             {
@@ -316,30 +317,6 @@ impl SolSubscriber {
 pub struct SolSubscriberMetrics {
     pub pending_confirmation_count: usize,
 }
-
-/*struct PendingEvents {
-    events: tokio::sync::Mutex<VecDeque<(Pubkey, PendingEvent)>>,
-    new_events_notify: Notify,
-    count: AtomicUsize,
-}
-
-impl PendingEvents {
-    async fn notified(&self) {
-        self.new_events_notify.notified().await
-    }
-
-    async fn is_empty(&self) -> bool {
-        self.events.lock().await.is_empty()
-    }
-
-    async fn pop_front(&self) -> Option<(Pubkey, PendingEventsData)> {
-        self.events.lock().await.pop_front()
-    }
-
-    async fn push_back(&self, value: (Pubkey, PendingEventsData)) {
-        self.events.lock().await.push_back(value)
-    }
-}*/
 
 pub struct PendingEvent {
     pub author: Pubkey,

@@ -1499,19 +1499,6 @@ impl Bridge {
             .get_details()
             .context("Failed to get SOL->TON event configuration details")?;
 
-        // Check if configuration is expired
-        let current_timestamp = chrono::Utc::now().timestamp() as u32;
-        if details.is_expired(current_timestamp) {
-            // Do nothing in that case
-            log::warn!(
-                "Ignoring SOL->TON event configuration {:x}: end timestamp {} is less then current {}",
-                account,
-                details.network_configuration.end_timestamp,
-                current_timestamp
-            );
-            return Ok(());
-        };
-
         // Verify and prepare abi
         let event_abi = decode_ton_event_abi(&details.basic_configuration.event_abi)?;
 
@@ -1586,6 +1573,9 @@ impl Bridge {
             EventType::TonSol,
         )?;
 
+        // Get Solana program
+        let program_id = Pubkey::new_from_array(details.network_configuration.program.inner());
+
         // Add configuration entry
         let observer = AccountObserver::new(&self.ton_sol_event_configurations_tx);
         match state.ton_sol_event_configurations.entry(*account) {
@@ -1606,6 +1596,10 @@ impl Bridge {
                 return Err(BridgeError::EventConfigurationAlreadyExists.into());
             }
         };
+
+        // Subscribe to Solana program
+        let subscriber = &self.context.sol_subscriber;
+        subscriber.subscribe(program_id);
 
         // Subscribe to TON events
         self.context
@@ -2235,12 +2229,6 @@ struct SolTonEventConfigurationState {
 
     /// Observer must live as long as configuration lives
     _observer: Arc<AccountObserver<SolTonEventConfigurationEvent>>,
-}
-
-impl SolTonEventConfigurationDetails {
-    fn is_expired(&self, current_timestamp: u32) -> bool {
-        (1..current_timestamp).contains(&self.network_configuration.end_timestamp)
-    }
 }
 
 /// TON->SOL event configuration data
