@@ -1085,12 +1085,23 @@ impl Bridge {
             let voter_pubkey = keystore.sol.public_key();
             let round_number = base_event_contract.round_number()?;
 
-            let (sol_message, ton_message) = if event_init_data.configuration
-                == configuration_account
+            let proposal_pda = solana_bridge::bridge_helper::get_associated_proposal_address(
+                &program_id,
+                &Pubkey::new_from_array(event_init_data.vote_data.author.inner()),
+                &Pubkey::new_from_array(
+                    configuration_details.network_configuration.settings.inner(),
+                ),
+                event_init_data.vote_data.event_timestamp,
+                event_init_data.vote_data.event_transaction_lt,
+                &Pubkey::new_from_array(event_init_data.configuration.inner()),
+            );
+
+            let (sol_message, ton_message) = if proposal_pubkey == proposal_pda
+                && event_init_data.configuration == configuration_account
                 && event_init_data.vote_data.author == vote_data.author
+                && event_init_data.vote_data.event_data == vote_data.event_data
                 && event_init_data.vote_data.event_timestamp == vote_data.event_timestamp
                 && event_init_data.vote_data.event_transaction_lt == vote_data.event_transaction_lt
-                && event_init_data.vote_data.event_data == vote_data.event_data
             {
                 let ix = solana_bridge::instructions::vote_for_proposal_ix(
                     program_id,
