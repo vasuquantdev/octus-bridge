@@ -168,6 +168,8 @@ impl Bridge {
             Self::process_ton_sol_event,
         );
 
+        start_endless_service(&bridge, "SolanaEvents", Self::process_sol_events);
+
         // Subscribe bridge account to transactions
         bridge
             .context
@@ -937,7 +939,7 @@ impl Bridge {
 
         // Verify SOL->TON event and create message to event contract
         let message = match sol_subscriber
-            .verify_sol_ton_event(
+            .verify(
                 proposal_seed,
                 program_id,
                 settings_address,
@@ -989,7 +991,6 @@ impl Bridge {
 
         let keystore = &self.context.keystore;
         let ton_subscriber = &self.context.ton_subscriber;
-        let sol_subscriber = &self.context.sol_subscriber;
 
         // Wait contract state
         let contract = ton_subscriber.wait_contract_state(account).await?;
@@ -997,129 +998,163 @@ impl Bridge {
 
         // Check further steps based on event statuses
         match base_event_contract.process(keystore.ton.public_key(), true)? {
-            EventAction::Nop => return Ok(()),
-            EventAction::Remove => {
-                self.ton_sol_events_state.remove(&account);
-                return Ok(());
-            }
-            EventAction::Vote => { /* continue voting */ }
+            EventAction::Nop | EventAction::Vote => { /* do nothing */ }
+            EventAction::Remove => self.ton_sol_events_state.remove(&account),
         }
 
-        // Get event details
-        let event_init_data = TonSolEventContract(&contract).event_init_data()?;
+        Ok(())
+    }
 
-        // Find suitable configuration
-        // NOTE: be sure to drop `self.state` lock before removing pending ton event.
-        // It may deadlock otherwise!
-        let data = {
+    async fn process_sol_events(self: Arc<Self>) -> Result<()> {
+        let sol_subscriber = &self.context.sol_subscriber;
+
+        if sol_subscriber.pending_events_is_empty().await {
+            sol_subscriber.pending_events_notified().await
+        }
+
+        if let Some((proposal_pubkey, event)) = sol_subscriber.pending_events_pop_front().await {
+            let keystore = &self.context.keystore;
+            let ton_subscriber = &self.context.ton_subscriber;
+            let sol_subscriber = &self.context.sol_subscriber;
+
+            let configuration_account = UInt256::from(event.event_configuration.to_bytes());
+
+            // Validate configuration account
             let state = self.state.read().await;
             state
                 .ton_sol_event_configurations
-                .get(&event_init_data.configuration)
-                .map(|configuration| {
-                    (
-                        configuration.details.network_configuration.program,
-                        configuration.details.network_configuration.settings,
-                        configuration.details.network_configuration.instruction,
-                        ton_abi::TokenValue::decode_params(
-                            &configuration.event_abi,
-                            event_init_data.vote_data.event_data.clone().into(),
-                            &ton_abi::contract::ABI_VERSION_2_2,
-                            false,
-                        ),
-                    )
-                })
-        };
+                .get(&configuration_account)
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                    "TON->SOL event configuration {:x} not found for Solana Proposal Account 0x{}",
+                    configuration_account,
+                    proposal_pubkey
+                )
+                })?;
 
-        let (program, settings, instruction, decoded_event_data) = match data {
-            // Decode event data with event abi from configuration
-            Some((program, settings, instruction, data)) => (
-                program,
-                settings,
-                instruction,
-                data.and_then(|data| {
-                    let data: Vec<TokenValue> = data.into_iter().map(|token| token.value).collect();
-                    borsh::serialize_tokens(&data)
-                })?,
-            ),
-            // Do nothing when configuration was not found
-            None => {
-                log::error!(
-                    "TON->SOL event configuration {:x} not found for event {:x}",
-                    event_init_data.configuration,
-                    account
-                );
-                self.ton_sol_events_state.remove(&account);
-                return Ok(());
-            }
-        };
+            // Wait configuration contract state
+            let configuration_contract = ton_subscriber
+                .wait_contract_state(configuration_account)
+                .await?;
 
-        let program_id = Pubkey::new_from_array(program.inner());
-        let settings_address = Pubkey::new_from_array(settings.inner());
-        let proposal_seed = event_init_data.vote_data.account_seed;
-        let voter_pubkey = self.context.keystore.sol.public_key();
-        let round_number = base_event_contract.round_number()?;
+            let configuration_details =
+                TonSolEventConfigurationContract(&configuration_contract).get_details()?;
 
-        // Verify TON->SOL event and create message to token-proxy contract
-        let transaction = match sol_subscriber
-            .verify_ton_sol_event(
-                event_init_data.vote_data.account_seed,
-                program_id,
-                settings_address,
-                decoded_event_data,
-            )
-            .await
-        {
-            // Confirm event if transaction was found
-            Ok(VerificationStatus::Exists) => {
+            // Verify and prepare abi
+            let event_abi =
+                decode_ton_event_abi(&configuration_details.basic_configuration.event_abi)?
+                    .into_iter()
+                    .map(|param| param.kind)
+                    .collect::<Vec<ton_abi::ParamType>>();
+
+            // Pack borsh bytes to cell
+            let decoded_event_data = eth_ton_abi_converter::borsh::deserialize_with_abi(
+                &mut event.event_data.as_slice(),
+                &event_abi,
+            )?;
+
+            let event_data = ton_abi::TokenValue::pack_token_values_into_chain(
+                &decoded_event_data,
+                Default::default(),
+                ton_abi::contract::ABI_VERSION_2_2,
+            )?
+            .into_cell()?;
+
+            let vote_data = TonSolEventVoteData {
+                event_transaction_lt: event.event_transaction_lt,
+                event_timestamp: event.event_timestamp,
+                author: UInt256::from(event.author.to_bytes()),
+                event_data,
+            };
+
+            let event_account = TonSolEventConfigurationContract(&configuration_contract)
+                .derive_event_address(&vote_data)?;
+
+            // Wait event contract state
+            let event_contract = ton_subscriber.wait_contract_state(event_account).await?;
+            let base_event_contract = EventBaseContract(&event_contract);
+
+            // Get event details
+            let event_init_data = TonSolEventContract(&event_contract).event_init_data()?;
+
+            let account_addr = ton_block::MsgAddrStd::with_address(None, 0, event_account.into());
+
+            let program_id =
+                Pubkey::new_from_array(configuration_details.network_configuration.program.inner());
+            let instruction = configuration_details.network_configuration.instruction;
+            let voter_pubkey = keystore.sol.public_key();
+            let round_number = base_event_contract.round_number()?;
+
+            let (sol_message, ton_message) = if event_init_data.configuration
+                == configuration_account
+                && event_init_data.vote_data.author == vote_data.author
+                && event_init_data.vote_data.event_timestamp == vote_data.event_timestamp
+                && event_init_data.vote_data.event_transaction_lt == vote_data.event_transaction_lt
+                && event_init_data.vote_data.event_data == vote_data.event_data
+            {
                 let ix = solana_bridge::instructions::vote_for_proposal_ix(
                     program_id,
-                    voter_pubkey,
                     instruction,
-                    proposal_seed,
-                    settings_address,
+                    &voter_pubkey,
+                    &proposal_pubkey,
                     round_number,
                     solana_bridge::bridge_types::Vote::Confirm,
                 );
+                let sol_message = solana_sdk::message::Message::new(&[ix], Some(&voter_pubkey));
 
-                let message = solana_sdk::message::Message::new(&[ix], Some(&voter_pubkey));
+                let ton_message =
+                    UnsignedMessage::new(ton_sol_event_contract::confirm(), event_account)
+                        .arg(account_addr);
 
-                self.context
-                    .keystore
-                    .sol
-                    .sign(message, sol_subscriber.get_recent_blockhash().await?)?
-            }
-            // Reject event if transaction not found
-            Ok(VerificationStatus::NotExists) => {
+                (sol_message, ton_message)
+            } else {
                 let ix = solana_bridge::instructions::vote_for_proposal_ix(
                     program_id,
-                    voter_pubkey,
                     instruction,
-                    proposal_seed,
-                    settings_address,
+                    &voter_pubkey,
+                    &proposal_pubkey,
                     round_number,
                     solana_bridge::bridge_types::Vote::Reject,
                 );
+                let sol_message = solana_sdk::message::Message::new(&[ix], Some(&voter_pubkey));
 
-                let message = solana_sdk::message::Message::new(&[ix], Some(&voter_pubkey));
+                let ton_message =
+                    UnsignedMessage::new(ton_sol_event_contract::reject(), event_account)
+                        .arg(account_addr);
 
-                self.context
-                    .keystore
-                    .sol
-                    .sign(message, sol_subscriber.get_recent_blockhash().await?)?
-            }
-            // Skip event otherwise
-            Err(e) => {
-                log::error!("Failed to verify TON->SOL event {:x}: {:?}", account, e);
-                self.ton_sol_events_state.remove(&account);
-                return Ok(());
-            }
-        };
+                (sol_message, ton_message)
+            };
 
-        // Remove event subscription regardless result of sending transaction
-        self.ton_sol_events_state.remove(&account);
+            // Send confirm/reject to Solana
+            let transaction = self
+                .context
+                .keystore
+                .sol
+                .sign(sol_message, sol_subscriber.get_recent_blockhash().await?)?;
 
-        sol_subscriber.send_transaction(transaction).await?;
+            sol_subscriber.send_transaction(transaction).await?;
+
+            // Clone events observer and deliver message to the contract
+            let ton_sol_event_observer = match self.ton_sol_events_state.pending.get(&event_account)
+            {
+                Some(entry) => entry.observer.clone(),
+                None => return Ok(()),
+            };
+            let ton_sol_events_state = Arc::downgrade(&self.sol_ton_events_state);
+
+            // Send confirm/reject to Ton
+            self.context
+                .deliver_message(
+                    ton_sol_event_observer,
+                    ton_message,
+                    // Stop voting for the contract if it was removed
+                    move || match ton_sol_events_state.upgrade() {
+                        Some(state) => state.pending.contains_key(&event_account),
+                        None => false,
+                    },
+                )
+                .await?;
+        }
 
         Ok(())
     }
@@ -1551,7 +1586,7 @@ impl Bridge {
 
                 entry.insert(TonSolEventConfigurationState {
                     details,
-                    event_abi,
+                    _event_abi: event_abi,
                     _observer: observer.clone(),
                 });
             }
@@ -2203,7 +2238,7 @@ struct TonSolEventConfigurationState {
     /// Configuration details
     details: TonSolEventConfigurationDetails,
     /// Parsed `eventData` ABI
-    event_abi: Vec<ton_abi::Param>,
+    _event_abi: Vec<ton_abi::Param>,
 
     /// Observer must live as long as configuration lives
     _observer: Arc<AccountObserver<TonSolEventConfigurationEvent>>,

@@ -1,4 +1,4 @@
-use std::collections::hash_map;
+use std::collections::VecDeque;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -7,8 +7,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use futures::StreamExt;
 use solana_account_decoder::{UiAccountData, UiAccountEncoding};
-use tiny_adnl::utils::*;
-use tokio::sync::{mpsc, oneshot, Notify};
+use tokio::sync::{mpsc, Notify};
 use tokio::time::timeout;
 
 use solana_client::nonblocking::pubsub_client::PubsubClient;
@@ -30,8 +29,8 @@ pub struct SolSubscriber {
     config: SolConfig,
     rpc_client: Arc<RpcClient>,
     pubsub_client: Arc<PubsubClient>,
-    pending_confirmations: tokio::sync::Mutex<FxHashMap<AccountId, PendingConfirmation>>,
-    pending_confirmation_count: AtomicUsize,
+    pending_events: tokio::sync::Mutex<VecDeque<(Pubkey, PendingEvent)>>,
+    pending_event_count: AtomicUsize,
     new_events_notify: Notify,
 }
 
@@ -48,8 +47,8 @@ impl SolSubscriber {
             config,
             rpc_client,
             pubsub_client,
-            pending_confirmations: Default::default(),
-            pending_confirmation_count: Default::default(),
+            pending_events: Default::default(),
+            pending_event_count: Default::default(),
             new_events_notify: Notify::new(),
         });
 
@@ -58,7 +57,7 @@ impl SolSubscriber {
 
     pub fn metrics(&self) -> SolSubscriberMetrics {
         SolSubscriberMetrics {
-            pending_confirmation_count: self.pending_confirmation_count.load(Ordering::Acquire),
+            pending_confirmation_count: self.pending_event_count.load(Ordering::Acquire),
         }
     }
 
@@ -98,24 +97,9 @@ impl SolSubscriber {
                 log::error!("Error occurred during Solana event handle: {:?}", e);
             }
         });
-
-        let subscriber = Arc::downgrade(self);
-
-        tokio::spawn(async move {
-            loop {
-                let subscriber = match subscriber.upgrade() {
-                    Some(subscriber) => subscriber,
-                    None => return,
-                };
-
-                if let Err(e) = subscriber.update().await {
-                    log::error!("Error occurred during Solana event update: {:?}", e);
-                }
-            }
-        });
     }
 
-    pub async fn subscribe(&self, program_id: Pubkey, tx: SubscribeResponseTx) -> Result<()> {
+    async fn subscribe(&self, program_id: Pubkey, tx: SubscribeResponseTx) -> Result<()> {
         let (mut program_notifications, program_unsubscribe) = self
             .pubsub_client
             .program_subscribe(
@@ -140,101 +124,51 @@ impl SolSubscriber {
         Ok(())
     }
 
-    pub async fn handle(&self, mut rx: SubscribeResponseRx) -> Result<()> {
+    async fn handle(&self, mut rx: SubscribeResponseRx) -> Result<()> {
         while let Some(response) = rx.recv().await {
             if let UiAccountData::Binary(s, UiAccountEncoding::Base64) = response.value.account.data
             {
                 if let Ok(bytes) = base64::decode(s) {
-                    if let Ok(account_data) = solana_bridge::token_proxy::Deposit::unpack(&bytes) {
+                    if let Ok(account_data) = solana_bridge::bridge_state::Proposal::unpack(&bytes)
+                    {
                         if account_data.account_kind
-                            == solana_bridge::bridge_state::AccountKind::Deposit
+                            == solana_bridge::bridge_state::AccountKind::Proposal
                         {
-                            let account_id = Pubkey::from_str(&response.value.pubkey)?;
+                            let account_id = match Pubkey::from_str(&response.value.pubkey) {
+                                Ok(account_id) => account_id,
+                                Err(err) => {
+                                    log::error!(
+                                        "Failed to parse Solana account {}: {:?}",
+                                        &response.value.pubkey,
+                                        err
+                                    );
+                                    continue;
+                                }
+                            };
 
-                            let mut pending_confirmations = self.pending_confirmations.lock().await;
-                            if let Some(confirmation) = pending_confirmations.get_mut(&account_id) {
-                                confirmation.status = PendingConfirmationStatus::New;
-                            }
+                            let mut pending_events = self.pending_events.lock().await;
+
+                            pending_events.push_back((
+                                account_id,
+                                PendingEvent {
+                                    author: account_data.pda.author,
+                                    settings: account_data.pda.settings,
+                                    event_timestamp: account_data.pda.event_timestamp,
+                                    event_transaction_lt: account_data.pda.event_transaction_lt,
+                                    event_configuration: account_data.pda.event_configuration,
+                                    event_data: account_data.event,
+                                },
+                            ));
+
+                            self.pending_event_count
+                                .store(pending_events.len(), Ordering::Release);
+
+                            self.new_events_notify.notify_waiters();
                         }
                     }
                 }
             }
         }
-
-        Ok(())
-    }
-
-    async fn update(&self) -> Result<()> {
-        if self.pending_confirmations.lock().await.is_empty() {
-            // Wait until new events appeared or idle poll interval passed.
-            tokio::select! {
-                _ = self.new_events_notify.notified() => {},
-                _ = tokio::time::sleep(Duration::from_secs(self.config.poll_interval_sec)) => {},
-            }
-        }
-
-        log::info!(
-            "TON->SOL pending confirmations: {}",
-            self.pending_confirmation_count.load(Ordering::Acquire)
-        );
-
-        let mut pending_confirmations = self.pending_confirmations.lock().await;
-
-        let accounts_to_check = futures::stream::FuturesUnordered::new();
-        for (&account_id, confirmation) in pending_confirmations.iter() {
-            if confirmation.status == PendingConfirmationStatus::New {
-                accounts_to_check.push(async move {
-                    let result = self.get_account(&account_id).await;
-                    (account_id, result)
-                });
-            }
-        }
-
-        let accounts_to_check = accounts_to_check
-            .collect::<Vec<(AccountId, Result<Option<Account>>)>>()
-            .await;
-
-        log::info!("Accounts to check: {:?}", accounts_to_check);
-
-        for (account_id, result) in accounts_to_check {
-            if let hash_map::Entry::Occupied(mut entry) = pending_confirmations.entry(account_id) {
-                let status = match result {
-                    Ok(Some(account)) => {
-                        match solana_bridge::bridge_state::Proposal::unpack(account.data()) {
-                            Ok(account_data) => entry.get().check(account_data),
-                            Err(err) => {
-                                log::error!(
-                                    "Failed to unpack Solana account 0x{}: {}",
-                                    entry.key(),
-                                    err
-                                );
-                                VerificationStatus::NotExists
-                            }
-                        }
-                    }
-                    Ok(None) => {
-                        entry.get_mut().status = PendingConfirmationStatus::WaitForAccount;
-                        log::info!("Wait for preparing of Solana account 0x{}", entry.key());
-                        continue;
-                    }
-                    Err(e) => {
-                        log::error!("Failed to check Solana event: {:?}", e);
-                        continue;
-                    }
-                };
-
-                if let Some(tx) = entry.get_mut().status_tx.take() {
-                    tx.send(status).ok();
-                }
-
-                entry.remove();
-            }
-        }
-
-        self.pending_confirmation_count
-            .store(pending_confirmations.len(), Ordering::Release);
-
-        drop(pending_confirmations);
 
         Ok(())
     }
@@ -286,52 +220,30 @@ impl SolSubscriber {
         Ok(account)
     }
 
-    pub async fn verify_ton_sol_event(
-        &self,
-        seed: u128,
-        program_id: Pubkey,
-        settings_address: Pubkey,
-        event_data: Vec<u8>,
-    ) -> Result<VerificationStatus> {
-        let rx = {
-            let (tx, rx) = oneshot::channel();
-
-            let account_id = solana_bridge::bridge_helper::get_associated_proposal_address(
-                &program_id,
-                seed,
-                &settings_address,
-            );
-
-            let mut pending_confirmations = self.pending_confirmations.lock().await;
-            pending_confirmations.insert(
-                account_id,
-                PendingConfirmation {
-                    event_data,
-                    status: PendingConfirmationStatus::New,
-                    status_tx: Some(tx),
-                },
-            );
-
-            self.pending_confirmation_count
-                .store(pending_confirmations.len(), Ordering::Release);
-
-            self.new_events_notify.notify_waiters();
-
-            rx
-        };
-
-        let status = rx.await?;
-        Ok(status)
+    pub async fn pending_events_notified(&self) {
+        self.new_events_notify.notified().await
     }
 
-    pub async fn verify_sol_ton_event(
+    pub async fn pending_events_is_empty(&self) -> bool {
+        self.pending_events.lock().await.is_empty()
+    }
+
+    pub async fn pending_events_pop_front(&self) -> Option<(Pubkey, PendingEvent)> {
+        self.pending_events.lock().await.pop_front()
+    }
+
+    pub async fn pending_events_push_back(&self, value: (Pubkey, PendingEvent)) {
+        self.pending_events.lock().await.push_back(value)
+    }
+
+    pub async fn verify(
         &self,
         seed: u128,
         program_id: Pubkey,
         settings_address: Pubkey,
         event_data: Vec<u8>,
     ) -> Result<VerificationStatus> {
-        let account_pubkey = solana_bridge::bridge_helper::get_associated_proposal_address(
+        let account_pubkey = solana_bridge::token_proxy::get_associated_deposit_address(
             &program_id,
             seed,
             &settings_address,
@@ -405,30 +317,38 @@ pub struct SolSubscriberMetrics {
     pub pending_confirmation_count: usize,
 }
 
-struct PendingConfirmation {
-    event_data: Vec<u8>,
-    status: PendingConfirmationStatus,
-    status_tx: Option<VerificationStatusTx>,
+/*struct PendingEvents {
+    events: tokio::sync::Mutex<VecDeque<(Pubkey, PendingEvent)>>,
+    new_events_notify: Notify,
+    count: AtomicUsize,
 }
 
-impl PendingConfirmation {
-    fn check(&self, account_data: solana_bridge::bridge_state::Proposal) -> VerificationStatus {
-        if self.event_data != account_data.event {
-            return VerificationStatus::NotExists;
-        }
-
-        VerificationStatus::Exists
+impl PendingEvents {
+    async fn notified(&self) {
+        self.new_events_notify.notified().await
     }
+
+    async fn is_empty(&self) -> bool {
+        self.events.lock().await.is_empty()
+    }
+
+    async fn pop_front(&self) -> Option<(Pubkey, PendingEventsData)> {
+        self.events.lock().await.pop_front()
+    }
+
+    async fn push_back(&self, value: (Pubkey, PendingEventsData)) {
+        self.events.lock().await.push_back(value)
+    }
+}*/
+
+pub struct PendingEvent {
+    pub author: Pubkey,
+    pub settings: Pubkey,
+    pub event_timestamp: u32,
+    pub event_transaction_lt: u64,
+    pub event_configuration: Pubkey,
+    pub event_data: Vec<u8>,
 }
 
-#[derive(PartialEq, Eq)]
-enum PendingConfirmationStatus {
-    New,
-    WaitForAccount,
-}
-
-type VerificationStatusTx = oneshot::Sender<VerificationStatus>;
 type SubscribeResponseTx = mpsc::UnboundedSender<Response<RpcKeyedAccount>>;
 type SubscribeResponseRx = mpsc::UnboundedReceiver<Response<RpcKeyedAccount>>;
-
-pub type AccountId = Pubkey;

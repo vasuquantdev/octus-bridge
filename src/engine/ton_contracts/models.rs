@@ -77,8 +77,12 @@ pub struct TonSolEventInitData {
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct TonSolEventVoteData {
-    #[abi(uint128)]
-    pub account_seed: u128,
+    #[abi(uint64)]
+    pub event_transaction_lt: u64,
+    #[abi(uint32)]
+    pub event_timestamp: u32,
+    #[abi(with = "uint256_bytes")]
+    pub author: UInt256,
     #[abi(cell)]
     pub event_data: ton_types::Cell,
 }
