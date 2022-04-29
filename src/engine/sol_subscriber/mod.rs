@@ -114,6 +114,8 @@ impl SolSubscriber {
             )
             .await?;
 
+        log::info!("Start listening Solana program {}", program_id);
+
         while let Some(response) = program_notifications.next().await {
             if let Some(tx) = &*self.events_tx.lock() {
                 tx.send(response)?;
@@ -121,6 +123,8 @@ impl SolSubscriber {
         }
 
         program_unsubscribe().await;
+
+        log::info!("Stop listening Solana program {}", program_id);
 
         Ok(())
     }
@@ -134,6 +138,12 @@ impl SolSubscriber {
                     {
                         if account_data.account_kind
                             == solana_bridge::bridge_state::AccountKind::Proposal
+                            && account_data
+                                .signers
+                                .iter()
+                                .filter(|vote| **vote != solana_bridge::bridge_types::Vote::None)
+                                .count()
+                                > 0
                         {
                             let account_id = match Pubkey::from_str(&response.value.pubkey) {
                                 Ok(account_id) => account_id,
