@@ -13,7 +13,7 @@ async-trait = "0.1"
 base64 = "0.13"
 chacha20poly1305 = "0.10.0-pre"
 chrono = "0.4.19"
-config = { version = "0.12", default-features = false, features = ["yaml"] }
+config = { version = "0.13.1", default-features = false, features = ["yaml"] }
 dashmap = "5.2.0"
 dialoguer = "0.10.0"
 either = "1.6.1"
@@ -22,7 +22,7 @@ hex = "0.4"
 http = "0.2"
 hyper = { version = "0.14", features = ["server"] }
 log = "0.4"
-log4rs = "1.0"
+log4rs = "1.1"
 num-bigint = "0.3"
 num-traits = "0.2"
 once_cell = "1.10.0"

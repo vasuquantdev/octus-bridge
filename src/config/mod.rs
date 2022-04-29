@@ -124,6 +124,9 @@ pub struct NodeConfig {
     /// Allowed DB size in bytes. Default: one third of all machine RAM
     pub max_db_memory_usage: usize,
 
+    /// Increases memory usage, but makes states processing faster. Default: enabled
+    pub shard_state_cache_options: Option<ton_indexer::ShardStateCacheOptions>,
+
     /// Archives map queue. Default: 16
     pub parallel_archive_downloads: usize,
 
@@ -175,7 +178,7 @@ impl NodeConfig {
                     enable_for_sync: true,
                     ..Default::default()
                 }),
-            shard_state_cache_options: None,
+            shard_state_cache_options: self.shard_state_cache_options,
             max_db_memory_usage: self.max_db_memory_usage,
             archive_options: Some(Default::default()),
             sync_options: ton_indexer::SyncOptions {
@@ -199,6 +202,7 @@ impl Default for NodeConfig {
             db_path: "db".into(),
             temp_keys_path: "adnl-keys.json".into(),
             max_db_memory_usage: ton_indexer::default_max_db_memory_usage(),
+            shard_state_cache_options: Some(Default::default()),
             parallel_archive_downloads: 16,
             states_gc_enabled: true,
             blocks_gc_enabled: true,
