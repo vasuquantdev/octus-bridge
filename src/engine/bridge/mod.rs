@@ -1499,6 +1499,19 @@ impl Bridge {
             .get_details()
             .context("Failed to get SOL->TON event configuration details")?;
 
+        // Check if configuration is expired
+        let current_timestamp = self.context.ton_subscriber.current_utime();
+        if details.is_expired(current_timestamp) {
+            // Do nothing in that case
+            log::warn!(
+                "Ignoring TON->SOL event configuration {:x}: end timestamp {} is less then current {}",
+                account,
+                details.network_configuration.end_timestamp,
+                current_timestamp
+            );
+            return Ok(());
+        };
+
         // Verify and prepare abi
         let event_abi = decode_ton_event_abi(&details.basic_configuration.event_abi)?;
 
@@ -1844,13 +1857,26 @@ impl Bridge {
                 let current_utime = ton_subscriber.current_utime();
 
                 // Check expired configurations
-                let has_expired_configurations = {
+                let has_expired_ton_eth_configurations = {
                     let state = bridge.state.read().await;
                     state.has_expired_ton_eth_event_configurations(current_utime)
                 };
 
+                let has_expired_ton_sol_configurations = {
+                    let state = bridge.state.read().await;
+                    state.has_expired_ton_sol_event_configurations(current_utime)
+                };
+
+                let has_expired_sol_ton_configurations = {
+                    let state = bridge.state.read().await;
+                    state.has_expired_sol_ton_event_configurations(current_utime)
+                };
+
                 // Do nothing if there are not expired configurations
-                if !has_expired_configurations {
+                if !has_expired_ton_eth_configurations
+                    && !has_expired_ton_sol_configurations
+                    && !has_expired_sol_ton_configurations
+                {
                     continue;
                 }
 
@@ -1871,8 +1897,9 @@ impl Bridge {
                     }
                 };
 
-                // Remove all expired configurations
                 let mut state = bridge.state.write().await;
+
+                // Remove TON->ETH expired configurations
                 let mut total_removed = 0;
                 state.ton_eth_event_configurations.retain(|account, state| {
                     if state.details.is_expired(current_utime) {
@@ -1883,9 +1910,38 @@ impl Bridge {
                         true
                     }
                 });
-
                 bridge
                     .total_active_ton_eth_event_configurations
+                    .fetch_sub(total_removed, Ordering::Release);
+
+                // Remove TON->SOL expired configurations
+                let mut total_removed = 0;
+                state.ton_sol_event_configurations.retain(|account, state| {
+                    if state.details.is_expired(current_utime) {
+                        log::warn!("Removing TON->SOL event configuration {:x}", account);
+                        total_removed += 1;
+                        false
+                    } else {
+                        true
+                    }
+                });
+                bridge
+                    .total_active_ton_sol_event_configurations
+                    .fetch_sub(total_removed, Ordering::Release);
+
+                // Remove SOL->TON expired configurations
+                let mut total_removed = 0;
+                state.sol_ton_event_configurations.retain(|account, state| {
+                    if state.details.is_expired(current_utime) {
+                        log::warn!("Removing SOL->TON event configuration {:x}", account);
+                        total_removed += 1;
+                        false
+                    } else {
+                        true
+                    }
+                });
+                bridge
+                    .total_active_sol_ton_event_configurations
                     .fetch_sub(total_removed, Ordering::Release);
             }
         });
@@ -2046,6 +2102,18 @@ struct BridgeState {
 impl BridgeState {
     fn has_expired_ton_eth_event_configurations(&self, current_timestamp: u32) -> bool {
         self.ton_eth_event_configurations
+            .iter()
+            .any(|(_, state)| state.details.is_expired(current_timestamp))
+    }
+
+    fn has_expired_ton_sol_event_configurations(&self, current_timestamp: u32) -> bool {
+        self.ton_sol_event_configurations
+            .iter()
+            .any(|(_, state)| state.details.is_expired(current_timestamp))
+    }
+
+    fn has_expired_sol_ton_event_configurations(&self, current_timestamp: u32) -> bool {
+        self.sol_ton_event_configurations
             .iter()
             .any(|(_, state)| state.details.is_expired(current_timestamp))
     }
@@ -2229,6 +2297,12 @@ struct SolTonEventConfigurationState {
 
     /// Observer must live as long as configuration lives
     _observer: Arc<AccountObserver<SolTonEventConfigurationEvent>>,
+}
+
+impl SolTonEventConfigurationDetails {
+    fn is_expired(&self, current_timestamp: u32) -> bool {
+        (1..current_timestamp).contains(&self.network_configuration.end_timestamp)
+    }
 }
 
 /// TON->SOL event configuration data
