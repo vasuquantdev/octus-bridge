@@ -29,7 +29,6 @@ use crate::utils::*;
 pub struct SolSubscriber {
     config: SolConfig,
     rpc_client: Arc<RpcClient>,
-    pubsub_client: Arc<PubsubClient>,
     pending_events: tokio::sync::Mutex<VecDeque<(Pubkey, PendingEvent)>>,
     pending_event_count: AtomicUsize,
     new_events_notify: Notify,
@@ -43,12 +42,9 @@ impl SolSubscriber {
             config.commitment_config,
         ));
 
-        let pubsub_client = Arc::new(PubsubClient::new(&config.ws_url).await?);
-
         let subscriber = Arc::new(Self {
             config,
             rpc_client,
-            pubsub_client,
             pending_events: Default::default(),
             pending_event_count: Default::default(),
             new_events_notify: Notify::new(),
@@ -87,20 +83,23 @@ impl SolSubscriber {
         let subscriber = Arc::downgrade(self);
 
         tokio::spawn(async move {
-            let subscriber = match subscriber.upgrade() {
-                Some(subscriber) => subscriber,
-                None => return,
-            };
+            loop {
+                let subscriber = match subscriber.upgrade() {
+                    Some(subscriber) => subscriber,
+                    None => return,
+                };
 
-            if let Err(e) = subscriber.program_subscribe(program_id).await {
-                log::error!("Error occurred during Solana subscribe: {:?}", e);
+                if let Err(e) = subscriber.program_subscribe(program_id).await {
+                    log::error!("Error occurred during Solana subscribe: {:?}", e);
+                }
             }
         });
     }
 
     async fn program_subscribe(&self, program_id: Pubkey) -> Result<()> {
-        let (mut program_notifications, program_unsubscribe) = self
-            .pubsub_client
+        let pubsub_client = Arc::new(PubsubClient::new(&self.config.ws_url).await?);
+
+        let (mut program_notifications, program_unsubscribe) = pubsub_client
             .program_subscribe(
                 &program_id,
                 Some(RpcProgramAccountsConfig {
@@ -124,7 +123,7 @@ impl SolSubscriber {
 
         program_unsubscribe().await;
 
-        log::info!("Stop listening Solana program {}", program_id);
+        log::warn!("Stop listening Solana program {}", program_id);
 
         Ok(())
     }
