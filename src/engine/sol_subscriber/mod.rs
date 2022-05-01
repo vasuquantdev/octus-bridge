@@ -91,6 +91,7 @@ impl SolSubscriber {
 
                 if let Err(e) = subscriber.program_subscribe(program_id).await {
                     log::error!("Error occurred during Solana subscribe: {:?}", e);
+                    tokio::time::sleep(Duration::from_secs(1)).await;
                 }
             }
         });
