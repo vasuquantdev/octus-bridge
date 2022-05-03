@@ -18,6 +18,10 @@ pub struct SolConfig {
     #[serde(default = "default_get_timeout_sec")]
     pub get_timeout_sec: u64,
 
+    /// Blocks polling interval. Default: 1
+    #[serde(default = "resubscribe_timeout_sec")]
+    pub resubscribe_timeout_sec: u64,
+
     /// Max request duration (including all failed retires). Default: 604800
     #[serde(default = "default_maximum_failed_responses_time_sec")]
     pub maximum_failed_responses_time_sec: u64,
@@ -25,6 +29,10 @@ pub struct SolConfig {
 
 fn default_get_timeout_sec() -> u64 {
     10
+}
+
+fn resubscribe_timeout_sec() -> u64 {
+    1
 }
 
 fn default_maximum_failed_responses_time_sec() -> u64 {

@@ -91,7 +91,9 @@ impl SolSubscriber {
 
                 if let Err(e) = subscriber.program_subscribe(program_id).await {
                     log::error!("Error occurred during Solana subscribe: {:?}", e);
-                    tokio::time::sleep(Duration::from_secs(1)).await;
+
+                    let timeout = Duration::from_secs(subscriber.config.resubscribe_timeout_sec);
+                    tokio::time::sleep(timeout).await;
                 }
             }
         });
@@ -134,7 +136,8 @@ impl SolSubscriber {
             if let UiAccountData::Binary(s, UiAccountEncoding::Base64) = response.value.account.data
             {
                 if let Ok(bytes) = base64::decode(s) {
-                    if let Ok(account_data) = solana_bridge::bridge_state::Proposal::unpack(&bytes)
+                    if let Ok(account_data) =
+                        solana_bridge::bridge_state::Proposal::unpack_from_slice(&bytes)
                     {
                         if account_data.account_kind
                             == solana_bridge::bridge_state::AccountKind::Proposal
