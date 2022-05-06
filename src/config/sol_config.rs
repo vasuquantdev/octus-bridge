@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use solana_sdk::commitment_config::CommitmentConfig;
 
+use crate::utils::*;
+
 /// Solana network settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -9,6 +11,7 @@ pub struct SolConfig {
     pub endpoint: String,
 
     /// Commitment level
+    #[serde(with = "serde_commitment")]
     pub commitment: CommitmentConfig,
 
     /// Timeout, used for simple getter requests. Default: 10

@@ -66,9 +66,9 @@ bridge_settings:
   # Solana network config
   sol_network:
     # Public endpoint
-    endpoint: https://bsc-dataseed.binance.org
+    endpoint: "https://api.mainnet-beta.solana.com"
     # Commitment level
-    commitment: Finalized
+    commitment: "finalized"
   # ETH address verification settings
   address_verification:
     # Minimal balance on user's wallet to start address verification
