@@ -1,21 +1,13 @@
-use std::collections::VecDeque;
-use std::str::FromStr;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use futures::StreamExt;
-use parking_lot::Mutex;
-use solana_account_decoder::{UiAccountData, UiAccountEncoding};
-use tokio::sync::{mpsc, Notify};
-use tokio::time::timeout;
+use tokio::sync::oneshot;
+use tokio::time::{interval, timeout};
 
-use solana_client::nonblocking::pubsub_client::PubsubClient;
 use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_client::rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig};
-use solana_client::rpc_response::{Response, RpcKeyedAccount};
 use solana_sdk::account::{Account, ReadableAccount};
+use solana_sdk::commitment_config::CommitmentConfig;
 use solana_sdk::hash::Hash;
 use solana_sdk::program_pack::Pack;
 use solana_sdk::pubkey::Pubkey;
@@ -29,10 +21,6 @@ use crate::utils::*;
 pub struct SolSubscriber {
     config: SolConfig,
     rpc_client: Arc<RpcClient>,
-    pending_events: tokio::sync::Mutex<VecDeque<(Pubkey, PendingEvent)>>,
-    pending_event_count: AtomicUsize,
-    new_events_notify: Notify,
-    events_tx: Mutex<Option<SubscribeResponseTx>>,
 }
 
 impl SolSubscriber {
@@ -42,160 +30,9 @@ impl SolSubscriber {
             config.commitment_config,
         ));
 
-        let subscriber = Arc::new(Self {
-            config,
-            rpc_client,
-            pending_events: Default::default(),
-            pending_event_count: Default::default(),
-            new_events_notify: Notify::new(),
-            events_tx: Mutex::new(None),
-        });
+        let subscriber = Arc::new(Self { config, rpc_client });
 
         Ok(subscriber)
-    }
-
-    pub fn metrics(&self) -> SolSubscriberMetrics {
-        SolSubscriberMetrics {
-            pending_confirmation_count: self.pending_event_count.load(Ordering::Acquire),
-        }
-    }
-
-    pub fn start(self: &Arc<Self>) {
-        let subscriber = Arc::downgrade(self);
-
-        tokio::spawn(async move {
-            let subscriber = match subscriber.upgrade() {
-                Some(subscriber) => subscriber,
-                None => return,
-            };
-
-            let (tx, rx) = mpsc::unbounded_channel();
-
-            *subscriber.events_tx.lock() = Some(tx);
-
-            if let Err(e) = subscriber.update(rx).await {
-                log::error!("Error occurred during Solana event handle: {:?}", e);
-            }
-        });
-    }
-
-    pub fn subscribe(self: &Arc<Self>, program_id: Pubkey) {
-        let subscriber = Arc::downgrade(self);
-
-        tokio::spawn(async move {
-            loop {
-                let subscriber = match subscriber.upgrade() {
-                    Some(subscriber) => subscriber,
-                    None => return,
-                };
-
-                if let Err(e) = subscriber.program_subscribe(program_id).await {
-                    log::error!("Error occurred during Solana subscribe: {:?}", e);
-
-                    let timeout = Duration::from_secs(subscriber.config.resubscribe_timeout_sec);
-                    tokio::time::sleep(timeout).await;
-                }
-            }
-        });
-    }
-
-    async fn program_subscribe(&self, program_id: Pubkey) -> Result<()> {
-        let pubsub_client = Arc::new(PubsubClient::new(&self.config.ws_url).await?);
-
-        let (mut program_notifications, program_unsubscribe) = pubsub_client
-            .program_subscribe(
-                &program_id,
-                Some(RpcProgramAccountsConfig {
-                    account_config: RpcAccountInfoConfig {
-                        commitment: Some(self.config.commitment_config),
-                        encoding: Some(UiAccountEncoding::Base64),
-                        ..RpcAccountInfoConfig::default()
-                    },
-                    ..RpcProgramAccountsConfig::default()
-                }),
-            )
-            .await?;
-
-        log::info!("Start listening Solana program {}", program_id);
-
-        while let Some(response) = program_notifications.next().await {
-            if let Some(tx) = &*self.events_tx.lock() {
-                tx.send(response)?;
-            }
-        }
-
-        program_unsubscribe().await;
-
-        log::warn!("Stop listening Solana program {}", program_id);
-
-        Ok(())
-    }
-
-    async fn update(&self, mut rx: SubscribeResponseRx) -> Result<()> {
-        while let Some(response) = rx.recv().await {
-            if let UiAccountData::Binary(s, UiAccountEncoding::Base64) = response.value.account.data
-            {
-                if let Ok(bytes) = base64::decode(s) {
-                    if let Ok(account_data) =
-                        solana_bridge::bridge_state::Proposal::unpack_from_slice(&bytes)
-                    {
-                        if account_data.account_kind
-                            == solana_bridge::bridge_state::AccountKind::Proposal
-                            && account_data
-                                .signers
-                                .iter()
-                                .filter(|vote| **vote != solana_bridge::bridge_types::Vote::None)
-                                .count()
-                                > 0
-                        {
-                            let account_id = match Pubkey::from_str(&response.value.pubkey) {
-                                Ok(account_id) => account_id,
-                                Err(err) => {
-                                    log::error!(
-                                        "Failed to parse Solana account {}: {:?}",
-                                        &response.value.pubkey,
-                                        err
-                                    );
-                                    continue;
-                                }
-                            };
-
-                            let mut pending_events = self.pending_events.lock().await;
-
-                            pending_events.push_back((
-                                account_id,
-                                PendingEvent {
-                                    author: account_data.pda.author,
-                                    settings: account_data.pda.settings,
-                                    event_timestamp: account_data.pda.event_timestamp,
-                                    event_transaction_lt: account_data.pda.event_transaction_lt,
-                                    event_configuration: account_data.pda.event_configuration,
-                                    event_data: account_data.event,
-                                },
-                            ));
-
-                            self.pending_event_count
-                                .store(pending_events.len(), Ordering::Release);
-
-                            self.new_events_notify.notify_waiters();
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    async fn get_account_with_commitment(
-        &self,
-        account_pubkey: &Pubkey,
-    ) -> Result<Option<Account>> {
-        self.rpc_client
-            .get_account_with_commitment(account_pubkey, self.config.commitment_config)
-            .await
-            .map(|response| response.value)
-            .map_err(anyhow::Error::new)
     }
 
     async fn get_latest_blockhash(&self) -> Result<Hash> {
@@ -212,58 +49,99 @@ impl SolSubscriber {
             .map_err(anyhow::Error::new)
     }
 
-    async fn get_account(&self, pubkey: &Pubkey) -> Result<Option<Account>> {
-        let account = {
-            retry(
-                || {
-                    timeout(
-                        Duration::from_secs(self.config.get_timeout_sec),
-                        self.get_account_with_commitment(pubkey),
-                    )
-                },
-                generate_default_timeout_config(Duration::from_secs(
-                    self.config.maximum_failed_responses_time_sec,
-                )),
-                "get account",
-            )
-            .await
-            .context("Timed out getting account")?
-            .context("Failed getting account")?
-        };
-
-        Ok(account)
-    }
-
-    pub async fn pending_events_notified(&self) {
-        self.new_events_notify.notified().await
-    }
-
-    pub async fn pending_events_is_empty(&self) -> bool {
-        self.pending_events.lock().await.is_empty()
-    }
-
-    pub async fn pending_events_pop_front(&self) -> Option<(Pubkey, PendingEvent)> {
-        self.pending_events.lock().await.pop_front()
-    }
-
-    pub async fn pending_events_push_back(&self, value: (Pubkey, PendingEvent)) {
-        self.pending_events.lock().await.push_back(value)
-    }
-
-    pub async fn verify(
+    pub async fn verify_ton_sol_event(
         &self,
-        seed: u128,
-        program_id: Pubkey,
-        settings_address: Pubkey,
+        account_pubkey: Pubkey,
         event_data: Vec<u8>,
     ) -> Result<VerificationStatus> {
-        let account_pubkey = solana_bridge::token_proxy::get_associated_deposit_address(
-            &program_id,
-            seed,
-            &settings_address,
-        );
+        let rx = {
+            let (tx, rx) = oneshot::channel();
 
-        let result = self.get_account(&account_pubkey).await?;
+            let rpc_client = self.rpc_client.clone();
+            let get_timeout_sec = self.config.get_timeout_sec;
+            let commitment_config = self.config.commitment_config;
+            let maximum_failed_responses_time_sec = self.config.maximum_failed_responses_time_sec;
+
+            tokio::spawn(async move {
+                let mut interval = interval(Duration::from_secs(10));
+
+                loop {
+                    interval.tick().await;
+
+                    let account = get_account(
+                        &rpc_client,
+                        &account_pubkey,
+                        commitment_config,
+                        get_timeout_sec,
+                        maximum_failed_responses_time_sec,
+                    )
+                    .await;
+
+                    match account {
+                        Ok(Some(account)) => {
+                            let status =
+                                match solana_bridge::bridge_state::Proposal::unpack_from_slice(
+                                    account.data(),
+                                ) {
+                                    Ok(account_data) => {
+                                        if account_data.event == event_data {
+                                            VerificationStatus::Exists
+                                        } else {
+                                            VerificationStatus::NotExists
+                                        }
+                                    }
+                                    Err(err) => {
+                                        log::error!(
+                                            "Failed to unpack Solana Proposal Account 0x{}: {:?}",
+                                            account_pubkey,
+                                            err
+                                        );
+                                        VerificationStatus::NotExists
+                                    }
+                                };
+
+                            tx.send(status).ok();
+
+                            return;
+                        }
+                        Ok(None) => {
+                            log::debug!(
+                                "Solana Proposal Account 0x{} hasn't created yet",
+                                account_pubkey
+                            );
+                        }
+                        Err(err) => {
+                            log::error!(
+                                "Failed to get Solana Proposal Account 0x{}: {:?}",
+                                account_pubkey,
+                                err
+                            );
+                        }
+                    };
+                }
+            });
+
+            rx
+        };
+
+        let status = rx.await?;
+        Ok(status)
+    }
+
+    pub async fn verify_sol_ton_event(
+        &self,
+        account_pubkey: Pubkey,
+        event_data: Vec<u8>,
+    ) -> Result<VerificationStatus> {
+        let result = get_account(
+            &self.rpc_client,
+            &account_pubkey,
+            self.config.commitment_config,
+            self.config.get_timeout_sec,
+            self.config.maximum_failed_responses_time_sec,
+        )
+        .await?;
+
         let account = match result {
             Some(account) => account,
             None => {
@@ -326,19 +204,40 @@ impl SolSubscriber {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
-pub struct SolSubscriberMetrics {
-    pub pending_confirmation_count: usize,
+async fn get_account(
+    rpc_client: &Arc<RpcClient>,
+    pubkey: &Pubkey,
+    commitment_config: CommitmentConfig,
+    get_timeout_sec: u64,
+    maximum_failed_responses_time_sec: u64,
+) -> Result<Option<Account>> {
+    let account = {
+        retry(
+            || {
+                timeout(
+                    Duration::from_secs(get_timeout_sec),
+                    get_account_with_commitment(rpc_client, pubkey, commitment_config),
+                )
+            },
+            generate_default_timeout_config(Duration::from_secs(maximum_failed_responses_time_sec)),
+            "get account",
+        )
+        .await
+        .context("Timed out getting account")?
+        .context("Failed getting account")?
+    };
+
+    Ok(account)
 }
 
-pub struct PendingEvent {
-    pub author: Pubkey,
-    pub settings: Pubkey,
-    pub event_timestamp: u32,
-    pub event_transaction_lt: u64,
-    pub event_configuration: Pubkey,
-    pub event_data: Vec<u8>,
+async fn get_account_with_commitment(
+    rpc_client: &Arc<RpcClient>,
+    account_pubkey: &Pubkey,
+    commitment_config: CommitmentConfig,
+) -> Result<Option<Account>> {
+    rpc_client
+        .get_account_with_commitment(account_pubkey, commitment_config)
+        .await
+        .map(|response| response.value)
+        .map_err(anyhow::Error::new)
 }
-
-type SubscribeResponseTx = mpsc::UnboundedSender<Response<RpcKeyedAccount>>;
-type SubscribeResponseRx = mpsc::UnboundedReceiver<Response<RpcKeyedAccount>>;

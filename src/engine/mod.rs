@@ -119,7 +119,6 @@ impl Engine {
         *self.staking.lock() = Some(staking);
 
         self.context.eth_subscribers.start();
-        self.context.sol_subscriber.start();
 
         // Done
         Ok(())

@@ -146,15 +146,6 @@ impl TonSolEventConfigurationContract<'_> {
         let details = self.0.run_local(function, &[answer_id()])?.unpack()?;
         Ok(details)
     }
-
-    pub fn derive_event_address(&self, vote_data: &TonSolEventVoteData) -> Result<UInt256> {
-        let function = ton_sol_event_configuration_contract::derive_event_address();
-        let input = [answer_id(), vote_data.token_value().named("vote_data")];
-        let ton_block::MsgAddrStd { address, .. } =
-            self.0.run_local(function, &input)?.unpack_first()?;
-
-        Ok(UInt256::from_be_bytes(&address.get_bytestring(0)))
-    }
 }
 
 pub struct BridgeContract<'a>(pub &'a ExistingContract);

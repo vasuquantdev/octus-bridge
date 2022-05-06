@@ -580,24 +580,6 @@ pub fn start_listening_events<S, E, R>(
     });
 }
 
-pub fn start_endless_service<S, R>(service: &Arc<S>, name: &'static str, handler: fn(Arc<S>) -> R)
-where
-    S: Send + Sync + 'static,
-    R: futures::Future<Output = Result<()>> + Send + 'static,
-{
-    let service = Arc::downgrade(service);
-
-    tokio::spawn(async move {
-        while let Some(service) = service.upgrade() {
-            if let Err(e) = handler(service).await {
-                log::error!("{}: Failed to handle event: {:?}", name, e);
-            }
-        }
-
-        log::warn!("{}: Stopped service", name);
-    });
-}
-
 type ShardAccountTx = watch::Sender<Option<ton_block::ShardAccount>>;
 type ShardAccountRx = watch::Receiver<Option<ton_block::ShardAccount>>;
 

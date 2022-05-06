@@ -33,13 +33,3 @@ pub fn deploy_event() -> &'static ton_abi::Function {
             .build()
     })
 }
-
-/// ? function
-pub fn derive_event_address() -> &'static ton_abi::Function {
-    crate::once!(ton_abi::Function, || {
-        FunctionBuilder::new("deriveEventAddress")
-            .abi_version(ton_abi::contract::ABI_VERSION_2_2)
-            .input("vote_data", TonSolEventVoteData::param_type())
-            .build()
-    })
-}
