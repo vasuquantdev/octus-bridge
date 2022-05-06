@@ -11,7 +11,7 @@ bridge_settings:
   # If set, relay will not participate in elections. Default: false
   ignore_elections: false
   # EVM network configs
-  networks:
+  evm_networks:
     # Ethereum
     - chain_id: 1
       # RPC node HTTP endpoint
@@ -63,6 +63,12 @@ bridge_settings:
       pool_size: 10
       poll_interval_sec: 60
       maximum_failed_responses_time_sec: 604800
+  # Solana network config
+  sol_network:
+    # Public endpoint
+    endpoint: https://bsc-dataseed.binance.org
+    # Commitment level
+    commitment: Finalized
   # ETH address verification settings
   address_verification:
     # Minimal balance on user's wallet to start address verification

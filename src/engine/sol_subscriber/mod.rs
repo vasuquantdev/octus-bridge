@@ -26,8 +26,8 @@ pub struct SolSubscriber {
 impl SolSubscriber {
     pub async fn new(config: SolConfig) -> Result<Arc<Self>> {
         let rpc_client = Arc::new(RpcClient::new_with_commitment(
-            config.url.clone(),
-            config.commitment_config,
+            config.endpoint.clone(),
+            config.commitment,
         ));
 
         let subscriber = Arc::new(Self { config, rpc_client });
@@ -59,7 +59,7 @@ impl SolSubscriber {
 
             let rpc_client = self.rpc_client.clone();
             let get_timeout_sec = self.config.get_timeout_sec;
-            let commitment_config = self.config.commitment_config;
+            let commitment_config = self.config.commitment;
             let maximum_failed_responses_time_sec = self.config.maximum_failed_responses_time_sec;
 
             tokio::spawn(async move {
@@ -136,7 +136,7 @@ impl SolSubscriber {
         let result = get_account(
             &self.rpc_client,
             &account_pubkey,
-            self.config.commitment_config,
+            self.config.commitment,
             self.config.get_timeout_sec,
             self.config.maximum_failed_responses_time_sec,
         )
