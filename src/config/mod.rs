@@ -163,6 +163,7 @@ impl NodeConfig {
         std::fs::create_dir_all(&self.db_path)?;
 
         // Done
+        // Done
         Ok(ton_indexer::NodeConfig {
             ip_address: SocketAddrV4::new(ip_address, self.adnl_port),
             adnl_keys,
