@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use tokio::sync::oneshot;
-use tokio::time::{interval, timeout};
+use tokio::time::timeout;
 
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::account::{Account, ReadableAccount};
@@ -63,10 +63,10 @@ impl SolSubscriber {
             let maximum_failed_responses_time_sec = self.config.maximum_failed_responses_time_sec;
 
             tokio::spawn(async move {
-                let mut interval = interval(Duration::from_secs(10));
+                let mut period = PollingPeriod::default();
 
                 loop {
-                    interval.tick().await;
+                    tokio::time::sleep(Duration::from_secs(period.value())).await;
 
                     let account = get_account(
                         &rpc_client,
@@ -101,8 +101,7 @@ impl SolSubscriber {
                                 };
 
                             tx.send(status).ok();
-
-                            return;
+                            break;
                         }
                         Ok(None) => {
                             log::debug!(
@@ -118,6 +117,8 @@ impl SolSubscriber {
                             );
                         }
                     };
+
+                    period.next();
                 }
             });
 
@@ -240,4 +241,67 @@ async fn get_account_with_commitment(
         .await
         .map(|response| response.value)
         .map_err(anyhow::Error::new)
+}
+
+#[derive(Clone, Copy)]
+enum PollingPeriod {
+    I1,
+    I2,
+    I3,
+    I4,
+    I5,
+    I6,
+    I7,
+    I8,
+    I9,
+    I10,
+    I11,
+    I12,
+    I13,
+}
+
+impl Default for PollingPeriod {
+    fn default() -> Self {
+        PollingPeriod::I1
+    }
+}
+
+impl PollingPeriod {
+    fn value(&self) -> u64 {
+        use PollingPeriod::*;
+        match *self {
+            I1 => 30,
+            I2 => 30,
+            I3 => 60,
+            I4 => 60,
+            I5 => 120,
+            I6 => 300,
+            I7 => 300,
+            I8 => 900,
+            I9 => 1800,
+            I10 => 3600,
+            I11 => 7200,
+            I12 => 72000,
+            I13 => 86400,
+        }
+    }
+
+    fn next(&mut self) {
+        use PollingPeriod::*;
+        match *self {
+            I1 => *self = I2,
+            I2 => *self = I3,
+            I3 => *self = I4,
+            I4 => *self = I5,
+            I5 => *self = I6,
+            I6 => *self = I7,
+            I7 => *self = I8,
+            I8 => *self = I9,
+            I9 => *self = I10,
+            I10 => *self = I11,
+            I11 => *self = I12,
+            I12 => *self = I13,
+            I13 => *self = I13,
+        }
+    }
 }
