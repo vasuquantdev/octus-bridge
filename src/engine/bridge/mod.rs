@@ -271,7 +271,9 @@ impl Bridge {
 
             match event {
                 // Remove event if voting process was finished
-                (_, EventStatus::Confirmed | EventStatus::Rejected) => remove_entry(),
+                (EthEvent::Rejected, _) | (_, EventStatus::Confirmed | EventStatus::Rejected) => {
+                    remove_entry()
+                }
                 // Handle event initialization
                 (EthEvent::ReceiveRoundRelays { keys }, _) => {
                     // Check if event contains our key
@@ -333,7 +335,7 @@ impl Bridge {
                 // keeping the contract almost nullifies its balance.
                 (TonEvent::Closed, EventStatus::Confirmed) => remove_entry(),
                 // Remove event if it was rejected
-                (_, EventStatus::Rejected) => remove_entry(),
+                (TonEvent::Rejected, _) | (_, EventStatus::Rejected) => remove_entry(),
                 // Handle event initialization
                 (TonEvent::ReceiveRoundRelays { keys }, _) => {
                     // Check if event contains our key
@@ -1328,7 +1330,7 @@ fn add_event_code_hash(
     Ok(())
 }
 
-fn read_code_hash(cell: &mut ton_types::SliceData) -> Result<Option<ton_types::UInt256>> {
+fn read_code_hash(cell: &mut ton_types::SliceData) -> Result<Option<UInt256>> {
     // 1. Read account
     if !cell.get_next_bit()? && (cell.remaining_bits() == 0 || cell.get_next_int(3)? != 1) {
         // Empty account
@@ -1534,7 +1536,7 @@ impl ReadFromTransaction for TonEventConfigurationEvent {
         let deploy_event = ton_event_configuration_contract::deploy_event();
         let set_end_timestamp = ton_event_configuration_contract::set_end_timestamp();
 
-        match nekoton_abi::read_function_id(&in_msg_body).ok()? {
+        match read_function_id(&in_msg_body).ok()? {
             id if id == deploy_event.input_id => Some(Self::EventDeployed {
                 address: ctx.find_new_event_contract_address()?,
             }),
@@ -1564,7 +1566,7 @@ impl ReadFromTransaction for EthEventConfigurationEvent {
         let deploy_event = eth_event_configuration_contract::deploy_event();
         let set_end_block_number = eth_event_configuration_contract::set_end_block_number();
 
-        match nekoton_abi::read_function_id(&in_msg_body).ok()? {
+        match read_function_id(&in_msg_body).ok()? {
             id if id == deploy_event.input_id => Some(Self::EventDeployed {
                 address: ctx.find_new_event_contract_address()?,
             }),
@@ -1593,10 +1595,15 @@ enum EthEvent {
     ReceiveRoundRelays { keys: Vec<UInt256> },
     Confirm { public_key: UInt256 },
     Reject { public_key: UInt256 },
+    Rejected,
 }
 
 impl ReadFromTransaction for EthEvent {
     fn read_from_transaction(ctx: &TxContext<'_>) -> Option<Self> {
+        if has_rejected_event(ctx) {
+            return Some(Self::Rejected);
+        }
+
         let in_msg = ctx.in_msg;
         match in_msg.header() {
             ton_block::CommonMsgInfo::ExtInMsgInfo(_) => {
@@ -1637,11 +1644,16 @@ enum TonEvent {
     ReceiveRoundRelays { keys: Vec<UInt256> },
     Confirm { public_key: UInt256 },
     Reject { public_key: UInt256 },
+    Rejected,
     Closed,
 }
 
 impl ReadFromTransaction for TonEvent {
     fn read_from_transaction(ctx: &TxContext<'_>) -> Option<Self> {
+        if has_rejected_event(ctx) {
+            return Some(Self::Rejected);
+        }
+
         let in_msg = ctx.in_msg;
         let event = match in_msg.header() {
             ton_block::CommonMsgInfo::ExtInMsgInfo(_) => {
@@ -1691,6 +1703,16 @@ fn read_external_in_msg(body: &ton_types::SliceData) -> Option<(UInt256, ton_typ
         Ok(((Some(public_key), _, _), body)) => Some((public_key, body)),
         _ => None,
     }
+}
+
+fn has_rejected_event(ctx: &TxContext<'_>) -> bool {
+    let mut result = false;
+    ctx.iterate_events(|event_id, _| {
+        if event_id == base_event_contract::events::rejected().id {
+            result = true;
+        }
+    });
+    result
 }
 
 const MIN_EVENT_BALANCE: u128 = 100_000_000; // 0.1 TON

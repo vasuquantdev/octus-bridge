@@ -56,3 +56,16 @@ pub fn receive_round_relays() -> &'static ton_abi::Function {
             .build()
     })
 }
+
+pub mod events {
+    use super::*;
+
+    pub fn rejected() -> &'static ton_abi::Event {
+        crate::once!(ton_abi::Event, || {
+            EventBuilder::new("Rejected")
+                .abi_version(ton_abi::contract::ABI_VERSION_2_2)
+                .input("reason", u32::param_type())
+                .build()
+        })
+    }
+}
