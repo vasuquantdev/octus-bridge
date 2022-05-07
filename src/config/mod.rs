@@ -178,7 +178,7 @@ impl NodeConfig {
                     enable_for_sync: true,
                     ..Default::default()
                 }),
-            shard_state_cache_options: self.shard_state_cache_options,
+            shard_state_cache_options: None, // self.shard_state_cache_options,
             max_db_memory_usage: self.max_db_memory_usage,
             archive_options: Some(Default::default()),
             sync_options: ton_indexer::SyncOptions {
