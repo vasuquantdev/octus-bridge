@@ -516,7 +516,8 @@ impl Bridge {
 
             match event {
                 // Remove event if voting process was finished
-                (_, EventStatus::Confirmed | EventStatus::Rejected) => remove_entry(),
+                (SolTonEvent::Rejected, _)
+                | (_, EventStatus::Confirmed | EventStatus::Rejected) => remove_entry(),
                 // Handle event initialization
                 (SolTonEvent::ReceiveRoundRelays { keys }, _) => {
                     // Check if event contains our key
@@ -580,7 +581,7 @@ impl Bridge {
                 // keeping the contract almost nullifies its balance.
                 (TonSolEvent::Closed, EventStatus::Confirmed) => remove_entry(),
                 // Remove event if it was rejected
-                (_, EventStatus::Rejected) => remove_entry(),
+                (TonSolEvent::Rejected, _) | (_, EventStatus::Rejected) => remove_entry(),
                 // Handle event initialization
                 (TonSolEvent::ReceiveRoundRelays { keys }, _) => {
                     // Check if event contains our key
@@ -2619,10 +2620,15 @@ enum SolTonEvent {
     ReceiveRoundRelays { keys: Vec<UInt256> },
     Confirm { public_key: UInt256 },
     Reject { public_key: UInt256 },
+    Rejected,
 }
 
 impl ReadFromTransaction for SolTonEvent {
     fn read_from_transaction(ctx: &TxContext<'_>) -> Option<Self> {
+        if has_rejected_event(ctx) {
+            return Some(Self::Rejected);
+        }
+
         let in_msg = ctx.in_msg;
         match in_msg.header() {
             ton_block::CommonMsgInfo::ExtInMsgInfo(_) => {
@@ -2663,11 +2669,16 @@ enum TonSolEvent {
     ReceiveRoundRelays { keys: Vec<UInt256> },
     Confirm { public_key: UInt256 },
     Reject { public_key: UInt256 },
+    Rejected,
     Closed,
 }
 
 impl ReadFromTransaction for TonSolEvent {
     fn read_from_transaction(ctx: &TxContext<'_>) -> Option<Self> {
+        if has_rejected_event(ctx) {
+            return Some(Self::Rejected);
+        }
+
         let in_msg = ctx.in_msg;
         let event = match in_msg.header() {
             ton_block::CommonMsgInfo::ExtInMsgInfo(_) => {
