@@ -23,7 +23,7 @@ use tiny_adnl::utils::FxHashMap;
 
 use crate::config::*;
 use crate::engine::bridge::*;
-use crate::engine::ton_subscriber::start_listening_events;
+use crate::engine::ton_subscriber::*;
 use crate::utils::*;
 
 pub struct SolSubscriber {
@@ -189,16 +189,21 @@ impl SolSubscriber {
             self.pending_events_count.load(Ordering::Acquire)
         );
 
+        let time = chrono::Utc::now().timestamp() as u64;
+
         let mut pending_events = self.pending_events.lock().await;
 
         let accounts_to_check = futures::stream::FuturesUnordered::new();
         pending_events.retain(|&account, event| {
             let status = match event.status {
                 PendingEventStatus::InProcess => {
-                    accounts_to_check.push(async move {
-                        let result = self.get_account(&account).await;
-                        (account, result)
-                    });
+                    if time > event.time {
+                        event.time = time + 3600; // Shift to 1 hour
+                        accounts_to_check.push(async move {
+                            let result = self.get_account(&account).await;
+                            (account, result)
+                        });
+                    }
                     return true;
                 }
                 PendingEventStatus::Valid => VerificationStatus::Exists,
@@ -316,6 +321,7 @@ impl SolSubscriber {
                     event_data,
                     status_tx: Some(tx),
                     status: PendingEventStatus::InProcess,
+                    time: 0,
                 },
             );
 
@@ -404,6 +410,7 @@ struct PendingEvent {
     event_data: Vec<u8>,
     status: PendingEventStatus,
     status_tx: Option<VerificationStatusTx>,
+    time: u64,
 }
 
 impl PendingEvent {
