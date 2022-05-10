@@ -127,12 +127,14 @@ impl SolSubscriber {
                     if let Ok(account_data) =
                         solana_bridge::bridge_state::Proposal::unpack_from_slice(&bytes)
                     {
-                        if account_data
-                            .signers
-                            .iter()
-                            .filter(|vote| **vote != solana_bridge::bridge_types::Vote::None)
-                            .count()
-                            > 0
+                        if account_data.account_kind
+                            == solana_bridge::bridge_state::AccountKind::Proposal
+                            && account_data
+                                .signers
+                                .iter()
+                                .filter(|vote| **vote != solana_bridge::bridge_types::Vote::None)
+                                .count()
+                                > 0
                         {
                             let account_id = match Pubkey::from_str(&response.value.pubkey) {
                                 Ok(account_id) => account_id,

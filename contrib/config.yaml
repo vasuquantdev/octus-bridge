@@ -69,6 +69,8 @@ bridge_settings:
     endpoint: "https://api.mainnet-beta.solana.com"
     # Commitment level
     commitment: "finalized"
+    # Programs to subscribe
+    programs: []
   # ETH address verification settings
   address_verification:
     # Minimal balance on user's wallet to start address verification
