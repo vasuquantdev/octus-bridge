@@ -73,7 +73,7 @@ impl KeyStore {
             "Using ETH address: {}",
             EthAddressWrapper(keystore.eth.address())
         );
-        log::warn!("Using SOL public key: 0x{}", keystore.sol.public_key());
+        log::warn!("Using SOL public key: {}", keystore.sol.public_key());
 
         Ok(keystore)
     }

@@ -15,7 +15,6 @@ use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_client::rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig};
 use solana_sdk::account::{Account, ReadableAccount};
 use solana_sdk::hash::Hash;
-use solana_sdk::program_pack::Pack;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Signature;
 use solana_sdk::transaction::Transaction;
@@ -354,7 +353,7 @@ impl SolSubscriber {
             }
         };
 
-        let account_data = solana_bridge::token_proxy::Deposit::unpack(account.data())?;
+        let account_data = solana_bridge::token_proxy::Deposit::unpack_from_slice(account.data())?;
         if event_data != account_data.event {
             return Ok(VerificationStatus::NotExists);
         }
