@@ -236,7 +236,10 @@ impl SolSubscriber {
                             )?;
                         entry.get().check(account_data.event)
                     }
-                    Ok(None) => VerificationStatus::NotExists,
+                    Ok(None) => {
+                        log::info!("Solana proposal account doesn't exist yet: {}", account);
+                        continue;
+                    }
                     Err(e) => {
                         log::error!("Failed to check Solana event: {:?}", e);
                         continue;
