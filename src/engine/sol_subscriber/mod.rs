@@ -66,16 +66,18 @@ impl SolSubscriber {
         let subscriber = Arc::downgrade(self);
 
         tokio::spawn(async move {
-            let subscriber = match subscriber.upgrade() {
-                Some(subscriber) => subscriber,
-                None => return,
-            };
+            loop {
+                let subscriber = match subscriber.upgrade() {
+                    Some(subscriber) => subscriber,
+                    None => return,
+                };
 
-            if let Err(e) = subscriber.update().await {
-                log::error!(
-                    "Error occurred during Solana node subscriber update: {:?}",
-                    e
-                );
+                if let Err(e) = subscriber.update().await {
+                    log::error!(
+                        "Error occurred during Solana node subscriber update: {:?}",
+                        e
+                    );
+                }
             }
         });
     }
@@ -187,7 +189,9 @@ impl SolSubscriber {
             // Wait until new events appeared or idle poll interval passed.
             tokio::select! {
                 _ = self.new_events_notify.notified() => {},
-                _ = tokio::time::sleep(Duration::from_secs(self.config.poll_interval_sec)) => {},
+                _ = tokio::time::sleep(Duration::from_secs(self.config.poll_interval_sec)) => {
+                    return Ok(())
+                },
             }
         }
 
@@ -205,7 +209,8 @@ impl SolSubscriber {
             let status = match event.status {
                 PendingEventStatus::InProcess => {
                     if time > event.time {
-                        event.time = time + 3600; // Shift to 1 hour
+                        // event.time = time + 3600; // Shift to 1 hour
+                        event.time = time + 60; // TODO: temp
                         accounts_to_check.push(async move {
                             let result = self.get_account(&account).await;
                             (account, result)
