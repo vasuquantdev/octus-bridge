@@ -124,7 +124,7 @@ impl SolSubscriber {
         log::info!("Start listening Solana program {}", program_id);
 
         while let Some(response) = program_notifications.next().await {
-            log::info!("Get sol messagefrom {}: {:?}", program_id, response);
+            log::info!("Get sol message from {}: {:?}", program_id, response);
 
             if let UiAccountData::Binary(s, UiAccountEncoding::Base64) = response.value.account.data
             {
@@ -207,8 +207,7 @@ impl SolSubscriber {
             let status = match event.status {
                 PendingEventStatus::InProcess => {
                     if time > event.time {
-                        // event.time = time + 3600; // Shift to 1 hour
-                        event.time = time + 60; // TODO: temp
+                        event.time = time + 3600; // Shift to 1 hour
                         accounts_to_check.push(async move {
                             let result = self.get_account(&account).await;
                             (account, result)
