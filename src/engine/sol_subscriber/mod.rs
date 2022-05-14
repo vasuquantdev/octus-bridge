@@ -187,14 +187,10 @@ impl SolSubscriber {
     }
 
     async fn update(&self) -> Result<()> {
-        if self.pending_events.lock().await.is_empty() {
-            // Wait until new events appeared or idle poll interval passed.
-            tokio::select! {
-                _ = self.new_events_notify.notified() => {},
-                _ = tokio::time::sleep(Duration::from_secs(self.config.poll_interval_sec)) => {
-                    return Ok(())
-                },
-            }
+        // Wait until new events appeared or idle poll interval passed.
+        tokio::select! {
+            _ = self.new_events_notify.notified() => {},
+            _ = tokio::time::sleep(Duration::from_secs(self.config.poll_interval_sec)) => {},
         }
 
         log::info!(
