@@ -615,80 +615,6 @@ impl Bridge {
         Ok(())
     }
 
-    /*async fn process_solana_program_event(
-        self: Arc<Self>,
-        (account, event): (Pubkey, SolEvent),
-    ) -> Result<()> {
-        let sol_subscriber = &self.context.sol_subscriber;
-
-        if sol_subscriber.is_event_exist(&account) {
-            let keystore = &self.context.keystore;
-            let ton_subscriber = &self.context.ton_subscriber;
-
-            let configuration_account = UInt256::from(event.event_configuration.to_bytes());
-
-            let state = self.state.read().await;
-            state
-                .ton_sol_event_configurations
-                .get(&configuration_account)
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                    "TON->SOL event configuration {:x} not found for Solana Proposal Account 0x{}",
-                    configuration_account,
-                    account
-                )
-                })?;
-
-            // Wait configuration contract state
-            let configuration_contract = ton_subscriber
-                .wait_contract_state(configuration_account)
-                .await?;
-
-            let configuration_details =
-                TonSolEventConfigurationContract(&configuration_contract).get_details()?;
-
-            // Prepare abi
-            let event_abi =
-                decode_ton_event_abi(&configuration_details.basic_configuration.event_abi)?
-                    .into_iter()
-                    .map(|param| param.kind)
-                    .collect::<Vec<ton_abi::ParamType>>();
-
-            // Pack borsh bytes to cell
-            let decoded_event_data = eth_ton_abi_converter::borsh::deserialize_with_abi(
-                &mut event.event_data.as_slice(),
-                &event_abi,
-            )?;
-
-            let event_data = ton_abi::TokenValue::pack_token_values_into_chain(
-                &decoded_event_data,
-                Default::default(),
-                ton_abi::contract::ABI_VERSION_2_2,
-            )?
-            .into_cell()?;
-
-            // Get event address
-            let vote_data = TonSolEventVoteData {
-                event_transaction_lt: event.event_transaction_lt,
-                event_timestamp: event.event_timestamp,
-                author: UInt256::from(event.author.to_bytes()),
-                event_data,
-            };
-
-            let event_account = TonSolEventConfigurationContract(&configuration_contract)
-                .derive_event_address(&vote_data)?;
-
-            // Wait event contract state
-            let event_contract = ton_subscriber.wait_contract_state(event_account).await?;
-            let base_event_contract = EventBaseContract(&event_contract);
-
-            // Get event details
-            let event_init_data = TonSolEventContract(&event_contract).event_init_data()?;
-        }
-
-        Ok(())
-    }*/
-
     /// Check deployed event contract in parallel with transactions processing
     async fn preprocess_event<T: EventExt>(
         self: &Arc<Bridge>,
@@ -1116,6 +1042,7 @@ impl Bridge {
                     (
                         configuration.details.network_configuration.program,
                         configuration.details.network_configuration.settings,
+                        configuration.details.network_configuration.round_loader,
                         configuration.details.network_configuration.instruction,
                         TokenValue::decode_params(
                             &configuration.event_abi,
@@ -1127,11 +1054,12 @@ impl Bridge {
                 })
         };
 
-        let (program_id, settings, instruction, decoded_event_data) = match data {
+        let (program_id, settings, round_loader, instruction, decoded_event_data) = match data {
             // Decode event data with event abi from configuration
-            Some((program, settings, instruction, data)) => (
+            Some((program, settings, round_loader, instruction, data)) => (
                 Pubkey::new_from_array(program.inner()),
                 Pubkey::new_from_array(settings.inner()),
+                Pubkey::new_from_array(round_loader.inner()),
                 instruction,
                 data.and_then(|data| {
                     let data: Vec<TokenValue> = data.into_iter().map(|token| token.value).collect();
@@ -1174,6 +1102,7 @@ impl Bridge {
             Ok(VerificationStatus::Exists) => {
                 let ix = solana_bridge::instructions::vote_for_proposal_ix(
                     program_id,
+                    round_loader,
                     instruction,
                     &voter_pubkey,
                     &proposal_pubkey,
