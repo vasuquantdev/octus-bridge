@@ -137,9 +137,7 @@ impl SolSubscriber {
                             && account_data
                                 .signers
                                 .iter()
-                                .filter(|vote| **vote != solana_bridge::bridge_types::Vote::None)
-                                .count()
-                                > 0
+                                .all(|vote| *vote == solana_bridge::bridge_types::Vote::None)
                         {
                             log::info!("Sol account has Proposal type");
 
