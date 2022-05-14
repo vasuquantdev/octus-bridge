@@ -1042,7 +1042,6 @@ impl Bridge {
                     (
                         configuration.details.network_configuration.program,
                         configuration.details.network_configuration.settings,
-                        configuration.details.network_configuration.round_loader,
                         configuration.details.network_configuration.instruction,
                         TokenValue::decode_params(
                             &configuration.event_abi,
@@ -1054,12 +1053,11 @@ impl Bridge {
                 })
         };
 
-        let (program_id, settings, round_loader, instruction, decoded_event_data) = match data {
+        let (program_id, settings, instruction, decoded_event_data) = match data {
             // Decode event data with event abi from configuration
-            Some((program, settings, round_loader, instruction, data)) => (
+            Some((program, settings, instruction, data)) => (
                 Pubkey::new_from_array(program.inner()),
                 Pubkey::new_from_array(settings.inner()),
-                Pubkey::new_from_array(round_loader.inner()),
                 instruction,
                 data.and_then(|data| {
                     let data: Vec<TokenValue> = data.into_iter().map(|token| token.value).collect();
@@ -1102,7 +1100,6 @@ impl Bridge {
             Ok(VerificationStatus::Exists) => {
                 let ix = solana_bridge::instructions::vote_for_proposal_ix(
                     program_id,
-                    round_loader,
                     instruction,
                     &voter_pubkey,
                     &proposal_pubkey,

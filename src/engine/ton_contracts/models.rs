@@ -201,8 +201,6 @@ pub struct TonSolEventConfiguration {
     pub program: UInt256,
     #[abi(with = "uint256_bytes")]
     pub settings: UInt256,
-    #[abi(with = "uint256_bytes")]
-    pub round_loader: UInt256,
     #[abi(with = "address_only_hash")]
     pub event_emitter: UInt256,
     #[abi(uint8)]
