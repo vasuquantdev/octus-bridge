@@ -15,6 +15,7 @@ use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_client::rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig};
 use solana_sdk::account::{Account, ReadableAccount};
 use solana_sdk::hash::Hash;
+use solana_sdk::message::Message;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Signature;
 use solana_sdk::transaction::Transaction;
@@ -22,6 +23,7 @@ use tiny_adnl::utils::FxHashMap;
 
 use crate::config::*;
 use crate::engine::bridge::*;
+use crate::engine::keystore::*;
 use crate::engine::ton_subscriber::*;
 use crate::utils::*;
 
@@ -280,6 +282,21 @@ impl SolSubscriber {
             .map_err(anyhow::Error::new)
     }
 
+    async fn send_and_confirm_message(
+        &self,
+        message: Message,
+        keystore: &Arc<KeyStore>,
+    ) -> Result<Signature> {
+        let transaction = keystore
+            .sol
+            .sign(message, self.get_recent_blockhash().await?)?;
+
+        self.rpc_client
+            .send_and_confirm_transaction(&transaction)
+            .await
+            .map_err(anyhow::Error::new)
+    }
+
     async fn send_and_confirm_transaction(&self, transaction: &Transaction) -> Result<Signature> {
         self.rpc_client
             .send_and_confirm_transaction(transaction)
@@ -415,6 +432,30 @@ impl SolSubscriber {
             Err(e) => {
                 return Err(e).with_context(|| "Failed to send Solana transaction".to_string())
             }
+        };
+
+        Ok(())
+    }
+
+    pub async fn send_message(&self, message: Message, keystore: &Arc<KeyStore>) -> Result<()> {
+        // Prepare tryhard config
+        let api_request_strategy = generate_fixed_timeout_config(
+            Duration::from_secs(self.config.get_timeout_sec),
+            Duration::from_secs(self.config.maximum_failed_responses_time_sec),
+        );
+
+        match retry(
+            || {
+                let message = message.clone();
+                self.send_and_confirm_message(message, keystore)
+            },
+            api_request_strategy,
+            "send solana message",
+        )
+        .await
+        {
+            Ok(_) => {}
+            Err(e) => return Err(e).with_context(|| "Failed to send Solana message".to_string()),
         };
 
         Ok(())

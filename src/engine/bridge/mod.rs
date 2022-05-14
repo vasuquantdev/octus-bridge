@@ -1130,13 +1130,9 @@ impl Bridge {
 
         if let Some(sol_message) = sol_message {
             // Send confirm to Solana
-            let sol_transaction = self
-                .context
-                .keystore
-                .sol
-                .sign(sol_message, sol_subscriber.get_recent_blockhash().await?)?;
-
-            sol_subscriber.send_transaction(sol_transaction).await?;
+            sol_subscriber
+                .send_message(sol_message, &self.context.keystore)
+                .await?;
         }
 
         // Clone events observer and deliver message to the contract
