@@ -120,12 +120,18 @@ impl SolSubscriber {
         log::info!("Start listening Solana program {}", program_id);
 
         while let Some(response) = program_notifications.next().await {
+            log::info!("Get sol messagefrom {}: {:?}", program_id, response);
+
             if let UiAccountData::Binary(s, UiAccountEncoding::Base64) = response.value.account.data
             {
                 if let Ok(bytes) = base64::decode(s) {
+                    log::info!("Sol message decoded");
+
                     if let Ok(account_data) =
                         solana_bridge::bridge_state::Proposal::unpack_from_slice(&bytes)
                     {
+                        log::info!("Sol account unpacked");
+
                         if account_data.account_kind
                             == solana_bridge::bridge_state::AccountKind::Proposal
                             && account_data
@@ -135,6 +141,8 @@ impl SolSubscriber {
                                 .count()
                                 > 0
                         {
+                            log::info!("Sol account has Proposal type");
+
                             let account_id = match Pubkey::from_str(&response.value.pubkey) {
                                 Ok(account_id) => account_id,
                                 Err(err) => {
