@@ -22,6 +22,10 @@ pub struct SolConfig {
     #[serde(with = "serde_commitment")]
     pub commitment: CommitmentConfig,
 
+    /// Max simultaneous connection count. Default: 10
+    #[serde(default = "default_pool_size")]
+    pub pool_size: usize,
+
     /// Timeout, used for simple getter requests. Default: 10
     #[serde(default = "default_get_timeout_sec")]
     pub get_timeout_sec: u64,
@@ -37,6 +41,10 @@ pub struct SolConfig {
     /// Max request duration (including all failed retires). Default: 604800
     #[serde(default = "default_maximum_failed_responses_time_sec")]
     pub maximum_failed_responses_time_sec: u64,
+}
+
+fn default_pool_size() -> usize {
+    10
 }
 
 fn default_get_timeout_sec() -> u64 {

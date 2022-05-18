@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use futures::StreamExt;
-use tokio::sync::{mpsc, oneshot, Notify};
+use tokio::sync::{mpsc, oneshot, Notify, Semaphore};
 use tokio::time::timeout;
 
 use solana_account_decoder::{UiAccountData, UiAccountEncoding};
@@ -30,6 +30,7 @@ use crate::utils::*;
 pub struct SolSubscriber {
     config: SolConfig,
     rpc_client: Arc<RpcClient>,
+    pool: Arc<Semaphore>,
     pending_events: tokio::sync::Mutex<FxHashMap<Pubkey, PendingEvent>>,
     pending_events_count: AtomicUsize,
     new_events_notify: Notify,
@@ -42,9 +43,12 @@ impl SolSubscriber {
             config.commitment,
         ));
 
+        let pool = Arc::new(Semaphore::new(config.pool_size));
+
         let subscriber = Arc::new(Self {
             config,
             rpc_client,
+            pool,
             pending_events: Default::default(),
             pending_events_count: Default::default(),
             new_events_notify: Notify::new(),
@@ -293,6 +297,8 @@ impl SolSubscriber {
 
     async fn get_account(&self, pubkey: &Pubkey) -> Result<Option<Account>> {
         let account = {
+            let _permit = self.pool.acquire().await;
+
             retry(
                 || {
                     timeout(
@@ -366,7 +372,7 @@ impl SolSubscriber {
         let account = match result {
             Some(account) => account,
             None => {
-                log::error!("Solana account 0x{} not exist", account_pubkey);
+                log::error!("Solana account {} not exist", account_pubkey);
                 return Ok(VerificationStatus::NotExists);
             }
         };
@@ -380,69 +386,72 @@ impl SolSubscriber {
     }
 
     pub async fn get_recent_blockhash(&self) -> Result<Hash> {
-        let api_request_strategy = generate_fixed_timeout_config(
-            Duration::from_secs(self.config.get_timeout_sec),
-            Duration::from_secs(self.config.maximum_failed_responses_time_sec),
-        );
+        let latest_blockhash = {
+            let _permit = self.pool.acquire().await;
 
-        let latest_blockhash = match retry(
-            || self.get_latest_blockhash(),
-            api_request_strategy,
-            "get latest blockhash",
-        )
-        .await
-        {
-            Ok(latest_blockhash) => latest_blockhash,
-            Err(e) => {
-                return Err(e).with_context(|| "Failed to get latest Solana blockhash".to_string())
-            }
+            retry(
+                || {
+                    timeout(
+                        Duration::from_secs(self.config.get_timeout_sec),
+                        self.get_latest_blockhash(),
+                    )
+                },
+                generate_default_timeout_config(Duration::from_secs(
+                    self.config.maximum_failed_responses_time_sec,
+                )),
+                "get recent blockhash",
+            )
+            .await
+            .context("Timed out recent blockhash")?
+            .context("Failed getting recent blockhash")?
         };
 
         Ok(latest_blockhash)
     }
 
     pub async fn send_transaction(&self, transaction: Transaction) -> Result<()> {
-        // Prepare tryhard config
-        let api_request_strategy = generate_fixed_timeout_config(
-            Duration::from_secs(self.config.get_timeout_sec),
-            Duration::from_secs(self.config.maximum_failed_responses_time_sec),
-        );
+        let _ = {
+            let _permit = self.pool.acquire().await;
 
-        match retry(
-            || self.send_and_confirm_transaction(&transaction),
-            api_request_strategy,
-            "send solana transaction",
-        )
-        .await
-        {
-            Ok(_) => {}
-            Err(e) => {
-                return Err(e).with_context(|| "Failed to send Solana transaction".to_string())
-            }
+            retry(
+                || {
+                    timeout(
+                        Duration::from_secs(self.config.get_timeout_sec),
+                        self.send_and_confirm_transaction(&transaction),
+                    )
+                },
+                generate_default_timeout_config(Duration::from_secs(
+                    self.config.maximum_failed_responses_time_sec,
+                )),
+                "send solana transaction",
+            )
+            .await
+            .context("Timed out send solana transaction")?
+            .context("Failed sending solana transaction")?
         };
 
         Ok(())
     }
 
     pub async fn send_message(&self, message: Message, keystore: &Arc<KeyStore>) -> Result<()> {
-        // Prepare tryhard config
-        let api_request_strategy = generate_fixed_timeout_config(
-            Duration::from_secs(self.config.get_timeout_sec),
-            Duration::from_secs(self.config.maximum_failed_responses_time_sec),
-        );
+        let _ = {
+            let _permit = self.pool.acquire().await;
 
-        match retry(
-            || {
-                let message = message.clone();
-                self.send_and_confirm_message(message, keystore)
-            },
-            api_request_strategy,
-            "send solana message",
-        )
-        .await
-        {
-            Ok(_) => {}
-            Err(e) => return Err(e).with_context(|| "Failed to send Solana message".to_string()),
+            retry(
+                || {
+                    timeout(Duration::from_secs(self.config.get_timeout_sec), async {
+                        let message = message.clone();
+                        self.send_and_confirm_message(message, keystore).await
+                    })
+                },
+                generate_default_timeout_config(Duration::from_secs(
+                    self.config.maximum_failed_responses_time_sec,
+                )),
+                "send solana transaction",
+            )
+            .await
+            .context("Timed out send solana message")?
+            .context("Failed sending solana message")?
         };
 
         Ok(())
