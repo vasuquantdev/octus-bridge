@@ -61,6 +61,12 @@ pub struct SolTonEventInitData {
 pub struct SolTonEventVoteData {
     #[abi(uint128)]
     pub account_seed: u128,
+    #[abi(uint64)]
+    pub slot: u64,
+    #[abi(uint64)]
+    pub block_time: u64,
+    #[abi(string)]
+    pub signature: String,
     #[abi(cell)]
     pub event_data: ton_types::Cell,
 }
