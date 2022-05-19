@@ -1,5 +1,6 @@
 use std::collections::hash_map;
 use std::future::Future;
+use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -16,6 +17,7 @@ use ton_block::{Deserializable, HashmapAugType};
 use ton_types::UInt256;
 
 use crate::engine::keystore::*;
+use crate::engine::sol_subscriber::*;
 use crate::engine::ton_contracts::*;
 use crate::engine::ton_subscriber::*;
 use crate::engine::EngineContext;
@@ -950,20 +952,32 @@ impl Bridge {
             }
         };
 
+        let signature =
+            solana_sdk::signature::Signature::from_str(&event_init_data.vote_data.signature)?;
+
         let program_id = Pubkey::new_from_array(program.inner());
         let settings = Pubkey::new_from_array(settings.inner());
 
-        let account_pubkey = solana_bridge::token_proxy::get_associated_deposit_address(
-            &program_id,
-            event_init_data.vote_data.account_seed,
-            &settings,
-        );
+        let transaction_data = SolTonTransactionData {
+            program_id,
+            signature,
+            slot: event_init_data.vote_data.slot,
+            block_time: event_init_data.vote_data.block_time as i64,
+            seed: event_init_data.vote_data.account_seed,
+        };
+
+        let account_data = SolTonAccountData {
+            program_id,
+            settings,
+            seed: event_init_data.vote_data.account_seed,
+            event_data: decoded_event_data,
+        };
 
         let account_addr = ton_block::MsgAddrStd::with_address(None, 0, account.into());
 
         // Verify SOL->TON event and create message to event contract
         let message = match sol_subscriber
-            .verify_sol_ton_event(account_pubkey, decoded_event_data)
+            .verify_sol_ton_event(transaction_data, account_data)
             .await
         {
             // Confirm event if transaction was found
