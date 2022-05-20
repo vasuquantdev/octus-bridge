@@ -1090,16 +1090,16 @@ impl Bridge {
             }
         };
 
-        let author = Pubkey::new_from_array(event_init_data.vote_data.author.inner());
         let event_configuration = Pubkey::new_from_array(event_init_data.configuration.inner());
+        let event_data = solana_sdk::hash::hash(&decoded_event_data);
 
         let proposal_pubkey = solana_bridge::bridge_helper::get_associated_proposal_address(
             &program_id,
-            &author,
             &settings,
             event_init_data.vote_data.event_timestamp,
             event_init_data.vote_data.event_transaction_lt,
             &event_configuration,
+            &event_data.to_bytes(),
         );
 
         let voter_pubkey = self.context.keystore.sol.public_key();
