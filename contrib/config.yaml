@@ -67,6 +67,8 @@ bridge_settings:
   sol_network:
     # Public endpoint
     endpoint: "https://api.mainnet-beta.solana.com"
+    # Public WS endpoint
+    ws_endpoint: "wss://api.mainnet-beta.solana.com"
     # Commitment level
     commitment: "finalized"
     # Programs to subscribe
