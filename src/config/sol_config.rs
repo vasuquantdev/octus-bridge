@@ -48,7 +48,7 @@ fn default_pool_size() -> usize {
 }
 
 fn default_get_timeout_sec() -> u64 {
-    10
+    60
 }
 
 fn default_poll_interval_sec() -> u64 {
