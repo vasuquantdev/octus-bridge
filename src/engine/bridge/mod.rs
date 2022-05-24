@@ -1093,6 +1093,8 @@ impl Bridge {
         let event_configuration = Pubkey::new_from_array(event_init_data.configuration.inner());
         let event_data = solana_sdk::hash::hash(&decoded_event_data);
 
+        log::info!("Sol program: {}", program_id);
+
         let proposal_pubkey = solana_bridge::bridge_helper::get_associated_proposal_address(
             &program_id,
             &settings,
@@ -1112,6 +1114,8 @@ impl Bridge {
         {
             // Confirm event if transaction was found
             Ok(VerificationStatus::Exists) => {
+                log::info!("Vote for {}", proposal_pubkey);
+
                 let ix = solana_bridge::instructions::vote_for_proposal_ix(
                     program_id,
                     instruction,
@@ -1128,6 +1132,8 @@ impl Bridge {
                 (Some(sol_message), ton_message)
             }
             Ok(VerificationStatus::NotExists) => {
+                log::info!("Skip for {}", proposal_pubkey);
+
                 let ton_message = UnsignedMessage::new(ton_sol_event_contract::reject(), account)
                     .arg(account_addr);
 
