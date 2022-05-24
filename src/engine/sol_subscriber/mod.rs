@@ -138,8 +138,9 @@ impl SolSubscriber {
                     if let Ok(account_data) =
                         solana_bridge::bridge_state::Proposal::unpack_from_slice(&bytes)
                     {
-                        if account_data.account_kind
-                            == solana_bridge::bridge_state::AccountKind::Proposal
+                        if account_data.is_initialized
+                            && account_data.account_kind
+                                == solana_bridge::bridge_state::AccountKind::Proposal
                             && account_data
                                 .signers
                                 .iter()
