@@ -159,7 +159,8 @@ impl SolSubscriber {
                                 }
                             };
 
-                            tx.send((account_id, account_data.event)).ok();
+                            tx.send((account_id, account_data.round_number, account_data.event))
+                                .ok();
                         }
                     }
                 }
@@ -175,11 +176,12 @@ impl SolSubscriber {
 
     async fn process_program_event(
         self: Arc<Self>,
-        (account, event_data): (Pubkey, Vec<u8>),
+        (account, round_number, event_data): (Pubkey, u32, Vec<u8>),
     ) -> Result<()> {
         let mut pending_events = self.pending_events.lock().await;
         if let Some(pending_event) = pending_events.get_mut(&account) {
             if pending_event.status == PendingEventStatus::InProcess {
+                pending_event.round_number = Some(round_number);
                 pending_event.status = pending_event.check(event_data).into();
             }
         }
@@ -223,7 +225,10 @@ impl SolSubscriber {
             log::info!("Confirmation status: {:?}", status);
 
             if let Some(tx) = event.status_tx.take() {
-                tx.send(status).ok();
+                // Always is initialized
+                if let Some(round_number) = event.round_number {
+                    tx.send((status, round_number)).ok();
+                }
             }
 
             false
@@ -237,13 +242,16 @@ impl SolSubscriber {
 
         for (account, result) in accounts_to_check {
             if let hash_map::Entry::Occupied(mut entry) = pending_events.entry(account) {
-                let status = match result {
+                let (status, round_number) = match result {
                     Ok(Some(account)) => {
                         let account_data =
                             solana_bridge::bridge_state::Proposal::unpack_from_slice(
                                 account.data(),
                             )?;
-                        entry.get().check(account_data.event)
+                        (
+                            entry.get().check(account_data.event),
+                            account_data.round_number,
+                        )
                     }
                     Ok(None) => {
                         log::info!("Solana proposal account doesn't exist yet: {}", account);
@@ -256,7 +264,7 @@ impl SolSubscriber {
                 };
 
                 if let Some(tx) = entry.get_mut().status_tx.take() {
-                    tx.send(status).ok();
+                    tx.send((status, round_number)).ok();
                 }
 
                 entry.remove();
@@ -383,7 +391,7 @@ impl SolSubscriber {
         &self,
         account_pubkey: Pubkey,
         event_data: Vec<u8>,
-    ) -> Result<VerificationStatus> {
+    ) -> Result<(VerificationStatus, u32)> {
         let rx = {
             let mut pending_events = self.pending_events.lock().await;
 
@@ -393,6 +401,7 @@ impl SolSubscriber {
                 account_pubkey,
                 PendingEvent {
                     event_data,
+                    round_number: None,
                     status_tx: Some(tx),
                     status: PendingEventStatus::InProcess,
                     time: 0,
@@ -407,8 +416,8 @@ impl SolSubscriber {
             rx
         };
 
-        let status = rx.await?;
-        Ok(status)
+        let res = rx.await?;
+        Ok(res)
     }
 
     pub async fn verify_sol_ton_event(
@@ -434,11 +443,9 @@ impl SolSubscriber {
             return Ok(VerificationStatus::NotExists);
         }
 
-        let transaction = result
-            .transaction
-            .transaction
-            .decode()
-            .ok_or(SolSubscriberError::DecodeTransactionError)?;
+        let transaction = result.transaction.transaction.decode().ok_or_else(|| {
+            SolSubscriberError::DecodeTransactionError(data.signature.to_string())
+        })?;
 
         let (account_keys, instructions) = match transaction.message {
             VersionedMessage::Legacy(message) => (message.account_keys, message.instructions),
@@ -557,6 +564,7 @@ impl SolSubscriber {
 
 struct PendingEvent {
     event_data: Vec<u8>,
+    round_number: Option<u32>,
     status: PendingEventStatus,
     status_tx: Option<VerificationStatusTx>,
     time: u64,
@@ -588,9 +596,9 @@ impl From<VerificationStatus> for PendingEventStatus {
     }
 }
 
-type VerificationStatusTx = oneshot::Sender<VerificationStatus>;
+type VerificationStatusTx = oneshot::Sender<(VerificationStatus, u32)>;
 
-type SubscribeResponseTx = mpsc::UnboundedSender<(Pubkey, Vec<u8>)>;
+type SubscribeResponseTx = mpsc::UnboundedSender<(Pubkey, u32, Vec<u8>)>;
 
 pub struct SolTonAccountData {
     pub program_id: Pubkey,
@@ -609,6 +617,6 @@ pub struct SolTonTransactionData {
 
 #[derive(thiserror::Error, Debug)]
 enum SolSubscriberError {
-    #[error("Failed to decode solana transaction")]
-    DecodeTransactionError,
+    #[error("Failed to decode solana transaction: `{0}`")]
+    DecodeTransactionError(String),
 }
