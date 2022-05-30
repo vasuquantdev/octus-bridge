@@ -11,8 +11,9 @@ pub struct SolConfig {
     /// RPC endpoint
     pub endpoint: String,
 
-    /// WS RPC endpoint
-    pub ws_endpoint: String,
+    /// Connection timeout
+    #[serde(default = "default_connection_timeout_sec")]
+    pub connection_timeout_sec: u64,
 
     /// Programs to subscribe
     #[serde(with = "serde_vec_pubkey")]
@@ -41,6 +42,10 @@ pub struct SolConfig {
     /// Max request duration (including all failed retires). Default: 604800
     #[serde(default = "default_maximum_failed_responses_time_sec")]
     pub maximum_failed_responses_time_sec: u64,
+}
+
+fn default_connection_timeout_sec() -> u64 {
+    60
 }
 
 fn default_pool_size() -> usize {

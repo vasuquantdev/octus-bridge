@@ -1593,6 +1593,9 @@ impl Bridge {
             EventType::TonSol,
         )?;
 
+        // Get solana program address to subscribe
+        let program_pubkey = Pubkey::new_from_array(details.network_configuration.program.inner());
+
         // Add configuration entry
         let observer = AccountObserver::new(&self.ton_sol_event_configurations_tx);
         match state.ton_sol_event_configurations.entry(*account) {
@@ -1613,6 +1616,9 @@ impl Bridge {
                 return Err(BridgeError::EventConfigurationAlreadyExists.into());
             }
         };
+
+        // Subscribe to Solana programs
+        self.context.sol_subscriber.subscribe(program_pubkey);
 
         // Subscribe to TON events
         self.context
