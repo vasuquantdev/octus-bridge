@@ -5,6 +5,10 @@ use std::time::Duration;
 use tryhard::backoff_strategies::{BackoffStrategy, ExponentialBackoff, FixedBackoff};
 use tryhard::{NoOnRetry, RetryFutureConfig, RetryPolicy};
 
+use solana_client::client_error::ClientError;
+use solana_client::client_error::ClientErrorKind;
+use solana_client::rpc_request::RpcError;
+
 /// Retries future, logging unsuccessful retries with `message`
 pub async fn retry<MakeFutureT, T, E, Fut, BackoffT, OnRetryT>(
     producer: MakeFutureT,
@@ -57,6 +61,46 @@ pub fn generate_fixed_timeout_config(
         .try_into()
         .expect("Overflow");
     tryhard::RetryFutureConfig::new(times).fixed_backoff(sleep_time)
+}
+
+#[derive(Clone)]
+pub struct SolRpcBackoffStrategy {
+    inner: ExponentialBackoff,
+}
+
+impl<'a> BackoffStrategy<'a, ClientError> for SolRpcBackoffStrategy {
+    type Output = RetryPolicy;
+
+    fn delay(&mut self, attempt: u32, error: &'a ClientError) -> Self::Output {
+        match &error.kind {
+            ClientErrorKind::RpcError(RpcError::RpcRequestError(..)) => {
+                RetryPolicy::Delay(self.inner.delay(attempt, error))
+            }
+            ClientErrorKind::RpcError(RpcError::RpcResponseError {
+                code: solana_client::rpc_custom_error::JSON_RPC_SERVER_ERROR_NODE_UNHEALTHY,
+                ..
+            }) => RetryPolicy::Delay(self.inner.delay(attempt, error)),
+            _ => RetryPolicy::Break,
+        }
+    }
+}
+
+#[inline]
+pub fn generate_sol_rpc_backoff_config(
+    total_time: Duration,
+) -> RetryFutureConfig<SolRpcBackoffStrategy, NoOnRetry> {
+    let max_delay = Duration::from_secs(600);
+    let times = crate::utils::calculate_times_from_max_delay(
+        Duration::from_secs(1),
+        2f64,
+        max_delay,
+        total_time,
+    );
+    tryhard::RetryFutureConfig::new(times)
+        .custom_backoff(SolRpcBackoffStrategy {
+            inner: ExponentialBackoff::new(Duration::from_secs(1)),
+        })
+        .max_delay(Duration::from_secs(600))
 }
 
 /// Calculates required number of steps, to get sum of retries ≈ `total_retry_time`.

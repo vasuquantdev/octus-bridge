@@ -5,11 +5,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use futures::StreamExt;
+use futures::{StreamExt, TryFutureExt};
 use tokio::sync::{mpsc, oneshot, Notify, Semaphore};
 use tokio::time::timeout;
 
 use solana_account_decoder::{UiAccountData, UiAccountEncoding};
+use solana_client::client_error::{ClientError, ClientErrorKind};
 use solana_client::nonblocking::pubsub_client::PubsubClient;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_client::rpc_config::{
@@ -17,11 +18,10 @@ use solana_client::rpc_config::{
 };
 use solana_sdk::account::{Account, ReadableAccount};
 use solana_sdk::clock::{Slot, UnixTimestamp};
-use solana_sdk::hash::Hash;
+use solana_sdk::commitment_config::CommitmentConfig;
 use solana_sdk::message::{Message, VersionedMessage};
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Signature;
-use solana_sdk::transaction::Transaction;
 use solana_transaction_status::{EncodedConfirmedTransactionWithStatusMeta, UiTransactionEncoding};
 use tiny_adnl::utils::FxHashMap;
 
@@ -90,6 +90,82 @@ impl SolSubscriber {
                 }
             }
         });
+    }
+
+    pub async fn verify_ton_sol_event(
+        &self,
+        account_pubkey: Pubkey,
+        event_data: Vec<u8>,
+    ) -> Result<(VerificationStatus, u32)> {
+        let rx = {
+            let mut pending_events = self.pending_events.lock().await;
+
+            let (tx, rx) = oneshot::channel();
+
+            pending_events.insert(
+                account_pubkey,
+                PendingEvent {
+                    event_data,
+                    round_number: None,
+                    status_tx: Some(tx),
+                    status: PendingEventStatus::InProcess,
+                    time: 0,
+                },
+            );
+
+            self.pending_events_count
+                .store(pending_events.len(), Ordering::Release);
+
+            self.new_events_notify.notify_waiters();
+
+            rx
+        };
+
+        let res = rx.await?;
+        Ok(res)
+    }
+
+    pub async fn verify_sol_ton_event(
+        &self,
+        transaction_data: SolTonTransactionData,
+        account_data: SolTonAccountData,
+    ) -> Result<VerificationStatus> {
+        if self.verify_sol_ton_transaction(transaction_data).await? == VerificationStatus::NotExists
+        {
+            return Ok(VerificationStatus::NotExists);
+        }
+
+        self.verify_sol_ton_account(account_data).await
+    }
+
+    pub async fn send_message(&self, message: Message, keystore: &Arc<KeyStore>) -> Result<()> {
+        let _ = {
+            let _permit = self.pool.acquire().await;
+
+            retry(
+                || {
+                    timeout(Duration::from_secs(self.config.get_timeout_sec), async {
+                        let message = message.clone();
+                        self.send_and_confirm_message(message, keystore).await
+                    })
+                    .map_err(|err| {
+                        ClientError::from(ClientErrorKind::Custom(format!(
+                            "Timeout sending solana message: {}",
+                            err
+                        )))
+                    })
+                },
+                generate_sol_rpc_backoff_config(Duration::from_secs(
+                    self.config.maximum_failed_responses_time_sec,
+                )),
+                "send solana transaction",
+            )
+            .await
+            .context("Timed out send solana message")?
+            .context("Failed sending solana message")?
+        };
+
+        Ok(())
     }
 
     fn subscribe(self: &Arc<Self>, program_id: Pubkey, tx: SubscribeResponseTx) {
@@ -279,36 +355,7 @@ impl SolSubscriber {
         Ok(())
     }
 
-    async fn get_latest_blockhash(&self) -> Result<Hash> {
-        self.rpc_client
-            .get_latest_blockhash()
-            .await
-            .map_err(anyhow::Error::new)
-    }
-
-    async fn send_and_confirm_message(
-        &self,
-        message: Message,
-        keystore: &Arc<KeyStore>,
-    ) -> Result<Signature> {
-        let transaction = keystore
-            .sol
-            .sign(message, self.get_recent_blockhash().await?)?;
-
-        self.rpc_client
-            .send_and_confirm_transaction(&transaction)
-            .await
-            .map_err(anyhow::Error::new)
-    }
-
-    async fn send_and_confirm_transaction(&self, transaction: &Transaction) -> Result<Signature> {
-        self.rpc_client
-            .send_and_confirm_transaction(transaction)
-            .await
-            .map_err(anyhow::Error::new)
-    }
-
-    async fn get_account(&self, pubkey: &Pubkey) -> Result<Option<Account>> {
+    async fn get_account(&self, account_pubkey: &Pubkey) -> Result<Option<Account>> {
         let account = {
             let _permit = self.pool.acquire().await;
 
@@ -316,7 +363,7 @@ impl SolSubscriber {
                 || {
                     timeout(
                         Duration::from_secs(self.config.get_timeout_sec),
-                        self.get_account_with_commitment(pubkey),
+                        self.get_account_with_commitment(account_pubkey, self.config.commitment),
                     )
                 },
                 generate_default_timeout_config(Duration::from_secs(
@@ -325,8 +372,8 @@ impl SolSubscriber {
                 "get account",
             )
             .await
-            .context("Timed out getting account")?
-            .context("Failed getting account")?
+            .context("Timed out getting solana account")?
+            .context("Failed getting solana account")?
         };
 
         Ok(account)
@@ -339,21 +386,27 @@ impl SolSubscriber {
         let transaction = {
             let _permit = self.pool.acquire().await;
 
+            let config = RpcTransactionConfig {
+                commitment: Some(self.config.commitment),
+                encoding: Some(UiTransactionEncoding::Base64),
+                ..Default::default()
+            };
+
             retry(
                 || {
                     timeout(
                         Duration::from_secs(self.config.get_timeout_sec),
-                        self.get_transaction_with_config(signature),
+                        self.get_transaction_with_config(signature, config),
                     )
                 },
                 generate_default_timeout_config(Duration::from_secs(
                     self.config.maximum_failed_responses_time_sec,
                 )),
-                "get transaction",
+                "get solana transaction",
             )
             .await
-            .context("Timed out getting transaction")?
-            .context("Failed getting transaction")?
+            .context("Timed out getting solana transaction")?
+            .context("Failed getting solana transaction")?
         };
 
         Ok(transaction)
@@ -362,75 +415,22 @@ impl SolSubscriber {
     async fn get_account_with_commitment(
         &self,
         account_pubkey: &Pubkey,
-    ) -> Result<Option<Account>> {
+        commitment_config: CommitmentConfig,
+    ) -> Result<Option<Account>, ClientError> {
         self.rpc_client
-            .get_account_with_commitment(account_pubkey, self.config.commitment)
+            .get_account_with_commitment(account_pubkey, commitment_config)
             .await
             .map(|response| response.value)
-            .map_err(anyhow::Error::new)
     }
 
     async fn get_transaction_with_config(
         &self,
         signature: &Signature,
-    ) -> Result<EncodedConfirmedTransactionWithStatusMeta> {
+        config: RpcTransactionConfig,
+    ) -> Result<EncodedConfirmedTransactionWithStatusMeta, ClientError> {
         self.rpc_client
-            .get_transaction_with_config(
-                signature,
-                RpcTransactionConfig {
-                    commitment: Some(self.config.commitment),
-                    encoding: Some(UiTransactionEncoding::Base64),
-                    ..Default::default()
-                },
-            )
+            .get_transaction_with_config(signature, config)
             .await
-            .map_err(anyhow::Error::new)
-    }
-
-    pub async fn verify_ton_sol_event(
-        &self,
-        account_pubkey: Pubkey,
-        event_data: Vec<u8>,
-    ) -> Result<(VerificationStatus, u32)> {
-        let rx = {
-            let mut pending_events = self.pending_events.lock().await;
-
-            let (tx, rx) = oneshot::channel();
-
-            pending_events.insert(
-                account_pubkey,
-                PendingEvent {
-                    event_data,
-                    round_number: None,
-                    status_tx: Some(tx),
-                    status: PendingEventStatus::InProcess,
-                    time: 0,
-                },
-            );
-
-            self.pending_events_count
-                .store(pending_events.len(), Ordering::Release);
-
-            self.new_events_notify.notify_waiters();
-
-            rx
-        };
-
-        let res = rx.await?;
-        Ok(res)
-    }
-
-    pub async fn verify_sol_ton_event(
-        &self,
-        transaction_data: SolTonTransactionData,
-        account_data: SolTonAccountData,
-    ) -> Result<VerificationStatus> {
-        if self.verify_sol_ton_transaction(transaction_data).await? == VerificationStatus::NotExists
-        {
-            return Ok(VerificationStatus::NotExists);
-        }
-
-        self.verify_sol_ton_account(account_data).await
     }
 
     async fn verify_sol_ton_transaction(
@@ -489,76 +489,24 @@ impl SolSubscriber {
         Ok(VerificationStatus::Exists)
     }
 
-    pub async fn get_recent_blockhash(&self) -> Result<Hash> {
-        let latest_blockhash = {
-            let _permit = self.pool.acquire().await;
+    async fn send_and_confirm_message(
+        &self,
+        message: Message,
+        keystore: &Arc<KeyStore>,
+    ) -> Result<Signature, ClientError> {
+        let transaction = keystore
+            .sol
+            .sign(message, self.rpc_client.get_latest_blockhash().await?)
+            .map_err(|err| {
+                ClientError::from(ClientErrorKind::Custom(format!(
+                    "Failed to sign sol message: {}",
+                    err
+                )))
+            })?;
 
-            retry(
-                || {
-                    timeout(
-                        Duration::from_secs(self.config.get_timeout_sec),
-                        self.get_latest_blockhash(),
-                    )
-                },
-                generate_default_timeout_config(Duration::from_secs(
-                    self.config.maximum_failed_responses_time_sec,
-                )),
-                "get recent blockhash",
-            )
+        self.rpc_client
+            .send_and_confirm_transaction(&transaction)
             .await
-            .context("Timed out recent blockhash")?
-            .context("Failed getting recent blockhash")?
-        };
-
-        Ok(latest_blockhash)
-    }
-
-    pub async fn send_transaction(&self, transaction: Transaction) -> Result<()> {
-        let _ = {
-            let _permit = self.pool.acquire().await;
-
-            retry(
-                || {
-                    timeout(
-                        Duration::from_secs(self.config.get_timeout_sec),
-                        self.send_and_confirm_transaction(&transaction),
-                    )
-                },
-                generate_default_timeout_config(Duration::from_secs(
-                    self.config.maximum_failed_responses_time_sec,
-                )),
-                "send solana transaction",
-            )
-            .await
-            .context("Timed out send solana transaction")?
-            .context("Failed sending solana transaction")?
-        };
-
-        Ok(())
-    }
-
-    pub async fn send_message(&self, message: Message, keystore: &Arc<KeyStore>) -> Result<()> {
-        let _ = {
-            let _permit = self.pool.acquire().await;
-
-            retry(
-                || {
-                    timeout(Duration::from_secs(self.config.get_timeout_sec), async {
-                        let message = message.clone();
-                        self.send_and_confirm_message(message, keystore).await
-                    })
-                },
-                generate_default_timeout_config(Duration::from_secs(
-                    self.config.maximum_failed_responses_time_sec,
-                )),
-                "send solana transaction",
-            )
-            .await
-            .context("Timed out send solana message")?
-            .context("Failed sending solana message")?
-        };
-
-        Ok(())
     }
 }
 
