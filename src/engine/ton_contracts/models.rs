@@ -207,8 +207,10 @@ pub struct SolTonEventConfiguration {
     pub settings: UInt256,
     #[abi(with = "address_only_hash")]
     pub proxy: UInt256,
-    #[abi(uint32)]
-    pub end_timestamp: u32,
+    #[abi(uint64)]
+    pub start_timestamp: u64,
+    #[abi(uint64)]
+    pub end_timestamp: u64,
 }
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]

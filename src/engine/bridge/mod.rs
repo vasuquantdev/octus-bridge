@@ -2361,7 +2361,7 @@ struct SolTonEventConfigurationState {
 
 impl SolTonEventConfigurationDetails {
     fn is_expired(&self, current_timestamp: u32) -> bool {
-        (1..current_timestamp).contains(&self.network_configuration.end_timestamp)
+        (1..current_timestamp).contains(&(self.network_configuration.end_timestamp as u32))
     }
 }
 
@@ -2549,7 +2549,7 @@ impl ReadFromTransaction for TonSolEventConfigurationEvent {
 #[derive(Debug, Clone)]
 enum SolTonEventConfigurationEvent {
     EventDeployed { address: UInt256 },
-    SetEndTimestamp { end_timestamp: u32 },
+    SetEndTimestamp { end_timestamp: u64 },
 }
 
 impl ReadFromTransaction for SolTonEventConfigurationEvent {
