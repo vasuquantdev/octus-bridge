@@ -1119,14 +1119,12 @@ impl Bridge {
 
         let account_addr = ton_block::MsgAddrStd::with_address(None, 0, account.into());
 
-        let (sol_messages, ton_message) = match sol_subscriber
+        let (sol_message_vote, sol_message_execute, ton_message) = match sol_subscriber
             .verify_ton_sol_event(proposal_pubkey, decoded_event_data)
             .await
         {
             // Confirm event if transaction was found
             Ok((VerificationStatus::Exists, round_number)) => {
-                let mut sol_messages = Vec::new();
-
                 let vote_ix = solana_bridge::instructions::vote_for_proposal_ix(
                     program_id,
                     instruction,
@@ -1136,11 +1134,10 @@ impl Bridge {
                     solana_bridge::bridge_types::Vote::Confirm,
                 );
 
-                sol_messages.push(solana_sdk::message::Message::new(
-                    &[vote_ix],
-                    Some(&voter_pubkey),
-                ));
+                let sol_message_vote =
+                    solana_sdk::message::Message::new(&[vote_ix], Some(&voter_pubkey));
 
+                let mut sol_message_execute = None;
                 if execute_needed {
                     let accounts = event_init_data
                         .vote_data
@@ -1161,7 +1158,7 @@ impl Bridge {
                         accounts,
                     );
 
-                    sol_messages.push(solana_sdk::message::Message::new(
+                    sol_message_execute = Some(solana_sdk::message::Message::new(
                         &[execute_ix],
                         Some(&voter_pubkey),
                     ));
@@ -1170,7 +1167,7 @@ impl Bridge {
                 let ton_message = UnsignedMessage::new(ton_sol_event_contract::confirm(), account)
                     .arg(account_addr);
 
-                (sol_messages, ton_message)
+                (sol_message_vote, sol_message_execute, ton_message)
             }
             Ok((VerificationStatus::NotExists, round_number)) => {
                 let ix = solana_bridge::instructions::vote_for_proposal_ix(
@@ -1181,15 +1178,12 @@ impl Bridge {
                     round_number,
                     solana_bridge::bridge_types::Vote::Reject,
                 );
-                let sol_messages = vec![solana_sdk::message::Message::new(
-                    &[ix],
-                    Some(&voter_pubkey),
-                )];
+                let sol_message = solana_sdk::message::Message::new(&[ix], Some(&voter_pubkey));
 
                 let ton_message = UnsignedMessage::new(ton_sol_event_contract::reject(), account)
                     .arg(account_addr);
 
-                (sol_messages, ton_message)
+                (sol_message, None, ton_message)
             }
             // Skip event otherwise
             Err(e) => {
@@ -1200,10 +1194,18 @@ impl Bridge {
         };
 
         // Send confirm/reject to Solana
-        for sol_message in sol_messages {
-            sol_subscriber
-                .send_message(sol_message, &self.context.keystore)
-                .await?;
+        sol_subscriber
+            .send_message(sol_message_vote, &self.context.keystore)
+            .await?;
+
+        // Send execute message to Solana
+        if let Some(message) = sol_message_execute {
+            if let Err(err) = sol_subscriber
+                .send_message(message, &self.context.keystore)
+                .await
+            {
+                log::error!("Failed to execute solana proposal: {}", err);
+            }
         }
 
         // Clone events observer and deliver message to the contract
