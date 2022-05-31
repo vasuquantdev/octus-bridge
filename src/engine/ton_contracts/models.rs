@@ -87,8 +87,20 @@ pub struct TonSolEventVoteData {
     pub event_transaction_lt: u64,
     #[abi(uint32)]
     pub event_timestamp: u32,
+    #[abi(array)]
+    pub execute_accounts: Vec<ExecuteAccount>,
     #[abi(cell)]
     pub event_data: ton_types::Cell,
+}
+
+#[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
+pub struct ExecuteAccount {
+    #[abi(with = "address_only_hash")]
+    pub account: UInt256,
+    #[abi(bool)]
+    pub read_only: bool,
+    #[abi(bool)]
+    pub is_signer: bool,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, PackAbi, UnpackAbi, KnownParamType)]
@@ -213,6 +225,10 @@ pub struct TonSolEventConfiguration {
     pub start_timestamp: u32,
     #[abi(uint32)]
     pub end_timestamp: u32,
+    #[abi(bool)]
+    pub execute_needed: bool,
+    #[abi(uint8)]
+    pub execute_instruction: u8,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, PackAbi, UnpackAbi, KnownParamType)]

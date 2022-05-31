@@ -73,7 +73,7 @@ impl SolSubscriber {
 
                 if let Err(e) = subscriber.update().await {
                     log::error!(
-                        "Error occurred during Solana node subscriber update: {:?}",
+                        "Error occurred during solana node subscriber update: {:?}",
                         e
                     );
                 }
@@ -84,10 +84,9 @@ impl SolSubscriber {
     }
 
     pub fn subscribe(&self, program_pubkey: Pubkey) {
-        log::info!("Subscribe to `{}` Solana program", program_pubkey);
-
         let mut programs = self.programs_to_subscribe.write();
         if !programs.contains(&program_pubkey) {
+            log::info!("Subscribe to `{}` solana program", program_pubkey);
             programs.push(program_pubkey);
         }
     }
@@ -237,7 +236,7 @@ impl SolSubscriber {
                 }
                 Err(err) => {
                     log::error!(
-                        "Failed to check Solana proposal `{}`: {:?}",
+                        "Failed to check solana proposal `{}`: {:?}",
                         account_pubkey,
                         err
                     );
@@ -299,6 +298,7 @@ impl SolSubscriber {
                 })]),
                 account_config: RpcAccountInfoConfig {
                     encoding: Some(UiAccountEncoding::Base64),
+                    commitment: Some(self.config.commitment),
                     ..Default::default()
                 },
                 ..Default::default()

@@ -1056,6 +1056,11 @@ impl Bridge {
                         configuration.details.network_configuration.program,
                         configuration.details.network_configuration.settings,
                         configuration.details.network_configuration.instruction,
+                        configuration.details.network_configuration.execute_needed,
+                        configuration
+                            .details
+                            .network_configuration
+                            .execute_instruction,
                         TokenValue::decode_params(
                             &configuration.event_abi,
                             event_init_data.vote_data.event_data.clone().into(),
@@ -1066,12 +1071,21 @@ impl Bridge {
                 })
         };
 
-        let (program_id, settings, instruction, decoded_event_data) = match data {
+        let (
+            program_id,
+            settings,
+            instruction,
+            execute_needed,
+            execute_instruction,
+            decoded_event_data,
+        ) = match data {
             // Decode event data with event abi from configuration
-            Some((program, settings, instruction, data)) => (
+            Some((program, settings, instruction, execute_needed, execute_instruction, data)) => (
                 Pubkey::new_from_array(program.inner()),
                 Pubkey::new_from_array(settings.inner()),
                 instruction,
+                execute_needed,
+                execute_instruction,
                 data.and_then(|data| {
                     let data: Vec<TokenValue> = data.into_iter().map(|token| token.value).collect();
                     borsh::serialize_tokens(&data)
@@ -1105,13 +1119,15 @@ impl Bridge {
 
         let account_addr = ton_block::MsgAddrStd::with_address(None, 0, account.into());
 
-        let (sol_message, ton_message) = match sol_subscriber
+        let (sol_messages, ton_message) = match sol_subscriber
             .verify_ton_sol_event(proposal_pubkey, decoded_event_data)
             .await
         {
             // Confirm event if transaction was found
             Ok((VerificationStatus::Exists, round_number)) => {
-                let ix = solana_bridge::instructions::vote_for_proposal_ix(
+                let mut sol_messages = Vec::new();
+
+                let vote_ix = solana_bridge::instructions::vote_for_proposal_ix(
                     program_id,
                     instruction,
                     &voter_pubkey,
@@ -1119,12 +1135,42 @@ impl Bridge {
                     round_number,
                     solana_bridge::bridge_types::Vote::Confirm,
                 );
-                let sol_message = solana_sdk::message::Message::new(&[ix], Some(&voter_pubkey));
+
+                sol_messages.push(solana_sdk::message::Message::new(
+                    &[vote_ix],
+                    Some(&voter_pubkey),
+                ));
+
+                if execute_needed {
+                    let accounts = event_init_data
+                        .vote_data
+                        .execute_accounts
+                        .into_iter()
+                        .map(|account| {
+                            (
+                                Pubkey::new_from_array(account.account.inner()),
+                                account.read_only,
+                                account.is_signer,
+                            )
+                        })
+                        .collect();
+
+                    let execute_ix = solana_bridge::instructions::execute_proposal_ix(
+                        program_id,
+                        execute_instruction,
+                        accounts,
+                    );
+
+                    sol_messages.push(solana_sdk::message::Message::new(
+                        &[execute_ix],
+                        Some(&voter_pubkey),
+                    ));
+                }
 
                 let ton_message = UnsignedMessage::new(ton_sol_event_contract::confirm(), account)
                     .arg(account_addr);
 
-                (sol_message, ton_message)
+                (sol_messages, ton_message)
             }
             Ok((VerificationStatus::NotExists, round_number)) => {
                 let ix = solana_bridge::instructions::vote_for_proposal_ix(
@@ -1135,12 +1181,15 @@ impl Bridge {
                     round_number,
                     solana_bridge::bridge_types::Vote::Reject,
                 );
-                let sol_message = solana_sdk::message::Message::new(&[ix], Some(&voter_pubkey));
+                let sol_messages = vec![solana_sdk::message::Message::new(
+                    &[ix],
+                    Some(&voter_pubkey),
+                )];
 
                 let ton_message = UnsignedMessage::new(ton_sol_event_contract::reject(), account)
                     .arg(account_addr);
 
-                (sol_message, ton_message)
+                (sol_messages, ton_message)
             }
             // Skip event otherwise
             Err(e) => {
@@ -1151,9 +1200,11 @@ impl Bridge {
         };
 
         // Send confirm/reject to Solana
-        sol_subscriber
-            .send_message(sol_message, &self.context.keystore)
-            .await?;
+        for sol_message in sol_messages {
+            sol_subscriber
+                .send_message(sol_message, &self.context.keystore)
+                .await?;
+        }
 
         // Clone events observer and deliver message to the contract
         let ton_sol_event_observer = match self.ton_sol_events_state.pending.get(&account) {
@@ -1686,9 +1737,10 @@ impl Bridge {
                 }
 
                 // Process event
-                match EventBaseContract(&contract)
-                    .process(our_public_key, *event_type == EventType::TonEth)
-                {
+                match EventBaseContract(&contract).process(
+                    our_public_key,
+                    *event_type == EventType::TonEth || *event_type == EventType::TonSol,
+                ) {
                     Ok(EventAction::Nop | EventAction::Vote) => match event_type {
                         EventType::EthTon => {
                             let configuration =
