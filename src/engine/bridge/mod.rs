@@ -1155,6 +1155,7 @@ impl Bridge {
                     let execute_ix = solana_bridge::instructions::execute_proposal_ix(
                         program_id,
                         execute_instruction,
+                        proposal_pubkey,
                         accounts,
                     );
 
