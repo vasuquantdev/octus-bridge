@@ -95,7 +95,7 @@ pub struct TonSolEventVoteData {
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct ExecuteAccount {
-    #[abi(with = "address_only_hash")]
+    #[abi(with = "uint256_bytes")]
     pub account: UInt256,
     #[abi(bool)]
     pub read_only: bool,

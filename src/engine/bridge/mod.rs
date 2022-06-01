@@ -1561,7 +1561,7 @@ impl Bridge {
 
         // Check if configuration is expired
         let current_timestamp = self.context.ton_subscriber.current_utime();
-        if details.is_expired(current_timestamp) {
+        if details.is_expired(current_timestamp as u64) {
             // Do nothing in that case
             log::warn!(
                 "Ignoring TON->SOL event configuration {:x}: end timestamp {} is less then current {}",
@@ -1992,7 +1992,7 @@ impl Bridge {
                 // Remove SOL->TON expired configurations
                 let mut total_removed = 0;
                 state.sol_ton_event_configurations.retain(|account, state| {
-                    if state.details.is_expired(current_utime) {
+                    if state.details.is_expired(current_utime as u64) {
                         log::warn!("Removing SOL->TON event configuration {:x}", account);
                         total_removed += 1;
                         false
@@ -2175,7 +2175,7 @@ impl BridgeState {
     fn has_expired_sol_ton_event_configurations(&self, current_timestamp: u32) -> bool {
         self.sol_ton_event_configurations
             .iter()
-            .any(|(_, state)| state.details.is_expired(current_timestamp))
+            .any(|(_, state)| state.details.is_expired(current_timestamp as u64))
     }
 
     fn unique_eth_ton_event_configurations(&self) -> FxHashSet<UInt256> {
@@ -2360,8 +2360,8 @@ struct SolTonEventConfigurationState {
 }
 
 impl SolTonEventConfigurationDetails {
-    fn is_expired(&self, current_timestamp: u32) -> bool {
-        (1..current_timestamp).contains(&(self.network_configuration.end_timestamp as u32))
+    fn is_expired(&self, current_timestamp: u64) -> bool {
+        (1..current_timestamp).contains(&self.network_configuration.end_timestamp)
     }
 }
 
