@@ -49,6 +49,20 @@ bridge_settings:
       pool_size: 10
       poll_interval_sec: 60
       max_block_range: 5000
+    # Milkomeda
+    - chain_id: 2001
+      endpoint: https://rpc-mainnet-cardano-evm.c1.milkomeda.com
+      get_timeout_sec: 10
+      pool_size: 10
+      poll_interval_sec: 60
+      maximum_failed_responses_time_sec: 604800
+    # Avalanche Network
+    - chain_id: 43114
+      endpoint: https://api.avax.network/ext/bc/C/rpc
+      get_timeout_sec: 10
+      pool_size: 10
+      poll_interval_sec: 60
+      maximum_failed_responses_time_sec: 604800
   # ETH address verification settings
   address_verification:
     # Minimal balance on user's wallet to start address verification

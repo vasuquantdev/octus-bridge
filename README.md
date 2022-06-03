@@ -182,6 +182,20 @@ bridge_settings:
       pool_size: 10
       poll_interval_sec: 60
       max_block_range: 5000
+    # Milkomeda
+    - chain_id: 2001
+      endpoint: https://rpc-mainnet-cardano-evm.c1.milkomeda.com
+      get_timeout_sec: 10
+      pool_size: 10
+      poll_interval_sec: 60
+      maximum_failed_responses_time_sec: 604800
+    # Avalanche Network
+    - chain_id: 43114
+      endpoint: https://api.avax.network/ext/bc/C/rpc
+      get_timeout_sec: 10
+      pool_size: 10
+      poll_interval_sec: 60
+      maximum_failed_responses_time_sec: 604800
 node_settings:
   # Root directory for relay DB. Default: "./db"
   db_path: "/var/db/relay"
@@ -197,7 +211,7 @@ metrics_settings:
   listen_address: "127.0.0.1:10000"
   # URL path to the metrics. Default: "/"
   # Example: `curl http://127.0.0.1:10000/`
-  metrics_path: "/"
+  metrics_path: "/metrics"
   # Metrics update interval in seconds. Default: 10
   collection_interval_sec: 10
 # log4rs settings.
