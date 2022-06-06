@@ -4,10 +4,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use futures::TryFutureExt;
 use solana_account_decoder::UiAccountEncoding;
 use tokio::sync::{oneshot, Semaphore};
-use tokio::time::timeout;
 
 use solana_client::client_error::{ClientError, ClientErrorKind};
 use solana_client::nonblocking::rpc_client::RpcClient;
@@ -138,17 +136,9 @@ impl SolSubscriber {
             let _permit = self.pool.acquire().await;
 
             retry(
-                || {
-                    timeout(Duration::from_secs(self.config.get_timeout_sec), async {
-                        let message = message.clone();
-                        self.send_and_confirm_message(message, keystore).await
-                    })
-                    .map_err(|err| {
-                        ClientError::from(ClientErrorKind::Custom(format!(
-                            "Timeout sending solana message: {}",
-                            err
-                        )))
-                    })
+                || async {
+                    let message = message.clone();
+                    self.send_and_confirm_message(message, keystore).await
                 },
                 generate_sol_rpc_backoff_config(Duration::from_secs(
                     self.config.maximum_failed_responses_time_sec,
@@ -156,7 +146,6 @@ impl SolSubscriber {
                 "send solana transaction",
             )
             .await
-            .context("Timed out send solana message")?
             .context("Failed sending solana message")?
         };
 
@@ -257,19 +246,13 @@ impl SolSubscriber {
             let _permit = self.pool.acquire().await;
 
             retry(
-                || {
-                    timeout(
-                        Duration::from_secs(self.config.get_timeout_sec),
-                        self.get_account_with_commitment(account_pubkey, self.config.commitment),
-                    )
-                },
+                || self.get_account_with_commitment(account_pubkey, self.config.commitment),
                 generate_default_timeout_config(Duration::from_secs(
                     self.config.maximum_failed_responses_time_sec,
                 )),
                 "get account",
             )
             .await
-            .context("Timed out getting solana account")?
             .context("Failed getting solana account")?
         };
 
@@ -283,33 +266,31 @@ impl SolSubscriber {
         let accounts = {
             let _permit = self.pool.acquire().await;
 
-            let mem: Vec<u8> = vec![
-                true as u8,                                               // is_initialized
-                solana_bridge::bridge_state::AccountKind::Proposal as u8, // account_kind
-                false as u8,                                              // is_executed
-            ];
-            let memcmp = MemcmpEncodedBytes::Base58(bs58::encode(mem).into_string());
-
-            let config = RpcProgramAccountsConfig {
-                filters: Some(vec![RpcFilterType::Memcmp(Memcmp {
-                    offset: 0,
-                    bytes: memcmp,
-                    encoding: None,
-                })]),
-                account_config: RpcAccountInfoConfig {
-                    encoding: Some(UiAccountEncoding::Base64),
-                    commitment: Some(self.config.commitment),
-                    ..Default::default()
-                },
-                ..Default::default()
-            };
-
             retry(
-                || {
-                    timeout(
-                        Duration::from_secs(self.config.get_timeout_sec),
-                        self.get_program_accounts_with_config(program_pubkey, config.clone()),
-                    )
+                || async {
+                    let mem: Vec<u8> = vec![
+                        true as u8,                                               // is_initialized
+                        solana_bridge::bridge_state::AccountKind::Proposal as u8, // account_kind
+                        false as u8,                                              // is_executed
+                    ];
+                    let memcmp = MemcmpEncodedBytes::Base58(bs58::encode(mem).into_string());
+
+                    let config = RpcProgramAccountsConfig {
+                        filters: Some(vec![RpcFilterType::Memcmp(Memcmp {
+                            offset: 0,
+                            bytes: memcmp,
+                            encoding: None,
+                        })]),
+                        account_config: RpcAccountInfoConfig {
+                            encoding: Some(UiAccountEncoding::Base64),
+                            commitment: Some(self.config.commitment),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    };
+
+                    self.get_program_accounts_with_config(program_pubkey, config)
+                        .await
                 },
                 generate_default_timeout_config(Duration::from_secs(
                     self.config.maximum_failed_responses_time_sec,
@@ -317,7 +298,6 @@ impl SolSubscriber {
                 "get account",
             )
             .await
-            .context("Timed out getting solana account")?
             .context("Failed getting solana account")?
         };
 
@@ -331,18 +311,15 @@ impl SolSubscriber {
         let transaction = {
             let _permit = self.pool.acquire().await;
 
-            let config = RpcTransactionConfig {
-                commitment: Some(self.config.commitment),
-                encoding: Some(UiTransactionEncoding::Base64),
-                ..Default::default()
-            };
-
             retry(
-                || {
-                    timeout(
-                        Duration::from_secs(self.config.get_timeout_sec),
-                        self.get_transaction_with_config(signature, config),
-                    )
+                || async {
+                    let config = RpcTransactionConfig {
+                        commitment: Some(self.config.commitment),
+                        encoding: Some(UiTransactionEncoding::Base64),
+                        ..Default::default()
+                    };
+
+                    self.get_transaction_with_config(signature, config).await
                 },
                 generate_default_timeout_config(Duration::from_secs(
                     self.config.maximum_failed_responses_time_sec,
@@ -350,7 +327,6 @@ impl SolSubscriber {
                 "get solana transaction",
             )
             .await
-            .context("Timed out getting solana transaction")?
             .context("Failed getting solana transaction")?
         };
 

@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 use solana_sdk::commitment_config::CommitmentConfig;
-use solana_sdk::pubkey::Pubkey;
 
 use crate::utils::*;
 
@@ -14,10 +13,6 @@ pub struct SolConfig {
     /// Connection timeout
     #[serde(default = "default_connection_timeout_sec")]
     pub connection_timeout_sec: u64,
-
-    /// Programs to subscribe
-    #[serde(with = "serde_vec_pubkey")]
-    pub programs: Vec<Pubkey>,
 
     /// Commitment level
     #[serde(with = "serde_commitment")]
@@ -34,10 +29,6 @@ pub struct SolConfig {
     /// Blocks polling interval. Default: 60
     #[serde(default = "default_poll_interval_sec")]
     pub poll_interval_sec: u64,
-
-    /// Timeout, used for simple getter requests. Default: 1
-    #[serde(default = "default_reconnect_timeout_sec")]
-    pub reconnect_timeout_sec: u64,
 
     /// Max request duration (including all failed retires). Default: 604800
     #[serde(default = "default_maximum_failed_responses_time_sec")]
@@ -60,10 +51,6 @@ fn default_poll_interval_sec() -> u64 {
     60
 }
 
-fn default_reconnect_timeout_sec() -> u64 {
-    1
-}
-
 fn default_maximum_failed_responses_time_sec() -> u64 {
-    604800
+    600
 }
