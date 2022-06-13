@@ -859,7 +859,7 @@ impl UserDataContract<'_> {
         }
 
         log::info!("Waiting confirmation...");
-        futures::future::join(ton_notified, eth_notified).await;
+        futures_util::future::join(ton_notified, eth_notified).await;
 
         Ok(())
     }

@@ -10,40 +10,36 @@ license-file = "LICENSE"
 anyhow = "1.0"
 argh = "0.1"
 async-trait = "0.1"
-base64 = "0.13"
 chacha20poly1305 = "0.10.0-pre"
 chrono = "0.4.19"
 config = { version = "0.13.1", default-features = false, features = ["yaml"] }
-dashmap = "5.2.0"
+dashmap = "5.3"
 dialoguer = "0.10.0"
 either = "1.6.1"
-futures = "0.3"
+everscale-network = "0.3.2"
+futures-util = "0.3"
 hex = "0.4"
-http = "0.2"
 hyper = { version = "0.14", features = ["server"] }
 log = "0.4"
 log4rs = "1.1"
-num-bigint = "0.3"
 num-traits = "0.2"
-once_cell = "1.10.0"
+once_cell = "1.12"
 parking_lot = "0.12.0"
-public-ip = "0.2"
 pkey_mprotect = "0.2.2"
 pomfrit = "0.1"
+public-ip = "0.2"
 rand = "0.8"
 regex = "1.5"
+rustc-hash = "1.1.0"
 secp256k1 = { version = "0.21.2", features = ["recovery"] }
 secstr = { version = "0.4", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.8"
 thiserror = "1.0"
-tokio = { version = "1.16.1", features = ["sync", "fs", "rt-multi-thread", "macros", "signal", "parking_lot"] }
-tokio-util = "0.7.1"
+tokio = { version = "1", features = ["sync", "fs", "rt-multi-thread", "macros", "signal", "parking_lot"] }
 tryhard = "0.4.0"
 url = { version = "2.2.2", features = ["serde"] }
-uuid = { version = "0.8.2", features = ["v4"] }
-zeroize = "1"
 
 ed25519-dalek = { git = "https://github.com/broxus/ed25519-dalek.git" }
 tiny-bip39 = { git = "https://github.com/broxus/tiny-bip39.git" }
@@ -57,8 +53,6 @@ ethabi = "16.0.0"
 ton_block = { git = "https://github.com/broxus/ton-labs-block" }
 ton_abi = { git = "https://github.com/broxus/ton-labs-abi" }
 ton_types = { git = "https://github.com/broxus/ton-labs-types" }
-
-tiny-adnl = { git = "https://github.com/broxus/tiny-adnl" }
 
 eth-ton-abi-converter = { git = "https://github.com/broxus/eth-ton-abi-converter.git" }
 
@@ -76,6 +70,3 @@ tempfile = "3.3.0"
 
 [patch.crates-io]
 hmac-drbg = { git = "https://github.com/Rexagon/rust-hmac-drbg" }
-
-[features]
-default = []

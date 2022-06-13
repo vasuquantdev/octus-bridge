@@ -1,7 +1,7 @@
 use std::borrow::Borrow;
 
 use anyhow::{Context, Result};
-use tiny_adnl::utils::*;
+use rustc_hash::FxHashMap;
 use ton_block::HashmapAugType;
 use ton_types::UInt256;
 

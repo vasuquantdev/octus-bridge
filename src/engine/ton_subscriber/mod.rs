@@ -5,7 +5,7 @@ use std::sync::{Arc, Weak};
 
 use anyhow::{Context, Result};
 use parking_lot::Mutex;
-use tiny_adnl::utils::*;
+use rustc_hash::FxHashMap;
 use tokio::sync::{mpsc, oneshot, watch, Notify};
 use ton_block::{BinTreeType, Deserializable, HashmapAugType};
 use ton_indexer::{BriefBlockMeta, EngineStatus, ProcessBlockContext};
@@ -539,7 +539,7 @@ pub fn start_listening_events<S, E, R>(
 ) where
     S: Send + Sync + 'static,
     E: Send + 'static,
-    R: futures::Future<Output = Result<()>> + Send + 'static,
+    R: futures_util::Future<Output = Result<()>> + Send + 'static,
 {
     let service = Arc::downgrade(service);
 

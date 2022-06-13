@@ -336,7 +336,7 @@ where
 {
     let (tx, rx) = tokio::sync::oneshot::channel();
 
-    let any_signal = futures::future::select_all(signals.into_iter().map(|signal| {
+    let any_signal = futures_util::future::select_all(signals.into_iter().map(|signal| {
         Box::pin(async move {
             unix::signal(signal)
                 .expect("Failed subscribing on unix signals")

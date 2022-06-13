@@ -8,8 +8,9 @@ use anyhow::{Context, Result};
 use dashmap::DashMap;
 use either::Either;
 use eth_ton_abi_converter::*;
-use futures::StreamExt;
-use tiny_adnl::utils::*;
+use everscale_network::utils::FxDashMap;
+use futures_util::StreamExt;
+use rustc_hash::{FxHashMap, FxHashSet};
 use tokio::sync::{oneshot, Notify, Semaphore};
 use tokio::time::timeout;
 use ton_types::UInt256;
@@ -480,7 +481,7 @@ impl EthSubscriber {
         }
 
         // Resolve verified confirmations
-        let events_to_check = futures::stream::FuturesUnordered::new();
+        let events_to_check = futures_util::stream::FuturesUnordered::new();
         pending_confirmations.retain(|&event_id, confirmation| {
             if confirmation.target_block > current_block {
                 return true;
