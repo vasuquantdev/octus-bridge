@@ -11,6 +11,7 @@ function print_help() {
   echo '  -h,--help         Print this help message and exit'
   echo '  -f,--force        Clear "/var/db/relay" on update'
   echo '  -s,--sync         Restart "timesyncd" service'
+  echo '  -r,--reset-adnl   Generate new ADNL keys'
   echo '  -t,--type TYPE    One of two types of installation:'
   echo '                    native - A little more complex way, but gives some'
   echo '                             performance gain and reduces the load.'
@@ -21,6 +22,7 @@ function print_help() {
 
 force="false"
 restart_timesyncd="false"
+reset_adnl="false"
 while [[ $# -gt 0 ]]; do
   key="$1"
   case $key in
@@ -34,6 +36,10 @@ while [[ $# -gt 0 ]]; do
       ;;
       -s|--sync)
         restart_timesyncd="true"
+        shift # past argument
+      ;;
+      -r|--reset-adnl)
+        reset_adnl="true"
         shift # past argument
       ;;
       -t|--type)
@@ -107,6 +113,11 @@ sudo mkdir -p /var/db/relay
 if [[ "$restart_timesyncd" == "true" ]]; then
   echo 'INFO: restarting timesyncd'
   sudo systemctl restart systemd-timesyncd.service
+fi
+
+if [[ "$reset_adnl" == "true"]]; then
+  echo 'INFO: clearing ADNL keys'
+  sudo rm -f /etc/relay/adnl-keys.json
 fi
 
 echo 'INFO: restarting relay service'
