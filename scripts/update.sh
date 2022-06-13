@@ -115,7 +115,7 @@ if [[ "$restart_timesyncd" == "true" ]]; then
   sudo systemctl restart systemd-timesyncd.service
 fi
 
-if [[ "$reset_adnl" == "true"]]; then
+if [[ "$reset_adnl" == "true" ]]; then
   echo 'INFO: clearing ADNL keys'
   sudo rm -f /etc/relay/adnl-keys.json
 fi
