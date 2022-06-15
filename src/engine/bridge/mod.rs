@@ -10,6 +10,7 @@ use eth_ton_abi_converter::*;
 use everscale_network::utils::FxDashMap;
 use nekoton_abi::*;
 use rustc_hash::{FxHashMap, FxHashSet};
+use solana_sdk::pubkey::Pubkey;
 use tokio::sync::mpsc;
 use tokio::sync::RwLock;
 use ton_abi::TokenValue;

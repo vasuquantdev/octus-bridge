@@ -4,11 +4,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use rustc_hash::FxHashMap;
 use solana_account_decoder::UiAccountEncoding;
 use tokio::sync::{oneshot, Semaphore};
 
 use solana_client::client_error::{ClientError, ClientErrorKind};
-use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_client::rpc_client::RpcClient;
 use solana_client::rpc_config::{
     RpcAccountInfoConfig, RpcProgramAccountsConfig, RpcTransactionConfig,
 };
@@ -17,11 +18,10 @@ use solana_sdk::account::{Account, ReadableAccount};
 use solana_sdk::bs58;
 use solana_sdk::clock::{Slot, UnixTimestamp};
 use solana_sdk::commitment_config::CommitmentConfig;
-use solana_sdk::message::{Message, VersionedMessage};
+use solana_sdk::message::Message;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Signature;
-use solana_transaction_status::{EncodedConfirmedTransactionWithStatusMeta, UiTransactionEncoding};
-use tiny_adnl::utils::FxHashMap;
+use solana_transaction_status::{EncodedConfirmedTransaction, UiTransactionEncoding};
 
 use crate::config::*;
 use crate::engine::bridge::*;
@@ -304,10 +304,7 @@ impl SolSubscriber {
         Ok(accounts)
     }
 
-    async fn get_transaction(
-        &self,
-        signature: &Signature,
-    ) -> Result<EncodedConfirmedTransactionWithStatusMeta> {
+    async fn get_transaction(&self, signature: &Signature) -> Result<EncodedConfirmedTransaction> {
         let transaction = {
             let _permit = self.pool.acquire().await;
 
@@ -316,7 +313,6 @@ impl SolSubscriber {
                     let config = RpcTransactionConfig {
                         commitment: Some(self.config.commitment),
                         encoding: Some(UiTransactionEncoding::Base64),
-                        ..Default::default()
                     };
 
                     self.get_transaction_with_config(signature, config).await
@@ -338,10 +334,22 @@ impl SolSubscriber {
         account_pubkey: &Pubkey,
         commitment_config: CommitmentConfig,
     ) -> Result<Option<Account>, ClientError> {
-        self.rpc_client
-            .get_account_with_commitment(account_pubkey, commitment_config)
-            .await
-            .map(|response| response.value)
+        tokio::task::spawn_blocking({
+            let account_pubkey = *account_pubkey;
+            let rpc_client = self.rpc_client.clone();
+            move || -> Result<Option<Account>, ClientError> {
+                rpc_client
+                    .get_account_with_commitment(&account_pubkey, commitment_config)
+                    .map(|response| response.value)
+            }
+        })
+        .await
+        .map_err(|err| {
+            ClientError::from(ClientErrorKind::Custom(format!(
+                "Failed to send solana request: {}",
+                err
+            )))
+        })?
     }
 
     async fn get_program_accounts_with_config(
@@ -349,19 +357,41 @@ impl SolSubscriber {
         program_pubkey: &Pubkey,
         config: RpcProgramAccountsConfig,
     ) -> Result<Vec<(Pubkey, Account)>, ClientError> {
-        self.rpc_client
-            .get_program_accounts_with_config(program_pubkey, config)
-            .await
+        tokio::task::spawn_blocking({
+            let program_pubkey = *program_pubkey;
+            let rpc_client = self.rpc_client.clone();
+            move || -> Result<Vec<(Pubkey, Account)>, ClientError> {
+                rpc_client.get_program_accounts_with_config(&program_pubkey, config)
+            }
+        })
+        .await
+        .map_err(|err| {
+            ClientError::from(ClientErrorKind::Custom(format!(
+                "Failed to send solana request: {}",
+                err
+            )))
+        })?
     }
 
     async fn get_transaction_with_config(
         &self,
         signature: &Signature,
         config: RpcTransactionConfig,
-    ) -> Result<EncodedConfirmedTransactionWithStatusMeta, ClientError> {
-        self.rpc_client
-            .get_transaction_with_config(signature, config)
-            .await
+    ) -> Result<EncodedConfirmedTransaction, ClientError> {
+        tokio::task::spawn_blocking({
+            let signature = *signature;
+            let rpc_client = self.rpc_client.clone();
+            move || -> Result<EncodedConfirmedTransaction, ClientError> {
+                rpc_client.get_transaction_with_config(&signature, config)
+            }
+        })
+        .await
+        .map_err(|err| {
+            ClientError::from(ClientErrorKind::Custom(format!(
+                "Failed to send solana request: {}",
+                err
+            )))
+        })?
     }
 
     async fn verify_sol_ton_transaction(
@@ -378,13 +408,8 @@ impl SolSubscriber {
             SolSubscriberError::DecodeTransactionError(data.signature.to_string())
         })?;
 
-        let (account_keys, instructions) = match transaction.message {
-            VersionedMessage::Legacy(message) => (message.account_keys, message.instructions),
-            VersionedMessage::V0(message) => (message.account_keys, message.instructions),
-        };
-
-        for ix in instructions {
-            if account_keys[ix.program_id_index as usize] == data.program_id {
+        for ix in transaction.message.instructions {
+            if transaction.message.account_keys[ix.program_id_index as usize] == data.program_id {
                 let deposit_seed = u128::from_le_bytes(ix.data[1..17].try_into()?);
                 if deposit_seed == data.seed {
                     return Ok(VerificationStatus::Exists);
@@ -425,19 +450,28 @@ impl SolSubscriber {
         message: Message,
         keystore: &Arc<KeyStore>,
     ) -> Result<Signature, ClientError> {
-        let transaction = keystore
-            .sol
-            .sign(message, self.rpc_client.get_latest_blockhash().await?)
-            .map_err(|err| {
-                ClientError::from(ClientErrorKind::Custom(format!(
-                    "Failed to sign sol message: {}",
-                    err
-                )))
-            })?;
-
-        self.rpc_client
-            .send_and_confirm_transaction(&transaction)
-            .await
+        tokio::task::spawn_blocking({
+            let transaction = keystore
+                .sol
+                .sign(message, self.rpc_client.get_latest_blockhash()?)
+                .map_err(|err| {
+                    ClientError::from(ClientErrorKind::Custom(format!(
+                        "Failed to sign sol message: {}",
+                        err
+                    )))
+                })?;
+            let rpc_client = self.rpc_client.clone();
+            move || -> Result<Signature, ClientError> {
+                rpc_client.send_and_confirm_transaction(&transaction)
+            }
+        })
+        .await
+        .map_err(|err| {
+            ClientError::from(ClientErrorKind::Custom(format!(
+                "Failed to send solana request: {}",
+                err
+            )))
+        })?
     }
 }
 

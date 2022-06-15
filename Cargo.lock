@@ -347,7 +347,7 @@ dependencies = [
 [[package]]
 name = "bridge-derive"
 version = "0.1.0"
-source = "git+ssh://git@gitlab.dexpa.io/solana-everscale-bridge/solana-bridge#f668337b4d26b85431adf0df4c4ddd2ba98ef1d5"
+source = "git+ssh://git@gitlab.dexpa.io/solana-everscale-bridge/solana-bridge#3df1ac84dd20badbea8aaf36ed238d11187f9da7"
 dependencies = [
  "darling 0.13.4",
  "proc-macro2 1.0.39",
@@ -358,14 +358,14 @@ dependencies = [
 [[package]]
 name = "bridge-utils"
 version = "0.1.0"
-source = "git+ssh://git@gitlab.dexpa.io/solana-everscale-bridge/solana-bridge#f668337b4d26b85431adf0df4c4ddd2ba98ef1d5"
+source = "git+ssh://git@gitlab.dexpa.io/solana-everscale-bridge/solana-bridge#3df1ac84dd20badbea8aaf36ed238d11187f9da7"
 dependencies = [
  "bincode",
  "borsh",
  "bridge-derive",
  "hex",
  "serde",
- "solana-program 1.9.29 (registry+https://github.com/rust-lang/crates.io-index)",
+ "solana-program",
 ]
 
 [[package]]
@@ -1291,8 +1291,7 @@ dependencies = [
 [[package]]
 name = "everscale-network"
 version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d374d296a6f36622016d4d1e6077eea3427b07af7578d1a1a9beac29c3f4e437"
+source = "git+https://github.com/broxus/everscale-network#620d074eb278d3360fb34b8b141e97e90bd58ed8"
 dependencies = [
  "aes",
  "anyhow",
@@ -3236,14 +3235,14 @@ dependencies = [
 [[package]]
 name = "round-loader"
 version = "0.1.0"
-source = "git+ssh://git@gitlab.dexpa.io/solana-everscale-bridge/solana-bridge#f668337b4d26b85431adf0df4c4ddd2ba98ef1d5"
+source = "git+ssh://git@gitlab.dexpa.io/solana-everscale-bridge/solana-bridge#3df1ac84dd20badbea8aaf36ed238d11187f9da7"
 dependencies = [
  "bincode",
  "borsh",
  "bridge-derive",
  "bridge-utils",
  "serde",
- "solana-program 1.9.29 (registry+https://github.com/rust-lang/crates.io-index)",
+ "solana-program",
  "thiserror",
 ]
 
@@ -3548,7 +3547,7 @@ dependencies = [
 [[package]]
 name = "solana-account-decoder"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana.git?branch=relay#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
+source = "git+https://github.com/pashinov/solana?branch=broxus#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
 dependencies = [
  "Inflector",
  "base64 0.12.3",
@@ -3570,7 +3569,7 @@ dependencies = [
 [[package]]
 name = "solana-address-lookup-table-program"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana.git?branch=relay#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
+source = "git+https://github.com/pashinov/solana?branch=broxus#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
 dependencies = [
  "bincode",
  "bytemuck",
@@ -3579,8 +3578,8 @@ dependencies = [
  "num-traits",
  "rustc_version",
  "serde",
- "solana-frozen-abi 1.9.29 (git+https://github.com/pashinov/solana.git?branch=relay)",
- "solana-frozen-abi-macro 1.9.29 (git+https://github.com/pashinov/solana.git?branch=relay)",
+ "solana-frozen-abi",
+ "solana-frozen-abi-macro",
  "solana-program-runtime",
  "solana-sdk",
  "thiserror",
@@ -3589,7 +3588,7 @@ dependencies = [
 [[package]]
 name = "solana-bloom"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana.git?branch=relay#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
+source = "git+https://github.com/pashinov/solana?branch=broxus#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
 dependencies = [
  "bv",
  "fnv",
@@ -3599,34 +3598,34 @@ dependencies = [
  "rustc_version",
  "serde",
  "serde_derive",
- "solana-frozen-abi 1.9.29 (git+https://github.com/pashinov/solana.git?branch=relay)",
- "solana-frozen-abi-macro 1.9.29 (git+https://github.com/pashinov/solana.git?branch=relay)",
+ "solana-frozen-abi",
+ "solana-frozen-abi-macro",
  "solana-sdk",
 ]
 
 [[package]]
 name = "solana-bridge"
 version = "0.1.0"
-source = "git+ssh://git@gitlab.dexpa.io/solana-everscale-bridge/solana-bridge#f668337b4d26b85431adf0df4c4ddd2ba98ef1d5"
+source = "git+ssh://git@gitlab.dexpa.io/solana-everscale-bridge/solana-bridge#3df1ac84dd20badbea8aaf36ed238d11187f9da7"
 dependencies = [
  "borsh",
  "bridge-utils",
  "round-loader",
- "solana-program 1.9.29 (registry+https://github.com/rust-lang/crates.io-index)",
+ "solana-program",
  "token-proxy",
 ]
 
 [[package]]
 name = "solana-bucket-map"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana.git?branch=relay#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
+source = "git+https://github.com/pashinov/solana?branch=broxus#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
 dependencies = [
  "fs_extra",
  "log",
  "memmap2",
  "rand 0.7.3",
  "rayon",
- "solana-logger 1.9.29 (git+https://github.com/pashinov/solana.git?branch=relay)",
+ "solana-logger",
  "solana-measure",
  "solana-sdk",
  "tempfile",
@@ -3635,7 +3634,7 @@ dependencies = [
 [[package]]
 name = "solana-clap-utils"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana.git?branch=relay#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
+source = "git+https://github.com/pashinov/solana?branch=broxus#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
 dependencies = [
  "chrono",
  "clap",
@@ -3652,7 +3651,7 @@ dependencies = [
 [[package]]
 name = "solana-cli-config"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana.git?branch=relay#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
+source = "git+https://github.com/pashinov/solana?branch=broxus#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
 dependencies = [
  "dirs-next",
  "lazy_static",
@@ -3665,7 +3664,7 @@ dependencies = [
 [[package]]
 name = "solana-client"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana.git?branch=relay#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
+source = "git+https://github.com/pashinov/solana?branch=broxus#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
 dependencies = [
  "base64 0.13.0",
  "bincode",
@@ -3698,7 +3697,7 @@ dependencies = [
 [[package]]
 name = "solana-compute-budget-program"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana.git?branch=relay#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
+source = "git+https://github.com/pashinov/solana?branch=broxus#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
 dependencies = [
  "solana-program-runtime",
  "solana-sdk",
@@ -3707,7 +3706,7 @@ dependencies = [
 [[package]]
 name = "solana-config-program"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana.git?branch=relay#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
+source = "git+https://github.com/pashinov/solana?branch=broxus#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
 dependencies = [
  "bincode",
  "chrono",
@@ -3720,7 +3719,7 @@ dependencies = [
 [[package]]
 name = "solana-faucet"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana.git?branch=relay#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
+source = "git+https://github.com/pashinov/solana?branch=broxus#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
 dependencies = [
  "bincode",
  "byteorder",
@@ -3730,7 +3729,7 @@ dependencies = [
  "serde_derive",
  "solana-clap-utils",
  "solana-cli-config",
- "solana-logger 1.9.29 (git+https://github.com/pashinov/solana.git?branch=relay)",
+ "solana-logger",
  "solana-metrics",
  "solana-sdk",
  "solana-version",
@@ -3742,8 +3741,7 @@ dependencies = [
 [[package]]
 name = "solana-frozen-abi"
 version = "1.9.29"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d4fcb89eb3d0f30bd4b4a31ad1825c9d95cd638509acead00969d7601713288"
+source = "git+https://github.com/pashinov/solana?branch=broxus#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
 dependencies = [
  "bs58",
  "bv",
@@ -3754,46 +3752,15 @@ dependencies = [
  "serde",
  "serde_derive",
  "sha2",
- "solana-frozen-abi-macro 1.9.29 (registry+https://github.com/rust-lang/crates.io-index)",
- "solana-logger 1.9.29 (registry+https://github.com/rust-lang/crates.io-index)",
- "thiserror",
-]
-
-[[package]]
-name = "solana-frozen-abi"
-version = "1.9.29"
-source = "git+https://github.com/pashinov/solana.git?branch=relay#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
-dependencies = [
- "bs58",
- "bv",
- "generic-array",
- "log",
- "memmap2",
- "rustc_version",
- "serde",
- "serde_derive",
- "sha2",
- "solana-frozen-abi-macro 1.9.29 (git+https://github.com/pashinov/solana.git?branch=relay)",
- "solana-logger 1.9.29 (git+https://github.com/pashinov/solana.git?branch=relay)",
+ "solana-frozen-abi-macro",
+ "solana-logger",
  "thiserror",
 ]
 
 [[package]]
 name = "solana-frozen-abi-macro"
 version = "1.9.29"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d63ab101db88ecccd8da34065b9097b88367e0744fdfd05cb7de87b4ede3717f"
-dependencies = [
- "proc-macro2 1.0.39",
- "quote 1.0.18",
- "rustc_version",
- "syn 1.0.96",
-]
-
-[[package]]
-name = "solana-frozen-abi-macro"
-version = "1.9.29"
-source = "git+https://github.com/pashinov/solana.git?branch=relay#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
+source = "git+https://github.com/pashinov/solana?branch=broxus#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
 dependencies = [
  "proc-macro2 1.0.39",
  "quote 1.0.18",
@@ -3804,18 +3771,7 @@ dependencies = [
 [[package]]
 name = "solana-logger"
 version = "1.9.29"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ce1805d52fc8277a84c4803c7850c8f41471b57fb0dec7750338955ad6e43e2"
-dependencies = [
- "env_logger",
- "lazy_static",
- "log",
-]
-
-[[package]]
-name = "solana-logger"
-version = "1.9.29"
-source = "git+https://github.com/pashinov/solana.git?branch=relay#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
+source = "git+https://github.com/pashinov/solana?branch=broxus#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
 dependencies = [
  "env_logger",
  "lazy_static",
@@ -3825,7 +3781,7 @@ dependencies = [
 [[package]]
 name = "solana-measure"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana.git?branch=relay#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
+source = "git+https://github.com/pashinov/solana?branch=broxus#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
 dependencies = [
  "log",
  "solana-sdk",
@@ -3834,7 +3790,7 @@ dependencies = [
 [[package]]
 name = "solana-metrics"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana.git?branch=relay#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
+source = "git+https://github.com/pashinov/solana?branch=broxus#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
 dependencies = [
  "env_logger",
  "gethostname",
@@ -3847,7 +3803,7 @@ dependencies = [
 [[package]]
 name = "solana-net-utils"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana.git?branch=relay#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
+source = "git+https://github.com/pashinov/solana?branch=broxus#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
 dependencies = [
  "bincode",
  "clap",
@@ -3857,7 +3813,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "socket2",
- "solana-logger 1.9.29 (git+https://github.com/pashinov/solana.git?branch=relay)",
+ "solana-logger",
  "solana-sdk",
  "solana-version",
  "tokio",
@@ -3867,7 +3823,7 @@ dependencies = [
 [[package]]
 name = "solana-perf"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana.git?branch=relay#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
+source = "git+https://github.com/pashinov/solana?branch=broxus#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
 dependencies = [
  "ahash",
  "bincode",
@@ -3885,7 +3841,7 @@ dependencies = [
  "rayon",
  "serde",
  "solana-bloom",
- "solana-logger 1.9.29 (git+https://github.com/pashinov/solana.git?branch=relay)",
+ "solana-logger",
  "solana-metrics",
  "solana-rayon-threadlimit",
  "solana-sdk",
@@ -3895,8 +3851,7 @@ dependencies = [
 [[package]]
 name = "solana-program"
 version = "1.9.29"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5deafc4902425d40197f74166640300dd20b078e4ffd518c1bb56ceb7e01680"
+source = "git+https://github.com/pashinov/solana?branch=broxus#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
 dependencies = [
  "base64 0.13.0",
  "bincode",
@@ -3927,52 +3882,10 @@ dependencies = [
  "serde_derive",
  "sha2",
  "sha3",
- "solana-frozen-abi 1.9.29 (registry+https://github.com/rust-lang/crates.io-index)",
- "solana-frozen-abi-macro 1.9.29 (registry+https://github.com/rust-lang/crates.io-index)",
- "solana-logger 1.9.29 (registry+https://github.com/rust-lang/crates.io-index)",
- "solana-sdk-macro 1.9.29 (registry+https://github.com/rust-lang/crates.io-index)",
- "thiserror",
- "wasm-bindgen",
-]
-
-[[package]]
-name = "solana-program"
-version = "1.9.29"
-source = "git+https://github.com/pashinov/solana.git?branch=relay#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
-dependencies = [
- "base64 0.13.0",
- "bincode",
- "bitflags",
- "blake3",
- "borsh",
- "borsh-derive",
- "bs58",
- "bv",
- "bytemuck",
- "console_error_panic_hook",
- "console_log",
- "curve25519-dalek",
- "getrandom 0.1.16",
- "itertools",
- "js-sys",
- "lazy_static",
- "libsecp256k1 0.6.0",
- "log",
- "num-derive",
- "num-traits",
- "parking_lot 0.11.2",
- "rand 0.7.3",
- "rustc_version",
- "rustversion",
- "serde",
- "serde_bytes",
- "serde_derive",
- "sha2",
- "sha3",
- "solana-frozen-abi 1.9.29 (git+https://github.com/pashinov/solana.git?branch=relay)",
- "solana-frozen-abi-macro 1.9.29 (git+https://github.com/pashinov/solana.git?branch=relay)",
- "solana-logger 1.9.29 (git+https://github.com/pashinov/solana.git?branch=relay)",
- "solana-sdk-macro 1.9.29 (git+https://github.com/pashinov/solana.git?branch=relay)",
+ "solana-frozen-abi",
+ "solana-frozen-abi-macro",
+ "solana-logger",
+ "solana-sdk-macro",
  "thiserror",
  "wasm-bindgen",
 ]
@@ -3980,7 +3893,7 @@ dependencies = [
 [[package]]
 name = "solana-program-runtime"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana.git?branch=relay#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
+source = "git+https://github.com/pashinov/solana?branch=broxus#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
 dependencies = [
  "base64 0.13.0",
  "bincode",
@@ -3992,9 +3905,9 @@ dependencies = [
  "num-traits",
  "rustc_version",
  "serde",
- "solana-frozen-abi 1.9.29 (git+https://github.com/pashinov/solana.git?branch=relay)",
- "solana-frozen-abi-macro 1.9.29 (git+https://github.com/pashinov/solana.git?branch=relay)",
- "solana-logger 1.9.29 (git+https://github.com/pashinov/solana.git?branch=relay)",
+ "solana-frozen-abi",
+ "solana-frozen-abi-macro",
+ "solana-logger",
  "solana-measure",
  "solana-sdk",
  "thiserror",
@@ -4003,7 +3916,7 @@ dependencies = [
 [[package]]
 name = "solana-rayon-threadlimit"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana.git?branch=relay#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
+source = "git+https://github.com/pashinov/solana?branch=broxus#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
 dependencies = [
  "lazy_static",
  "num_cpus",
@@ -4012,7 +3925,7 @@ dependencies = [
 [[package]]
 name = "solana-remote-wallet"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana.git?branch=relay#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
+source = "git+https://github.com/pashinov/solana?branch=broxus#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
 dependencies = [
  "base32",
  "console",
@@ -4032,7 +3945,7 @@ dependencies = [
 [[package]]
 name = "solana-runtime"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana.git?branch=relay#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
+source = "git+https://github.com/pashinov/solana?branch=broxus#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
 dependencies = [
  "arrayref",
  "bincode",
@@ -4066,9 +3979,9 @@ dependencies = [
  "solana-bucket-map",
  "solana-compute-budget-program",
  "solana-config-program",
- "solana-frozen-abi 1.9.29 (git+https://github.com/pashinov/solana.git?branch=relay)",
- "solana-frozen-abi-macro 1.9.29 (git+https://github.com/pashinov/solana.git?branch=relay)",
- "solana-logger 1.9.29 (git+https://github.com/pashinov/solana.git?branch=relay)",
+ "solana-frozen-abi",
+ "solana-frozen-abi-macro",
+ "solana-logger",
  "solana-measure",
  "solana-metrics",
  "solana-program-runtime",
@@ -4086,7 +3999,7 @@ dependencies = [
 [[package]]
 name = "solana-sdk"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana.git?branch=relay#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
+source = "git+https://github.com/pashinov/solana?branch=broxus#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
 dependencies = [
  "assert_matches",
  "base64 0.13.0",
@@ -4123,11 +4036,11 @@ dependencies = [
  "serde_json",
  "sha2",
  "sha3",
- "solana-frozen-abi 1.9.29 (git+https://github.com/pashinov/solana.git?branch=relay)",
- "solana-frozen-abi-macro 1.9.29 (git+https://github.com/pashinov/solana.git?branch=relay)",
- "solana-logger 1.9.29 (git+https://github.com/pashinov/solana.git?branch=relay)",
- "solana-program 1.9.29 (git+https://github.com/pashinov/solana.git?branch=relay)",
- "solana-sdk-macro 1.9.29 (git+https://github.com/pashinov/solana.git?branch=relay)",
+ "solana-frozen-abi",
+ "solana-frozen-abi-macro",
+ "solana-logger",
+ "solana-program",
+ "solana-sdk-macro",
  "thiserror",
  "uriparse",
  "wasm-bindgen",
@@ -4136,20 +4049,7 @@ dependencies = [
 [[package]]
 name = "solana-sdk-macro"
 version = "1.9.29"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3db4c93bd43c91290ad54fe6ff86179a859954f196507c4789a4876d38a62f17"
-dependencies = [
- "bs58",
- "proc-macro2 1.0.39",
- "quote 1.0.18",
- "rustversion",
- "syn 1.0.96",
-]
-
-[[package]]
-name = "solana-sdk-macro"
-version = "1.9.29"
-source = "git+https://github.com/pashinov/solana.git?branch=relay#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
+source = "git+https://github.com/pashinov/solana?branch=broxus#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
 dependencies = [
  "bs58",
  "proc-macro2 1.0.39",
@@ -4161,7 +4061,7 @@ dependencies = [
 [[package]]
 name = "solana-stake-program"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana.git?branch=relay#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
+source = "git+https://github.com/pashinov/solana?branch=broxus#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
 dependencies = [
  "bincode",
  "log",
@@ -4171,8 +4071,8 @@ dependencies = [
  "serde",
  "serde_derive",
  "solana-config-program",
- "solana-frozen-abi 1.9.29 (git+https://github.com/pashinov/solana.git?branch=relay)",
- "solana-frozen-abi-macro 1.9.29 (git+https://github.com/pashinov/solana.git?branch=relay)",
+ "solana-frozen-abi",
+ "solana-frozen-abi-macro",
  "solana-metrics",
  "solana-program-runtime",
  "solana-sdk",
@@ -4183,7 +4083,7 @@ dependencies = [
 [[package]]
 name = "solana-transaction-status"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana.git?branch=relay#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
+source = "git+https://github.com/pashinov/solana?branch=broxus#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
 dependencies = [
  "Inflector",
  "base64 0.12.3",
@@ -4209,21 +4109,21 @@ dependencies = [
 [[package]]
 name = "solana-version"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana.git?branch=relay#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
+source = "git+https://github.com/pashinov/solana?branch=broxus#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
 dependencies = [
  "log",
  "rustc_version",
  "serde",
  "serde_derive",
- "solana-frozen-abi 1.9.29 (git+https://github.com/pashinov/solana.git?branch=relay)",
- "solana-frozen-abi-macro 1.9.29 (git+https://github.com/pashinov/solana.git?branch=relay)",
+ "solana-frozen-abi",
+ "solana-frozen-abi-macro",
  "solana-sdk",
 ]
 
 [[package]]
 name = "solana-vote-program"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana.git?branch=relay#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
+source = "git+https://github.com/pashinov/solana?branch=broxus#63b01949cd0cd6e3fb233fe568c73c89f3970b7d"
 dependencies = [
  "bincode",
  "log",
@@ -4232,9 +4132,9 @@ dependencies = [
  "rustc_version",
  "serde",
  "serde_derive",
- "solana-frozen-abi 1.9.29 (git+https://github.com/pashinov/solana.git?branch=relay)",
- "solana-frozen-abi-macro 1.9.29 (git+https://github.com/pashinov/solana.git?branch=relay)",
- "solana-logger 1.9.29 (git+https://github.com/pashinov/solana.git?branch=relay)",
+ "solana-frozen-abi",
+ "solana-frozen-abi-macro",
+ "solana-logger",
  "solana-metrics",
  "solana-program-runtime",
  "solana-sdk",
@@ -4253,7 +4153,7 @@ version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "393e2240d521c3dd770806bff25c2c00d761ac962be106e14e22dd912007f428"
 dependencies = [
- "solana-program 1.9.29 (registry+https://github.com/rust-lang/crates.io-index)",
+ "solana-program",
  "spl-token",
 ]
 
@@ -4263,7 +4163,7 @@ version = "3.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bd0dc6f70db6bacea7ff25870b016a65ba1d1b6013536f08e4fd79a8f9005325"
 dependencies = [
- "solana-program 1.9.29 (registry+https://github.com/rust-lang/crates.io-index)",
+ "solana-program",
 ]
 
 [[package]]
@@ -4276,7 +4176,7 @@ dependencies = [
  "num-derive",
  "num-traits",
  "num_enum",
- "solana-program 1.9.29 (registry+https://github.com/rust-lang/crates.io-index)",
+ "solana-program",
  "thiserror",
 ]
 
@@ -4619,7 +4519,7 @@ dependencies = [
 [[package]]
 name = "token-proxy"
 version = "0.1.0"
-source = "git+ssh://git@gitlab.dexpa.io/solana-everscale-bridge/solana-bridge#f668337b4d26b85431adf0df4c4ddd2ba98ef1d5"
+source = "git+ssh://git@gitlab.dexpa.io/solana-everscale-bridge/solana-bridge#3df1ac84dd20badbea8aaf36ed238d11187f9da7"
 dependencies = [
  "bincode",
  "borsh",
@@ -4629,7 +4529,7 @@ dependencies = [
  "getrandom 0.2.7",
  "round-loader",
  "serde",
- "solana-program 1.9.29 (registry+https://github.com/rust-lang/crates.io-index)",
+ "solana-program",
  "spl-associated-token-account",
  "spl-token",
  "thiserror",

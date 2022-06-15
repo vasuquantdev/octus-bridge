@@ -50,10 +50,10 @@ web3 = { version = "0.18.0", default-features = false, features = ["http-rustls-
 ethabi = "16.0.0"
 
 # Solana dependencies
-solana-sdk = { git = "https://github.com/pashinov/solana.git", branch = "relay" }
-solana-client = { git = "https://github.com/pashinov/solana.git", branch = "relay" }
-solana-account-decoder = { git = "https://github.com/pashinov/solana.git", branch = "relay" }
-solana-transaction-status = { git = "https://github.com/pashinov/solana.git", branch = "relay" }
+solana-sdk = { git = 'https://github.com/pashinov/solana', branch = 'broxus' }
+solana-client = { git = 'https://github.com/pashinov/solana', branch = 'broxus' }
+solana-account-decoder = { git = 'https://github.com/pashinov/solana', branch = 'broxus' }
+solana-transaction-status = { git = 'https://github.com/pashinov/solana', branch = 'broxus' }
 
 # TON specific dependencies
 ton_block = { git = "https://github.com/broxus/ton-labs-block" }
@@ -63,7 +63,7 @@ ton_types = { git = "https://github.com/broxus/ton-labs-types" }
 eth-ton-abi-converter = { git = "https://github.com/broxus/eth-ton-abi-converter.git", branch = "dev" }
 
 # Solana Bridge
-solana-bridge = { version = "0.1", git = "ssh://git@gitlab.dexpa.io/solana-everscale-bridge/solana-bridge" }
+solana-bridge = { git = "ssh://git@gitlab.dexpa.io/solana-everscale-bridge/solana-bridge" }
 
 # Nekoton SDK
 nekoton-abi = { git = "https://github.com/broxus/nekoton.git", features = ["derive"] }
@@ -79,3 +79,5 @@ tempfile = "3.3.0"
 
 [patch.crates-io]
 hmac-drbg = { git = "https://github.com/Rexagon/rust-hmac-drbg" }
+solana-program = { git = 'https://github.com/pashinov/solana', branch = 'broxus' }
+everscale-network = { git = 'https://github.com/broxus/everscale-network' }
