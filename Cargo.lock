@@ -2928,7 +2928,7 @@ dependencies = [
 [[package]]
 name = "ton_types"
 version = "1.10.2"
-source = "git+https://github.com/broxus/ton-labs-types#d119bdd60ca1d527f0dac367521a0009167f3645"
+source = "git+https://github.com/broxus/ton-labs-types#e7dcdd4a4c194baff47bc7e882f2aa6b4a69413f"
 dependencies = [
  "anyhow",
  "base64",
