@@ -1598,7 +1598,7 @@ checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
 [[package]]
 name = "global-config"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#6eb40994209c7b871117af807d64dd7eea38698d"
+source = "git+https://github.com/broxus/ton-indexer.git#c17e57d00f3e881ad32c867094edb738b5e47b5a"
 dependencies = [
  "anyhow",
  "base64 0.13.0",
@@ -2204,11 +2204,6 @@ dependencies = [
  "typemap",
  "winapi",
 ]
-
-[[package]]
-name = "lru_time_cache"
-version = "0.11.11"
-source = "git+https://github.com/Rexagon/lru_time_cache.git#43ce01deb20a971fd88fbab0abd9c3eef6339455"
 
 [[package]]
 name = "matches"
@@ -3206,9 +3201,9 @@ dependencies = [
 
 [[package]]
 name = "rlimit"
-version = "0.7.0"
+version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "347703a5ae47adf1e693144157be231dde38c72bd485925cae7407ad3e52480b"
+checksum = "f7278a1ec8bfd4a4e07515c589f5ff7b309a373f987393aef44813d9dcf87aa3"
 dependencies = [
  "libc",
 ]
@@ -4264,9 +4259,9 @@ dependencies = [
 
 [[package]]
 name = "sysinfo"
-version = "0.23.13"
+version = "0.24.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3977ec2e0520829be45c8a2df70db2bf364714d8a748316a10c3c35d4d2b01c9"
+checksum = "6e6241cec618592e5d52f7ed0c8abba0cd1969a5aa4be7b5351281d922113e1d"
 dependencies = [
  "cfg-if",
  "core-foundation-sys",
@@ -4604,7 +4599,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#6eb40994209c7b871117af807d64dd7eea38698d"
+source = "git+https://github.com/broxus/ton-indexer.git#c17e57d00f3e881ad32c867094edb738b5e47b5a"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -4622,9 +4617,9 @@ dependencies = [
  "itertools",
  "libc",
  "log",
- "lru_time_cache",
  "num-traits",
  "num_cpus",
+ "once_cell",
  "parking_lot 0.12.1",
  "rand 0.8.5",
  "rlimit",
@@ -4647,7 +4642,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer-alloc"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#6eb40994209c7b871117af807d64dd7eea38698d"
+source = "git+https://github.com/broxus/ton-indexer.git#c17e57d00f3e881ad32c867094edb738b5e47b5a"
 dependencies = [
  "anyhow",
  "errno",
@@ -4717,7 +4712,7 @@ dependencies = [
 [[package]]
 name = "ton_types"
 version = "1.10.2"
-source = "git+https://github.com/broxus/ton-labs-types#d119bdd60ca1d527f0dac367521a0009167f3645"
+source = "git+https://github.com/broxus/ton-labs-types#e7dcdd4a4c194baff47bc7e882f2aa6b4a69413f"
 dependencies = [
  "anyhow",
  "base64 0.13.0",
