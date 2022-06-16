@@ -451,17 +451,19 @@ impl SolSubscriber {
         keystore: &Arc<KeyStore>,
     ) -> Result<Signature, ClientError> {
         tokio::task::spawn_blocking({
-            let transaction = keystore
-                .sol
-                .sign(message, self.rpc_client.get_latest_blockhash()?)
-                .map_err(|err| {
-                    ClientError::from(ClientErrorKind::Custom(format!(
-                        "Failed to sign sol message: {}",
-                        err
-                    )))
-                })?;
             let rpc_client = self.rpc_client.clone();
+            let keystore = keystore.clone();
             move || -> Result<Signature, ClientError> {
+                let transaction = keystore
+                    .sol
+                    .sign(message, rpc_client.get_latest_blockhash()?)
+                    .map_err(|err| {
+                        ClientError::from(ClientErrorKind::Custom(format!(
+                            "Failed to sign sol message: {}",
+                            err
+                        )))
+                    })?;
+
                 rpc_client.send_and_confirm_transaction(&transaction)
             }
         })
