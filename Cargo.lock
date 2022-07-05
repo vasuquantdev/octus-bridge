@@ -2746,9 +2746,9 @@ checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
 
 [[package]]
 name = "pkey_mprotect"
-version = "0.2.2"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a43ed5b1c13fc6603068996b13f8eeb853d432390857d7f3f1794a6482c67af5"
+checksum = "10f701e21a221433bc6bc336aeea184bc0e06430fadff74144b9638cfa181398"
 dependencies = [
  "libc",
  "log",
