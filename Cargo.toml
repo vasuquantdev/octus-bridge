@@ -1,6 +1,6 @@
 [package]
 name = "relay"
-version = "2.0.12"
+version = "2.0.13"
 edition = "2021"
 authors = ["Broxus team"]
 publish = false
@@ -16,23 +16,23 @@ config = { version = "0.13.1", default-features = false, features = ["yaml"] }
 dashmap = "5.3"
 dialoguer = "0.10.0"
 either = "1.6.1"
-everscale-network = "0.3.2"
+everscale-network = "0.3.5"
 futures-util = "0.3"
 hex = "0.4"
 hyper = { version = "0.14", features = ["server"] }
 log = "0.4"
 log4rs = "1.1"
 num-traits = "0.2"
-once_cell = "1.12"
-parking_lot = "0.12.0"
-pkey_mprotect = "0.2.2"
+once_cell = "1.13.0"
+parking_lot = { version = "0.12.1", features = ["hardware-lock-elision"] }
+pkey_mprotect = "0.2.3"
 pomfrit = "0.1"
 public-ip = "0.2"
 rand = "0.8"
-regex = "1.5"
+regex = "1.6"
 rustc-hash = "1.1.0"
-secp256k1 = { version = "0.21.2", features = ["recovery"] }
-secstr = { version = "0.4", features = ["serde"] }
+secp256k1 = { version = "0.21.3", features = ["recovery"] }
+secstr = { version = "0.5", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.8"

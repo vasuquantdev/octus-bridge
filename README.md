@@ -304,6 +304,19 @@ more optimized than C++ node, so they don't harm the network.
 
 ### Changelog
 
+### 2.0.13 (2022-07-22)
+
+Features:
+
+* Replace `tiny-adnl` with `everscale-network`
+* Optimize DB layout
+
+### 2.0.12 (2022-06-03)
+
+Features:
+
+* Backport transport fixes
+
 ### 2.0.11 (2022-04-13)
 
 Features:

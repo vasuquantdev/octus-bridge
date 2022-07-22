@@ -188,6 +188,7 @@ impl TonSigner {
             &unsigned_message.inputs,
             false,
             Some(&self.keys.lock().ton_keypair),
+            None,
         )?;
 
         let message = ton_block::Message::with_ext_in_header_and_body(
@@ -246,7 +247,7 @@ impl UnsignedMessage {
         let headers = default_headers(time, expire_at, &Default::default());
         let body = self
             .function
-            .encode_input(&headers, &self.inputs, false, None)?;
+            .encode_input(&headers, &self.inputs, false, None, None)?;
 
         let message = ton_block::Message::with_ext_in_header_and_body(
             ton_block::ExternalInboundMessageHeader {
