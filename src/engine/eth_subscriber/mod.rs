@@ -244,6 +244,7 @@ impl EthSubscriber {
             let balance = retry(
                 || self.get_balance(*relay_address),
                 crate::utils::generate_default_timeout_config(Duration::from_secs(60)),
+                self.chain_id,
                 "Failed getting balance",
             )
             .await?;
@@ -400,6 +401,7 @@ impl EthSubscriber {
         let mut current_block = match retry(
             || self.get_current_block_number(),
             api_request_strategy,
+            self.chain_id,
             "get actual ethereum height",
         )
         .await
@@ -444,6 +446,7 @@ impl EthSubscriber {
                 )
             },
             api_request_strategy,
+            self.chain_id,
             "process block",
         )
         .await
@@ -571,6 +574,7 @@ impl EthSubscriber {
                 generate_default_timeout_config(Duration::from_secs(
                     self.config.maximum_failed_responses_time_sec,
                 )),
+                self.chain_id,
                 "get contract logs",
             )
             .await
@@ -597,6 +601,7 @@ impl EthSubscriber {
                 generate_default_timeout_config(Duration::from_secs(
                     self.config.maximum_failed_responses_time_sec,
                 )),
+                self.chain_id,
                 "get transaction receipt",
             )
             .await

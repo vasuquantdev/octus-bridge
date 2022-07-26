@@ -9,6 +9,7 @@ use tryhard::{NoOnRetry, RetryFutureConfig, RetryPolicy};
 pub async fn retry<MakeFutureT, T, E, Fut, BackoffT, OnRetryT>(
     producer: MakeFutureT,
     config: RetryFutureConfig<BackoffT, OnRetryT>,
+    chain_id: u32,
     message: &'static str,
 ) -> Result<T, E>
 where
@@ -20,7 +21,7 @@ where
 {
     let config = config.on_retry(|attempt, next_delay, error: &E| {
         log::error!(
-            "Retrying {} with {} attempt. Next delay: {:?}. Error: {:?}",
+            "Retrying EVM-{chain_id} {} with {} attempt. Next delay: {:?}. Error: {:?}",
             message,
             attempt,
             next_delay,
