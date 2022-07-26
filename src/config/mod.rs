@@ -2,6 +2,7 @@ use std::net::{Ipv4Addr, SocketAddrV4};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+use everscale_network::{adnl, dht, overlay, rldp};
 use nekoton_utils::*;
 use rand::Rng;
 use secstr::SecUtf8;
@@ -136,11 +137,11 @@ pub struct NodeConfig {
     /// Whether old blocks will be removed on each new key block
     pub blocks_gc_enabled: bool,
 
-    pub adnl_options: tiny_adnl::AdnlNodeOptions,
-    pub rldp_options: tiny_adnl::RldpNodeOptions,
-    pub dht_options: tiny_adnl::DhtNodeOptions,
-    pub neighbours_options: tiny_adnl::NeighboursOptions,
-    pub overlay_shard_options: tiny_adnl::OverlayShardOptions,
+    pub adnl_options: adnl::NodeOptions,
+    pub rldp_options: rldp::NodeOptions,
+    pub dht_options: dht::NodeOptions,
+    pub overlay_shard_options: overlay::ShardOptions,
+    pub neighbours_options: ton_indexer::NeighboursOptions,
 }
 
 impl NodeConfig {
@@ -207,16 +208,16 @@ impl Default for NodeConfig {
             states_gc_enabled: true,
             blocks_gc_enabled: true,
             adnl_options: Default::default(),
-            rldp_options: tiny_adnl::RldpNodeOptions {
+            rldp_options: rldp::NodeOptions {
                 force_compression: true,
                 ..Default::default()
             },
             dht_options: Default::default(),
-            neighbours_options: Default::default(),
-            overlay_shard_options: tiny_adnl::OverlayShardOptions {
+            overlay_shard_options: overlay::ShardOptions {
                 force_compression: true,
                 ..Default::default()
             },
+            neighbours_options: Default::default(),
         }
     }
 }

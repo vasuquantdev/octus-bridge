@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use parking_lot::Mutex;
 use pkey_mprotect::*;
 use pomfrit::formatter::*;
-use tiny_adnl::utils::*;
+use rustc_hash::FxHashMap;
 use tokio::sync::mpsc;
 use ton_block::Serializable;
 
@@ -222,9 +222,7 @@ impl EngineContext {
         expire_at: u32,
     ) -> Result<MessageStatus> {
         let to = match message.header() {
-            ton_block::CommonMsgInfo::ExtInMsgInfo(header) => {
-                ton_block::AccountIdPrefixFull::prefix(&header.dst)?
-            }
+            ton_block::CommonMsgInfo::ExtInMsgInfo(header) => header.dst.workchain_id(),
             _ => return Err(EngineError::ExternalTonMessageExpected.into()),
         };
 
@@ -236,8 +234,7 @@ impl EngineContext {
             .add_message(*account, cells.repr_hash(), expire_at)?;
 
         self.ton_engine
-            .broadcast_external_message(&to, &serialized)
-            .await?;
+            .broadcast_external_message(to, &serialized)?;
 
         let status = rx.await?;
         Ok(status)

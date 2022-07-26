@@ -6,8 +6,9 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use eth_ton_abi_converter::*;
+use everscale_network::utils::FxDashMap;
 use nekoton_abi::*;
-use tiny_adnl::utils::*;
+use rustc_hash::{FxHashMap, FxHashSet};
 use tokio::sync::mpsc;
 use tokio::sync::RwLock;
 use ton_block::{Deserializable, HashmapAugType};

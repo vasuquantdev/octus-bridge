@@ -2,8 +2,7 @@ use std::fs::File;
 use std::path::Path;
 
 use anyhow::Result;
-use chacha20poly1305::aead::NewAead;
-use chacha20poly1305::{ChaCha20Poly1305, Nonce};
+use chacha20poly1305::{ChaCha20Poly1305, KeyInit, Nonce};
 use nekoton_utils::*;
 use rand::prelude::*;
 use secstr::SecUtf8;

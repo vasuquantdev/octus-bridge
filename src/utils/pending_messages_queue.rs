@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use parking_lot::Mutex;
-use tiny_adnl::utils::*;
+use rustc_hash::FxHashMap;
 use tokio::sync::oneshot;
 use ton_types::UInt256;
 

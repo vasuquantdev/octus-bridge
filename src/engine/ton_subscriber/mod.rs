@@ -5,7 +5,7 @@ use std::sync::{Arc, Weak};
 
 use anyhow::{Context, Result};
 use parking_lot::Mutex;
-use tiny_adnl::utils::*;
+use rustc_hash::FxHashMap;
 use tokio::sync::{mpsc, oneshot, watch, Notify};
 use ton_block::{BinTreeType, Deserializable, HashmapAugType};
 use ton_indexer::{BriefBlockMeta, EngineStatus, ProcessBlockContext};
@@ -288,14 +288,32 @@ impl TonSubscriber {
 
                 if subscription_status == StateSubscriptionStatus::Alive {
                     match shard_accounts.get(account) {
-                        Ok(account) => {
-                            if subscription.state_tx.send(account).is_err() {
+                        Ok(mut account) => {
+                            let should_send = match &mut account {
+                                // If account exists, all its cells must be preloaded
+                                // to get rid of rocksdb access
+                                Some(account) => {
+                                    match account.account_cell().preload_with_depth_hint::<20>() {
+                                        // Account is now fully in memory
+                                        Ok(()) => true,
+                                        // Failed to load all cells
+                                        Err(e) => {
+                                            log::error!("Failed to preload account: {e:?}");
+                                            false
+                                        }
+                                    }
+                                }
+                                // Empty accounts can be sent without preloading
+                                None => true,
+                            };
+
+                            if should_send && subscription.state_tx.send(account).is_err() {
                                 log::error!("Shard subscription somehow dropped");
                                 keep = false;
                             }
                         }
                         Err(e) => {
-                            log::error!("Failed to get account {:x}: {:?}", account, e);
+                            log::error!("Failed to get account {account:x}: {e:?}");
                         }
                     };
                 } else {
@@ -539,7 +557,7 @@ pub fn start_listening_events<S, E, R>(
 ) where
     S: Send + Sync + 'static,
     E: Send + 'static,
-    R: futures::Future<Output = Result<()>> + Send + 'static,
+    R: futures_util::Future<Output = Result<()>> + Send + 'static,
 {
     let service = Arc::downgrade(service);
 
