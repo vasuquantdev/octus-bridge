@@ -29,8 +29,7 @@ where
         );
         std::future::ready(())
     });
-    let res = tryhard::retry_fn(producer).with_config(config).await;
-    res
+    tryhard::retry_fn(producer).with_config(config).await
 }
 
 #[inline]

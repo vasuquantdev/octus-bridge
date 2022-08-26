@@ -10,7 +10,7 @@ license-file = "LICENSE"
 anyhow = "1.0"
 argh = "0.1"
 async-trait = "0.1"
-chacha20poly1305 = "0.10.0-pre"
+chacha20poly1305 = "0.10.1"
 chrono = "0.4.19"
 config = { version = "0.13.1", default-features = false, features = ["yaml"] }
 dashmap = "5.3"
