@@ -7,12 +7,12 @@ use dialoguer::{Confirm, Input, Password};
 use pkey_mprotect::*;
 use relay::config::*;
 use relay::engine::*;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tokio::signal::unix;
 use tokio::sync::mpsc;
 
 #[global_allocator]
-static GLOBAL: ton_indexer::alloc::Allocator = ton_indexer::alloc::allocator();
+static GLOBAL: broxus_util::alloc::Allocator = broxus_util::alloc::allocator();
 
 fn main() -> Result<()> {
     let app = argh::from_env::<App>();
@@ -23,14 +23,14 @@ fn main() -> Result<()> {
     }
 }
 
-#[derive(Debug, PartialEq, FromArgs)]
+#[derive(Debug, FromArgs)]
 #[argh(description = "")]
 struct App {
     #[argh(subcommand)]
     command: Subcommand,
 }
 
-#[derive(Debug, PartialEq, FromArgs)]
+#[derive(Debug, FromArgs)]
 #[argh(subcommand)]
 enum Subcommand {
     Run(CmdRun),
@@ -38,7 +38,7 @@ enum Subcommand {
     Export(CmdExport),
 }
 
-#[derive(Debug, PartialEq, FromArgs)]
+#[derive(Debug, FromArgs)]
 /// Starts relay node
 #[argh(subcommand, name = "run")]
 struct CmdRun {
@@ -108,7 +108,7 @@ impl CmdRun {
     }
 }
 
-#[derive(Debug, PartialEq, FromArgs)]
+#[derive(Debug, FromArgs)]
 /// Creates encrypted file
 #[argh(subcommand, name = "generate")]
 struct CmdGenerate {
@@ -131,7 +131,7 @@ struct CmdGenerate {
 
 impl CmdGenerate {
     fn execute(self) -> Result<()> {
-        let config: BriefAppConfig = read_config(self.config)?;
+        let config: BriefAppConfig = broxus_util::read_config(self.config)?;
 
         let path = std::path::Path::new(&self.output);
         if path.exists()
@@ -187,7 +187,7 @@ impl CmdGenerate {
     }
 }
 
-#[derive(Debug, PartialEq, FromArgs)]
+#[derive(Debug, FromArgs)]
 /// Prints phrases, ETH address and TON public key
 #[argh(subcommand, name = "export")]
 struct CmdExport {
@@ -206,7 +206,7 @@ struct CmdExport {
 
 impl CmdExport {
     fn execute(self) -> Result<()> {
-        let config: BriefAppConfig = read_config(self.config)?;
+        let config: BriefAppConfig = broxus_util::read_config(self.config)?;
 
         let data =
             StoredKeysData::load(&self.from).context("Failed to load encrypted keys data")?;
@@ -260,8 +260,9 @@ fn create_relay<P>(config_path: P) -> Result<(Arc<Relay>, AppConfig)>
 where
     P: AsRef<std::path::Path>,
 {
-    let config: AppConfig = read_config(&config_path)?;
-    let logger = init_logger(&config.logger_settings).context("Failed to init logger")?;
+    let config: AppConfig = broxus_util::read_config(&config_path)?;
+    let logger =
+        broxus_util::init_logger(&config.logger_settings).context("Failed to init logger")?;
     let state = Arc::new(Relay {
         config_path: config_path.as_ref().into(),
         logger,
@@ -313,10 +314,11 @@ impl Relay {
     }
 
     async fn reload(&self) -> Result<()> {
-        let config: AppConfig = read_config(&self.config_path)?;
+        let config: AppConfig = broxus_util::read_config(&self.config_path)?;
 
         self.logger.set_config(
-            parse_logger_config(config.logger_settings).context("Failed to parse logger config")?,
+            broxus_util::parse_logger_config(config.logger_settings)
+                .context("Failed to parse logger config")?,
         );
 
         if let Some(engine) = &*self.engine.lock().await {
@@ -356,58 +358,4 @@ where
 
 fn make_empty_password<'a>() -> Cow<'a, secstr::SecUtf8> {
     Cow::Owned("".into())
-}
-
-fn read_config<P, T>(path: P) -> Result<T>
-where
-    P: AsRef<std::path::Path>,
-    for<'de> T: Deserialize<'de>,
-{
-    let data = std::fs::read_to_string(path).context("Failed to read config")?;
-    let re = regex::Regex::new(r"\$\{([a-zA-Z_][0-9a-zA-Z_]*)\}").unwrap();
-    let result = re.replace_all(&data, |caps: &regex::Captures| {
-        match std::env::var(&caps[1]) {
-            Ok(value) => value,
-            Err(_) => {
-                eprintln!("WARN: Environment variable {} was not set", &caps[1]);
-                String::default()
-            }
-        }
-    });
-
-    config::Config::builder()
-        .add_source(config::File::from_str(
-            result.as_ref(),
-            config::FileFormat::Yaml,
-        ))
-        .build()
-        .context("Failed to load config")?
-        .try_deserialize()
-        .context("Failed to parse config")
-}
-
-fn init_logger(initial_value: &serde_yaml::Value) -> Result<log4rs::Handle> {
-    let handle = log4rs::config::init_config(parse_logger_config(initial_value.clone())?)?;
-    Ok(handle)
-}
-
-fn parse_logger_config(value: serde_yaml::Value) -> Result<log4rs::Config> {
-    let config = serde_yaml::from_value::<log4rs::config::RawConfig>(value)?;
-
-    let (appenders, errors) = config.appenders_lossy(&log4rs::config::Deserializers::default());
-    if !errors.is_empty() {
-        return Err(InitError::Deserializing).with_context(|| format!("{:#?}", errors));
-    }
-
-    let config = log4rs::Config::builder()
-        .appenders(appenders)
-        .loggers(config.loggers())
-        .build(config.root())?;
-    Ok(config)
-}
-
-#[derive(thiserror::Error, Debug)]
-enum InitError {
-    #[error("Errors found when deserializing the logger config")]
-    Deserializing,
 }

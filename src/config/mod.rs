@@ -147,12 +147,7 @@ pub struct NodeConfig {
 impl NodeConfig {
     pub async fn build_indexer_config(self) -> Result<ton_indexer::NodeConfig> {
         // Determine public ip
-        let ip_address = match self.adnl_public_ip {
-            Some(address) => address,
-            None => public_ip::addr_v4()
-                .await
-                .ok_or(ConfigError::PublicIpNotFound)?,
-        };
+        let ip_address = broxus_util::resolve_public_ip(self.adnl_public_ip).await?;
         log::info!("Using public ip: {}", ip_address);
 
         // Generate temp keys
@@ -259,10 +254,4 @@ fn default_logger_settings() -> serde_yaml::Value {
         additive: false
     "##;
     serde_yaml::from_str(DEFAULT_LOG4RS_SETTINGS).unwrap()
-}
-
-#[derive(thiserror::Error, Debug)]
-enum ConfigError {
-    #[error("Failed to find public ip")]
-    PublicIpNotFound,
 }
