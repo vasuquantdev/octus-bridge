@@ -80,4 +80,3 @@ tempfile = "3.3.0"
 [patch.crates-io]
 hmac-drbg = { git = "https://github.com/Rexagon/rust-hmac-drbg" }
 solana-program = { git = 'https://github.com/pashinov/solana', branch = 'broxus' }
-everscale-network = { git = 'https://github.com/broxus/everscale-network' }

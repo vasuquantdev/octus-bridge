@@ -13,7 +13,7 @@ use solana_client::rpc_request::RpcError;
 pub async fn retry<MakeFutureT, T, E, Fut, BackoffT, OnRetryT>(
     producer: MakeFutureT,
     config: RetryFutureConfig<BackoffT, OnRetryT>,
-    chain_id: u32,
+    network: NetworkType,
     message: &'static str,
 ) -> Result<T, E>
 where
@@ -25,7 +25,8 @@ where
 {
     let config = config.on_retry(|attempt, next_delay, error: &E| {
         log::error!(
-            "Retrying EVM-{chain_id} {} with {} attempt. Next delay: {:?}. Error: {:?}",
+            "Retrying {:?} {} with {} attempt. Next delay: {:?}. Error: {:?}",
+            network,
             message,
             attempt,
             next_delay,
@@ -122,4 +123,18 @@ pub fn calculate_times_from_max_delay(
     let remaining_time = total_retry_time - time_to_saturate;
     let steps = remaining_time / maximum_delay;
     (steps + saturation_steps).ceil() as u32
+}
+
+pub enum NetworkType {
+    SOL,
+    EVM(u32),
+}
+
+impl std::fmt::Debug for NetworkType {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            NetworkType::SOL => write!(f, "SOL"),
+            NetworkType::EVM(chain_id) => write!(f, "EVM-{chain_id}"),
+        }
+    }
 }

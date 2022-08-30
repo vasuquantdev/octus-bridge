@@ -143,6 +143,7 @@ impl SolSubscriber {
                 generate_sol_rpc_backoff_config(Duration::from_secs(
                     self.config.maximum_failed_responses_time_sec,
                 )),
+                NetworkType::SOL,
                 "send solana transaction",
             )
             .await
@@ -250,6 +251,7 @@ impl SolSubscriber {
                 generate_default_timeout_config(Duration::from_secs(
                     self.config.maximum_failed_responses_time_sec,
                 )),
+                NetworkType::SOL,
                 "get account",
             )
             .await
@@ -295,6 +297,7 @@ impl SolSubscriber {
                 generate_default_timeout_config(Duration::from_secs(
                     self.config.maximum_failed_responses_time_sec,
                 )),
+                NetworkType::SOL,
                 "get account",
             )
             .await
@@ -320,6 +323,7 @@ impl SolSubscriber {
                 generate_default_timeout_config(Duration::from_secs(
                     self.config.maximum_failed_responses_time_sec,
                 )),
+                NetworkType::SOL,
                 "get solana transaction",
             )
             .await
