@@ -45,6 +45,9 @@ impl SolSubscriber {
             config.commitment,
         ));
 
+        let block_height = rpc_client.get_block_height()?;
+        log::info!("Solana block height: {}", block_height);
+
         let pool = Arc::new(Semaphore::new(config.pool_size));
 
         let subscriber = Arc::new(Self {
