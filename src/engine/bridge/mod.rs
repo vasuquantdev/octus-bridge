@@ -1203,7 +1203,7 @@ impl Bridge {
             log::info!(
                 "Send '{:?}' vote for {} solana proposal",
                 ix.vote,
-                proposal_pubkey.to_string()
+                proposal_pubkey
             );
         }
 

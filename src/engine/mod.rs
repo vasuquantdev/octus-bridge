@@ -64,7 +64,8 @@ impl Engine {
 
                 buffer
                     .write(LabeledEthSubscriberMetrics(&engine.context))
-                    .write(LabeledTonSubscriberMetrics(&engine.context));
+                    .write(LabeledTonSubscriberMetrics(&engine.context))
+                    .write(LabeledSolSubscriberMetrics(&engine.context));
 
                 if let Some(bridge) = &*engine.bridge.lock() {
                     buffer.write(LabeledBridgeMetrics {
@@ -472,9 +473,27 @@ impl std::fmt::Display for LabeledEthSubscriberMetrics<'_> {
 
             f.begin_metric("eth_subscriber_pending_confirmation_count")
                 .label(LABEL_STAKER, &self.0.staker_account_str)
-                .label(LABEL_CHAIN_ID, &chain_id)
+                .label(LABEL_CHAIN_ID, "solana")
                 .value(metrics.pending_confirmation_count)?;
         }
+        Ok(())
+    }
+}
+
+struct LabeledSolSubscriberMetrics<'a>(&'a EngineContext);
+
+impl std::fmt::Display for LabeledSolSubscriberMetrics<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let metrics = self.0.sol_subscriber.metrics();
+
+        f.begin_metric("sol_subscriber_lost_proposals_count")
+            .label(LABEL_STAKER, &self.0.staker_account_str)
+            .value(metrics.lost_proposals_count)?;
+
+        f.begin_metric("sol_subscriber_unrecognized_proposals_count")
+            .label(LABEL_STAKER, &self.0.staker_account_str)
+            .value(metrics.unrecognized_proposals_count)?;
+
         Ok(())
     }
 }
