@@ -6,7 +6,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use eth_ton_abi_converter::*;
+use borsh::BorshDeserialize;
+use eth_ton_abi_converter::{
+    decode_ton_event_abi, make_mapped_ton_event, map_ton_tokens_to_eth_bytes, EthEventAbi,
+};
 use everscale_network::utils::FxDashMap;
 use nekoton_abi::*;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -938,7 +941,7 @@ impl Bridge {
                 settings,
                 data.and_then(|data| {
                     let data: Vec<TokenValue> = data.into_iter().map(|token| token.value).collect();
-                    borsh::serialize_tokens(&data)
+                    eth_ton_abi_converter::borsh::serialize_tokens(&data)
                 })?,
             ),
             // Do nothing when configuration was not found
@@ -1089,7 +1092,7 @@ impl Bridge {
                 execute_instruction,
                 data.and_then(|data| {
                     let data: Vec<TokenValue> = data.into_iter().map(|token| token.value).collect();
-                    borsh::serialize_tokens(&data)
+                    eth_ton_abi_converter::borsh::serialize_tokens(&data)
                 })?,
             ),
             // Do nothing when configuration was not found
@@ -1194,6 +1197,15 @@ impl Bridge {
                 return Ok(());
             }
         };
+
+        if let Some(c_ix) = sol_message_vote.instructions.first() {
+            let ix = solana_bridge::instructions::VoteForProposal::try_from_slice(&c_ix.data)?;
+            log::info!(
+                "Send '{:?}' vote for {} solana proposal",
+                ix.vote,
+                proposal_pubkey.to_string()
+            );
+        }
 
         // Send confirm/reject to Solana
         sol_subscriber

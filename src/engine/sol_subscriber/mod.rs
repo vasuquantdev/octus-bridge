@@ -168,6 +168,11 @@ impl SolSubscriber {
         let programs_to_subscribe = self.programs_to_subscribe.read().clone();
         for program_pubkey in programs_to_subscribe {
             let pending_proposals = self.get_pending_proposals(&program_pubkey).await?;
+
+            for (pubkey, _) in &pending_proposals {
+                log::info!("Found withdrawal proposal to vote: {}", pubkey.to_string());
+            }
+
             let pending_proposals = pending_proposals
                 .into_iter()
                 .map(|(pubkey, account)| (pubkey, Some(account)))
@@ -181,18 +186,25 @@ impl SolSubscriber {
         let mut pending_events = self.pending_events.lock().await;
         for (account, event) in pending_events.iter_mut() {
             if !accounts_to_check.contains_key(account) && time > event.time {
+                log::info!(
+                    "Add proposal account '{}' from TON->SOL pending events to checklist",
+                    account.to_string()
+                );
+
                 event.time = time + 3600; // Shift to 1 hour
                 accounts_to_check.insert(*account, None);
             }
         }
 
-        log::info!(
-            "Accounts to check: {:?}",
-            accounts_to_check
-                .iter()
-                .map(|(pubkey, _)| pubkey)
-                .collect::<Vec<&Pubkey>>()
-        );
+        if !accounts_to_check.is_empty() {
+            log::info!(
+                "Solana proposal accounts to check: {:?}",
+                accounts_to_check
+                    .iter()
+                    .map(|(pubkey, _)| pubkey)
+                    .collect::<Vec<&Pubkey>>()
+            );
+        }
 
         // Check accounts
         for (account_pubkey, account_data) in accounts_to_check {
