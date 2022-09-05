@@ -1,13 +1,13 @@
-use std::collections::{hash_map, HashMap};
+use std::collections::{hash_map, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
 use rustc_hash::FxHashMap;
-use solana_account_decoder::UiAccountEncoding;
 use tokio::sync::{oneshot, Semaphore};
 
+use solana_account_decoder::{UiAccountEncoding, UiDataSliceConfig};
 use solana_client::client_error::{ClientError, ClientErrorKind};
 use solana_client::rpc_client::RpcClient;
 use solana_client::rpc_config::{
@@ -173,7 +173,7 @@ impl SolSubscriber {
             self.pending_events_count.load(Ordering::Acquire)
         );
 
-        let mut accounts_to_check = HashMap::new();
+        let mut accounts_to_check = HashSet::new();
 
         // Get pending Solana proposals to check
         let programs_to_subscribe = self.programs_to_subscribe.read().clone();
@@ -182,13 +182,13 @@ impl SolSubscriber {
 
             let pending_events = self.pending_events.lock().await;
 
-            for (pubkey, _) in &pending_proposals {
+            for pubkey in &pending_proposals {
                 log::info!("Found withdrawal proposal to vote: {}", pubkey.to_string());
             }
 
             let unrecognized_proposals = pending_proposals
                 .iter()
-                .filter(|(account, _)| !pending_events.contains_key(account))
+                .filter(|account| !pending_events.contains_key(account))
                 .count();
             log::info!("Unrecognized proposals: {}", unrecognized_proposals);
 
@@ -196,14 +196,9 @@ impl SolSubscriber {
                 .store(unrecognized_proposals, Ordering::Release);
 
             // Get rid of unrecognized proposals
-            pending_proposals.retain(|(account, _)| pending_events.contains_key(account));
+            pending_proposals.retain(|account| pending_events.contains_key(account));
 
-            accounts_to_check.extend(
-                pending_proposals
-                    .into_iter()
-                    .map(|(pubkey, account)| (pubkey, Some(account)))
-                    .collect::<HashMap<Pubkey, Option<Account>>>(),
-            );
+            accounts_to_check.extend(pending_proposals.into_iter().collect::<HashSet<Pubkey>>());
         }
 
         // Get pending TON events to check
@@ -211,7 +206,7 @@ impl SolSubscriber {
 
         let mut pending_events = self.pending_events.lock().await;
         for (account, event) in pending_events.iter_mut() {
-            if !accounts_to_check.contains_key(account) && time > event.time {
+            if !accounts_to_check.contains(account) && time > event.time {
                 log::info!(
                     "Add proposal account '{}' from TON->SOL pending events to checklist",
                     account
@@ -221,29 +216,18 @@ impl SolSubscriber {
                     self.lost_proposals_count.fetch_add(1, Ordering::Release);
                 }
 
-                event.time = time + 3600; // Shift to 1 hour
-                accounts_to_check.insert(*account, None);
+                event.time = time + 300; // Shift to 5 min
+                accounts_to_check.insert(*account);
             }
         }
 
         if !accounts_to_check.is_empty() {
-            log::info!(
-                "Solana proposal accounts to check: {:?}",
-                accounts_to_check
-                    .iter()
-                    .map(|(pubkey, _)| pubkey)
-                    .collect::<Vec<&Pubkey>>()
-            );
+            log::info!("Solana proposal accounts to check: {:?}", accounts_to_check);
         }
 
         // Check accounts
-        for (account_pubkey, account_data) in accounts_to_check {
-            let result = match account_data {
-                Some(account_data) => Ok(Some(account_data)),
-                None => self.get_account(&account_pubkey).await,
-            };
-
-            match result {
+        for account_pubkey in accounts_to_check {
+            match self.get_account(&account_pubkey).await {
                 Ok(Some(account)) => {
                     if let hash_map::Entry::Occupied(mut entry) =
                         pending_events.entry(account_pubkey)
@@ -306,10 +290,7 @@ impl SolSubscriber {
         Ok(account)
     }
 
-    async fn get_pending_proposals(
-        &self,
-        program_pubkey: &Pubkey,
-    ) -> Result<Vec<(Pubkey, Account)>> {
+    async fn get_pending_proposals(&self, program_pubkey: &Pubkey) -> Result<Vec<Pubkey>> {
         let accounts = {
             let _permit = self.pool.acquire().await;
 
@@ -331,7 +312,10 @@ impl SolSubscriber {
                         account_config: RpcAccountInfoConfig {
                             encoding: Some(UiAccountEncoding::Base64),
                             commitment: Some(self.config.commitment),
-                            ..Default::default()
+                            data_slice: Some(UiDataSliceConfig {
+                                offset: 0,
+                                length: 0,
+                            }),
                         },
                         ..Default::default()
                     };
@@ -349,7 +333,7 @@ impl SolSubscriber {
             .context("Failed getting solana account")?
         };
 
-        Ok(accounts)
+        Ok(accounts.into_iter().map(|(pubkey, _)| pubkey).collect())
     }
 
     async fn get_transaction(&self, signature: &Signature) -> Result<EncodedConfirmedTransaction> {
