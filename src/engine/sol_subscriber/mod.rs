@@ -35,7 +35,6 @@ pub struct SolSubscriber {
     programs_to_subscribe: parking_lot::RwLock<Vec<Pubkey>>,
     pending_events: tokio::sync::Mutex<FxHashMap<Pubkey, PendingEvent>>,
     pending_events_count: AtomicUsize,
-    lost_proposals_count: AtomicUsize,
     unrecognized_proposals_count: AtomicUsize,
 }
 
@@ -59,7 +58,6 @@ impl SolSubscriber {
             programs_to_subscribe: Default::default(),
             pending_events: Default::default(),
             pending_events_count: Default::default(),
-            lost_proposals_count: Default::default(),
             unrecognized_proposals_count: Default::default(),
         });
 
@@ -98,7 +96,6 @@ impl SolSubscriber {
 
     pub fn metrics(&self) -> SolSubscriberMetrics {
         SolSubscriberMetrics {
-            lost_proposals_count: self.lost_proposals_count.load(Ordering::Acquire),
             unrecognized_proposals_count: self.unrecognized_proposals_count.load(Ordering::Acquire),
         }
     }
@@ -113,11 +110,14 @@ impl SolSubscriber {
 
             let (tx, rx) = oneshot::channel();
 
+            let created_at = chrono::Utc::now().timestamp() as u64;
+
             pending_events.insert(
                 account_pubkey,
                 PendingEvent {
                     event_data,
                     status_tx: Some(tx),
+                    created_at,
                     time: Default::default(),
                 },
             );
@@ -179,18 +179,19 @@ impl SolSubscriber {
         let programs_to_subscribe = self.programs_to_subscribe.read().clone();
         for program_pubkey in programs_to_subscribe {
             let mut pending_proposals = self.get_pending_proposals(&program_pubkey).await?;
+            log::info!("Found withdrawal proposal to vote: {:?}", pending_proposals);
 
             let pending_events = self.pending_events.lock().await;
-
-            for pubkey in &pending_proposals {
-                log::info!("Found withdrawal proposal to vote: {}", pubkey.to_string());
-            }
 
             let unrecognized_proposals = pending_proposals
                 .iter()
                 .filter(|account| !pending_events.contains_key(account))
                 .count();
-            log::info!("Unrecognized proposals: {}", unrecognized_proposals);
+            log::info!(
+                "Unrecognized proposals for '{}' program: {}",
+                program_pubkey,
+                unrecognized_proposals
+            );
 
             self.unrecognized_proposals_count
                 .store(unrecognized_proposals, Ordering::Release);
@@ -212,11 +213,16 @@ impl SolSubscriber {
                     account
                 );
 
-                if event.time != 0 {
-                    self.lost_proposals_count.fetch_add(1, Ordering::Release);
+                const EVENT_EXPIRY_PERIOD: u64 = 300;
+                const SHORT_REQUEST_PERIOD_SEC: u64 = 30;
+                const LONG_REQUEST_PERIOD_SEC: u64 = 1800;
+
+                if time - event.created_at > EVENT_EXPIRY_PERIOD {
+                    event.time = time + LONG_REQUEST_PERIOD_SEC;
+                } else {
+                    event.time = time + SHORT_REQUEST_PERIOD_SEC;
                 }
 
-                event.time = time + 300; // Shift to 5 min
                 accounts_to_check.insert(*account);
             }
         }
@@ -513,6 +519,7 @@ impl SolSubscriber {
 struct PendingEvent {
     event_data: Vec<u8>,
     status_tx: Option<VerificationStatusTx>,
+    created_at: u64,
     time: u64,
 }
 
@@ -545,7 +552,6 @@ pub struct SolTonTransactionData {
 
 #[derive(Debug, Copy, Clone)]
 pub struct SolSubscriberMetrics {
-    pub lost_proposals_count: usize,
     pub unrecognized_proposals_count: usize,
 }
 

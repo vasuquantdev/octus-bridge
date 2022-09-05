@@ -1201,7 +1201,7 @@ impl Bridge {
         if let Some(c_ix) = sol_message_vote.instructions.first() {
             let ix = solana_bridge::instructions::VoteForProposal::try_from_slice(&c_ix.data)?;
             log::info!(
-                "Send '{:?}' vote for {} solana proposal",
+                "Send '{:?}' to {} solana proposal",
                 ix.vote,
                 proposal_pubkey
             );
