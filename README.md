@@ -101,6 +101,7 @@ NOTE: scripts are prepared and tested on **Ubuntu 20.04**. You may need to modif
    > eth_subscriber_pending_confirmation_count{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",chain_id="250"} 0
    > eth_subscriber_last_processed_block{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",chain_id="1"} 13875962
    > eth_subscriber_pending_confirmation_count{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",chain_id="1"} 0
+   > sol_subscriber_unrecognized_proposals_count{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 0
    > ton_subscriber_ready{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 1
    > ton_subscriber_current_utime{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 1640456699
    > ton_subscriber_time_diff{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 3
@@ -108,10 +109,14 @@ NOTE: scripts are prepared and tested on **Ubuntu 20.04**. You may need to modif
    > ton_subscriber_mc_block_seqno{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 13426600
    > ton_subscriber_shard_client_mc_block_seqno{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 13426600
    > ton_subscriber_pending_message_count{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 0
-   > bridge_pending_eth_event_count{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 0
-   > bridge_pending_ton_event_count{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 0
-   > bridge_total_active_eth_event_configurations{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 86
-   > bridge_total_active_ton_event_configurations{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 11
+   > bridge_pending_eth_ton_event_count{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 0
+   > bridge_pending_ton_eth_event_count{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 0
+   > bridge_pending_sol_ton_event_count{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 0
+   > bridge_pending_ton_sol_event_count{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 0
+   > bridge_total_active_eth_ton_event_configurations{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 86
+   > bridge_total_active_ton_eth_event_configurations{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 11
+   > bridge_total_active_sol_ton_event_configurations{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 1
+   > bridge_total_active_ton_sol_event_configurations{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 1
    > staking_user_data_tokens_balance{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",round_num="13"} 100000000000000
    > staking_current_relay_round{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246"} 13
    > staking_elections_start_time{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",round_num="13"} 1640380268
@@ -143,8 +148,14 @@ bridge_settings:
   bridge_address: "0:1d51fb47566d0d283ebbf83c641c01ebebaad6c3cec55895b0074b802036094e"
   # If set, relay will not participate in elections. Default: false
   ignore_elections: false
+  # Solana network config
+  sol_network:
+    # Public endpoint
+    endpoint: https://api.mainnet-beta.solana.com
+    # Commitment level
+    commitment: "finalized"
   # EVM network configs
-  networks:
+  evm_networks:
     # Ethereum
     - chain_id: 1
       # RPC node HTTP endpoint
@@ -303,6 +314,16 @@ As a result, relays instantly see all events and vote for them almost simultaneo
 more optimized than C++ node, so they don't harm the network.
 
 ### Changelog
+
+### 2.1.0 (2022-09-06)
+
+Features:
+
+* Add Solana
+
+Bugfixes:
+
+* Fixed outgoing RLDP transfers
 
 ### 2.0.13 (2022-07-22)
 

@@ -746,7 +746,7 @@ impl UserDataContract<'_> {
         &self,
         context: &Arc<EngineContext>,
         user_data_account: UInt256,
-        bridge_event_configuration: EthEventConfigurationDetails,
+        bridge_event_configuration: EthTonEventConfigurationDetails,
     ) -> Result<()> {
         let ton_pubkey_confirmed_notify = Arc::new(Notify::new());
         let eth_address_confirmed_notify = Arc::new(Notify::new());
@@ -870,7 +870,7 @@ impl<'a> StakingContract<'a> {
     fn get_eth_bridge_configuration_details(
         &self,
         shard_accounts: &ShardAccountsMap,
-    ) -> Result<EthEventConfigurationDetails> {
+    ) -> Result<EthTonEventConfigurationDetails> {
         let details = self
             .get_details()
             .context("Failed to get staking details")?;
@@ -878,7 +878,7 @@ impl<'a> StakingContract<'a> {
             .find_account(&details.bridge_event_config_eth_ton)?
             .context("Bridge ETH event configuration not found")?;
 
-        EthEventConfigurationContract(&configuration_contract)
+        EthTonEventConfigurationContract(&configuration_contract)
             .get_details()
             .context("Failed to get ETH bridge configuration details")
     }

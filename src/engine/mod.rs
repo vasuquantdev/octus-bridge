@@ -11,6 +11,7 @@ use ton_block::Serializable;
 use self::bridge::*;
 use self::eth_subscriber::*;
 use self::keystore::*;
+use self::sol_subscriber::*;
 use self::staking::*;
 use self::ton_contracts::*;
 use self::ton_subscriber::*;
@@ -20,6 +21,7 @@ use crate::utils::*;
 mod bridge;
 mod eth_subscriber;
 mod keystore;
+mod sol_subscriber;
 mod staking;
 mod ton_contracts;
 mod ton_subscriber;
@@ -62,7 +64,8 @@ impl Engine {
 
                 buffer
                     .write(LabeledEthSubscriberMetrics(&engine.context))
-                    .write(LabeledTonSubscriberMetrics(&engine.context));
+                    .write(LabeledTonSubscriberMetrics(&engine.context))
+                    .write(LabeledSolSubscriberMetrics(&engine.context));
 
                 if let Some(bridge) = &*engine.bridge.lock() {
                     buffer.write(LabeledBridgeMetrics {
@@ -117,6 +120,7 @@ impl Engine {
         *self.staking.lock() = Some(staking);
 
         self.context.eth_subscribers.start();
+        self.context.sol_subscriber.start();
 
         // Done
         Ok(())
@@ -140,6 +144,7 @@ pub struct EngineContext {
     pub ton_subscriber: Arc<TonSubscriber>,
     pub ton_engine: Arc<ton_indexer::Engine>,
     pub eth_subscribers: Arc<EthSubscriberRegistry>,
+    pub sol_subscriber: Arc<SolSubscriber>,
 }
 
 impl Drop for EngineContext {
@@ -178,9 +183,13 @@ impl EngineContext {
         .await
         .context("Failed to start TON node")?;
 
-        let eth_subscribers = EthSubscriberRegistry::new(settings.networks.clone())
+        let eth_subscribers = EthSubscriberRegistry::new(settings.evm_networks.clone())
             .await
             .context("Failed to create EVM networks registry")?;
+
+        let sol_subscriber = SolSubscriber::new(settings.sol_network.clone())
+            .await
+            .context("Failed to create Solana subscriber")?;
 
         Ok(Arc::new(Self {
             shutdown_requests_tx,
@@ -192,6 +201,7 @@ impl EngineContext {
             ton_subscriber,
             ton_engine,
             eth_subscribers,
+            sol_subscriber,
         }))
     }
 
@@ -288,21 +298,37 @@ impl std::fmt::Display for LabeledBridgeMetrics<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let metrics = self.bridge.metrics();
 
-        f.begin_metric("bridge_pending_eth_event_count")
+        f.begin_metric("bridge_pending_eth_ton_event_count")
             .label(LABEL_STAKER, &self.context.staker_account_str)
-            .value(metrics.pending_eth_event_count)?;
+            .value(metrics.pending_eth_ton_event_count)?;
 
-        f.begin_metric("bridge_pending_ton_event_count")
+        f.begin_metric("bridge_pending_ton_eth_event_count")
             .label(LABEL_STAKER, &self.context.staker_account_str)
-            .value(metrics.pending_ton_event_count)?;
+            .value(metrics.pending_ton_eth_event_count)?;
 
-        f.begin_metric("bridge_total_active_eth_event_configurations")
+        f.begin_metric("bridge_pending_sol_ton_event_count")
             .label(LABEL_STAKER, &self.context.staker_account_str)
-            .value(metrics.total_active_eth_event_configurations)?;
+            .value(metrics.pending_sol_ton_event_count)?;
 
-        f.begin_metric("bridge_total_active_ton_event_configurations")
+        f.begin_metric("bridge_pending_ton_sol_event_count")
             .label(LABEL_STAKER, &self.context.staker_account_str)
-            .value(metrics.total_active_ton_event_configurations)?;
+            .value(metrics.pending_ton_sol_event_count)?;
+
+        f.begin_metric("bridge_total_active_eth_ton_event_configurations")
+            .label(LABEL_STAKER, &self.context.staker_account_str)
+            .value(metrics.total_active_eth_ton_event_configurations)?;
+
+        f.begin_metric("bridge_total_active_ton_eth_event_configurations")
+            .label(LABEL_STAKER, &self.context.staker_account_str)
+            .value(metrics.total_active_ton_eth_event_configurations)?;
+
+        f.begin_metric("bridge_total_active_sol_ton_event_configurations")
+            .label(LABEL_STAKER, &self.context.staker_account_str)
+            .value(metrics.total_active_sol_ton_event_configurations)?;
+
+        f.begin_metric("bridge_total_active_ton_sol_event_configurations")
+            .label(LABEL_STAKER, &self.context.staker_account_str)
+            .value(metrics.total_active_ton_sol_event_configurations)?;
 
         Ok(())
     }
@@ -450,6 +476,20 @@ impl std::fmt::Display for LabeledEthSubscriberMetrics<'_> {
                 .label(LABEL_CHAIN_ID, &chain_id)
                 .value(metrics.pending_confirmation_count)?;
         }
+        Ok(())
+    }
+}
+
+struct LabeledSolSubscriberMetrics<'a>(&'a EngineContext);
+
+impl std::fmt::Display for LabeledSolSubscriberMetrics<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let metrics = self.0.sol_subscriber.metrics();
+
+        f.begin_metric("sol_subscriber_unrecognized_proposals_count")
+            .label(LABEL_STAKER, &self.0.staker_account_str)
+            .value(metrics.unrecognized_proposals_count)?;
+
         Ok(())
     }
 }

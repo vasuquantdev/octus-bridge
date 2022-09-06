@@ -9,10 +9,12 @@ use secstr::SecUtf8;
 use serde::{Deserialize, Serialize};
 
 pub use self::eth_config::*;
+pub use self::sol_config::*;
 pub use self::stored_keys::*;
 pub use self::verification_state::*;
 
 mod eth_config;
+mod sol_config;
 mod stored_keys;
 mod verification_state;
 
@@ -72,7 +74,10 @@ pub struct BridgeConfig {
     pub ignore_elections: bool,
 
     /// EVM networks settings
-    pub networks: Vec<EthConfig>,
+    pub evm_networks: Vec<EthConfig>,
+
+    /// Solana network settings
+    pub sol_network: SolConfig,
 
     /// ETH address verification settings
     #[serde(default)]
@@ -145,7 +150,7 @@ pub struct NodeConfig {
 }
 
 impl NodeConfig {
-    pub async fn build_indexer_config(self) -> Result<ton_indexer::NodeConfig> {
+    pub async fn build_indexer_config(mut self) -> Result<ton_indexer::NodeConfig> {
         // Determine public ip
         let ip_address = broxus_util::resolve_public_ip(self.adnl_public_ip).await?;
         log::info!("Using public ip: {}", ip_address);
@@ -156,6 +161,9 @@ impl NodeConfig {
 
         // Prepare DB folder
         std::fs::create_dir_all(&self.db_path)?;
+
+        self.rldp_options.force_compression = true;
+        self.overlay_shard_options.force_compression = true;
 
         // Done
         Ok(ton_indexer::NodeConfig {
@@ -203,15 +211,9 @@ impl Default for NodeConfig {
             states_gc_enabled: true,
             blocks_gc_enabled: true,
             adnl_options: Default::default(),
-            rldp_options: rldp::NodeOptions {
-                force_compression: true,
-                ..Default::default()
-            },
+            rldp_options: Default::default(),
             dht_options: Default::default(),
-            overlay_shard_options: overlay::ShardOptions {
-                force_compression: true,
-                ..Default::default()
-            },
+            overlay_shard_options: Default::default(),
             neighbours_options: Default::default(),
         }
     }

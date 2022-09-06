@@ -20,6 +20,7 @@ use web3::{transports::Http, Transport};
 
 use self::models::*;
 use crate::config::*;
+use crate::engine::bridge::*;
 use crate::engine::keystore::*;
 use crate::engine::ton_contracts::*;
 use crate::utils::*;
@@ -244,7 +245,7 @@ impl EthSubscriber {
             let balance = retry(
                 || self.get_balance(*relay_address),
                 crate::utils::generate_default_timeout_config(Duration::from_secs(60)),
-                self.chain_id,
+                NetworkType::EVM(self.chain_id),
                 "Failed getting balance",
             )
             .await?;
@@ -317,7 +318,7 @@ impl EthSubscriber {
 
     pub async fn verify(
         &self,
-        vote_data: EthEventVoteData,
+        vote_data: EthTonEventVoteData,
         event_emitter: [u8; 20],
         event_abi: Arc<EthEventAbi>,
         blocks_to_confirm: u16,
@@ -401,7 +402,7 @@ impl EthSubscriber {
         let mut current_block = match retry(
             || self.get_current_block_number(),
             api_request_strategy,
-            self.chain_id,
+            NetworkType::EVM(self.chain_id),
             "get actual ethereum height",
         )
         .await
@@ -446,7 +447,7 @@ impl EthSubscriber {
                 )
             },
             api_request_strategy,
-            self.chain_id,
+            NetworkType::EVM(self.chain_id),
             "process block",
         )
         .await
@@ -574,7 +575,7 @@ impl EthSubscriber {
                 generate_default_timeout_config(Duration::from_secs(
                     self.config.maximum_failed_responses_time_sec,
                 )),
-                self.chain_id,
+                NetworkType::EVM(self.chain_id),
                 "get contract logs",
             )
             .await
@@ -601,7 +602,7 @@ impl EthSubscriber {
                 generate_default_timeout_config(Duration::from_secs(
                     self.config.maximum_failed_responses_time_sec,
                 )),
-                self.chain_id,
+                NetworkType::EVM(self.chain_id),
                 "get transaction receipt",
             )
             .await
@@ -726,7 +727,7 @@ type EthApi = web3::api::Eth<Http>;
 type LastBlockNumbersMap = FxDashMap<u32, u64>;
 
 struct PendingConfirmation {
-    vote_data: EthEventVoteData,
+    vote_data: EthTonEventVoteData,
     status_tx: Option<VerificationStatusTx>,
     event_emitter: [u8; 20],
     event_abi: Arc<EthEventAbi>,
@@ -768,6 +769,15 @@ enum PendingConfirmationStatus {
     Invalid,
 }
 
+impl From<VerificationStatus> for PendingConfirmationStatus {
+    fn from(status: VerificationStatus) -> Self {
+        match status {
+            VerificationStatus::Exists => Self::Valid,
+            VerificationStatus::NotExists => Self::Invalid,
+        }
+    }
+}
+
 type VerificationStatusTx = oneshot::Sender<VerificationStatus>;
 
 fn parse_transaction_logs(
@@ -782,21 +792,6 @@ fn parse_transaction_logs(
                 None
             }
         })
-}
-
-#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
-pub enum VerificationStatus {
-    Exists,
-    NotExists,
-}
-
-impl From<VerificationStatus> for PendingConfirmationStatus {
-    fn from(status: VerificationStatus) -> Self {
-        match status {
-            VerificationStatus::Exists => Self::Valid,
-            VerificationStatus::NotExists => Self::Invalid,
-        }
-    }
 }
 
 fn is_incomplete_message(error: &anyhow::Error) -> bool {
