@@ -67,12 +67,13 @@ bridge_settings:
   sol_network:
     # Public endpoint
     endpoint: "https://api.mainnet-beta.solana.com"
-    # Public WS endpoint
-    ws_endpoint: "wss://api.mainnet-beta.solana.com"
+    # RPC connection timeout
+    connection_timeout_sec:
     # Commitment level
     commitment: "finalized"
-    # Programs to subscribe
-    programs: []
+    pool_size: 10
+    poll_interval_sec: 60
+    maximum_failed_responses_time_sec: 604800
   # ETH address verification settings
   address_verification:
     # Minimal balance on user's wallet to start address verification

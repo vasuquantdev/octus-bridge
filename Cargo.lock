@@ -1246,7 +1246,7 @@ dependencies = [
 [[package]]
 name = "eth-ton-abi-converter"
 version = "0.3.1"
-source = "git+https://github.com/broxus/eth-ton-abi-converter.git?branch=dev#a908d8dba34431afb90bdf253b270b226c7f6f67"
+source = "git+https://github.com/broxus/eth-ton-abi-converter.git?branch=refactor-borsh#1a4dc361aba6d69b13b1d8d7c1d6dc1d7c21806b"
 dependencies = [
  "anyhow",
  "base64 0.13.0",
