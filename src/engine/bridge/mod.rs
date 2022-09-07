@@ -1040,6 +1040,7 @@ impl Bridge {
             }
             EventAction::Vote => { /* continue voting */ }
         }
+        let round_number = base_event_contract.round_number()?;
 
         // Get event details
         let event_init_data = TonSolEventContract(&contract).event_init_data()?;
@@ -1107,6 +1108,7 @@ impl Bridge {
         let proposal_pubkey = solana_bridge::bridge_helper::get_associated_proposal_address(
             &program_id,
             &settings,
+            round_number,
             event_init_data.vote_data.event_timestamp,
             event_init_data.vote_data.event_transaction_lt,
             &event_configuration,
