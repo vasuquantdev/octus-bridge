@@ -1124,7 +1124,16 @@ impl Bridge {
             .await
         {
             // Confirm event if transaction was found
-            Ok((VerificationStatus::Exists, round_number)) => {
+            Ok((VerificationStatus::Exists, is_initialized)) => {
+                if !is_initialized {
+                    log::warn!(
+                        "Solana proposal {} of TON->SOL event {:x} has not been initialized yet",
+                        proposal_pubkey,
+                        account
+                    );
+                    return Ok(());
+                }
+
                 let vote_ix = solana_bridge::instructions::vote_for_proposal_ix(
                     program_id,
                     instruction,
@@ -1170,7 +1179,16 @@ impl Bridge {
 
                 (sol_message_vote, sol_message_execute, ton_message)
             }
-            Ok((VerificationStatus::NotExists, round_number)) => {
+            Ok((VerificationStatus::NotExists, is_initialized)) => {
+                if !is_initialized {
+                    log::warn!(
+                        "Solana proposal {} of TON->SOL event {:x} has not been initialized yet",
+                        proposal_pubkey,
+                        account
+                    );
+                    return Ok(());
+                }
+
                 let ix = solana_bridge::instructions::vote_for_proposal_ix(
                     program_id,
                     instruction,
@@ -1193,6 +1211,23 @@ impl Bridge {
                 return Ok(());
             }
         };
+
+        // Remove TON->SOL event if relay round doesn't exist
+        if sol_subscriber
+            .get_account(&solana_bridge::round_loader::get_relay_round_address(
+                round_number,
+            ))
+            .await?
+            .is_none()
+        {
+            log::error!(
+                "Remove TON->SOL event {:x} since round {} in solana doesn't exist",
+                round_number,
+                account
+            );
+            self.ton_sol_events_state.remove(&account);
+            return Ok(());
+        }
 
         if let Some(c_ix) = sol_message_vote.instructions.first() {
             let ix = solana_bridge::instructions::VoteForProposal::try_from_slice(&c_ix.data)?;

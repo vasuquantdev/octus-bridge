@@ -104,7 +104,7 @@ impl SolSubscriber {
         &self,
         account_pubkey: Pubkey,
         event_data: Vec<u8>,
-    ) -> Result<(VerificationStatus, u32)> {
+    ) -> Result<(VerificationStatus, bool)> {
         let rx = {
             let mut pending_events = self.pending_events.lock().await;
 
@@ -165,6 +165,25 @@ impl SolSubscriber {
         };
 
         Ok(())
+    }
+
+    pub async fn get_account(&self, account_pubkey: &Pubkey) -> Result<Option<Account>> {
+        let account = {
+            let _permit = self.pool.acquire().await;
+
+            retry(
+                || self.get_account_with_commitment(account_pubkey, self.config.commitment),
+                generate_default_timeout_config(Duration::from_secs(
+                    self.config.maximum_failed_responses_time_sec,
+                )),
+                NetworkType::SOL,
+                "get account",
+            )
+            .await
+            .context("Failed getting solana account")?
+        };
+
+        Ok(account)
     }
 
     async fn update(&self) -> Result<()> {
@@ -244,10 +263,10 @@ impl SolSubscriber {
                             )?;
 
                         let status = entry.get().check(account_data.event);
-                        let round_number = account_data.round_number;
+                        let is_initialized = account_data.is_initialized;
 
                         if let Some(tx) = entry.get_mut().status_tx.take() {
-                            tx.send((status, round_number)).ok();
+                            tx.send((status, is_initialized)).ok();
                         }
 
                         entry.remove();
@@ -275,25 +294,6 @@ impl SolSubscriber {
         drop(pending_events);
 
         Ok(())
-    }
-
-    async fn get_account(&self, account_pubkey: &Pubkey) -> Result<Option<Account>> {
-        let account = {
-            let _permit = self.pool.acquire().await;
-
-            retry(
-                || self.get_account_with_commitment(account_pubkey, self.config.commitment),
-                generate_default_timeout_config(Duration::from_secs(
-                    self.config.maximum_failed_responses_time_sec,
-                )),
-                NetworkType::SOL,
-                "get account",
-            )
-            .await
-            .context("Failed getting solana account")?
-        };
-
-        Ok(account)
     }
 
     async fn get_pending_proposals(&self, program_pubkey: &Pubkey) -> Result<Vec<Pubkey>> {
@@ -533,7 +533,7 @@ impl PendingEvent {
     }
 }
 
-type VerificationStatusTx = oneshot::Sender<(VerificationStatus, u32)>;
+type VerificationStatusTx = oneshot::Sender<(VerificationStatus, bool)>;
 
 pub struct SolTonAccountData {
     pub program_id: Pubkey,
