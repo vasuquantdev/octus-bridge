@@ -104,7 +104,7 @@ impl SolSubscriber {
         &self,
         account_pubkey: Pubkey,
         event_data: Vec<u8>,
-    ) -> Result<(VerificationStatus, bool)> {
+    ) -> Result<VerificationStatus> {
         let rx = {
             let mut pending_events = self.pending_events.lock().await;
 
@@ -263,13 +263,12 @@ impl SolSubscriber {
                             )?;
 
                         let status = entry.get().check(account_data.event);
-                        let is_initialized = account_data.is_initialized;
 
-                        if let Some(tx) = entry.get_mut().status_tx.take() {
-                            tx.send((status, is_initialized)).ok();
+                        if account_data.is_initialized {
+                            if let Some(tx) = entry.get_mut().status_tx.take() {
+                                tx.send(status).ok();
+                            }
                         }
-
-                        entry.remove();
                     }
                 }
                 Ok(None) => {
@@ -533,7 +532,7 @@ impl PendingEvent {
     }
 }
 
-type VerificationStatusTx = oneshot::Sender<(VerificationStatus, bool)>;
+type VerificationStatusTx = oneshot::Sender<VerificationStatus>;
 
 pub struct SolTonAccountData {
     pub program_id: Pubkey,

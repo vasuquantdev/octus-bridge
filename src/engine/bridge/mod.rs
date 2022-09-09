@@ -1124,16 +1124,7 @@ impl Bridge {
             .await
         {
             // Confirm event if transaction was found
-            Ok((VerificationStatus::Exists, is_initialized)) => {
-                if !is_initialized {
-                    log::warn!(
-                        "Solana proposal {} of TON->SOL event {:x} has not been initialized yet",
-                        proposal_pubkey,
-                        account
-                    );
-                    return Ok(());
-                }
-
+            Ok(VerificationStatus::Exists) => {
                 let vote_ix = solana_bridge::instructions::vote_for_proposal_ix(
                     program_id,
                     instruction,
@@ -1179,16 +1170,7 @@ impl Bridge {
 
                 (sol_message_vote, sol_message_execute, ton_message)
             }
-            Ok((VerificationStatus::NotExists, is_initialized)) => {
-                if !is_initialized {
-                    log::warn!(
-                        "Solana proposal {} of TON->SOL event {:x} has not been initialized yet",
-                        proposal_pubkey,
-                        account
-                    );
-                    return Ok(());
-                }
-
+            Ok(VerificationStatus::NotExists) => {
                 let ix = solana_bridge::instructions::vote_for_proposal_ix(
                     program_id,
                     instruction,
