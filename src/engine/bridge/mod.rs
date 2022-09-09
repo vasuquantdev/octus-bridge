@@ -1239,9 +1239,13 @@ impl Bridge {
         }
 
         // Send confirm/reject to Solana
-        sol_subscriber
+        let res = sol_subscriber
             .send_message(sol_message_vote, &self.context.keystore)
-            .await?;
+            .await;
+
+        if !self.context.settings.sol_network.clear_invalid_events {
+            res?;
+        }
 
         // Send execute message to Solana
         if let Some(message) = sol_message_execute {

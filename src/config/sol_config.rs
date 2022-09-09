@@ -29,6 +29,10 @@ pub struct SolConfig {
     /// Max request duration (including all failed retires). Default: 604800
     #[serde(default = "default_maximum_failed_responses_time_sec")]
     pub maximum_failed_responses_time_sec: u64,
+
+    /// Skip invalid TON->SOL event is Solana. Default: false
+    #[serde(default)]
+    pub clear_invalid_events: bool,
 }
 
 fn default_connection_timeout_sec() -> u64 {
