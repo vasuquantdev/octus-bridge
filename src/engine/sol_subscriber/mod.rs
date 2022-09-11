@@ -96,7 +96,6 @@ impl SolSubscriber {
 
     pub fn metrics(&self) -> SolSubscriberMetrics {
         SolSubscriberMetrics {
-            pending_events_count: self.pending_events_count.load(Ordering::Acquire),
             unrecognized_proposals_count: self.unrecognized_proposals_count.load(Ordering::Acquire),
         }
     }
@@ -161,7 +160,8 @@ impl SolSubscriber {
                 NetworkType::SOL,
                 "send solana transaction",
             )
-            .await?
+            .await
+            .context("Failed sending solana message")?
         };
 
         Ok(())
@@ -551,7 +551,6 @@ pub struct SolTonTransactionData {
 
 #[derive(Debug, Copy, Clone)]
 pub struct SolSubscriberMetrics {
-    pub pending_events_count: usize,
     pub unrecognized_proposals_count: usize,
 }
 
