@@ -486,6 +486,10 @@ impl std::fmt::Display for LabeledSolSubscriberMetrics<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let metrics = self.0.sol_subscriber.metrics();
 
+        f.begin_metric("sol_subscriber_pending_events_count")
+            .label(LABEL_STAKER, &self.0.staker_account_str)
+            .value(metrics.pending_events_count)?;
+
         f.begin_metric("sol_subscriber_unrecognized_proposals_count")
             .label(LABEL_STAKER, &self.0.staker_account_str)
             .value(metrics.unrecognized_proposals_count)?;
