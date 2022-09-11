@@ -160,8 +160,7 @@ impl SolSubscriber {
                 NetworkType::SOL,
                 "send solana transaction",
             )
-            .await
-            .context("Failed sending solana message")?
+            .await?
         };
 
         Ok(())
@@ -268,6 +267,8 @@ impl SolSubscriber {
                             if let Some(tx) = entry.get_mut().status_tx.take() {
                                 tx.send(status).ok();
                             }
+
+                            entry.remove();
                         }
                     }
                 }
