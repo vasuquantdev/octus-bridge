@@ -30,6 +30,10 @@ pub struct SolConfig {
     #[serde(default = "default_maximum_failed_responses_time_sec")]
     pub maximum_failed_responses_time_sec: u64,
 
+    /// Proposals polling interval. Default: 900
+    #[serde(default = "default_poll_proposals_interval_sec")]
+    pub poll_proposals_interval_sec: u64,
+
     /// Skip invalid TON->SOL event is Solana. Default: false
     #[serde(default)]
     pub clear_invalid_events: bool,
@@ -45,6 +49,10 @@ fn default_pool_size() -> usize {
 
 fn default_poll_interval_sec() -> u64 {
     60
+}
+
+fn default_poll_proposals_interval_sec() -> u64 {
+    900
 }
 
 fn default_maximum_failed_responses_time_sec() -> u64 {

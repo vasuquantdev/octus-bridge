@@ -234,13 +234,12 @@ impl SolSubscriber {
                 );
 
                 const EVENT_EXPIRY_PERIOD: u64 = 300;
-                const SHORT_REQUEST_PERIOD_SEC: u64 = 30;
-                const LONG_REQUEST_PERIOD_SEC: u64 = 1800;
+                const REQUEST_PERIOD_SEC: u64 = 30;
 
                 if time - event.created_at > EVENT_EXPIRY_PERIOD {
-                    event.time = time + LONG_REQUEST_PERIOD_SEC;
+                    event.time = time + self.config.poll_proposals_interval_sec;
                 } else {
-                    event.time = time + SHORT_REQUEST_PERIOD_SEC;
+                    event.time = time + REQUEST_PERIOD_SEC;
                 }
 
                 accounts_to_check.insert(*account);
