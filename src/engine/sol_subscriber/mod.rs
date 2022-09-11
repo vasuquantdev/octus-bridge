@@ -8,6 +8,8 @@ use rustc_hash::FxHashMap;
 use tokio::sync::{oneshot, Semaphore};
 
 use solana_account_decoder::{UiAccountEncoding, UiDataSliceConfig};
+use solana_bridge::bridge_state::Proposal;
+use solana_bridge::round_loader::get_relay_round_address;
 use solana_client::client_error::{ClientError, ClientErrorKind};
 use solana_client::rpc_client::RpcClient;
 use solana_client::rpc_config::{
@@ -166,7 +168,7 @@ impl SolSubscriber {
         Ok(())
     }
 
-    pub async fn get_account(&self, account_pubkey: &Pubkey) -> Result<Option<Account>> {
+    async fn get_account(&self, account_pubkey: &Pubkey) -> Result<Option<Account>> {
         let account = {
             let _permit = self.pool.acquire().await;
 
@@ -256,12 +258,34 @@ impl SolSubscriber {
                     if let hash_map::Entry::Occupied(mut entry) =
                         pending_events.entry(account_pubkey)
                     {
-                        let account_data =
-                            solana_bridge::bridge_state::Proposal::unpack_from_slice(
-                                account.data(),
-                            )?;
+                        let account_data = match Proposal::unpack_from_slice(account.data()) {
+                            Ok(proposal) => proposal,
+                            Err(_) => {
+                                entry.remove();
+                                anyhow::bail!("Failed to unpack {} proposal", account_pubkey);
+                            }
+                        };
 
                         let status = entry.get().check(account_data.event);
+
+                        let round_pubkey = get_relay_round_address(account_data.round_number);
+                        match self.get_account(&round_pubkey).await {
+                            Ok(None) => {
+                                entry.remove();
+
+                                anyhow::bail!(
+                                    "Round {} in solana doesn't exist",
+                                    account_data.round_number
+                                );
+                            }
+                            Err(_) => {
+                                // Break handling and repeat later
+                                continue;
+                            }
+                            _ => {
+                                // Do nothing and continue handing
+                            }
+                        }
 
                         if account_data.is_initialized {
                             if let Some(tx) = entry.get_mut().status_tx.take() {

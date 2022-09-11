@@ -1194,23 +1194,6 @@ impl Bridge {
             }
         };
 
-        // Remove TON->SOL event if relay round doesn't exist
-        if sol_subscriber
-            .get_account(&solana_bridge::round_loader::get_relay_round_address(
-                round_number,
-            ))
-            .await?
-            .is_none()
-        {
-            log::error!(
-                "Remove TON->SOL event {:x} since round {} in solana doesn't exist",
-                round_number,
-                account
-            );
-            self.ton_sol_events_state.remove(&account);
-            return Ok(());
-        }
-
         if let Some(c_ix) = sol_message_vote.instructions.first() {
             let ix = solana_bridge::instructions::VoteForProposal::try_from_slice(&c_ix.data)?;
             log::info!(
