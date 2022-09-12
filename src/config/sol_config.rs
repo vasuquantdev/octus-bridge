@@ -11,7 +11,7 @@ pub struct SolConfig {
     pub endpoint: String,
 
     /// Connection timeout. Default: 60
-    #[serde(default = "default_connection_timeout_sec")]
+    #[serde(default = "const_u64::<60>")]
     pub connection_timeout_sec: u64,
 
     /// Commitment level
@@ -19,42 +19,22 @@ pub struct SolConfig {
     pub commitment: CommitmentConfig,
 
     /// Max simultaneous connection count. Default: 10
-    #[serde(default = "default_pool_size")]
+    #[serde(default = "const_usize::<10>")]
     pub pool_size: usize,
 
     /// Blocks polling interval. Default: 60
-    #[serde(default = "default_poll_interval_sec")]
+    #[serde(default = "const_u64::<60>")]
     pub poll_interval_sec: u64,
 
     /// Max request duration (including all failed retires). Default: 604800
-    #[serde(default = "default_maximum_failed_responses_time_sec")]
+    #[serde(default = "const_u64::<604800>")]
     pub maximum_failed_responses_time_sec: u64,
 
     /// Proposals polling interval. Default: 900
-    #[serde(default = "default_poll_proposals_interval_sec")]
+    #[serde(default = "const_u64::<900>")]
     pub poll_proposals_interval_sec: u64,
 
     /// Skip invalid TON->SOL event is Solana. Default: false
     #[serde(default)]
     pub clear_invalid_events: bool,
-}
-
-fn default_connection_timeout_sec() -> u64 {
-    60
-}
-
-fn default_pool_size() -> usize {
-    10
-}
-
-fn default_poll_interval_sec() -> u64 {
-    60
-}
-
-fn default_poll_proposals_interval_sec() -> u64 {
-    900
-}
-
-fn default_maximum_failed_responses_time_sec() -> u64 {
-    604800
 }

@@ -66,6 +66,10 @@ impl SolSubscriber {
         Ok(subscriber)
     }
 
+    pub fn config(&self) -> &SolConfig {
+        &self.config
+    }
+
     pub fn start(self: &Arc<Self>) {
         let subscriber = Arc::downgrade(self);
 

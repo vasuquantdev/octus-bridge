@@ -77,7 +77,8 @@ pub struct BridgeConfig {
     pub evm_networks: Vec<EthConfig>,
 
     /// Solana network settings
-    pub sol_network: SolConfig,
+    #[serde(default)]
+    pub sol_network: Option<SolConfig>,
 
     /// ETH address verification settings
     #[serde(default)]

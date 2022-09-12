@@ -1,3 +1,11 @@
+pub const fn const_usize<const N: usize>() -> usize {
+    N
+}
+
+pub const fn const_u64<const N: u64>() -> u64 {
+    N
+}
+
 pub mod serde_commitment {
     use std::str::FromStr;
 

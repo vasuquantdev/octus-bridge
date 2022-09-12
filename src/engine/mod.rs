@@ -120,7 +120,9 @@ impl Engine {
         *self.staking.lock() = Some(staking);
 
         self.context.eth_subscribers.start();
-        self.context.sol_subscriber.start();
+        if let Some(sol_subscriber) = &self.context.sol_subscriber {
+            sol_subscriber.start();
+        }
 
         // Done
         Ok(())
@@ -144,7 +146,7 @@ pub struct EngineContext {
     pub ton_subscriber: Arc<TonSubscriber>,
     pub ton_engine: Arc<ton_indexer::Engine>,
     pub eth_subscribers: Arc<EthSubscriberRegistry>,
-    pub sol_subscriber: Arc<SolSubscriber>,
+    pub sol_subscriber: Option<Arc<SolSubscriber>>,
 }
 
 impl Drop for EngineContext {
@@ -187,9 +189,17 @@ impl EngineContext {
             .await
             .context("Failed to create EVM networks registry")?;
 
-        let sol_subscriber = SolSubscriber::new(settings.sol_network.clone())
-            .await
-            .context("Failed to create Solana subscriber")?;
+        let sol_subscriber = match settings.sol_network.clone() {
+            Some(config) => Some(
+                SolSubscriber::new(config)
+                    .await
+                    .context("Failed to create Solana subscriber")?,
+            ),
+            None => {
+                log::warn!("Solana subscriber is disabled");
+                None
+            }
+        };
 
         Ok(Arc::new(Self {
             shutdown_requests_tx,
@@ -484,11 +494,13 @@ struct LabeledSolSubscriberMetrics<'a>(&'a EngineContext);
 
 impl std::fmt::Display for LabeledSolSubscriberMetrics<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let metrics = self.0.sol_subscriber.metrics();
+        if let Some(sol_subscriber) = &self.0.sol_subscriber {
+            let metrics = sol_subscriber.metrics();
 
-        f.begin_metric("sol_subscriber_unrecognized_proposals_count")
-            .label(LABEL_STAKER, &self.0.staker_account_str)
-            .value(metrics.unrecognized_proposals_count)?;
+            f.begin_metric("sol_subscriber_unrecognized_proposals_count")
+                .label(LABEL_STAKER, &self.0.staker_account_str)
+                .value(metrics.unrecognized_proposals_count)?;
+        }
 
         Ok(())
     }

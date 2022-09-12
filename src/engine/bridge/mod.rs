@@ -132,19 +132,21 @@ impl Bridge {
             Self::process_ton_eth_event_configuration_event,
         );
 
-        start_listening_events(
-            &bridge,
-            "SolEventConfigurationContract",
-            sol_ton_event_configurations_rx,
-            Self::process_sol_ton_event_configuration_event,
-        );
+        if bridge.context.sol_subscriber.is_some() {
+            start_listening_events(
+                &bridge,
+                "SolTonEventConfigurationContract",
+                sol_ton_event_configurations_rx,
+                Self::process_sol_ton_event_configuration_event,
+            );
 
-        start_listening_events(
-            &bridge,
-            "TonSolEventConfigurationContract",
-            ton_sol_event_configurations_rx,
-            Self::process_ton_sol_event_configuration_event,
-        );
+            start_listening_events(
+                &bridge,
+                "TonSolEventConfigurationContract",
+                ton_sol_event_configurations_rx,
+                Self::process_ton_sol_event_configuration_event,
+            );
+        }
 
         start_listening_events(
             &bridge,
@@ -160,19 +162,21 @@ impl Bridge {
             Self::process_ton_eth_event,
         );
 
-        start_listening_events(
-            &bridge,
-            "SolTonEventContract",
-            sol_ton_events_rx,
-            Self::process_sol_ton_event,
-        );
+        if bridge.context.sol_subscriber.is_some() {
+            start_listening_events(
+                &bridge,
+                "SolTonEventContract",
+                sol_ton_events_rx,
+                Self::process_sol_ton_event,
+            );
 
-        start_listening_events(
-            &bridge,
-            "TonSolEventContract",
-            ton_sol_events_rx,
-            Self::process_ton_sol_event,
-        );
+            start_listening_events(
+                &bridge,
+                "TonSolEventContract",
+                ton_sol_events_rx,
+                Self::process_ton_sol_event,
+            );
+        }
 
         // Subscribe bridge account to transactions
         bridge
@@ -184,7 +188,7 @@ impl Bridge {
         bridge.get_all_configurations().await?;
         bridge.get_all_events().await?;
 
-        bridge.start_ton_eth_event_configurations_gc();
+        bridge.start_event_configurations_gc();
 
         Ok(bridge)
     }
@@ -890,13 +894,16 @@ impl Bridge {
     }
 
     async fn update_sol_ton_event(self: Arc<Self>, account: UInt256) -> Result<()> {
-        if !self.sol_ton_events_state.start_processing(&account) {
-            return Ok(());
-        }
+        let sol_subscriber = match &self.context.sol_subscriber {
+            // Continue only of SOL subscriber is enabled and it is the first time we started processing this event
+            Some(sol_subscriber) if self.sol_ton_events_state.start_processing(&account) => {
+                sol_subscriber
+            }
+            _ => return Ok(()),
+        };
 
         let keystore = &self.context.keystore;
         let ton_subscriber = &self.context.ton_subscriber;
-        let sol_subscriber = &self.context.sol_subscriber;
 
         // Wait contract state
         let contract = ton_subscriber.wait_contract_state(account).await?;
@@ -924,7 +931,7 @@ impl Bridge {
                     (
                         configuration.details.network_configuration.program,
                         configuration.details.network_configuration.settings,
-                        ton_abi::TokenValue::decode_params(
+                        TokenValue::decode_params(
                             &configuration.event_abi,
                             event_init_data.vote_data.event_data.clone().into(),
                             &ton_abi::contract::ABI_VERSION_2_2,
@@ -1019,13 +1026,16 @@ impl Bridge {
     }
 
     async fn update_ton_sol_event(self: Arc<Self>, account: UInt256) -> Result<()> {
-        if !self.ton_sol_events_state.start_processing(&account) {
-            return Ok(());
-        }
+        let sol_subscriber = match &self.context.sol_subscriber {
+            // Continue only of SOL subscriber is enabled and it is the first time we started processing this event
+            Some(sol_subscriber) if self.ton_sol_events_state.start_processing(&account) => {
+                sol_subscriber
+            }
+            _ => return Ok(()),
+        };
 
         let keystore = &self.context.keystore;
         let ton_subscriber = &self.context.ton_subscriber;
-        let sol_subscriber = &self.context.sol_subscriber;
 
         // Wait contract state
         let contract = ton_subscriber.wait_contract_state(account).await?;
@@ -1208,7 +1218,7 @@ impl Bridge {
             .send_message(sol_message_vote, &self.context.keystore)
             .await;
 
-        if !self.context.settings.sol_network.clear_invalid_events {
+        if !sol_subscriber.config().clear_invalid_events {
             res?;
         }
 
@@ -1568,6 +1578,14 @@ impl Bridge {
         account: &UInt256,
         contract: &ExistingContract,
     ) -> Result<()> {
+        if self.context.sol_subscriber.is_none() {
+            log::info!(
+                "Ignoring SOL->TON event configuration {:x}: Solana subscriber is disabled",
+                account
+            );
+            return Ok(());
+        }
+
         // Get configuration details
         let details = SolTonEventConfigurationContract(contract)
             .get_details()
@@ -1578,7 +1596,7 @@ impl Bridge {
         if details.is_expired(current_timestamp as u64) {
             // Do nothing in that case
             log::warn!(
-                "Ignoring TON->SOL event configuration {:x}: end timestamp {} is less then current {}",
+                "Ignoring SOL->TON event configuration {:x}: end timestamp {} is less then current {}",
                 account,
                 details.network_configuration.end_timestamp,
                 current_timestamp
@@ -1632,6 +1650,17 @@ impl Bridge {
         account: &UInt256,
         contract: &ExistingContract,
     ) -> Result<()> {
+        let sol_subscriber = match &self.context.sol_subscriber {
+            Some(sol_subscriber) => sol_subscriber,
+            None => {
+                log::info!(
+                    "Ignoring TON->SOL event configuration {:x}: Solana subscriber is disabled",
+                    account
+                );
+                return Ok(());
+            }
+        };
+
         // Get configuration details
         let details = TonSolEventConfigurationContract(contract)
             .get_details()
@@ -1685,7 +1714,7 @@ impl Bridge {
         };
 
         // Subscribe to Solana programs
-        self.context.sol_subscriber.subscribe(program_pubkey);
+        sol_subscriber.subscribe(program_pubkey);
 
         // Subscribe to TON events
         self.context
@@ -1709,6 +1738,7 @@ impl Bridge {
             unique_ton_sol_event_configurations: Arc<AccountsSet>,
         ) -> Result<bool> {
             let our_public_key = bridge.context.keystore.ton.public_key();
+            let has_sol_subscriber = bridge.context.sol_subscriber.is_some();
 
             accounts.iterate_with_keys(|hash, shard_account| {
                 // Prefetch only contract code hash
@@ -1790,7 +1820,7 @@ impl Bridge {
                                 );
                             }
                         }
-                        EventType::SolTon => {
+                        EventType::SolTon if has_sol_subscriber => {
                             let configuration =
                                 check_configuration!("SOL->TON", SolTonEventContract);
 
@@ -1806,7 +1836,7 @@ impl Bridge {
                                 );
                             }
                         }
-                        EventType::TonSol => {
+                        EventType::TonSol if has_sol_subscriber => {
                             let configuration =
                                 check_configuration!("TON->SOL", TonSolEventContract);
 
@@ -1822,6 +1852,7 @@ impl Bridge {
                                 );
                             }
                         }
+                        _ => {}
                     },
                     Ok(EventAction::Remove) => { /* do nothing */ }
                     Err(e) => {
@@ -1912,7 +1943,7 @@ impl Bridge {
         Ok(())
     }
 
-    fn start_ton_eth_event_configurations_gc(self: &Arc<Self>) {
+    fn start_event_configurations_gc(self: &Arc<Self>) {
         let bridge = Arc::downgrade(self);
 
         tokio::spawn(async move {
