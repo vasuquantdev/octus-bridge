@@ -12,8 +12,15 @@ use eth_ton_abi_converter::{
 };
 use everscale_network::utils::FxDashMap;
 use nekoton_abi::*;
+use nekoton_utils::TrustMe;
 use rustc_hash::{FxHashMap, FxHashSet};
+use solana_bridge::bridge_errors::SolanaBridgeError;
+use solana_client::client_error::{ClientError, ClientErrorKind};
+use solana_client::rpc_request::{RpcError, RpcResponseErrorData};
+use solana_client::rpc_response::RpcSimulateTransactionResult;
+use solana_sdk::instruction::InstructionError;
 use solana_sdk::pubkey::Pubkey;
+use solana_sdk::transaction::TransactionError;
 use tokio::sync::mpsc;
 use tokio::sync::RwLock;
 use ton_abi::TokenValue;
@@ -1204,29 +1211,28 @@ impl Bridge {
             }
         };
 
-        if let Some(c_ix) = sol_message_vote.instructions.first() {
-            let ix = solana_bridge::instructions::VoteForProposal::try_from_slice(&c_ix.data)?;
-            log::info!(
-                "Send '{:?}' to {} solana proposal",
-                ix.vote,
-                proposal_pubkey
-            );
-        }
+        // Extract vote and log it
+        let c_ix = sol_message_vote.instructions.first().trust_me();
+        let ix = solana_bridge::instructions::VoteForProposal::try_from_slice(&c_ix.data)?;
+
+        log::info!(
+            "Send '{:?}' to {} solana proposal",
+            ix.vote,
+            proposal_pubkey
+        );
 
         // Send confirm/reject to Solana
-        let res = sol_subscriber
+        sol_subscriber
             .send_message(sol_message_vote, &self.context.keystore)
-            .await;
+            .await
+            .map_err(parse_client_error)?;
 
-        if !sol_subscriber.config().clear_invalid_events {
-            res?;
-        }
-
-        // Send execute message to Solana
+        // Execute proposal
         if let Some(message) = sol_message_execute {
             if let Err(err) = sol_subscriber
                 .send_message(message, &self.context.keystore)
                 .await
+                .map_err(parse_client_error)
             {
                 log::error!("Failed to execute solana proposal: {}", err);
             }
@@ -2859,6 +2865,37 @@ fn has_rejected_event(ctx: &TxContext<'_>) -> bool {
         }
     });
     result
+}
+
+fn parse_client_error(err: ClientError) -> anyhow::Error {
+    match &err.kind {
+        ClientErrorKind::RpcError(RpcError::RpcResponseError {
+            data:
+                RpcResponseErrorData::SendTransactionPreflightFailure(RpcSimulateTransactionResult {
+                    err: Some(TransactionError::InstructionError(_, InstructionError::Custom(code))),
+                    ..
+                }),
+            ..
+        }) => {
+            let error = SolanaBridgeError::try_from(*code).trust_me();
+            match error {
+                SolanaBridgeError::EmergencyEnabled => {
+                    anyhow::Error::msg(SolanaBridgeError::EmergencyEnabled.to_string())
+                }
+                SolanaBridgeError::VotesOverflow => {
+                    anyhow::Error::msg(SolanaBridgeError::VotesOverflow.to_string())
+                }
+                SolanaBridgeError::InvalidVote => {
+                    anyhow::Error::msg(SolanaBridgeError::InvalidVote.to_string())
+                }
+                SolanaBridgeError::InvalidRelay => {
+                    anyhow::Error::msg(SolanaBridgeError::InvalidRelay.to_string())
+                }
+                _ => anyhow::Error::msg(format!("Solana RPC error: {}", err)),
+            }
+        }
+        _ => anyhow::Error::msg(format!("Solana RPC error: {}", err)),
+    }
 }
 
 const MIN_EVENT_BALANCE: u128 = 100_000_000; // 0.1 TON

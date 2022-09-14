@@ -74,9 +74,6 @@ impl<'a> BackoffStrategy<'a, ClientError> for SolRpcBackoffStrategy {
 
     fn delay(&mut self, attempt: u32, error: &'a ClientError) -> Self::Output {
         match &error.kind {
-            ClientErrorKind::RpcError(RpcError::RpcRequestError(..)) => {
-                RetryPolicy::Delay(self.inner.delay(attempt, error))
-            }
             ClientErrorKind::RpcError(RpcError::RpcResponseError {
                 code: solana_client::rpc_custom_error::JSON_RPC_SERVER_ERROR_NODE_UNHEALTHY,
                 ..
@@ -91,12 +88,7 @@ pub fn generate_sol_rpc_backoff_config(
     total_time: Duration,
 ) -> RetryFutureConfig<SolRpcBackoffStrategy, NoOnRetry> {
     let max_delay = Duration::from_secs(600);
-    let times = crate::utils::calculate_times_from_max_delay(
-        Duration::from_secs(1),
-        2f64,
-        max_delay,
-        total_time,
-    );
+    let times = calculate_times_from_max_delay(Duration::from_secs(1), 2f64, max_delay, total_time);
     tryhard::RetryFutureConfig::new(times)
         .custom_backoff(SolRpcBackoffStrategy {
             inner: ExponentialBackoff::new(Duration::from_secs(1)),

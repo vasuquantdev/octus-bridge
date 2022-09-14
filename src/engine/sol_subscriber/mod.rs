@@ -118,12 +118,15 @@ impl SolSubscriber {
 
             let created_at = chrono::Utc::now().timestamp() as u64;
 
+            const INIT_INTERVAL_DELAY_SEC: u32 = 300;
+
             pending_events.insert(
                 account_pubkey,
                 PendingEvent {
                     event_data,
                     status_tx: Some(tx),
                     created_at,
+                    delay: INIT_INTERVAL_DELAY_SEC,
                     time: Default::default(),
                 },
             );
@@ -151,7 +154,11 @@ impl SolSubscriber {
         self.verify_sol_ton_account(account_data).await
     }
 
-    pub async fn send_message(&self, message: Message, keystore: &Arc<KeyStore>) -> Result<()> {
+    pub async fn send_message(
+        &self,
+        message: Message,
+        keystore: &Arc<KeyStore>,
+    ) -> Result<(), ClientError> {
         let _ = {
             let _permit = self.pool.acquire().await;
 
@@ -237,14 +244,18 @@ impl SolSubscriber {
                     account
                 );
 
-                const EVENT_EXPIRY_PERIOD: u64 = 300;
-                const REQUEST_PERIOD_SEC: u64 = 30;
-
-                if time - event.created_at > EVENT_EXPIRY_PERIOD {
-                    event.time = time + self.config.poll_proposals_interval_sec;
-                } else {
-                    event.time = time + REQUEST_PERIOD_SEC;
-                }
+                let time_diff = time - event.created_at;
+                match time_diff {
+                    // First 5 min
+                    0..=300 => event.time = time,
+                    // Starting from 5 min until 1 hour, double interval
+                    301..=3600 => {
+                        event.time = time + event.delay as u64;
+                        event.delay *= 2;
+                    }
+                    // After 1 hour poll using interval from config (Default: 1 hour)
+                    _ => event.time = time + self.config.poll_proposals_interval_sec,
+                };
 
                 accounts_to_check.insert(*account);
             }
@@ -547,6 +558,7 @@ struct PendingEvent {
     event_data: Vec<u8>,
     status_tx: Option<VerificationStatusTx>,
     created_at: u64,
+    delay: u32,
     time: u64,
 }
 

@@ -357,7 +357,7 @@ dependencies = [
 [[package]]
 name = "bridge-derive"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#435302ab194586090642228c0b46a94e9562fd44"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#f305c562518d70575098c2d56525aa75ea6c76e2"
 dependencies = [
  "darling 0.13.4",
  "proc-macro2 1.0.43",
@@ -368,7 +368,7 @@ dependencies = [
 [[package]]
 name = "bridge-utils"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#435302ab194586090642228c0b46a94e9562fd44"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#f305c562518d70575098c2d56525aa75ea6c76e2"
 dependencies = [
  "bincode",
  "borsh",
@@ -376,6 +376,7 @@ dependencies = [
  "hex",
  "serde",
  "solana-program",
+ "thiserror",
 ]
 
 [[package]]
@@ -3307,7 +3308,7 @@ dependencies = [
 [[package]]
 name = "round-loader"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#435302ab194586090642228c0b46a94e9562fd44"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#f305c562518d70575098c2d56525aa75ea6c76e2"
 dependencies = [
  "bincode",
  "borsh",
@@ -3315,7 +3316,6 @@ dependencies = [
  "bridge-utils",
  "serde",
  "solana-program",
- "thiserror",
 ]
 
 [[package]]
@@ -3705,7 +3705,7 @@ dependencies = [
 [[package]]
 name = "solana-bridge"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#435302ab194586090642228c0b46a94e9562fd44"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#f305c562518d70575098c2d56525aa75ea6c76e2"
 dependencies = [
  "borsh",
  "bridge-utils",
@@ -4621,7 +4621,7 @@ dependencies = [
 [[package]]
 name = "token-proxy"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#435302ab194586090642228c0b46a94e9562fd44"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#f305c562518d70575098c2d56525aa75ea6c76e2"
 dependencies = [
  "bincode",
  "borsh",
@@ -4634,7 +4634,6 @@ dependencies = [
  "solana-program",
  "spl-associated-token-account",
  "spl-token",
- "thiserror",
  "uuid",
 ]
 
