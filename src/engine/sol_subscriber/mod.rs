@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use rustc_hash::FxHashMap;
 use tokio::sync::{oneshot, Semaphore};
 
@@ -146,7 +146,8 @@ impl SolSubscriber {
         transaction_data: SolTonTransactionData,
         account_data: SolTonAccountData,
     ) -> Result<VerificationStatus> {
-        if self.verify_sol_ton_transaction(transaction_data).await? == VerificationStatus::NotExists
+        if let VerificationStatus::NotExists =
+            self.verify_sol_ton_transaction(transaction_data).await?
         {
             return Ok(VerificationStatus::NotExists);
         }
@@ -191,8 +192,7 @@ impl SolSubscriber {
                 NetworkType::SOL,
                 "get account",
             )
-            .await
-            .context("Failed getting solana account")?
+            .await?
         };
 
         Ok(account)
@@ -371,10 +371,9 @@ impl SolSubscriber {
                     self.config.maximum_failed_responses_time_sec,
                 )),
                 NetworkType::SOL,
-                "get account",
+                "get program accounts",
             )
-            .await
-            .context("Failed getting solana account")?
+            .await?
         };
 
         Ok(accounts.into_iter().map(|(pubkey, _)| pubkey).collect())
@@ -399,8 +398,7 @@ impl SolSubscriber {
                 NetworkType::SOL,
                 "get solana transaction",
             )
-            .await
-            .context("Failed getting solana transaction")?
+            .await?
         };
 
         Ok(transaction)
@@ -423,7 +421,7 @@ impl SolSubscriber {
         .await
         .map_err(|err| {
             ClientError::from(ClientErrorKind::Custom(format!(
-                "Failed to send solana request: {}",
+                "Failed to get solana account: {}",
                 err
             )))
         })?
@@ -444,7 +442,7 @@ impl SolSubscriber {
         .await
         .map_err(|err| {
             ClientError::from(ClientErrorKind::Custom(format!(
-                "Failed to send solana request: {}",
+                "Failed to get solana program accounts: {}",
                 err
             )))
         })?
@@ -465,7 +463,7 @@ impl SolSubscriber {
         .await
         .map_err(|err| {
             ClientError::from(ClientErrorKind::Custom(format!(
-                "Failed to send solana request: {}",
+                "Failed to get solana transaction: {}",
                 err
             )))
         })?
@@ -504,7 +502,21 @@ impl SolSubscriber {
             &data.settings,
         );
 
-        let result = self.get_account(&account_pubkey).await?;
+        let now = std::time::Instant::now();
+
+        let result = loop {
+            if let Some(account) = self.get_account(&account_pubkey).await? {
+                break Some(account);
+            }
+
+            const POLLING_TIMEOUT_SEC: u64 = 60;
+            if now.elapsed().as_secs() > POLLING_TIMEOUT_SEC {
+                break None;
+            }
+
+            const POLLING_INTERVAL_SEC: u64 = 1;
+            tokio::time::sleep(Duration::from_secs(POLLING_INTERVAL_SEC)).await;
+        };
 
         let account = match result {
             Some(account) => account,
