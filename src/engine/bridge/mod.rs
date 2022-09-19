@@ -2876,7 +2876,28 @@ fn parse_client_error(err: ClientError) -> anyhow::Error {
                 _ => anyhow::Error::msg(format!("Solana RPC error: {}", err)),
             }
         }
-        _ => anyhow::Error::msg(format!("Solana RPC error: {}", err)),
+        ClientErrorKind::TransactionError(TransactionError::InstructionError(
+            _,
+            InstructionError::Custom(code),
+        )) => {
+            let error = SolanaBridgeError::try_from(*code).trust_me();
+            match error {
+                SolanaBridgeError::EmergencyEnabled => {
+                    anyhow::Error::msg(SolanaBridgeError::EmergencyEnabled.to_string())
+                }
+                SolanaBridgeError::VotesOverflow => {
+                    anyhow::Error::msg(SolanaBridgeError::VotesOverflow.to_string())
+                }
+                SolanaBridgeError::InvalidVote => {
+                    anyhow::Error::msg(SolanaBridgeError::InvalidVote.to_string())
+                }
+                SolanaBridgeError::InvalidRelay => {
+                    anyhow::Error::msg(SolanaBridgeError::InvalidRelay.to_string())
+                }
+                _ => anyhow::Error::msg(format!("Solana Transaction error: {}", err)),
+            }
+        }
+        _ => anyhow::Error::msg(format!("Solana Client error: {}", err)),
     }
 }
 
