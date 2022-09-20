@@ -161,8 +161,6 @@ impl SolSubscriber {
         keystore: &Arc<KeyStore>,
     ) -> Result<(), ClientError> {
         let _ = {
-            let _permit = self.pool.acquire().await;
-
             retry(
                 || async {
                     let message = message.clone();
@@ -182,8 +180,6 @@ impl SolSubscriber {
 
     async fn get_account(&self, account_pubkey: &Pubkey) -> Result<Option<Account>> {
         let account = {
-            let _permit = self.pool.acquire().await;
-
             retry(
                 || self.get_account_with_commitment(account_pubkey, self.config.commitment),
                 generate_default_timeout_config(Duration::from_secs(
@@ -199,8 +195,6 @@ impl SolSubscriber {
     }
 
     async fn healthcheck(&self) -> Result<()> {
-        let _permit = self.pool.acquire().await;
-
         retry(
             || self.get_health(),
             generate_default_timeout_config(Duration::from_secs(
@@ -352,8 +346,6 @@ impl SolSubscriber {
 
     async fn get_pending_proposals(&self, program_pubkey: &Pubkey) -> Result<Vec<Pubkey>> {
         let accounts = {
-            let _permit = self.pool.acquire().await;
-
             retry(
                 || async {
                     let mem: Vec<u8> = vec![
@@ -397,8 +389,6 @@ impl SolSubscriber {
 
     async fn get_transaction(&self, signature: &Signature) -> Result<EncodedConfirmedTransaction> {
         let transaction = {
-            let _permit = self.pool.acquire().await;
-
             retry(
                 || async {
                     let config = RpcTransactionConfig {
@@ -425,6 +415,8 @@ impl SolSubscriber {
         account_pubkey: &Pubkey,
         commitment_config: CommitmentConfig,
     ) -> Result<Option<Account>, ClientError> {
+        let _permit = self.pool.acquire().await;
+
         tokio::task::spawn_blocking({
             let account_pubkey = *account_pubkey;
             let rpc_client = self.rpc_client.clone();
@@ -448,6 +440,8 @@ impl SolSubscriber {
         program_pubkey: &Pubkey,
         config: RpcProgramAccountsConfig,
     ) -> Result<Vec<(Pubkey, Account)>, ClientError> {
+        let _permit = self.pool.acquire().await;
+
         tokio::task::spawn_blocking({
             let program_pubkey = *program_pubkey;
             let rpc_client = self.rpc_client.clone();
@@ -469,6 +463,8 @@ impl SolSubscriber {
         signature: &Signature,
         config: RpcTransactionConfig,
     ) -> Result<EncodedConfirmedTransaction, ClientError> {
+        let _permit = self.pool.acquire().await;
+
         tokio::task::spawn_blocking({
             let signature = *signature;
             let rpc_client = self.rpc_client.clone();
@@ -486,6 +482,8 @@ impl SolSubscriber {
     }
 
     async fn get_health(&self) -> Result<(), ClientError> {
+        let _permit = self.pool.acquire().await;
+
         tokio::task::spawn_blocking({
             let rpc_client = self.rpc_client.clone();
             move || -> Result<(), ClientError> { rpc_client.get_health() }
@@ -569,6 +567,8 @@ impl SolSubscriber {
         message: Message,
         keystore: &Arc<KeyStore>,
     ) -> Result<Signature, ClientError> {
+        let _permit = self.pool.acquire().await;
+
         tokio::task::spawn_blocking({
             let rpc_client = self.rpc_client.clone();
             let keystore = keystore.clone();
