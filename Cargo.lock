@@ -923,17 +923,6 @@ dependencies = [
 
 [[package]]
 name = "dashmap"
-version = "4.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e77a43b28d0668df09411cb0bc9a8c2adc40f9a048afe863e05fd43251e8e39c"
-dependencies = [
- "cfg-if",
- "num_cpus",
- "rayon",
-]
-
-[[package]]
-name = "dashmap"
 version = "5.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "907076dfda823b0b36d2a1bb5f90c96660a5bbcd7729e10727f07858f22c4edc"
@@ -942,7 +931,8 @@ dependencies = [
  "hashbrown 0.12.3",
  "lock_api",
  "once_cell",
- "parking_lot_core 0.9.3",
+ "parking_lot_core",
+ "rayon",
 ]
 
 [[package]]
@@ -1332,7 +1322,7 @@ dependencies = [
  "bytes",
  "crossbeam-queue",
  "ctr",
- "dashmap 5.4.0",
+ "dashmap",
  "everscale-crypto",
  "everscale-raptorq",
  "frunk_core",
@@ -1341,7 +1331,7 @@ dependencies = [
  "hex",
  "libc",
  "once_cell",
- "parking_lot 0.12.1",
+ "parking_lot",
  "rand 0.8.5",
  "rustc-hash",
  "serde",
@@ -2241,7 +2231,7 @@ dependencies = [
  "libc",
  "log",
  "log-mdc",
- "parking_lot 0.12.1",
+ "parking_lot",
  "serde",
  "serde-value",
  "serde_json",
@@ -2569,7 +2559,7 @@ version = "1.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2f7254b99e31cad77da24b08ebf628882739a608578bb1bcdfc1f9c21260d7c0"
 dependencies = [
- "parking_lot_core 0.9.3",
+ "parking_lot_core",
 ]
 
 [[package]]
@@ -2648,37 +2638,12 @@ dependencies = [
 
 [[package]]
 name = "parking_lot"
-version = "0.11.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d17b78036a60663b797adeaee46f5c9dfebb86948d1255007a1d6be0271ff99"
-dependencies = [
- "instant",
- "lock_api",
- "parking_lot_core 0.8.5",
-]
-
-[[package]]
-name = "parking_lot"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3742b2c103b9f06bc9fff0a37ff4912935851bee6d36f3c02bcc755bcfec228f"
 dependencies = [
  "lock_api",
- "parking_lot_core 0.9.3",
-]
-
-[[package]]
-name = "parking_lot_core"
-version = "0.8.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d76e8e1493bcac0d2766c42737f34458f1c8c50c0d23bcb24ea953affb273216"
-dependencies = [
- "cfg-if",
- "instant",
- "libc",
- "redox_syscall",
- "smallvec",
- "winapi",
+ "parking_lot_core",
 ]
 
 [[package]]
@@ -2859,7 +2824,7 @@ dependencies = [
  "hyper",
  "log",
  "num-traits",
- "parking_lot 0.12.1",
+ "parking_lot",
  "serde",
  "tokio",
 ]
@@ -3166,7 +3131,7 @@ dependencies = [
  "chacha20poly1305",
  "chrono",
  "config",
- "dashmap 5.4.0",
+ "dashmap",
  "dialoguer 0.10.2",
  "ed25519-dalek 1.0.1 (git+https://github.com/broxus/ed25519-dalek.git)",
  "either",
@@ -3182,7 +3147,7 @@ dependencies = [
  "nekoton-utils",
  "num-traits",
  "once_cell",
- "parking_lot 0.12.1",
+ "parking_lot",
  "pkey_mprotect",
  "pomfrit",
  "pretty_assertions",
@@ -3634,7 +3599,7 @@ dependencies = [
 [[package]]
 name = "solana-account-decoder"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana?branch=broxus#deb0544f9514ba156b91905e9e626d01f0da438e"
+source = "git+https://github.com/pashinov/solana?branch=broxus#c6840c6957e794f38c90400dfa36d9fe83380a64"
 dependencies = [
  "Inflector",
  "base64 0.12.3",
@@ -3656,7 +3621,7 @@ dependencies = [
 [[package]]
 name = "solana-address-lookup-table-program"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana?branch=broxus#deb0544f9514ba156b91905e9e626d01f0da438e"
+source = "git+https://github.com/pashinov/solana?branch=broxus#c6840c6957e794f38c90400dfa36d9fe83380a64"
 dependencies = [
  "bincode",
  "bytemuck",
@@ -3675,7 +3640,7 @@ dependencies = [
 [[package]]
 name = "solana-bloom"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana?branch=broxus#deb0544f9514ba156b91905e9e626d01f0da438e"
+source = "git+https://github.com/pashinov/solana?branch=broxus#c6840c6957e794f38c90400dfa36d9fe83380a64"
 dependencies = [
  "bv",
  "fnv",
@@ -3705,7 +3670,7 @@ dependencies = [
 [[package]]
 name = "solana-bucket-map"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana?branch=broxus#deb0544f9514ba156b91905e9e626d01f0da438e"
+source = "git+https://github.com/pashinov/solana?branch=broxus#c6840c6957e794f38c90400dfa36d9fe83380a64"
 dependencies = [
  "fs_extra",
  "log",
@@ -3721,7 +3686,7 @@ dependencies = [
 [[package]]
 name = "solana-clap-utils"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana?branch=broxus#deb0544f9514ba156b91905e9e626d01f0da438e"
+source = "git+https://github.com/pashinov/solana?branch=broxus#c6840c6957e794f38c90400dfa36d9fe83380a64"
 dependencies = [
  "chrono",
  "clap",
@@ -3738,7 +3703,7 @@ dependencies = [
 [[package]]
 name = "solana-cli-config"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana?branch=broxus#deb0544f9514ba156b91905e9e626d01f0da438e"
+source = "git+https://github.com/pashinov/solana?branch=broxus#c6840c6957e794f38c90400dfa36d9fe83380a64"
 dependencies = [
  "dirs-next",
  "lazy_static",
@@ -3751,7 +3716,7 @@ dependencies = [
 [[package]]
 name = "solana-client"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana?branch=broxus#deb0544f9514ba156b91905e9e626d01f0da438e"
+source = "git+https://github.com/pashinov/solana?branch=broxus#c6840c6957e794f38c90400dfa36d9fe83380a64"
 dependencies = [
  "base64 0.13.0",
  "bincode",
@@ -3784,7 +3749,7 @@ dependencies = [
 [[package]]
 name = "solana-compute-budget-program"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana?branch=broxus#deb0544f9514ba156b91905e9e626d01f0da438e"
+source = "git+https://github.com/pashinov/solana?branch=broxus#c6840c6957e794f38c90400dfa36d9fe83380a64"
 dependencies = [
  "solana-program-runtime",
  "solana-sdk",
@@ -3793,7 +3758,7 @@ dependencies = [
 [[package]]
 name = "solana-config-program"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana?branch=broxus#deb0544f9514ba156b91905e9e626d01f0da438e"
+source = "git+https://github.com/pashinov/solana?branch=broxus#c6840c6957e794f38c90400dfa36d9fe83380a64"
 dependencies = [
  "bincode",
  "chrono",
@@ -3806,7 +3771,7 @@ dependencies = [
 [[package]]
 name = "solana-faucet"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana?branch=broxus#deb0544f9514ba156b91905e9e626d01f0da438e"
+source = "git+https://github.com/pashinov/solana?branch=broxus#c6840c6957e794f38c90400dfa36d9fe83380a64"
 dependencies = [
  "bincode",
  "byteorder",
@@ -3828,7 +3793,7 @@ dependencies = [
 [[package]]
 name = "solana-frozen-abi"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana?branch=broxus#deb0544f9514ba156b91905e9e626d01f0da438e"
+source = "git+https://github.com/pashinov/solana?branch=broxus#c6840c6957e794f38c90400dfa36d9fe83380a64"
 dependencies = [
  "bs58",
  "bv",
@@ -3847,7 +3812,7 @@ dependencies = [
 [[package]]
 name = "solana-frozen-abi-macro"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana?branch=broxus#deb0544f9514ba156b91905e9e626d01f0da438e"
+source = "git+https://github.com/pashinov/solana?branch=broxus#c6840c6957e794f38c90400dfa36d9fe83380a64"
 dependencies = [
  "proc-macro2 1.0.43",
  "quote 1.0.21",
@@ -3858,7 +3823,7 @@ dependencies = [
 [[package]]
 name = "solana-logger"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana?branch=broxus#deb0544f9514ba156b91905e9e626d01f0da438e"
+source = "git+https://github.com/pashinov/solana?branch=broxus#c6840c6957e794f38c90400dfa36d9fe83380a64"
 dependencies = [
  "env_logger",
  "lazy_static",
@@ -3868,7 +3833,7 @@ dependencies = [
 [[package]]
 name = "solana-measure"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana?branch=broxus#deb0544f9514ba156b91905e9e626d01f0da438e"
+source = "git+https://github.com/pashinov/solana?branch=broxus#c6840c6957e794f38c90400dfa36d9fe83380a64"
 dependencies = [
  "log",
  "solana-sdk",
@@ -3877,7 +3842,7 @@ dependencies = [
 [[package]]
 name = "solana-metrics"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana?branch=broxus#deb0544f9514ba156b91905e9e626d01f0da438e"
+source = "git+https://github.com/pashinov/solana?branch=broxus#c6840c6957e794f38c90400dfa36d9fe83380a64"
 dependencies = [
  "env_logger",
  "gethostname",
@@ -3890,7 +3855,7 @@ dependencies = [
 [[package]]
 name = "solana-net-utils"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana?branch=broxus#deb0544f9514ba156b91905e9e626d01f0da438e"
+source = "git+https://github.com/pashinov/solana?branch=broxus#c6840c6957e794f38c90400dfa36d9fe83380a64"
 dependencies = [
  "bincode",
  "clap",
@@ -3910,7 +3875,7 @@ dependencies = [
 [[package]]
 name = "solana-perf"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana?branch=broxus#deb0544f9514ba156b91905e9e626d01f0da438e"
+source = "git+https://github.com/pashinov/solana?branch=broxus#c6840c6957e794f38c90400dfa36d9fe83380a64"
 dependencies = [
  "ahash",
  "bincode",
@@ -3938,7 +3903,7 @@ dependencies = [
 [[package]]
 name = "solana-program"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana?branch=broxus#deb0544f9514ba156b91905e9e626d01f0da438e"
+source = "git+https://github.com/pashinov/solana?branch=broxus#c6840c6957e794f38c90400dfa36d9fe83380a64"
 dependencies = [
  "base64 0.13.0",
  "bincode",
@@ -3960,7 +3925,7 @@ dependencies = [
  "log",
  "num-derive",
  "num-traits",
- "parking_lot 0.11.2",
+ "parking_lot",
  "rand 0.7.3",
  "rustc_version",
  "rustversion",
@@ -3980,7 +3945,7 @@ dependencies = [
 [[package]]
 name = "solana-program-runtime"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana?branch=broxus#deb0544f9514ba156b91905e9e626d01f0da438e"
+source = "git+https://github.com/pashinov/solana?branch=broxus#c6840c6957e794f38c90400dfa36d9fe83380a64"
 dependencies = [
  "base64 0.13.0",
  "bincode",
@@ -4003,7 +3968,7 @@ dependencies = [
 [[package]]
 name = "solana-rayon-threadlimit"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana?branch=broxus#deb0544f9514ba156b91905e9e626d01f0da438e"
+source = "git+https://github.com/pashinov/solana?branch=broxus#c6840c6957e794f38c90400dfa36d9fe83380a64"
 dependencies = [
  "lazy_static",
  "num_cpus",
@@ -4012,7 +3977,7 @@ dependencies = [
 [[package]]
 name = "solana-remote-wallet"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana?branch=broxus#deb0544f9514ba156b91905e9e626d01f0da438e"
+source = "git+https://github.com/pashinov/solana?branch=broxus#c6840c6957e794f38c90400dfa36d9fe83380a64"
 dependencies = [
  "base32",
  "console",
@@ -4020,7 +3985,7 @@ dependencies = [
  "log",
  "num-derive",
  "num-traits",
- "parking_lot 0.11.2",
+ "parking_lot",
  "qstring",
  "semver",
  "solana-sdk",
@@ -4031,7 +3996,7 @@ dependencies = [
 [[package]]
 name = "solana-runtime"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana?branch=broxus#deb0544f9514ba156b91905e9e626d01f0da438e"
+source = "git+https://github.com/pashinov/solana?branch=broxus#c6840c6957e794f38c90400dfa36d9fe83380a64"
 dependencies = [
  "arrayref",
  "bincode",
@@ -4041,7 +4006,7 @@ dependencies = [
  "byteorder",
  "bzip2",
  "crossbeam-channel",
- "dashmap 4.0.2",
+ "dashmap",
  "dir-diff",
  "flate2",
  "fnv",
@@ -4085,7 +4050,7 @@ dependencies = [
 [[package]]
 name = "solana-sdk"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana?branch=broxus#deb0544f9514ba156b91905e9e626d01f0da438e"
+source = "git+https://github.com/pashinov/solana?branch=broxus#c6840c6957e794f38c90400dfa36d9fe83380a64"
 dependencies = [
  "assert_matches",
  "base64 0.13.0",
@@ -4135,7 +4100,7 @@ dependencies = [
 [[package]]
 name = "solana-sdk-macro"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana?branch=broxus#deb0544f9514ba156b91905e9e626d01f0da438e"
+source = "git+https://github.com/pashinov/solana?branch=broxus#c6840c6957e794f38c90400dfa36d9fe83380a64"
 dependencies = [
  "bs58",
  "proc-macro2 1.0.43",
@@ -4147,7 +4112,7 @@ dependencies = [
 [[package]]
 name = "solana-stake-program"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana?branch=broxus#deb0544f9514ba156b91905e9e626d01f0da438e"
+source = "git+https://github.com/pashinov/solana?branch=broxus#c6840c6957e794f38c90400dfa36d9fe83380a64"
 dependencies = [
  "bincode",
  "log",
@@ -4169,7 +4134,7 @@ dependencies = [
 [[package]]
 name = "solana-transaction-status"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana?branch=broxus#deb0544f9514ba156b91905e9e626d01f0da438e"
+source = "git+https://github.com/pashinov/solana?branch=broxus#c6840c6957e794f38c90400dfa36d9fe83380a64"
 dependencies = [
  "Inflector",
  "base64 0.12.3",
@@ -4195,7 +4160,7 @@ dependencies = [
 [[package]]
 name = "solana-version"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana?branch=broxus#deb0544f9514ba156b91905e9e626d01f0da438e"
+source = "git+https://github.com/pashinov/solana?branch=broxus#c6840c6957e794f38c90400dfa36d9fe83380a64"
 dependencies = [
  "log",
  "rustc_version",
@@ -4209,7 +4174,7 @@ dependencies = [
 [[package]]
 name = "solana-vote-program"
 version = "1.9.29"
-source = "git+https://github.com/pashinov/solana?branch=broxus#deb0544f9514ba156b91905e9e626d01f0da438e"
+source = "git+https://github.com/pashinov/solana?branch=broxus#c6840c6957e794f38c90400dfa36d9fe83380a64"
 dependencies = [
  "bincode",
  "log",
@@ -4638,7 +4603,7 @@ dependencies = [
  "mio",
  "num_cpus",
  "once_cell",
- "parking_lot 0.12.1",
+ "parking_lot",
  "pin-project-lite",
  "signal-hook-registry",
  "socket2",
@@ -4703,7 +4668,7 @@ dependencies = [
  "bytes",
  "countme",
  "crc",
- "dashmap 5.4.0",
+ "dashmap",
  "either",
  "everscale-network",
  "fdlimit",
@@ -4716,7 +4681,7 @@ dependencies = [
  "num-traits",
  "num_cpus",
  "once_cell",
- "parking_lot 0.12.1",
+ "parking_lot",
  "rand 0.8.5",
  "rlimit",
  "rocksdb",
@@ -4800,7 +4765,7 @@ dependencies = [
  "base64 0.13.0",
  "countme",
  "crc",
- "dashmap 5.4.0",
+ "dashmap",
  "hex",
  "log",
  "num",
@@ -5275,7 +5240,7 @@ dependencies = [
  "jsonrpc-core",
  "log",
  "once_cell",
- "parking_lot 0.12.1",
+ "parking_lot",
  "pin-project",
  "reqwest",
  "rlp",
