@@ -198,6 +198,22 @@ impl SolSubscriber {
         Ok(account)
     }
 
+    async fn healthcheck(&self) -> Result<()> {
+        let _permit = self.pool.acquire().await;
+
+        retry(
+            || self.get_health(),
+            generate_default_timeout_config(Duration::from_secs(
+                self.config.maximum_failed_responses_time_sec,
+            )),
+            NetworkType::SOL,
+            "healthcheck",
+        )
+        .await?;
+
+        Ok(())
+    }
+
     async fn update(&self) -> Result<()> {
         log::info!(
             "TON->SOL pending events: {}",
@@ -469,6 +485,20 @@ impl SolSubscriber {
         })?
     }
 
+    async fn get_health(&self) -> Result<(), ClientError> {
+        tokio::task::spawn_blocking({
+            let rpc_client = self.rpc_client.clone();
+            move || -> Result<(), ClientError> { rpc_client.get_health() }
+        })
+        .await
+        .map_err(|err| {
+            ClientError::from(ClientErrorKind::Custom(format!(
+                "Failed to get solana health: {}",
+                err
+            )))
+        })?
+    }
+
     async fn verify_sol_ton_transaction(
         &self,
         data: SolTonTransactionData,
@@ -505,23 +535,23 @@ impl SolSubscriber {
         let now = std::time::Instant::now();
 
         let result = loop {
+            self.healthcheck().await?;
+
             if let Some(account) = self.get_account(&account_pubkey).await? {
                 break Some(account);
             }
 
-            const POLLING_TIMEOUT_SEC: u64 = 60;
-            if now.elapsed().as_secs() > POLLING_TIMEOUT_SEC {
+            if now.elapsed().as_secs() > self.config.poll_deposits_timeout_sec {
                 break None;
             }
 
-            const POLLING_INTERVAL_SEC: u64 = 1;
-            tokio::time::sleep(Duration::from_secs(POLLING_INTERVAL_SEC)).await;
+            tokio::time::sleep(Duration::from_secs(self.config.poll_deposits_interval_sec)).await;
         };
 
         let account = match result {
             Some(account) => account,
             None => {
-                log::error!("Solana account {} not exist", account_pubkey);
+                log::error!("Solana account {} doesn't  exist", account_pubkey);
                 return Ok(VerificationStatus::NotExists);
             }
         };

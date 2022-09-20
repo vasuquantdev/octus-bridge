@@ -34,6 +34,14 @@ pub struct SolConfig {
     #[serde(default = "const_u64::<3600>")]
     pub poll_proposals_interval_sec: u64,
 
+    /// Deposits polling timeout. Default: 120
+    #[serde(default = "const_u64::<120>")]
+    pub poll_deposits_timeout_sec: u64,
+
+    /// Deposits polling interval. Default: 5
+    #[serde(default = "const_u64::<5>")]
+    pub poll_deposits_interval_sec: u64,
+
     /// Skip invalid TON->SOL event is Solana. Default: false
     #[serde(default)]
     pub clear_invalid_events: bool,
