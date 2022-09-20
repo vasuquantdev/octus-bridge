@@ -1204,30 +1204,35 @@ impl Bridge {
             }
         };
 
-        // Extract vote and log it
-        let c_ix = sol_message_vote.instructions.first().trust_me();
-        let ix = solana_bridge::instructions::VoteForProposal::try_from_slice(&c_ix.data)?;
+        if !sol_subscriber
+            .is_already_voted(round_number, &proposal_pubkey, &voter_pubkey)
+            .await?
+        {
+            // Extract vote and log it
+            let c_ix = sol_message_vote.instructions.first().trust_me();
+            let ix = solana_bridge::instructions::VoteForProposal::try_from_slice(&c_ix.data)?;
 
-        log::info!(
-            "Send '{:?}' to {} solana proposal",
-            ix.vote,
-            proposal_pubkey
-        );
+            log::info!(
+                "Send '{:?}' to {} solana proposal",
+                ix.vote,
+                proposal_pubkey
+            );
 
-        // Send confirm/reject to Solana
-        sol_subscriber
-            .send_message(sol_message_vote, &self.context.keystore)
-            .await
-            .map_err(parse_client_error)?;
-
-        // Execute proposal
-        if let Some(message) = sol_message_execute {
-            if let Err(err) = sol_subscriber
-                .send_message(message, &self.context.keystore)
+            // Send confirm/reject to Solana
+            sol_subscriber
+                .send_message(sol_message_vote, &self.context.keystore)
                 .await
-                .map_err(parse_client_error)
-            {
-                log::error!("Failed to execute solana proposal: {}", err);
+                .map_err(parse_client_error)?;
+
+            // Execute proposal
+            if let Some(message) = sol_message_execute {
+                if let Err(err) = sol_subscriber
+                    .send_message(message, &self.context.keystore)
+                    .await
+                    .map_err(parse_client_error)
+                {
+                    log::error!("Failed to execute solana proposal: {}", err);
+                }
             }
         }
 

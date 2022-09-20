@@ -9,7 +9,6 @@ use tokio::sync::{oneshot, Semaphore};
 
 use solana_account_decoder::{UiAccountEncoding, UiDataSliceConfig};
 use solana_bridge::bridge_state::Proposal;
-use solana_bridge::round_loader::get_relay_round_address;
 use solana_client::client_error::{ClientError, ClientErrorKind};
 use solana_client::rpc_client::RpcClient;
 use solana_client::rpc_config::{
@@ -21,6 +20,7 @@ use solana_sdk::bs58;
 use solana_sdk::clock::{Slot, UnixTimestamp};
 use solana_sdk::commitment_config::CommitmentConfig;
 use solana_sdk::message::Message;
+use solana_sdk::program_pack::Pack;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Signature;
 use solana_transaction_status::{EncodedConfirmedTransaction, UiTransactionEncoding};
@@ -178,6 +178,47 @@ impl SolSubscriber {
         Ok(())
     }
 
+    pub async fn is_already_voted(
+        &self,
+        round_number: u32,
+        proposal_pubkey: &Pubkey,
+        voter_pubkey: &Pubkey,
+    ) -> Result<bool> {
+        let relay_round_pubkey = solana_bridge::round_loader::get_relay_round_address(round_number);
+        let relay_round_account = self.get_account(&relay_round_pubkey).await?;
+        let relay_round_account_data = match relay_round_account {
+            Some(account) => solana_bridge::round_loader::RelayRound::unpack(account.data())?,
+            None => {
+                return Err(
+                    SolSubscriberError::InvalidRoundAccount(relay_round_pubkey.to_string()).into(),
+                )
+            }
+        };
+
+        let proposal_account = self.get_account(proposal_pubkey).await?;
+        let proposal_data = match proposal_account {
+            Some(account) => Proposal::unpack_from_slice(account.data())?,
+            None => {
+                return Err(
+                    SolSubscriberError::InvalidProposalAccount(proposal_pubkey.to_string()).into(),
+                )
+            }
+        };
+
+        let index = relay_round_account_data
+            .relays
+            .iter()
+            .position(|pubkey| pubkey == voter_pubkey)
+            .ok_or(SolSubscriberError::InvalidRound(round_number))?;
+
+        let vote = proposal_data
+            .signers
+            .get(index)
+            .ok_or(SolSubscriberError::InvalidVotePosition(index))?;
+
+        Ok(*vote != solana_bridge::bridge_types::Vote::None)
+    }
+
     async fn get_account(&self, account_pubkey: &Pubkey) -> Result<Option<Account>> {
         let account = {
             retry(
@@ -292,7 +333,9 @@ impl SolSubscriber {
 
                         let status = entry.get().check(account_data.event);
 
-                        let round_pubkey = get_relay_round_address(account_data.round_number);
+                        let round_pubkey = solana_bridge::round_loader::get_relay_round_address(
+                            account_data.round_number,
+                        );
                         match self.get_account(&round_pubkey).await {
                             Ok(None) => {
                                 entry.remove();
@@ -638,6 +681,14 @@ pub struct SolSubscriberMetrics {
 
 #[derive(thiserror::Error, Debug)]
 enum SolSubscriberError {
-    #[error("Failed to decode solana transaction: `{0}`")]
+    #[error("Failed to decode solana transaction `{0}`")]
     DecodeTransactionError(String),
+    #[error("Relay is not in the round `{0}`")]
+    InvalidRound(u32),
+    #[error("Relay is not in the round `{0}`")]
+    InvalidVotePosition(usize),
+    #[error("Relay round `{0}` doesn't exist")]
+    InvalidRoundAccount(String),
+    #[error("Proposal `{0}` doesn't exist")]
+    InvalidProposalAccount(String),
 }
