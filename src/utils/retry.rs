@@ -7,7 +7,9 @@ use tryhard::{NoOnRetry, RetryFutureConfig, RetryPolicy};
 
 use solana_client::client_error::ClientError;
 use solana_client::client_error::ClientErrorKind;
-use solana_client::rpc_request::RpcError;
+use solana_client::rpc_request::{RpcError, RpcResponseErrorData};
+use solana_sdk::instruction::InstructionError;
+use solana_sdk::transaction::TransactionError;
 
 /// Retries future, logging unsuccessful retries with `message`
 pub async fn retry<MakeFutureT, T, E, Fut, BackoffT, OnRetryT>(
@@ -75,10 +77,14 @@ impl<'a> BackoffStrategy<'a, ClientError> for SolRpcBackoffStrategy {
     fn delay(&mut self, attempt: u32, error: &'a ClientError) -> Self::Output {
         match &error.kind {
             ClientErrorKind::RpcError(RpcError::RpcResponseError {
-                code: solana_client::rpc_custom_error::JSON_RPC_SERVER_ERROR_NODE_UNHEALTHY,
+                data: RpcResponseErrorData::SendTransactionPreflightFailure(_),
                 ..
-            }) => RetryPolicy::Delay(self.inner.delay(attempt, error)),
-            _ => RetryPolicy::Break,
+            }) => RetryPolicy::Break,
+            ClientErrorKind::TransactionError(TransactionError::InstructionError(
+                _,
+                InstructionError::Custom(_),
+            )) => RetryPolicy::Break,
+            _ => RetryPolicy::Delay(self.inner.delay(attempt, error)),
         }
     }
 }
