@@ -19,7 +19,7 @@ RUN ls -lah
 
 RUN rustup component add rustfmt
 RUN mkdir /root/.cargo && \
-    echo -e '[net]\ngit-fetch-with-cli = true' > /root/.cargo/config && \
+    /bin/bash -c "echo -e '[net]\ngit-fetch-with-cli = true' > /root/.cargo/config" && \
     cargo build --release
 
 
