@@ -18,7 +18,9 @@ COPY LICENSE ./LICENSE
 RUN ls -lah
 
 RUN rustup component add rustfmt
-RUN cargo --config net.git-fetch-with-cli=true build --release
+RUN mkdir /root/.cargo && \
+    echo -e '[net]\ngit-fetch-with-cli = true' > /root/.cargo/config && \
+    cargo build --release
 
 
 FROM debian:bullseye-slim as runtime
