@@ -23,7 +23,7 @@ pub struct SolConfig {
     pub pool_size: usize,
 
     /// Blocks polling interval. Default: 15
-    #[serde(default = "const_u64::<15>")]
+    #[serde(default = "const_u64::<30>")]
     pub poll_interval_sec: u64,
 
     /// Max request duration (including all failed retires). Default: 604800
