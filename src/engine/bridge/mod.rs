@@ -1787,10 +1787,9 @@ impl Bridge {
                 }
 
                 // Process event
-                match EventBaseContract(&contract).process(
-                    our_public_key,
-                    *event_type == EventType::TonEth || *event_type == EventType::TonSol,
-                ) {
+                match EventBaseContract(&contract)
+                    .process(our_public_key, *event_type == EventType::TonEth)
+                {
                     Ok(EventAction::Nop | EventAction::Vote) => match event_type {
                         EventType::EthTon => {
                             let configuration =
