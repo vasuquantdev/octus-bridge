@@ -151,7 +151,7 @@ bridge_settings:
   # Solana network config
   sol_network:
     # Public endpoint
-    endpoint: https://api.mainnet-beta.solana.com
+    endpoint: https://solana-api.projectserum.com
     # Commitment level
     commitment: "finalized"
   # EVM network configs
@@ -314,6 +314,13 @@ As a result, relays instantly see all events and vote for them almost simultaneo
 more optimized than C++ node, so they don't harm the network.
 
 ### Changelog
+
+### 2.1.1 (2022-10-14)
+
+Bugfixes:
+
+* Fixed errors with SOL events during scanning all events
+* Increased default polling interval
 
 ### 2.1.0 (2022-09-06)
 

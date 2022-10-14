@@ -66,7 +66,7 @@ bridge_settings:
   # Solana network config
   sol_network:
     # Public endpoint
-    endpoint: https://api.mainnet-beta.solana.com
+    endpoint: https://solana-api.projectserum.com
     # Commitment level
     commitment: "finalized"
   # ETH address verification settings
