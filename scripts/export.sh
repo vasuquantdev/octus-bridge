@@ -65,7 +65,7 @@ if [[ ! -f "$path" ]]; then
 fi
 
 if [[ "$setup_type" == "native" ]]; then
-  relay_binary="/usr/local/bin/relay export"
+  relay_binary="/usr/bin/relay export"
 elif [[ "$setup_type" == "docker" ]]; then
   if ! sudo docker info > /dev/null 2>&1; then
     echo 'ERROR: This script uses docker, and it is not running or not configured properly.'

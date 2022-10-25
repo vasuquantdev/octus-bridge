@@ -9,7 +9,7 @@ Restart=always
 RestartSec=3
 WorkingDirectory=/etc/relay
 ExecReload=kill -HUP $MAINPID
-ExecStart=/usr/local/bin/relay run --config /etc/relay/config.yaml --global-config /etc/relay/ton-global.config.json
+ExecStart=/usr/bin/relay run --config /etc/relay/config.yaml --global-config /etc/relay/global.config.json
 
 [Install]
 WantedBy=multi-user.target
