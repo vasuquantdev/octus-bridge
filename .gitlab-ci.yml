@@ -6,8 +6,8 @@ include:
 stages:
   - cloudbuild
 
-cloudbuild:image:
-  extends: .cloudbuild:common
-  only:
-    - master
-    - tags
+cloudbuild:package:
+  extends: .cloudbuild:deb-package
+  before_script:
+    - cp contrib/relay.native.service contrib/service
+    - wget -O contrib/global.config.json https://raw.githubusercontent.com/tonlabs/main.ton.dev/master/configs/ton-global.config.json

@@ -80,3 +80,22 @@ tempfile = "3.3.0"
 [patch.crates-io]
 hmac-drbg = { git = "https://github.com/Rexagon/rust-hmac-drbg" }
 solana-program = { git = 'https://github.com/pashinov/solana', branch = 'broxus' }
+
+[package.metadata.deb]
+maintainer = "Broxus <hello@broxus.com>"
+copyright = "2022, Broxus <hello@broxus.com>"
+license-file = ["LICENSE", "4"]
+extended-description = """\
+Octus Bridge relay node that validates transfers across \
+multiple blockchains. Supports all EVM based networks."""
+depends = "$auto"
+section = "utility"
+priority = "optional"
+assets = [
+    ["target/release/relay", "usr/bin/", "755"],
+    ["contrib/config.yaml", "etc/relay/", "644"],
+    ["contrib/global.config.json", "etc/relay/", "644"],
+    ["README.md", "usr/share/doc/relay/README", "644"],
+]
+maintainer-scripts = "contrib/"
+systemd-units = { enable = true }

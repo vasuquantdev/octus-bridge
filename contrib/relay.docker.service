@@ -19,7 +19,7 @@ ExecStart=/usr/bin/docker run --rm --name %n \
     -e POLYGON_URL \
     --mount type=bind,source=/etc/relay,target=/etc/relay \
     --mount type=bind,source=/var/db/relay,target=/var/db/relay \
-    relay run --config /etc/relay/config.yaml --global-config /etc/relay/ton-global.config.json
+    relay run --config /etc/relay/config.yaml --global-config /etc/relay/global.config.json
 
 [Install]
 WantedBy=multi-user.target
