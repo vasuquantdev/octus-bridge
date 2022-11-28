@@ -15,6 +15,12 @@ use tokio::sync::mpsc;
 static GLOBAL: broxus_util::alloc::Allocator = broxus_util::alloc::allocator();
 
 fn main() -> Result<()> {
+    if atty::is(atty::Stream::Stdout) {
+        tracing_subscriber::fmt::init();
+    } else {
+        tracing_subscriber::fmt::fmt().without_time().init();
+    }
+
     let app = argh::from_env::<App>();
     match app.command {
         Subcommand::Run(run) => run.execute(),

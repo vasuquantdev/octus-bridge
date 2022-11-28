@@ -3158,6 +3158,7 @@ dependencies = [
  "anyhow",
  "argh",
  "async-trait",
+ "atty",
  "borsh",
  "broxus-util",
  "cargo-husky",
