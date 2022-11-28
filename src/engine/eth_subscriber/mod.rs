@@ -8,7 +8,6 @@ use anyhow::{Context, Result};
 use dashmap::DashMap;
 use either::Either;
 use eth_ton_abi_converter::*;
-use everscale_network::utils::FxDashMap;
 use futures_util::StreamExt;
 use rustc_hash::{FxHashMap, FxHashSet};
 use tokio::sync::{oneshot, Notify, Semaphore};
@@ -96,7 +95,7 @@ impl EthSubscriberRegistry {
                 entry.insert(subscriber);
             }
             Entry::Occupied(entry) => {
-                log::warn!("Replacing existing ETH subscriber with id {}", chain_id);
+                tracing::warn!(chain_id, "replacing existing ETH subscriber");
                 entry.replace_entry(subscriber);
             }
         };
@@ -177,7 +176,10 @@ impl EthSubscriber {
 
         let clear_state = || {
             if let Err(e) = std::fs::remove_file(&settings.state_path) {
-                log::info!("Failed to reset address verification state: {:?}", e);
+                tracing::info!(
+                    verification_state = %settings.state_path.display(),
+                    "failed to reset address verification state: {e:?}"
+                );
             }
         };
 
@@ -185,7 +187,11 @@ impl EthSubscriber {
         match AddressVerificationState::try_load(&settings.state_path)? {
             // Ignore state for different address
             Some(state) if state.address != relay_address.0 => {
-                log::warn!("Address verification state created for the different relay address. It will be ignored");
+                tracing::warn!(
+                    old_addr = hex::encode(state.address),
+                    new_addr = hex::encode(relay_address.0),
+                    "address verification state created for the different relay address, it will be ignored",
+                );
                 clear_state();
             }
             // Wait until transaction is found
@@ -206,23 +212,29 @@ impl EthSubscriber {
                         Some(transaction) => match transaction.block_hash {
                             // If it was included, consider that the address is confirmed
                             Some(block) => {
-                                log::info!(
-                                    "ETH transaction {} found in block {}",
-                                    transaction_id,
-                                    hex::encode(block.as_bytes())
+                                tracing::info!(
+                                    tx = transaction_id,
+                                    block = hex::encode(block.as_bytes()),
+                                    "ETH transaction found",
                                 );
                                 clear_state();
                                 return Ok(());
                             }
                             // If it wasn't included, poll
                             None => {
-                                log::info!("ETH transaction {} is still pending", transaction_id);
+                                tracing::info!(
+                                    tx = transaction_id,
+                                    "ETH transaction is still pending",
+                                );
                                 tokio::time::sleep(Duration::from_secs(10)).await;
                             }
                         },
                         // Ignore state for non-existing transaction
                         None => {
-                            log::warn!("Address verification state contains non-existing transaction. It will be ignored");
+                            tracing::warn!(
+                                "address verification state contains non-existing transaction, \
+                                 it will be ignored"
+                            );
                             clear_state();
                             break; // continue verification
                         }
@@ -251,7 +263,11 @@ impl EthSubscriber {
             .await?;
 
             if balance < min_balance {
-                log::info!("Insufficient balance ({}/{})", balance, min_balance);
+                tracing::info!(
+                    current_balance = %balance,
+                    target_balance = %min_balance,
+                    "insufficient balance",
+                );
                 tokio::time::sleep(Duration::from_secs(10)).await;
             } else {
                 break;
@@ -370,7 +386,7 @@ impl EthSubscriber {
                 };
 
                 if let Err(e) = subscriber.update().await {
-                    log::error!("Error occurred during EVM node subscriber update: {:?}", e);
+                    tracing::error!("error occurred during EVM subscriber update: {e:?}");
                 }
             }
         });
@@ -386,10 +402,11 @@ impl EthSubscriber {
             }
         }
 
-        log::info!(
-            "Updating EVM-{} subscriber. (Pending confirmations: {})",
-            self.chain_id,
-            self.pending_confirmation_count.load(Ordering::Acquire)
+        let chain_id = self.chain_id;
+        tracing::info!(
+            chain_id,
+            pending_confirmations = self.pending_confirmation_count.load(Ordering::Acquire),
+            "updating EVM-{chain_id} subscriber",
         );
 
         // Prepare tryhard config
@@ -411,11 +428,15 @@ impl EthSubscriber {
             Err(e) if is_incomplete_message(&e) => return Ok(()),
             Err(e) => {
                 return Err(e)
-                    .with_context(|| format!("Failed to get actual EVM-{} height", self.chain_id))
+                    .with_context(|| format!("Failed to get actual EVM-{chain_id} height"))
             }
         };
 
-        log::info!("Current EVM-{} block: {}", self.chain_id, current_block);
+        tracing::info!(
+            chain_id = self.chain_id,
+            current_block,
+            "got new EVM-{chain_id} block height",
+        );
 
         // Check last processed block
         let last_processed_block = self.last_processed_block.load(Ordering::Acquire);
@@ -429,11 +450,12 @@ impl EthSubscriber {
         if let Some(max_block_range) = self.config.max_block_range {
             if last_processed_block + max_block_range < current_block {
                 current_block = last_processed_block + max_block_range;
-                log::warn!(
-                    "Querying at most {} blocks. New current EVM-{} block: {}",
+                tracing::warn!(
+                    chain_id,
+                    current_block,
+                    last_processed_block,
                     max_block_range,
-                    self.chain_id,
-                    current_block
+                    "truncating blocks query for EVM-{chain_id}",
                 );
             }
         }
@@ -456,13 +478,18 @@ impl EthSubscriber {
             Ok(Err(e)) => {
                 return Err(e).with_context(|| {
                     format!(
-                        "Failed processing EVM-{} block in the time range from {} to {}",
-                        self.chain_id, last_processed_block, current_block
+                        "failed processing EVM-{chain_id} blocks in range from {} to {}",
+                        last_processed_block, current_block
                     )
                 })
             }
             Err(_) => {
-                log::warn!("Timed out processing EVM-{} blocks.", self.chain_id);
+                tracing::warn!(
+                    chain_id,
+                    current_block,
+                    last_processed_block,
+                    "EVM-{chain_id} blocks processing timeout",
+                );
                 return Ok(());
             }
         };
@@ -472,12 +499,22 @@ impl EthSubscriber {
         for event in events {
             if let Some(confirmation) = pending_confirmations.get_mut(&event.event_id()) {
                 match event {
-                    ParsedEthEvent::Removed(_) => {
-                        log::info!("Log removed");
+                    ParsedEthEvent::Removed(event) => {
+                        tracing::info!(
+                            chain_id,
+                            tx = hex::encode(event.transaction_hash.0),
+                            event_index = event.event_index,
+                            "log removed"
+                        );
                         confirmation.status = PendingConfirmationStatus::Invalid
                     }
                     ParsedEthEvent::Received(event) => {
-                        log::info!("Log received");
+                        tracing::info!(
+                            chain_id,
+                            tx = hex::encode(event.transaction_hash.0),
+                            event_index = event.event_index,
+                            "log received"
+                        );
                         confirmation.status = confirmation.check(event).into();
                     }
                 }
@@ -491,11 +528,19 @@ impl EthSubscriber {
                 return true;
             }
 
-            log::info!("Found pending confirmation to resolve");
+            tracing::info!(
+                chain_id,
+                current_block,
+                target_block = confirmation.target_block,
+                block = confirmation.vote_data.event_block.to_hex_string(),
+                tx = confirmation.vote_data.event_transaction.to_hex_string(),
+                event_index = confirmation.vote_data.event_index,
+                status = ?confirmation.status,
+                "found pending confirmation to resolve"
+            );
 
             let status = match confirmation.status {
                 PendingConfirmationStatus::InProcess | PendingConfirmationStatus::Valid => {
-                    log::info!("Confirmation status: {:?}", confirmation.status);
                     events_to_check.push(async move {
                         let result = self.find_event(&event_id).await;
                         (event_id, result)
@@ -504,8 +549,6 @@ impl EthSubscriber {
                 }
                 PendingConfirmationStatus::Invalid => VerificationStatus::NotExists,
             };
-
-            log::info!("Confirmation status: {:?}", status);
 
             if let Some(tx) = confirmation.status_tx.take() {
                 tx.send(status).ok();
@@ -517,8 +560,7 @@ impl EthSubscriber {
         let events_to_check = events_to_check
             .collect::<Vec<(EventId, Result<Option<ParsedEthEvent>>)>>()
             .await;
-
-        log::info!("Events to check: {:?}", events_to_check);
+        tracing::info!(chain_id, current_block, ?events_to_check);
 
         for (event_id, result) in events_to_check {
             if let hash_map::Entry::Occupied(mut entry) = pending_confirmations.entry(event_id) {
@@ -526,7 +568,12 @@ impl EthSubscriber {
                     Ok(Some(ParsedEthEvent::Received(event))) => entry.get_mut().check(event),
                     Ok(_) => VerificationStatus::NotExists,
                     Err(e) => {
-                        log::error!("Failed to check EVM-{} event: {:?}", self.chain_id, e);
+                        tracing::error!(
+                            chain_id,
+                            tx = hex::encode(event_id.0 .0),
+                            event_idnex = event_id.1,
+                            "failed to check EVM-{chain_id} event: {e:?}",
+                        );
                         continue;
                     }
                 };
@@ -788,7 +835,7 @@ fn parse_transaction_logs(
         .filter_map(|event| match event {
             Ok(event) => Some(event),
             Err(e) => {
-                log::error!("Failed to parse transaction log: {:?}", e);
+                tracing::error!("failed to parse transaction log: {e:?}");
                 None
             }
         })

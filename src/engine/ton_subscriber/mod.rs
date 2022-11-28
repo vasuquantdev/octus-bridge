@@ -51,10 +51,10 @@ impl TonSubscriber {
     pub async fn start(self: &Arc<Self>) -> Result<()> {
         self.wait_sync().await;
 
-        let now = chrono::Utc::now().timestamp() as u32;
-        log::info!("Waiting masterchain block for {}", now);
-        self.wait_shards(Some(now)).await?;
-        log::info!("Finished waiting masterchain block for {}", now);
+        let current_utime = chrono::Utc::now().timestamp() as u32;
+        tracing::info!(current_utime, "waiting for the masterchain block");
+        self.wait_shards(Some(current_utime)).await?;
+        tracing::info!(current_utime, "finished waiting for the masterchain block");
 
         Ok(())
     }
@@ -233,6 +233,7 @@ impl TonSubscriber {
     fn handle_masterchain_block(
         &self,
         meta: BriefBlockMeta,
+        block_id: &ton_block::BlockIdExt,
         block: &ton_block::Block,
     ) -> Result<()> {
         let gen_utime = meta.gen_utime();
@@ -249,7 +250,7 @@ impl TonSubscriber {
             |_, awaiter| match awaiter.handle_block(block, &block_info) {
                 Ok(action) => action == BlockAwaiterAction::Retain,
                 Err(e) => {
-                    log::error!("Failed to handle masterchain block: {:?}", e);
+                    tracing::error!(%block_id, "failed to handle masterchain block: {e:?}");
                     true
                 }
             },
@@ -260,6 +261,7 @@ impl TonSubscriber {
 
     fn handle_shard_block(
         &self,
+        block_id: &ton_block::BlockIdExt,
         block: &ton_block::Block,
         shard_state: &ton_block::ShardStateUnsplit,
     ) -> Result<()> {
@@ -288,17 +290,20 @@ impl TonSubscriber {
 
                 if subscription_status == StateSubscriptionStatus::Alive {
                     match shard_accounts.get(account) {
-                        Ok(mut account) => {
-                            let should_send = match &mut account {
+                        Ok(mut state) => {
+                            let should_send = match &mut state {
                                 // If account exists, all its cells must be preloaded
                                 // to get rid of rocksdb access
-                                Some(account) => {
-                                    match account.account_cell().preload_with_depth_hint::<20>() {
+                                Some(state) => {
+                                    match state.account_cell().preload_with_depth_hint::<20>() {
                                         // Account is now fully in memory
                                         Ok(()) => true,
                                         // Failed to load all cells
                                         Err(e) => {
-                                            log::error!("Failed to preload account: {e:?}");
+                                            tracing::error!(
+                                                account = %DisplayAddr(account),
+                                                "failed to preload account: {e:?}",
+                                            );
                                             false
                                         }
                                     }
@@ -307,13 +312,19 @@ impl TonSubscriber {
                                 None => true,
                             };
 
-                            if should_send && subscription.state_tx.send(account).is_err() {
-                                log::error!("Shard subscription somehow dropped");
+                            if should_send && subscription.state_tx.send(state).is_err() {
+                                tracing::error!(
+                                    account = %DisplayAddr(account),
+                                    "shard subscription somehow dropped",
+                                );
                                 keep = false;
                             }
                         }
                         Err(e) => {
-                            log::error!("Failed to get account {account:x}: {e:?}");
+                            tracing::error!(
+                                account = %DisplayAddr(account),
+                                "failed to get account: {e:?}",
+                            );
                         }
                     };
                 } else {
@@ -323,11 +334,12 @@ impl TonSubscriber {
                 if let Err(e) = subscription.handle_block(
                     &self.messages_queue,
                     &shard_accounts,
+                    block_id,
                     &block_info,
                     &account_blocks,
                     account,
                 ) {
-                    log::error!("Failed to handle block: {:?}", e);
+                    tracing::error!(%block_id, "failed to handle block: {e:?}");
                 }
 
                 keep
@@ -352,7 +364,7 @@ impl TonSubscriber {
 impl ton_indexer::Subscriber for TonSubscriber {
     async fn engine_status_changed(&self, status: EngineStatus) {
         if status == EngineStatus::Synced {
-            log::info!("TON subscriber is ready");
+            tracing::info!("TON subscriber is ready");
             self.ready.store(true, Ordering::Release);
             self.ready_signal.notify_waiters();
         }
@@ -361,9 +373,9 @@ impl ton_indexer::Subscriber for TonSubscriber {
     async fn process_block(&self, ctx: ProcessBlockContext<'_>) -> Result<()> {
         if let Some(shard_state) = ctx.shard_state() {
             if ctx.is_masterchain() {
-                self.handle_masterchain_block(ctx.meta(), ctx.block())?;
+                self.handle_masterchain_block(ctx.meta(), ctx.id(), ctx.block())?;
             } else {
-                self.handle_shard_block(ctx.block(), shard_state)?;
+                self.handle_shard_block(ctx.id(), ctx.block(), shard_state)?;
             }
         }
         Ok(())
@@ -403,6 +415,7 @@ impl StateSubscription {
         &self,
         messages_queue: &PendingMessagesQueue,
         shard_accounts: &ton_block::ShardAccounts,
+        block_id: &ton_block::BlockIdExt,
         block_info: &ton_block::BlockInfo,
         account_blocks: &ton_block::ShardAccountBlocks,
         account: &UInt256,
@@ -429,11 +442,10 @@ impl StateSubscription {
             }) {
                 Ok(tx) => tx,
                 Err(e) => {
-                    log::error!(
-                        "Failed to parse transaction in block {} for account {:x}: {:?}",
-                        block_info.seq_no(),
-                        account,
-                        e
+                    tracing::error!(
+                        %block_id,
+                        account = %DisplayAddr(account),
+                        "failed to parse transaction: {e:?}",
                     );
                     continue;
                 }
@@ -472,11 +484,11 @@ impl StateSubscription {
             // Handle transaction
             for subscription in self.iter_transaction_subscriptions() {
                 if let Err(e) = subscription.handle_transaction(ctx) {
-                    log::error!(
-                        "Failed to handle transaction {:x} for account {:x}: {:?}",
-                        hash,
-                        account,
-                        e
+                    tracing::error!(
+                        %block_id,
+                        tx = hash.to_hex_string(),
+                        account = %DisplayAddr(account),
+                        "Failed to handle transaction: {e:?}",
                     );
                 }
             }
@@ -535,12 +547,18 @@ where
     fn handle_transaction(&self, ctx: TxContext<'_>) -> Result<()> {
         let event = T::read_from_transaction(&ctx);
 
-        log::info!("Got transaction on account {:x}: {:?}", ctx.account, event);
+        tracing::info!(
+            account = %DisplayAddr(ctx.account),
+            "got transaction on account: {event:?}",
+        );
 
         // Send event to event manager if it exist
         if let Some(event) = event {
             if self.0.send((*ctx.account, event)).is_err() {
-                log::error!("Failed to send event: channel is dropped");
+                tracing::error!(
+                    account = %DisplayAddr(ctx.account),
+                    "failed to send event: channel is dropped",
+                );
             }
         }
 
@@ -569,11 +587,11 @@ pub fn start_listening_events<S, E, R>(
             };
 
             if let Err(e) = handler(service, event).await {
-                log::error!("{}: Failed to handle event: {:?}", name, e);
+                tracing::error!(contract = name, "failed to handle event: {e:?}");
             }
         }
 
-        log::warn!("{}: Stopped listening for events", name);
+        tracing::warn!(contract = name, "stopped listening for events");
 
         events_rx.close();
         while events_rx.recv().await.is_some() {}

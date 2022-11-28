@@ -15,7 +15,7 @@ pub struct EthTonEventInitData {
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct EthTonEventVoteData {
-    #[abi(with = "uint256_bytes")]
+    #[abi(uint256)]
     pub event_transaction: UInt256,
     #[abi(uint32)]
     pub event_index: u32,
@@ -23,7 +23,7 @@ pub struct EthTonEventVoteData {
     pub event_data: ton_types::Cell,
     #[abi(uint32)]
     pub event_block_number: u32,
-    #[abi(with = "uint256_bytes")]
+    #[abi(uint256)]
     pub event_block: UInt256,
 }
 
@@ -95,7 +95,7 @@ pub struct TonSolEventVoteData {
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct ExecuteAccount {
-    #[abi(with = "uint256_bytes")]
+    #[abi(uint256)]
     pub account: UInt256,
     #[abi(bool)]
     pub read_only: bool,
@@ -201,9 +201,9 @@ pub struct TonEthEventConfiguration {
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct SolTonEventConfiguration {
-    #[abi(with = "uint256_bytes")]
+    #[abi(uint256)]
     pub program: UInt256,
-    #[abi(with = "uint256_bytes")]
+    #[abi(uint256)]
     pub settings: UInt256,
     #[abi(with = "address_only_hash")]
     pub proxy: UInt256,
@@ -215,9 +215,9 @@ pub struct SolTonEventConfiguration {
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct TonSolEventConfiguration {
-    #[abi(with = "uint256_bytes")]
+    #[abi(uint256)]
     pub program: UInt256,
-    #[abi(with = "uint256_bytes")]
+    #[abi(uint256)]
     pub settings: UInt256,
     #[abi(with = "address_only_hash")]
     pub event_emitter: UInt256,
@@ -337,7 +337,7 @@ pub mod array_address_only_nonzero_hash {
 
 #[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
 pub struct RelayKeys {
-    #[abi(with = "array_uint256_bytes")]
+    #[abi(array)]
     pub items: Vec<UInt256>,
 }
 
@@ -355,7 +355,7 @@ pub struct UserDataDetails {
     pub relay_eth_address: [u8; 20],
     #[abi(bool)]
     pub eth_address_confirmed: bool,
-    #[abi(with = "uint256_bytes")]
+    #[abi(uint256)]
     pub relay_ton_pubkey: UInt256,
     #[abi(bool)]
     pub ton_pubkey_confirmed: bool,
@@ -455,7 +455,7 @@ pub struct RelayRoundsDetails {
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct RewardRound {
-    #[abi(with = "uint256_bytes")]
+    #[abi(uint256)]
     pub account_reward_per_share: UInt256,
     #[abi(uint128)]
     pub reward_tokens: u128,
@@ -489,7 +489,7 @@ pub struct ElectionEndedEvent {
 
 #[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
 pub struct TonPubkeyConfirmedEvent {
-    #[abi(with = "uint256_bytes")]
+    #[abi(uint256)]
     pub ton_pubkey: UInt256,
 }
 
@@ -509,7 +509,7 @@ pub struct DepositProcessedEvent {
 
 #[derive(Debug, Clone, PackAbiPlain, UnpackAbiPlain, KnownParamTypePlain)]
 pub struct RelayKeysUpdatedEvent {
-    #[abi(with = "uint256_bytes")]
+    #[abi(uint256)]
     pub ton_pubkey: UInt256,
     #[abi(with = "uint160_bytes")]
     pub eth_address: [u8; 20],
@@ -521,7 +521,7 @@ pub struct RelayMembershipRequestedEvent {
     pub round_num: u32,
     #[abi(uint128)]
     pub tokens: u128,
-    #[abi(with = "uint256_bytes")]
+    #[abi(uint256)]
     pub ton_pubkey: UInt256,
     #[abi(with = "uint160_bytes")]
     pub eth_address: [u8; 20],
@@ -535,7 +535,7 @@ pub struct RelayRoundDetails {
     pub root: UInt256,
     #[abi(uint32)]
     pub round_num: u32,
-    #[abi(with = "array_uint256_bytes")]
+    #[abi(array)]
     pub ton_keys: Vec<UInt256>,
     #[abi(with = "array_uint160_bytes")]
     pub eth_addrs: Vec<[u8; 20]>,

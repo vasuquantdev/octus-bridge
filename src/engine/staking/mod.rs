@@ -83,14 +83,14 @@ impl Staking {
                     .context("Failed to get relay round details")?,
                 None => {
                     // Wait for the next state
-                    log::warn!("Current relay round contract not found");
+                    tracing::warn!("current relay round contract not found");
                     continue;
                 }
             };
 
             if !relay_round_details.relays_installed {
                 // Wait for the next state
-                log::warn!("Relay round was not initialized yet");
+                tracing::warn!("relay round was not initialized yet");
                 continue;
             }
 
@@ -193,7 +193,7 @@ impl Staking {
             tokio::select! {
                 _ = staking_clone.become_relay_next_round() => {}
                 _ = elections_end_fut => {
-                    log::info!("Elections finished");
+                    tracing::info!("elections finished");
                 }
             }
         }
@@ -233,11 +233,11 @@ impl Staking {
             let relay_round_contract = match shard_accounts.find_account(&relay_round_address) {
                 Ok(Some(contract)) => contract,
                 Ok(None) => {
-                    log::warn!("Relay round {} not found", relay_round);
+                    tracing::warn!(relay_round, "relay round not found");
                     return Ok(());
                 }
                 Err(e) => {
-                    log::warn!("Failed to find relay round {}: {:?}", relay_round, e);
+                    tracing::warn!(relay_round, "failed to find relay round: {e:?}");
                     return Ok(());
                 }
             };
@@ -248,11 +248,7 @@ impl Staking {
                 Ok(true) => { /* continue */ }
                 Ok(false) => return Ok(()),
                 Err(e) => {
-                    log::warn!(
-                        "Failed to check unclaimed reward for round {}: {:?}",
-                        relay_round,
-                        e
-                    );
+                    tracing::warn!(relay_round, "failed to check unclaimed reward: {e:?}");
                 }
             };
 
@@ -265,16 +261,12 @@ impl Staking {
                             .get_reward_for_relay_round(relay_round, end_time)
                             .await
                         {
-                            log::error!(
-                                "Failed to collect reward for round {}: {:?}",
-                                relay_round,
-                                e
-                            );
+                            tracing::error!(relay_round, "failed to collect reward: {e:?}");
                         }
                     });
                 }
                 Err(e) => {
-                    log::warn!("Failed to check round {} end time: {:?}", relay_round, e);
+                    tracing::warn!(relay_round, "failed to check round end time: {e:?}");
                 }
             };
             Ok(())
@@ -329,11 +321,11 @@ impl Staking {
                     tokio::select! {
                         result = staking.become_relay_next_round() => {
                             if let Err(e) = result {
-                                log::error!("Failed to become relay next round: {:?}", e);
+                                tracing::error!("failed to become relay in the next round: {e:?}");
                             }
                         },
                         _ = notify_fut => {
-                            log::warn!("Early exit from become_relay_next_round due to the elections end");
+                            tracing::warn!("early exit from become_relay_next_round due to the elections end");
                         }
                     }
                 });
@@ -351,7 +343,7 @@ impl Staking {
                 let staking = self.clone();
                 tokio::spawn(async move {
                     if let Err(e) = staking.update_participates_in_round_status().await {
-                        log::error!("Failed to update `participates_in_round` flag: {:?}", e);
+                        tracing::error!("failed to update `participates_in_round` flag: {e:?}");
                     }
                 });
 
@@ -363,10 +355,9 @@ impl Staking {
                         .get_reward_for_relay_round(event.round_num, event.round_end_time)
                         .await
                     {
-                        log::error!(
-                            "Failed to collect reward for round {}: {:?}",
-                            event.round_num,
-                            e
+                        tracing::error!(
+                            relay_round = event.round_num,
+                            "failed to collect reward: {e:?}",
                         );
                     }
                 });
@@ -391,17 +382,17 @@ impl Staking {
                 if event.ton_pubkey != keystore.ton.public_key()
                     || &event.eth_address != keystore.eth.address().as_fixed_bytes()
                 {
-                    log::error!(
+                    tracing::error!(
                         "FATAL ERROR. Staker sent different keys. Current relay setup is not operational now"
                     );
                     self.context.shutdown_requests_tx.send(())?;
                 }
             }
             UserDataEvent::RelayMembershipRequested(event) => {
-                log::info!(
-                    "Relay membership requested with TON pubkey 0x{:x} and ETH address {}",
-                    event.ton_pubkey,
-                    hex::encode(event.eth_address)
+                tracing::info!(
+                    ton_pubkey = event.ton_pubkey.to_hex_string(),
+                    eth_address = hex::encode(event.eth_address),
+                    "relay membership requested",
                 );
                 self.elected.store(Some(true));
             }
@@ -434,7 +425,7 @@ impl Staking {
 
                     // Prepare pending elections state
                     let elections_state = current_relay_round.state.elections_state;
-                    log::info!("Elections management loop. State: {:?}", elections_state);
+                    tracing::info!(?elections_state, "elections management loop");
 
                     let elections_state = match elections_state {
                         ElectionsState::NotStarted { start_time } => {
@@ -463,7 +454,6 @@ impl Staking {
                 };
 
                 let now = chrono::Utc::now().timestamp() as u64;
-                log::info!("Now: {}", now);
 
                 // Process election state
                 match elections_state {
@@ -478,27 +468,31 @@ impl Staking {
                             let delay = (start_time as u64).saturating_sub(now);
 
                             // Wait elections start time
-                            log::info!("Starting elections in {} seconds", delay);
+                            tracing::info!(
+                                now,
+                                delay_sec = delay,
+                                "waiting for elections to start"
+                            );
                             tokio::time::sleep(Duration::from_secs(delay)).await;
 
                             // Start elections
-                            log::info!("Starting elections");
+                            tracing::info!("starting elections");
                             if let Err(e) = staking.start_election().await {
-                                log::error!("Failed to start election: {:?}", e);
+                                tracing::error!("failed to start election: {e:?}");
                             }
 
                             // Wait actual elections start
-                            log::info!("Waiting elections start");
+                            tracing::info!("waiting after the start of the elections");
                             inner_fut.await;
                         };
 
                         tokio::select! {
                             _ = action => continue,
                             _ = outer_fut => {
-                                log::warn!("Elections loop: cancelling elections start. Already started");
+                                tracing::warn!("elections loop: cancelling elections start, already started");
                             }
                             _ = relay_config_updated_fut => {
-                                log::warn!("Elections loop: cancelling elections start. Timings changed");
+                                tracing::warn!("elections loop: cancelling elections start, timings changed");
                             }
                         }
                     }
@@ -512,33 +506,37 @@ impl Staking {
                             let delay = (end_time as u64).saturating_sub(now);
 
                             // Wait elections end time
-                            log::info!("Ending elections in {} seconds", delay);
+                            tracing::info!(
+                                now,
+                                delay_sec = delay,
+                                "waiting for elections to finish"
+                            );
                             tokio::time::sleep(Duration::from_secs(delay)).await;
 
                             // End elections
-                            log::info!("Ending elections");
+                            tracing::info!("ending elections");
                             if let Err(e) = staking.end_election().await {
-                                log::error!("Failed to end election: {:?}", e);
+                                tracing::error!("failed to end election: {e:?}");
                             }
 
                             // Wait actual elections end
-                            log::info!("Waiting elections end");
+                            tracing::info!("waiting after the end of the elections");
                             inner_fut.await;
                         };
 
                         tokio::select! {
                             _ = action => continue,
                             _ = outer_fut => {
-                                log::warn!("Elections loop: cancelling elections ending. Already ended");
+                                tracing::warn!("elections loop: cancelling elections ending, already ended");
                             }
                             _ = relay_config_updated_fut => {
-                                log::warn!("Elections loop: cancelling elections ending. Timings changed");
+                                tracing::warn!("elections loop: cancelling elections ending, timings changed");
                             }
                         }
                     }
                     PendingElectionsState::Finished { new_round_fut } => {
                         // Wait new round initialization
-                        log::info!("Elections loop: waiting new round");
+                        tracing::info!("elections loop: waiting for a new round");
                         new_round_fut.await
                     }
                 }
@@ -558,19 +556,19 @@ impl Staking {
 
                 // Check if user can be elected
                 if user_data_balance >= min_relay_deposit {
-                    log::info!(
-                        "User has enough balance to be elected ({}/{})",
+                    tracing::info!(
                         user_data_balance,
-                        min_relay_deposit
+                        min_relay_deposit,
+                        "user has enough balance to be elected",
                     );
                     break;
                 }
 
                 // Wait some changes
-                log::info!(
-                    "User doesn't have enough balance to be elected ({}/{})",
+                tracing::info!(
                     user_data_balance,
-                    min_relay_deposit
+                    min_relay_deposit,
+                    "user doesn't have enough balance to be elected",
                 );
 
                 // User data notifications
@@ -583,10 +581,10 @@ impl Staking {
             // Wait until balance or config are changed
             tokio::select! {
                 _ = user_data_balance_changed_fut => {
-                    log::info!("Next round procedure loop. User data balance changed");
+                    tracing::info!("next round procedure loop: user data balance changed");
                 }
                 _ = relay_config_updated_fut => {
-                    log::info!("Next round procedure loop. Relay config updated ")
+                    tracing::info!("next round procedure loop: relay config updated")
                 }
             }
         }
@@ -721,14 +719,14 @@ impl EngineContext {
         // Get bridge ETH event configuration
         let bridge_event_configuration =
             staking_contract.get_eth_bridge_configuration_details(&shard_accounts)?;
-        log::info!(
-            "Bridge event configuration: {:?}",
-            bridge_event_configuration
+        tracing::info!(
+            ?bridge_event_configuration,
+            "found bridge event configuration"
         );
 
         // Initialize user data
         let user_data_account = staking_contract.get_user_data_address(&self.staker_account)?;
-        log::info!("User data account: {:x}", user_data_account);
+        tracing::info!(account = %DisplayAddr(user_data_account), "found user data account");
         let user_data_contract = shard_accounts
             .find_account(&user_data_account)?
             .context("User data account not found")?;
@@ -760,7 +758,7 @@ impl UserDataContract<'_> {
         let details = self
             .get_details()
             .context("Failed to get UserData details")?;
-        log::info!("UserData details: {:?}", details);
+        tracing::info!(user_data_details = ?details);
 
         let relay_eth_address = *context.keystore.eth.address().as_fixed_bytes();
         let relay_ton_pubkey = *context.keystore.ton.public_key();
@@ -785,25 +783,33 @@ impl UserDataContract<'_> {
                             if event.ton_pubkey != relay_ton_pubkey
                                 || event.eth_address != relay_eth_address
                             {
-                                log::error!(
+                                tracing::error!(
                                     "TON pubkey or ETH address changed. Relay in current setup may freeze"
                                 );
                             }
                         }
                         UserDataEvent::TonPubkeyConfirmed(event) => {
                             if event.ton_pubkey == relay_ton_pubkey {
-                                log::info!("Received TON pubkey confirmation");
+                                tracing::info!("received TON pubkey confirmation");
                                 ton_pubkey_confirmed_notify.notify_waiters();
                             } else {
-                                log::error!("Confirmed TON pubkey mismatch");
+                                tracing::error!(
+                                    relay_ton_pubkey = relay_ton_pubkey.to_hex_string(),
+                                    event_ton_pubkey = event.ton_pubkey.to_hex_string(),
+                                    "confirmed TON pubkey mismatch",
+                                );
                             }
                         }
                         UserDataEvent::EthAddressConfirmed(event) => {
                             if event.eth_addr == relay_eth_address {
-                                log::info!("Received ETH address confirmation");
+                                tracing::info!("received ETH address confirmation");
                                 eth_address_confirmed_notify.notify_waiters();
                             } else {
-                                log::error!("Confirmed ETH address mismatch");
+                                tracing::error!(
+                                    relay_eth_address = hex::encode(relay_eth_address),
+                                    event_eth_address = hex::encode(event.eth_addr),
+                                    "confirmed ETH address mismatch"
+                                );
                             }
                         }
                         UserDataEvent::RelayMembershipRequested(_) => { /* ignore */ }
@@ -832,7 +838,7 @@ impl UserDataContract<'_> {
                 )
                 .await
                 .context("Failed confirming TON public key")?;
-            log::info!("Sent TON public key confirmation");
+            tracing::info!("sent TON public key confirmation");
         }
 
         if details.eth_address_confirmed {
@@ -855,10 +861,10 @@ impl UserDataContract<'_> {
                 )
                 .await
                 .context("Failed confirming ETH address")?;
-            log::info!("Sent ETH address confirmation")
+            tracing::info!("sent ETH address confirmation")
         }
 
-        log::info!("Waiting confirmation...");
+        tracing::info!("waiting for confirmation");
         futures_util::future::join(ton_notified, eth_notified).await;
 
         Ok(())
@@ -892,27 +898,27 @@ impl<'a> StakingContract<'a> {
         let relay_rounds_details = self
             .get_relay_rounds_details()
             .context("Failed to get relay_rounds_details")?;
-        log::info!("Relay round details: {:?}", relay_rounds_details);
+        tracing::info!(?relay_rounds_details);
 
         let next_elections_account = self
             .get_election_address(relay_rounds_details.current_relay_round + 1)
             .context("Failed to get next election address")?;
-        log::info!("next_elections_account: {:x}", next_elections_account);
+        tracing::info!(next_elections_account = next_elections_account.to_hex_string());
 
         let elections_state = match relay_rounds_details.current_election_start_time {
             0 if relay_rounds_details.current_election_ended => {
-                log::info!("Elections were already finished");
+                tracing::info!("elections were already finished");
                 ElectionsState::Finished
             }
             0 => {
-                log::info!("Elections were not started yet");
+                tracing::info!("elections were not started yet");
                 ElectionsState::NotStarted {
                     start_time: relay_rounds_details.current_relay_round_start_time
                         + relay_config.time_before_election,
                 }
             }
             start_time => {
-                log::info!("Elections already started");
+                tracing::info!("elections already started");
                 ElectionsState::Started {
                     start_time,
                     end_time: start_time + relay_config.election_time,
@@ -968,7 +974,7 @@ macro_rules! parse_tokens {
         {
             Ok(parsed) => $res = Some($matched(parsed)),
             Err(e) => {
-                log::error!("Failed to parse staking event: {:?}", e);
+                tracing::error!("failed to parse staking event: {e:?}");
             }
         }
     };
@@ -1006,7 +1012,7 @@ impl ReadFromTransaction for (RoundState, StakingEvent) {
         let contract = match ctx.get_account_state() {
             Ok(contract) => contract,
             Err(e) => {
-                log::error!("Failed to find account state after transaction: {:?}", e);
+                tracing::error!("failed to find account state after transaction: {e:?}");
                 return None;
             }
         };
@@ -1014,7 +1020,7 @@ impl ReadFromTransaction for (RoundState, StakingEvent) {
         match StakingContract(&contract).get_round_state() {
             Ok(state) => Some((state, res)),
             Err(e) => {
-                log::error!("Failed to get round state: {:?}", e);
+                tracing::error!("failed to get round state: {e:?}");
                 None
             }
         }
