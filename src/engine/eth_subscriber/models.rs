@@ -75,10 +75,10 @@ impl TryFrom<Log> for ParsedEthEvent {
 
         let data = log.data.0;
 
-        log::debug!(
-            "Received logs from block {} with hash {}",
+        tracing::debug!(
             block_number,
-            transaction_hash
+            tx = hex::encode(transaction_hash.0),
+            "received logs",
         );
 
         Ok(ParsedEthEvent::Received(ReceivedEthEvent {

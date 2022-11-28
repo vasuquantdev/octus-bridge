@@ -196,7 +196,7 @@ impl EngineContext {
                     .context("Failed to create Solana subscriber")?,
             ),
             None => {
-                log::warn!("Solana subscriber is disabled");
+                tracing::warn!("solana subscriber is disabled");
                 None
             }
         };
@@ -283,10 +283,13 @@ impl EngineContext {
             {
                 MessageStatus::Expired => {
                     // Do nothing on expire and just retry
-                    log::warn!("Message to account {:x} expired", message.account);
+                    tracing::warn!(account = %DisplayAddr(message.account), "message expired");
                 }
                 MessageStatus::Delivered => {
-                    log::info!("Successfully sent message to account {:x}", message.account);
+                    tracing::info!(
+                        account = %DisplayAddr(message.account),
+                        "message delivered"
+                    );
                     break;
                 }
             }
@@ -389,18 +392,18 @@ impl std::fmt::Display for LabeledStakingMetrics<'_> {
 
         f.begin_metric("staking_elections_status")
             .label(LABEL_STAKER, &self.context.staker_account_str)
-            .label(LABEL_ROUND_NUM, &metrics.current_relay_round)
+            .label(LABEL_ROUND_NUM, metrics.current_relay_round)
             .value(status)?;
 
         f.begin_metric("staking_ignore_elections")
             .label(LABEL_STAKER, &self.context.staker_account_str)
-            .label(LABEL_ROUND_NUM, &metrics.current_relay_round)
+            .label(LABEL_ROUND_NUM, metrics.current_relay_round)
             .value(metrics.ignore_elections as u8)?;
 
         if let Some(participates_in_round) = metrics.participates_in_round {
             f.begin_metric("staking_participates_in_round")
                 .label(LABEL_STAKER, &self.context.staker_account_str)
-                .label(LABEL_ROUND_NUM, &metrics.current_relay_round)
+                .label(LABEL_ROUND_NUM, metrics.current_relay_round)
                 .value(participates_in_round as u8)?;
         }
 
@@ -478,12 +481,12 @@ impl std::fmt::Display for LabeledEthSubscriberMetrics<'_> {
 
             f.begin_metric("eth_subscriber_last_processed_block")
                 .label(LABEL_STAKER, &self.0.staker_account_str)
-                .label(LABEL_CHAIN_ID, &chain_id)
+                .label(LABEL_CHAIN_ID, chain_id)
                 .value(metrics.last_processed_block)?;
 
             f.begin_metric("eth_subscriber_pending_confirmation_count")
                 .label(LABEL_STAKER, &self.0.staker_account_str)
-                .label(LABEL_CHAIN_ID, &chain_id)
+                .label(LABEL_CHAIN_ID, chain_id)
                 .value(metrics.pending_confirmation_count)?;
         }
         Ok(())

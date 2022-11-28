@@ -31,10 +31,10 @@ impl KeyStore {
     {
         let keys_path = keys_path.as_ref();
         let stored_data = if keys_path.exists() {
-            log::info!("Using existing keys");
+            tracing::info!("using existing keys");
             StoredKeysData::load(keys_path)?
         } else {
-            log::info!("Generating new keys");
+            tracing::info!("generating new keys");
             let data = StoredKeysData::new(
                 password.unsecure(),
                 UnencryptedEthData::generate()?,
@@ -68,12 +68,12 @@ impl KeyStore {
         });
 
         // Print ETH address and TON public key
-        log::warn!("Using TON public key: 0x{:x}", keystore.ton.public_key());
-        log::warn!(
-            "Using ETH address: {}",
+        tracing::warn!("using TON public key: 0x{:x}", keystore.ton.public_key());
+        tracing::warn!(
+            "using ETH address: {}",
             EthAddressWrapper(keystore.eth.address())
         );
-        log::warn!("Using SOL public key: {}", keystore.sol.public_key());
+        tracing::warn!("using SOL public key: {}", keystore.sol.public_key());
 
         Ok(keystore)
     }

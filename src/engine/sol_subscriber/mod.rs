@@ -49,7 +49,7 @@ impl SolSubscriber {
         ));
 
         let block_height = rpc_client.get_block_height()?;
-        log::info!("Solana block height: {}", block_height);
+        tracing::info!(block_height, "created SOL subscriber");
 
         let pool = Arc::new(Semaphore::new(config.pool_size));
 
@@ -81,10 +81,7 @@ impl SolSubscriber {
                 };
 
                 if let Err(e) = subscriber.update().await {
-                    log::error!(
-                        "Error occurred during solana node subscriber update: {:?}",
-                        e
-                    );
+                    tracing::error!("error occurred during SOL subscriber update: {e:?}");
                 }
 
                 tokio::time::sleep(Duration::from_secs(subscriber.config.poll_interval_sec)).await;
@@ -95,7 +92,7 @@ impl SolSubscriber {
     pub fn subscribe(&self, program_pubkey: Pubkey) {
         let mut programs = self.programs_to_subscribe.write();
         if !programs.contains(&program_pubkey) {
-            log::info!("Subscribe to `{}` solana program", program_pubkey);
+            tracing::info!("Subscribe to `{}` solana program", program_pubkey);
             programs.push(program_pubkey);
         }
     }
@@ -250,9 +247,9 @@ impl SolSubscriber {
     }
 
     async fn update(&self) -> Result<()> {
-        log::info!(
-            "TON->SOL pending events: {}",
-            self.pending_events_count.load(Ordering::Acquire)
+        tracing::info!(
+            pending_events = self.pending_events_count.load(Ordering::Acquire),
+            "updating SOL subscriber",
         );
 
         let mut accounts_to_check = HashSet::new();
@@ -261,7 +258,7 @@ impl SolSubscriber {
         let programs_to_subscribe = self.programs_to_subscribe.read().clone();
         for program_pubkey in programs_to_subscribe {
             let mut pending_proposals = self.get_pending_proposals(&program_pubkey).await?;
-            log::info!("Found withdrawal proposal to vote: {:?}", pending_proposals);
+            tracing::info!(?pending_proposals, "found withdrawal proposals to vote");
 
             let pending_events = self.pending_events.lock().await;
 
@@ -269,10 +266,10 @@ impl SolSubscriber {
                 .iter()
                 .filter(|account| !pending_events.contains_key(account))
                 .count();
-            log::info!(
-                "Unrecognized proposals for '{}' program: {}",
-                program_pubkey,
-                unrecognized_proposals
+            tracing::info!(
+                %program_pubkey,
+                ?unrecognized_proposals,
+                "found unrecognized proposals",
             );
 
             self.unrecognized_proposals_count
@@ -290,9 +287,9 @@ impl SolSubscriber {
         let mut pending_events = self.pending_events.lock().await;
         for (account, event) in pending_events.iter_mut() {
             if !accounts_to_check.contains(account) && time > event.time {
-                log::info!(
-                    "Add proposal account '{}' from TON->SOL pending events to checklist",
-                    account
+                tracing::info!(
+                    account_pubkey = %account,
+                    "adding proposal account from TON->SOL pending events to checklist",
                 );
 
                 let time_diff = time - event.created_at;
@@ -313,7 +310,7 @@ impl SolSubscriber {
         }
 
         if !accounts_to_check.is_empty() {
-            log::info!("Solana proposal accounts to check: {:?}", accounts_to_check);
+            tracing::info!(?accounts_to_check);
         }
 
         // Check accounts
@@ -364,16 +361,15 @@ impl SolSubscriber {
                     }
                 }
                 Ok(None) => {
-                    log::info!(
-                        "Solana proposal account `{}` doesn't exist yet",
-                        account_pubkey
+                    tracing::info!(
+                        %account_pubkey,
+                        "Solana proposal account doesn't exist yet",
                     );
                 }
-                Err(err) => {
-                    log::error!(
-                        "Failed to check solana proposal `{}`: {:?}",
-                        account_pubkey,
-                        err
+                Err(e) => {
+                    tracing::error!(
+                        %account_pubkey,
+                        "failed to check solana proposal: {e:?}",
                     );
                 }
             }
@@ -592,7 +588,7 @@ impl SolSubscriber {
         let account = match result {
             Some(account) => account,
             None => {
-                log::error!("Solana account {} doesn't  exist", account_pubkey);
+                tracing::error!(%account_pubkey, "Solana account doesn't exist");
                 return Ok(VerificationStatus::NotExists);
             }
         };

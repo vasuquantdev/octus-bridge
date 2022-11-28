@@ -1,6 +1,6 @@
 [package]
 name = "relay"
-version = "2.1.1"
+version = "2.1.2"
 edition = "2021"
 authors = ["Broxus team"]
 publish = false
@@ -11,19 +11,24 @@ anyhow = "1.0"
 argh = "0.1"
 async-trait = "0.1"
 borsh = "0.9.3"
-broxus-util = { version = "0.1.4", features = ["serde", "config", "alloc", "public-ip"] }
+broxus-util = { version = "0.1.4", default-features = false, features = [
+    "serde",
+    "config",
+    "alloc",
+    "public-ip",
+] }
 chacha20poly1305 = "0.10.1"
 chrono = "0.4.19"
 config = { version = "0.13.1", default-features = false, features = ["yaml"] }
 dashmap = "5.3"
 dialoguer = "0.10.0"
 either = "1.6.1"
-everscale-network = "0.3.5"
+everscale-network = "0.4"
 futures-util = "0.3"
 hex = "0.4"
 hyper = { version = "0.14", features = ["server"] }
-log = "0.4"
-log4rs = "1.1"
+tracing = "0.1"
+tracing-subscriber = "0.3"
 num-traits = "0.2"
 once_cell = "1.13.0"
 parking_lot = { version = "0.12.1", features = ["hardware-lock-elision"] }
@@ -35,9 +40,15 @@ secp256k1 = { version = "0.21.3", features = ["recovery"] }
 secstr = { version = "0.5", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-serde_yaml = "0.9"
 thiserror = "1.0"
-tokio = { version = "1", features = ["sync", "fs", "rt-multi-thread", "macros", "signal", "parking_lot"] }
+tokio = { version = "1", features = [
+    "sync",
+    "fs",
+    "rt-multi-thread",
+    "macros",
+    "signal",
+    "parking_lot",
+] }
 tryhard = "0.5.0"
 url = { version = "2.2.2", features = ["serde"] }
 
@@ -63,7 +74,7 @@ ton_types = { git = "https://github.com/broxus/ton-labs-types" }
 eth-ton-abi-converter = { git = "https://github.com/broxus/eth-ton-abi-converter.git" }
 
 # Solana Bridge
-solana-bridge = { git = "https://github.com/broxus/octusbridge-solana-contracts.git" }
+solana-bridge = { git = "https://github.com/broxus/octusbridge-solana-contracts.git", rev = "19537ac" }
 
 # Nekoton SDK
 nekoton-abi = { git = "https://github.com/broxus/nekoton.git", features = ["derive"] }
@@ -92,10 +103,26 @@ depends = "$auto"
 section = "utility"
 priority = "optional"
 assets = [
-    ["target/release/relay", "usr/bin/", "755"],
-    ["contrib/config.yaml", "etc/relay/", "644"],
-    ["contrib/global.config.json", "etc/relay/", "644"],
-    ["README.md", "usr/share/doc/relay/README", "644"],
+    [
+        "target/release/relay",
+        "usr/bin/",
+        "755",
+    ],
+    [
+        "contrib/config.yaml",
+        "etc/relay/",
+        "644",
+    ],
+    [
+        "contrib/global.config.json",
+        "etc/relay/",
+        "644",
+    ],
+    [
+        "README.md",
+        "usr/share/doc/relay/README",
+        "644",
+    ],
 ]
 maintainer-scripts = "contrib/"
 systemd-units = { enable = true }

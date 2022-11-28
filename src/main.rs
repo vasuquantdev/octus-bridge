@@ -67,10 +67,10 @@ impl CmdRun {
             // Spawn SIGHUP signal listener
             relay.start_listening_reloads()?;
 
-            log::info!("Initializing relay...");
+            tracing::info!("initializing relay...");
             let mut shutdown_requests_rx =
                 relay.init(config, global_config, protection_keys).await?;
-            log::info!("Initialized relay");
+            tracing::info!("initialized relay");
 
             shutdown_requests_rx.recv().await;
             Ok(())
@@ -90,7 +90,7 @@ impl CmdRun {
                 res = engine => res,
                 signal = any_signal => {
                     if let Ok(signal) = signal {
-                        log::warn!("Received signal ({:?}). Flushing state...", signal);
+                        tracing::warn!(?signal, "received termination signal, flushing state");
                     }
                     // NOTE: engine future is safely dropped here so rocksdb method
                     // `rocksdb_close` is called in DB object destructor
@@ -261,11 +261,8 @@ where
     P: AsRef<std::path::Path>,
 {
     let config: AppConfig = broxus_util::read_config(&config_path)?;
-    let logger =
-        broxus_util::init_logger(&config.logger_settings).context("Failed to init logger")?;
     let state = Arc::new(Relay {
         config_path: config_path.as_ref().into(),
-        logger,
         engine: Default::default(),
     });
 
@@ -274,7 +271,6 @@ where
 
 struct Relay {
     config_path: std::path::PathBuf,
-    logger: log4rs::Handle,
     engine: tokio::sync::Mutex<Option<Arc<Engine>>>,
 }
 
@@ -305,7 +301,7 @@ impl Relay {
         tokio::spawn(async move {
             while let Some(()) = signals_stream.recv().await {
                 if let Err(e) = state.reload().await {
-                    log::error!("Failed to reload config: {:?}", e);
+                    tracing::error!("failed to reload config: {e:?}");
                 };
             }
         });
@@ -316,18 +312,13 @@ impl Relay {
     async fn reload(&self) -> Result<()> {
         let config: AppConfig = broxus_util::read_config(&self.config_path)?;
 
-        self.logger.set_config(
-            broxus_util::parse_logger_config(config.logger_settings)
-                .context("Failed to parse logger config")?,
-        );
-
         if let Some(engine) = &*self.engine.lock().await {
             engine
                 .update_metrics_config(config.metrics_settings)
                 .await?;
         }
 
-        log::info!("Updated config");
+        tracing::info!("updated config");
         Ok(())
     }
 }

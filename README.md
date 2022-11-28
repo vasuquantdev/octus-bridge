@@ -15,7 +15,7 @@
 
 ### How to run
 
-To simplify the build and create some semblance of standardization in this repository 
+To simplify the build and create some semblance of standardization in this repository
 there is a set of scripts for configuring the relay.
 
 NOTE: scripts are prepared and tested on **Ubuntu 20.04**. You may need to modify them a little for other distros.
@@ -32,15 +32,15 @@ NOTE: scripts are prepared and tested on **Ubuntu 20.04**. You may need to modif
      Not recommended for machines with lower specs than required
 
    > At this stage, a systemd service `relay` is created. Configs and keys will be in `/etc/relay` and
-   > Everscale node DB will be in `/var/db/relay`. 
+   > Everscale node DB will be in `/var/db/relay`.
 
    **Do not start this service yet!**
 2. ##### Prepare config
-   Either add the environment variables to the `[Service]` section of unit file. 
+   Either add the environment variables to the `[Service]` section of unit file.
    It is located at `/etc/systemd/system/relay.service`.
-   
-   > This method is recommended because you can just make a backup of `/etc/relay` and 
-   > not be afraid for it's safety, all keys in it are encrypted   
+
+   > This method is recommended because you can just make a backup of `/etc/relay` and
+   > not be afraid for it's safety, all keys in it are encrypted
 
    ```unit file (systemd)
    [Service]
@@ -59,7 +59,7 @@ NOTE: scripts are prepared and tested on **Ubuntu 20.04**. You may need to modif
      ./scripts/generate.sh -t docker # or `native`, depends on your installation type
    ```
    > if you already have seed phrases that you want to import, then add the `-i` flag
-   
+
    This script will print unencrypted data. **Be sure to write it down somewhere! And also make a backup of the `/etc/relay` folder!**
 
 4. ##### Link relay keys
@@ -68,8 +68,8 @@ NOTE: scripts are prepared and tested on **Ubuntu 20.04**. You may need to modif
    It may take some time to sync at first (~40 minutes).
 
    > During linking you will need to send at least **0.05 ETH** to your relay ETH address so that the relay can confirm his ownership.
-   > 
-   > If you think that this is a lot or if the gas price is more than 300 GWEI now, 
+   >
+   > If you think that this is a lot or if the gas price is more than 300 GWEI now,
    > then you can change the values in the config.
 
 5. ##### Enable and start relay service
@@ -83,12 +83,12 @@ NOTE: scripts are prepared and tested on **Ubuntu 20.04**. You may need to modif
    ```
    Relay will be running on UDP port `30000` by default, so make sure that this port is not blocked by firewall.
 
-   NOTE: docker installation uses port 30000 in unit file, so you may need to update the service if you decide to change it. 
-   All environment variables must also be passed to container (e.g. `-e RELAY_MASTER_KEY`). 
+   NOTE: docker installation uses port 30000 in unit file, so you may need to update the service if you decide to change it.
+   All environment variables must also be passed to container (e.g. `-e RELAY_MASTER_KEY`).
 
    > Relay has a built-in Prometheus metrics exporter which is configured in the `metrics_settings` section of the config.
    > By default, metrics are available at `http://127.0.0.1:10000/`
-   > 
+   >
    > <details><summary><b>Response example:</b></summary>
    > <p>
    >
@@ -126,7 +126,7 @@ NOTE: scripts are prepared and tested on **Ubuntu 20.04**. You may need to modif
    > staking_participates_in_round{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",round_num="13"} 1
    > staking_elected{staker="0:7a9701bede7f86bf039aba200c1bb421a388bbb4b0580bfaeafa66f908d2b246",round_num="13"} 1
    > ```
-   > 
+   >
    > </p>
    > </details>
 
@@ -225,42 +225,24 @@ metrics_settings:
   metrics_path: "/metrics"
   # Metrics update interval in seconds. Default: 10
   collection_interval_sec: 10
-# log4rs settings.
-# See https://docs.rs/log4rs/1.0.0/log4rs/ for more details
-logger_settings:
-  appenders:
-    stdout:
-      kind: console
-      encoder:
-        pattern: "{h({l})} {M} = {m} {n}"
-  root:
-    level: error
-    appenders:
-      - stdout
-  loggers:
-    relay:
-      level: info
-      appenders:
-        - stdout
-      additive: false
 ```
 
 ### Architecture overview
 
-The relay is simultaneously the Everscale node and can communicate with all EVM networks specified in the config. 
+The relay is simultaneously the Everscale node and can communicate with all EVM networks specified in the config.
 Its purpose is to check and sign transaction events.
 
 At startup, it synchronizes the Everscale node and downloads blockchain state. It searches Bridge contract state in it,
-all connectors, active configurations and pending events. Then it subscribes to the Bridge contract in Everscale and 
+all connectors, active configurations and pending events. Then it subscribes to the Bridge contract in Everscale and
 listens for connector deployment events. Each new connector can produce activation event which signals that relay
-should subscribe to the event configuration contract. Each configuration contract produces event deployment 
+should subscribe to the event configuration contract. Each configuration contract produces event deployment
 events, relay sees and checks them.
 
-- For Everscale-to-EVM events, only the correctness of data packing is checked (all other stuff is verified on the contracts 
+- For Everscale-to-EVM events, only the correctness of data packing is checked (all other stuff is verified on the contracts
   side). If the event is correct, the relay converts this data into ETH ABI encoded bytes and signs it with its
-  ETH key. This signature is sent along with a confirmation message. If the data in the event was invalid then the 
+  ETH key. This signature is sent along with a confirmation message. If the data in the event was invalid then the
   relay sends a rejection message.
-  
+
   ##### Everscale-to-EVM ABI mapping rules:
   ```
   bytes => same
@@ -300,15 +282,15 @@ events, relay sees and checks them.
 
   > When converting ABI from EVM format to Everscale, there is a mechanism for controlling this process.
   > You can add a `bytes1` *(\*\*)* element which sets context flags to its value.
-  > 
+  >
   > Currently, there are only three flags:
   > - `0x01` - place tuples to new cell (***)
   > - `0x02` - interpret `bytes` as encoded TVM cell (*)
   > - `0x04` - insert default cell in case of error with flag `0x02` (*)
-  > 
+  >
   > NOTE: Flags can't be changed inside an array element! This would lead to inconsistent array items ABI.
 
-The decision to make the relay an Everscale node was not made by chance. In the first version, several relays were connected 
+The decision to make the relay an Everscale node was not made by chance. In the first version, several relays were connected
 to the one "light" node which was constantly restarted or to the graphql which also was quite unreliable.
 As a result, relays instantly see all events and vote for them almost simultaneously in one block. The implementation is
 more optimized than C++ node, so they don't harm the network.

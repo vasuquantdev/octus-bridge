@@ -26,9 +26,9 @@ where
     for<'a> <BackoffT as BackoffStrategy<'a, E>>::Output: Into<RetryPolicy>,
 {
     let config = config.on_retry(|attempt, next_delay, error: &E| {
-        log::error!(
-            "Retrying {:?} {} with {} attempt. Next delay: {:?}. Error: {:?}",
-            network,
+        tracing::error!(
+            ?network,
+            "retrying {} with {} attempt, next delay: {:?}, error: {:?}",
             message,
             attempt,
             next_delay,

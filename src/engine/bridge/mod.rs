@@ -10,7 +10,6 @@ use borsh::BorshDeserialize;
 use eth_ton_abi_converter::{
     decode_ton_event_abi, make_mapped_ton_event, map_ton_tokens_to_eth_bytes, EthEventAbi,
 };
-use everscale_network::utils::FxDashMap;
 use nekoton_abi::*;
 use nekoton_utils::TrustMe;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -241,9 +240,9 @@ impl Bridge {
                             .add_transactions_subscription([event.connector], entry);
                     }
                     hash_map::Entry::Occupied(_) => {
-                        log::error!(
-                            "Got connector deployment event but it already exists: {:x}",
-                            event.connector
+                        tracing::error!(
+                            connector = %DisplayAddr(event.connector),
+                            "got connector deployment event but it already exists",
                         );
                         return Ok(());
                     }
@@ -252,7 +251,7 @@ impl Bridge {
                 // Check connector contract if it was added in this iteration
                 tokio::spawn(async move {
                     if let Err(e) = self.check_connector_contract(event.connector).await {
-                        log::error!("Failed to check connector contract: {:?}", e);
+                        tracing::error!("failed to check connector contract: {e:?}");
                     }
                 });
             }
@@ -315,7 +314,11 @@ impl Bridge {
                     // NOTE: Each TON event must be unique on the contracts level,
                     // so receiving message with duplicated address is
                     // a signal that something went wrong
-                    log::warn!("Got deployment message for pending event: {:x}", account);
+                    tracing::warn!(
+                        configuration = %DisplayAddr(account),
+                        event = %DisplayAddr(address),
+                        "got deployment message for pending event",
+                    );
                 }
             }
             // Update configuration state
@@ -376,7 +379,11 @@ impl Bridge {
                     // NOTE: Each TON event must be unique on the contracts level,
                     // so receiving message with duplicated address is
                     // a signal that something went wrong
-                    log::warn!("Got deployment message for pending event: {:x}", account);
+                    tracing::warn!(
+                        configuration = %DisplayAddr(account),
+                        event = %DisplayAddr(address),
+                        "got deployment message for pending event",
+                    );
                 }
             }
             // Update configuration state
@@ -706,10 +713,10 @@ impl Bridge {
                 match eth_subscribers.get_subscriber(chain_id) {
                     Some(subscriber) => (subscriber, event_emitter, abi, blocks_to_confirm),
                     None => {
-                        log::error!(
-                            "ETH->TON subscriber with chain id  {} was not found for event {:x}",
+                        tracing::error!(
+                            event = %DisplayAddr(account),
                             chain_id,
-                            account
+                            "ETH->TON subscriber not found for event",
                         );
                         self.eth_ton_events_state.remove(&account);
                         return Ok(());
@@ -718,10 +725,10 @@ impl Bridge {
             }
             // Configuration not found
             None => {
-                log::error!(
-                    "ETH->TON event configuration {:x} not found for event {:x}",
-                    event_init_data.configuration,
-                    account
+                tracing::error!(
+                    event = %DisplayAddr(account),
+                    configuration = %DisplayAddr(event_init_data.configuration),
+                    "ETH->TON event configuration not found for event",
                 );
                 self.eth_ton_events_state.remove(&account);
                 return Ok(());
@@ -750,7 +757,7 @@ impl Bridge {
             }
             // Skip event otherwise
             Err(e) => {
-                log::error!("Failed to verify ETH->TON event {:x}: {:?}", account, e);
+                tracing::error!(event = %DisplayAddr(account), "failed to verify ETH->TON event: {e:?}");
                 self.eth_ton_events_state.remove(&account);
                 return Ok(());
             }
@@ -839,10 +846,10 @@ impl Bridge {
             }),
             // Do nothing when configuration was not found
             None => {
-                log::error!(
-                    "TON->ETH event configuration {:x} not found for event {:x}",
-                    event_init_data.configuration,
-                    account
+                tracing::error!(
+                    event = %DisplayAddr(account),
+                    configuration = %DisplayAddr(event_init_data.configuration),
+                    "TON->ETH event configuration not found for event",
                 );
                 self.ton_eth_events_state.remove(&account);
                 return Ok(());
@@ -854,7 +861,11 @@ impl Bridge {
         let message = match decoded_data {
             // Confirm with signature
             Ok(data) => {
-                log::info!("Signing event data: {}", hex::encode(&data));
+                tracing::info!(
+                    event = %DisplayAddr(account),
+                    data = hex::encode(&data),
+                    "signing event data"
+                );
                 UnsignedMessage::new(ton_eth_event_contract::confirm(), account)
                     .arg(keystore.eth.sign(&data).to_vec())
                     .arg(account_addr)
@@ -862,10 +873,9 @@ impl Bridge {
 
             // Reject if event data is invalid
             Err(e) => {
-                log::warn!(
-                    "Failed to compute vote data signature for {:x}: {:?}",
-                    account,
-                    e
+                tracing::warn!(
+                    event = %DisplayAddr(account),
+                    "failed to compute vote data signature: {e:?}",
                 );
                 UnsignedMessage::new(ton_eth_event_contract::reject(), account).arg(account_addr)
             }
@@ -949,10 +959,10 @@ impl Bridge {
             ),
             // Do nothing when configuration was not found
             None => {
-                log::error!(
-                    "SOL->TON event configuration {:x} not found for event {:x}",
-                    event_init_data.configuration,
-                    account
+                tracing::error!(
+                    event = %DisplayAddr(account),
+                    configuration = %DisplayAddr(event_init_data.configuration),
+                    "SOL->TON event configuration not found for event",
                 );
                 self.sol_ton_events_state.remove(&account);
                 return Ok(());
@@ -997,7 +1007,10 @@ impl Bridge {
             }
             // Skip event otherwise
             Err(e) => {
-                log::error!("Failed to verify SOL->TON event {:x}: {:?}", account, e);
+                tracing::error!(
+                    event = %DisplayAddr(account),
+                    "failed to verify SOL->TON event: {e:?}",
+                );
                 self.sol_ton_events_state.remove(&account);
                 return Ok(());
             }
@@ -1102,10 +1115,10 @@ impl Bridge {
             ),
             // Do nothing when configuration was not found
             None => {
-                log::error!(
-                    "TON->SOL event configuration {:x} not found for event {:x}",
-                    event_init_data.configuration,
-                    account
+                tracing::error!(
+                    event = %DisplayAddr(account),
+                    configuration = %DisplayAddr(event_init_data.configuration),
+                    "TON->SOL event configuration not found for event",
                 );
                 self.ton_sol_events_state.remove(&account);
                 return Ok(());
@@ -1198,7 +1211,10 @@ impl Bridge {
             }
             // Skip event otherwise
             Err(e) => {
-                log::error!("Failed to verify TON->SOL event {:x}: {:?}", account, e);
+                tracing::error!(
+                    event = %DisplayAddr(account),
+                    "failed to verify TON->SOL event: {e:?}",
+                );
                 self.ton_sol_events_state.remove(&account);
                 return Ok(());
             }
@@ -1212,10 +1228,10 @@ impl Bridge {
             let c_ix = sol_message_vote.instructions.first().trust_me();
             let ix = solana_bridge::instructions::VoteForProposal::try_from_slice(&c_ix.data)?;
 
-            log::info!(
-                "Send '{:?}' to {} solana proposal",
-                ix.vote,
-                proposal_pubkey
+            tracing::info!(
+                vote = ?ix.vote,
+                %proposal_pubkey,
+                "sending a vote for Solana proposal",
             );
 
             // Send confirm/reject to Solana
@@ -1226,12 +1242,15 @@ impl Bridge {
 
             // Execute proposal
             if let Some(message) = sol_message_execute {
-                if let Err(err) = sol_subscriber
+                if let Err(e) = sol_subscriber
                     .send_message(message, &self.context.keystore)
                     .await
                     .map_err(parse_client_error)
                 {
-                    log::error!("Failed to execute solana proposal: {}", err);
+                    tracing::error!(
+                        %proposal_pubkey,
+                        "failed to execute solana proposal: {e:?}",
+                    );
                 }
             }
         }
@@ -1270,7 +1289,11 @@ impl Bridge {
 
             // Extract details
             let connector_details = ConnectorContract(&contract).get_details()?;
-            log::info!("Got connector details: {:?}", connector_details);
+            tracing::info!(
+                connector = %DisplayAddr(connector_account),
+                ?connector_details,
+                "got connector details",
+            );
 
             // Do nothing if it is disabled
             if !connector_details.enabled {
@@ -1283,12 +1306,16 @@ impl Bridge {
         let contract = ton_subscriber
             .wait_contract_state(event_configuration)
             .await?;
-        log::info!("Got configuration contract");
+        tracing::info!(
+            configuration = %DisplayAddr(event_configuration),
+            connector = %DisplayAddr(connector_account),
+            "got configuration contract",
+        );
 
         // Extract and process info from contract
         let mut state = self.state.write().await;
         self.process_event_configuration(
-            &mut *state,
+            &mut state,
             &connector_account,
             &event_configuration,
             &contract,
@@ -1327,20 +1354,27 @@ impl Bridge {
                 Some(contract) => match ConnectorContract(&contract).get_details() {
                     Ok(details) => details,
                     Err(e) => {
-                        log::error!(
-                            "Failed to get connector details {:x}: {:?}",
-                            connector_account,
-                            e
+                        tracing::error!(
+                            connector = %DisplayAddr(connector_account),
+                            "failed to get connector details: {e:?}",
                         );
                         continue;
                     }
                 },
                 None => {
-                    log::error!("Connector not found: {:x}", connector_account);
+                    tracing::error!(
+                        connector = %DisplayAddr(connector_account),
+                        "connector not found",
+                    );
                     continue;
                 }
             };
-            log::info!("Found configuration connector {}: {:?}", id, details);
+            tracing::info!(
+                connector = %DisplayAddr(connector_account),
+                id,
+                ?details,
+                "found configuration connector",
+            );
 
             let enabled = details.enabled;
             let configuration_account = details.event_configuration;
@@ -1365,9 +1399,10 @@ impl Bridge {
                     None => {
                         // It is a strange situation when connector contains an address of the contract
                         // which doesn't exist, so log it here to investigate it later
-                        log::warn!(
-                            "Connected configuration was not found: {:x}",
-                            details.event_configuration
+                        tracing::warn!(
+                            connector = %DisplayAddr(connector_account),
+                            configuration = %DisplayAddr(details.event_configuration),
+                            "connected configuration not found",
                         );
                         continue;
                     }
@@ -1380,10 +1415,10 @@ impl Bridge {
                 &configuration_account,
                 &configuration_contract,
             ) {
-                log::error!(
-                    "Failed to process event configuration {:x}: {:?}",
-                    details.event_configuration,
-                    e
+                tracing::error!(
+                    connector = %DisplayAddr(connector_account),
+                    configuration = %DisplayAddr(details.event_configuration),
+                    "failed to process event configuration: {e:?}",
                 );
             }
         }
@@ -1404,7 +1439,12 @@ impl Bridge {
         let event_type = EventConfigurationBaseContract(configuration_contract)
             .get_type()
             .context("Failed to get event configuration type")?;
-        log::info!("Found configuration of type: {}", event_type);
+        tracing::info!(
+            connector = %DisplayAddr(connector_account),
+            configuration = %DisplayAddr(configuration_account),
+            ?event_type,
+            "found new configuration contract"
+        );
 
         if !state.connectors.contains_key(connector_account) {
             return Err(BridgeError::UnknownConnector.into());
@@ -1483,7 +1523,10 @@ impl Bridge {
         let observer = AccountObserver::new(&self.eth_ton_event_configurations_tx);
         match state.eth_ton_event_configurations.entry(*account) {
             hash_map::Entry::Vacant(entry) => {
-                log::info!("Added new ETH->TON event configuration: {:?}", details);
+                tracing::info!(
+                    configuration = %DisplayAddr(account),
+                    ?details, "added new ETH->TON event configuration"
+                );
 
                 self.total_active_eth_ton_event_configurations
                     .fetch_add(1, Ordering::Release);
@@ -1495,7 +1538,10 @@ impl Bridge {
                 });
             }
             hash_map::Entry::Occupied(_) => {
-                log::info!("ETH->TON event configuration already exists: {:x}", account);
+                tracing::info!(
+                    configuration = %DisplayAddr(account),
+                    "ETH->TON event configuration already exists",
+                );
                 return Err(BridgeError::EventConfigurationAlreadyExists.into());
             }
         };
@@ -1527,11 +1573,11 @@ impl Bridge {
         let current_timestamp = self.context.ton_subscriber.current_utime();
         if details.is_expired(current_timestamp) {
             // Do nothing in that case
-            log::warn!(
-                "Ignoring TON->ETH event configuration {:x}: end timestamp {} is less then current {}",
-                account,
-                details.network_configuration.end_timestamp,
-                current_timestamp
+            tracing::warn!(
+                configuration = %DisplayAddr(account),
+                current_timestamp,
+                end_timestamp = details.network_configuration.end_timestamp,
+                "ignoring disabled TON->ETH event configuration",
             );
             return Ok(());
         };
@@ -1550,7 +1596,11 @@ impl Bridge {
         let observer = AccountObserver::new(&self.ton_eth_event_configurations_tx);
         match state.ton_eth_event_configurations.entry(*account) {
             hash_map::Entry::Vacant(entry) => {
-                log::info!("Added new TON->ETH event configuration: {:?}", details);
+                tracing::info!(
+                    configuration = %DisplayAddr(account),
+                    ?details,
+                    "added new TON->ETH event configuration"
+                );
 
                 self.total_active_ton_eth_event_configurations
                     .fetch_add(1, Ordering::Release);
@@ -1562,7 +1612,10 @@ impl Bridge {
                 });
             }
             hash_map::Entry::Occupied(_) => {
-                log::info!("TON->ETH event configuration already exists: {:x}", account);
+                tracing::info!(
+                    configuration = %DisplayAddr(account),
+                    "TON->ETH event configuration already exists",
+                );
                 return Err(BridgeError::EventConfigurationAlreadyExists.into());
             }
         };
@@ -1583,9 +1636,9 @@ impl Bridge {
         contract: &ExistingContract,
     ) -> Result<()> {
         if self.context.sol_subscriber.is_none() {
-            log::info!(
-                "Ignoring SOL->TON event configuration {:x}: Solana subscriber is disabled",
-                account
+            tracing::info!(
+                configuration = %DisplayAddr(account),
+                "ignoring SOL->TON event configuration: Solana subscriber is disabled",
             );
             return Ok(());
         }
@@ -1599,11 +1652,11 @@ impl Bridge {
         let current_timestamp = self.context.ton_subscriber.current_utime();
         if details.is_expired(current_timestamp as u64) {
             // Do nothing in that case
-            log::warn!(
-                "Ignoring SOL->TON event configuration {:x}: end timestamp {} is less then current {}",
-                account,
-                details.network_configuration.end_timestamp,
-                current_timestamp
+            tracing::warn!(
+                configuration = %DisplayAddr(account),
+                current_timestamp,
+                end_timestamp = details.network_configuration.end_timestamp,
+                "ignoring disabled SOL->TON event configuration",
             );
             return Ok(());
         };
@@ -1622,7 +1675,11 @@ impl Bridge {
         let observer = AccountObserver::new(&self.sol_ton_event_configurations_tx);
         match state.sol_ton_event_configurations.entry(*account) {
             hash_map::Entry::Vacant(entry) => {
-                log::info!("Added new SOl->TON event configuration: {:?}", details);
+                tracing::info!(
+                    configuration = %DisplayAddr(account),
+                    ?details,
+                    "added new SOl->TON event configuration",
+                );
 
                 self.total_active_sol_ton_event_configurations
                     .fetch_add(1, Ordering::Release);
@@ -1634,7 +1691,10 @@ impl Bridge {
                 });
             }
             hash_map::Entry::Occupied(_) => {
-                log::info!("SOl->TON event configuration already exists: {:x}", account);
+                tracing::info!(
+                    configuration = %DisplayAddr(account),
+                    "SOl->TON event configuration already exists",
+                );
                 return Err(BridgeError::EventConfigurationAlreadyExists.into());
             }
         };
@@ -1657,9 +1717,9 @@ impl Bridge {
         let sol_subscriber = match &self.context.sol_subscriber {
             Some(sol_subscriber) => sol_subscriber,
             None => {
-                log::info!(
-                    "Ignoring TON->SOL event configuration {:x}: Solana subscriber is disabled",
-                    account
+                tracing::info!(
+                    configuration = %DisplayAddr(account),
+                    "ignoring TON->SOL event configuration: Solana subscriber is disabled",
                 );
                 return Ok(());
             }
@@ -1674,11 +1734,11 @@ impl Bridge {
         let current_timestamp = self.context.ton_subscriber.current_utime();
         if details.is_expired(current_timestamp) {
             // Do nothing in that case
-            log::warn!(
-                "Ignoring TON->SOL event configuration {:x}: end timestamp {} is less then current {}",
-                account,
-                details.network_configuration.end_timestamp,
-                current_timestamp
+            tracing::warn!(
+                configuration = %DisplayAddr(account),
+                current_timestamp,
+                end_timestamp = details.network_configuration.end_timestamp,
+                "ignoring disabled TON->SOL event configuration",
             );
             return Ok(());
         };
@@ -1700,7 +1760,11 @@ impl Bridge {
         let observer = AccountObserver::new(&self.ton_sol_event_configurations_tx);
         match state.ton_sol_event_configurations.entry(*account) {
             hash_map::Entry::Vacant(entry) => {
-                log::info!("Added new TON->SOL event configuration: {:?}", details);
+                tracing::info!(
+                    configuration = %DisplayAddr(account),
+                    ?details,
+                    "added new TON->SOL event configuration",
+                );
 
                 self.total_active_ton_sol_event_configurations
                     .fetch_add(1, Ordering::Release);
@@ -1712,7 +1776,10 @@ impl Bridge {
                 });
             }
             hash_map::Entry::Occupied(_) => {
-                log::info!("TON->SOL event configuration already exists: {:x}", account);
+                tracing::info!(
+                    configuration = %DisplayAddr(account),
+                    "TON->SOL event configuration already exists"
+                );
                 return Err(BridgeError::EventConfigurationAlreadyExists.into());
             }
         };
@@ -1763,7 +1830,11 @@ impl Bridge {
                     ton_block::Account::AccountNone => return Ok(true),
                 };
 
-                log::debug!("Found event {:?}: {:x}", event_type, hash);
+                tracing::debug!(
+                    event = %DisplayAddr(hash),
+                    ?event_type,
+                    "found event in shard state"
+                );
 
                 // Extract data
                 let contract = ExistingContract {
@@ -1775,11 +1846,15 @@ impl Bridge {
                 };
 
                 macro_rules! check_configuration {
-                    ($name: literal, $contract: ident) => {
+                    ($contract: ident) => {
                         match $contract(&contract).event_init_data() {
                             Ok(init_data) => init_data.configuration,
                             Err(e) => {
-                                log::info!("Failed to get {} event init data: {:?}", $name, e);
+                                tracing::info!(
+                                    event = %DisplayAddr(hash),
+                                    ?event_type,
+                                    "failed to get event init data: {e:?}"
+                                );
                                 return Ok(true);
                             }
                         }
@@ -1792,11 +1867,14 @@ impl Bridge {
                 {
                     Ok(EventAction::Nop | EventAction::Vote) => match event_type {
                         EventType::EthTon => {
-                            let configuration =
-                                check_configuration!("ETH->TON", EthTonEventContract);
+                            let configuration = check_configuration!(EthTonEventContract);
 
                             if !unique_eth_ton_event_configurations.contains(&configuration) {
-                                log::warn!("ETH->TON event configuration not found: {:x}", hash);
+                                tracing::warn!(
+                                    event = %DisplayAddr(hash),
+                                    configuration = %DisplayAddr(configuration),
+                                    "ETH->TON event configuration not found"
+                                );
                                 return Ok(true);
                             }
 
@@ -1808,11 +1886,14 @@ impl Bridge {
                             }
                         }
                         EventType::TonEth => {
-                            let configuration =
-                                check_configuration!("TON->ETH", TonEthEventContract);
+                            let configuration = check_configuration!(TonEthEventContract);
 
                             if !unique_ton_eth_event_configurations.contains(&configuration) {
-                                log::warn!("TON->ETH event configuration not found: {:x}", hash);
+                                tracing::warn!(
+                                    event = %DisplayAddr(hash),
+                                    configuration = %DisplayAddr(configuration),
+                                    "TON->ETH event configuration not found",
+                                );
                                 return Ok(true);
                             }
 
@@ -1824,11 +1905,14 @@ impl Bridge {
                             }
                         }
                         EventType::SolTon if has_sol_subscriber => {
-                            let configuration =
-                                check_configuration!("SOL->TON", SolTonEventContract);
+                            let configuration = check_configuration!(SolTonEventContract);
 
                             if !unique_sol_ton_event_configurations.contains(&configuration) {
-                                log::warn!("SOL->TON event configuration not found: {:x}", hash);
+                                tracing::warn!(
+                                    event = %DisplayAddr(hash),
+                                    configuration = %DisplayAddr(configuration),
+                                    "SOL->TON event configuration not found",
+                                );
                                 return Ok(true);
                             }
 
@@ -1840,11 +1924,14 @@ impl Bridge {
                             }
                         }
                         EventType::TonSol if has_sol_subscriber => {
-                            let configuration =
-                                check_configuration!("TON->SOL", TonSolEventContract);
+                            let configuration = check_configuration!(TonSolEventContract);
 
                             if !unique_ton_sol_event_configurations.contains(&configuration) {
-                                log::warn!("TON->SOL event configuration not found: {:x}", hash);
+                                tracing::warn!(
+                                    event = %DisplayAddr(hash),
+                                    configuration = %DisplayAddr(configuration),
+                                    "TON->SOL event configuration not found",
+                                );
                                 return Ok(true);
                             }
 
@@ -1859,7 +1946,11 @@ impl Bridge {
                     },
                     Ok(EventAction::Remove) => { /* do nothing */ }
                     Err(e) => {
-                        log::error!("Failed to get {} event details: {:?}", event_type, e);
+                        tracing::error!(
+                            event = %DisplayAddr(hash),
+                            ?event_type,
+                            "failed to get event details: {e:?}",
+                        );
                     }
                 }
 
@@ -1891,7 +1982,7 @@ impl Bridge {
             Arc::new(state.unique_ton_sol_event_configurations());
 
         // Process shards in parallel
-        log::info!("Started searching for all events...");
+        tracing::info!("started searching for all events");
         let mut results_rx = {
             let (results_tx, results_rx) = mpsc::unbounded_channel();
 
@@ -1919,10 +2010,10 @@ impl Bridge {
                         unique_sol_ton_event_configurations,
                         unique_ton_sol_event_configurations,
                     );
-                    log::info!(
-                        "Processed accounts in shard {} in {} seconds",
-                        shard_ident.shard_prefix_as_str_with_tag(),
-                        start.elapsed().as_secs()
+                    tracing::info!(
+                        shard = shard_ident.shard_prefix_as_str_with_tag(),
+                        elapsed_sec = start.elapsed().as_secs(),
+                        "processed accounts in shard",
                     );
                     results_tx.send(result).ok();
                 }));
@@ -1939,9 +2030,9 @@ impl Bridge {
         }
 
         // Done
-        log::info!(
-            "Finished iterating all events in {} seconds",
-            start.elapsed().as_secs()
+        tracing::info!(
+            elapsed_sec = start.elapsed().as_secs(),
+            "finished iterating all events",
         );
         Ok(())
     }
@@ -1993,14 +2084,14 @@ impl Bridge {
                     Ok(shards) => {
                         for (_, block_id) in shards.block_ids {
                             if let Err(e) = ton_engine.wait_state(&block_id, None, false).await {
-                                log::error!("Failed to wait shard state: {:?}", e);
+                                tracing::error!(%block_id, "failed to wait for shard state: {e:?}");
                                 continue 'outer;
                             }
                         }
                         shards.current_utime
                     }
                     Err(e) => {
-                        log::error!("Failed to wait current shards info: {:?}", e);
+                        tracing::error!("failed to wait for current shards info: {e:?}");
                         continue;
                     }
                 };
@@ -2011,7 +2102,11 @@ impl Bridge {
                 let mut total_removed = 0;
                 state.ton_eth_event_configurations.retain(|account, state| {
                     if state.details.is_expired(current_utime) {
-                        log::warn!("Removing TON->ETH event configuration {:x}", account);
+                        tracing::warn!(
+                            configuration = %DisplayAddr(account),
+                            current_utime,
+                            "removing TON->ETH event configuration",
+                        );
                         total_removed += 1;
                         false
                     } else {
@@ -2026,7 +2121,11 @@ impl Bridge {
                 let mut total_removed = 0;
                 state.ton_sol_event_configurations.retain(|account, state| {
                     if state.details.is_expired(current_utime) {
-                        log::warn!("Removing TON->SOL event configuration {:x}", account);
+                        tracing::warn!(
+                            configuration = %DisplayAddr(account),
+                            current_utime,
+                            "removing TON->SOL event configuration",
+                        );
                         total_removed += 1;
                         false
                     } else {
@@ -2041,7 +2140,11 @@ impl Bridge {
                 let mut total_removed = 0;
                 state.sol_ton_event_configurations.retain(|account, state| {
                     if state.details.is_expired(current_utime as u64) {
-                        log::warn!("Removing SOL->TON event configuration {:x}", account);
+                        tracing::warn!(
+                            configuration = %DisplayAddr(account),
+                            current_utime,
+                            "removing SOL->TON event configuration",
+                        );
                         total_removed += 1;
                         false
                     } else {
@@ -2092,7 +2195,7 @@ impl Bridge {
     {
         tokio::spawn(async move {
             if let Err(e) = fut.await {
-                log::error!("Failed to {}: {:?}", name, e);
+                tracing::error!("failed to {name}: {e:?}");
             }
         });
     }
@@ -2449,7 +2552,10 @@ impl ReadFromTransaction for BridgeEvent {
                 {
                     Ok(parsed) => event = Some(BridgeEvent::ConnectorDeployed(parsed)),
                     Err(e) => {
-                        log::error!("Failed to parse bridge event: {:?}", e);
+                        tracing::error!(
+                            tx = ctx.transaction_hash.to_hex_string(),
+                            "failed to parse bridge event: {e:?}"
+                        );
                     }
                 }
             }
@@ -2489,7 +2595,10 @@ impl TxContext<'_> {
                 {
                     Ok(parsed) => address = Some(parsed),
                     Err(e) => {
-                        log::error!("Failed to parse NewEventContract event: {:?}", e);
+                        tracing::error!(
+                            tx = self.transaction_hash.to_hex_string(),
+                            "failed to parse NewEventContract event: {e:?}",
+                        );
                     }
                 }
             }
@@ -2498,7 +2607,10 @@ impl TxContext<'_> {
         if let Some(address) = address {
             Some(only_account_hash(address))
         } else {
-            log::warn!("NewEventContract was not found on deployEvent transaction");
+            tracing::warn!(
+                tx = self.transaction_hash.to_hex_string(),
+                "NewEventContract was not found on deployEvent transaction",
+            );
             None
         }
     }

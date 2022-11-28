@@ -43,11 +43,6 @@ pub struct AppConfig {
     /// Completely disable when not specified
     #[serde(default)]
     pub metrics_settings: Option<pomfrit::Config>,
-
-    /// log4rs settings.
-    /// See [docs](https://docs.rs/log4rs/1.0.0/log4rs/) for more details
-    #[serde(default = "default_logger_settings")]
-    pub logger_settings: serde_yaml::Value,
 }
 
 /// Main application config (brief). Used for simple commands that require only password
@@ -146,7 +141,7 @@ pub struct NodeConfig {
     pub adnl_options: adnl::NodeOptions,
     pub rldp_options: rldp::NodeOptions,
     pub dht_options: dht::NodeOptions,
-    pub overlay_shard_options: overlay::ShardOptions,
+    pub overlay_shard_options: overlay::OverlayOptions,
     pub neighbours_options: ton_indexer::NeighboursOptions,
 }
 
@@ -154,7 +149,7 @@ impl NodeConfig {
     pub async fn build_indexer_config(mut self) -> Result<ton_indexer::NodeConfig> {
         // Determine public ip
         let ip_address = broxus_util::resolve_public_ip(self.adnl_public_ip).await?;
-        log::info!("Using public ip: {}", ip_address);
+        tracing::info!(?ip_address, "using public ip");
 
         // Generate temp keys
         let adnl_keys = ton_indexer::NodeKeys::load(self.temp_keys_path, false)
@@ -236,25 +231,4 @@ pub trait ConfigExt: Sized {
     fn from_file<P>(path: &P) -> Result<Self>
     where
         P: AsRef<Path>;
-}
-
-fn default_logger_settings() -> serde_yaml::Value {
-    const DEFAULT_LOG4RS_SETTINGS: &str = r##"
-    appenders:
-      stdout:
-        kind: console
-        encoder:
-          pattern: "{d(%Y-%m-%d %H:%M:%S %Z)(utc)} - {h({l})} {M} = {m} {n}"
-    root:
-      level: error
-      appenders:
-        - stdout
-    loggers:
-      relay:
-        level: info
-        appenders:
-          - stdout
-        additive: false
-    "##;
-    serde_yaml::from_str(DEFAULT_LOG4RS_SETTINGS).unwrap()
 }
