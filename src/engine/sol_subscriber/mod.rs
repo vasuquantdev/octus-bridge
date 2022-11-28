@@ -92,7 +92,7 @@ impl SolSubscriber {
     pub fn subscribe(&self, program_pubkey: Pubkey) {
         let mut programs = self.programs_to_subscribe.write();
         if !programs.contains(&program_pubkey) {
-            tracing::info!("Subscribe to `{}` solana program", program_pubkey);
+            tracing::info!(%program_pubkey, "subscriber to Solana program");
             programs.push(program_pubkey);
         }
     }

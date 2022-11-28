@@ -560,7 +560,7 @@ impl EthSubscriber {
         let events_to_check = events_to_check
             .collect::<Vec<(EventId, Result<Option<ParsedEthEvent>>)>>()
             .await;
-        tracing::info!(?events_to_check);
+        tracing::info!(chain_id, current_block, ?events_to_check);
 
         for (event_id, result) in events_to_check {
             if let hash_map::Entry::Occupied(mut entry) = pending_confirmations.entry(event_id) {

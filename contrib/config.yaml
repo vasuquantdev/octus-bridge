@@ -28,8 +28,8 @@ bridge_settings:
       max_block_range: 5000
     # Smart Chain
     - chain_id: 56
-      # Public endpoint
-      endpoint: https://bsc-dataseed.binance.org
+      # Public endpoint (see https://docs.bscscan.com/misc-tools-and-utilities/public-rpc-nodes)
+      endpoint: https://bsc-dataseed1.binance.org
       get_timeout_sec: 10
       pool_size: 10
       poll_interval_sec: 60
@@ -97,21 +97,3 @@ metrics_settings:
   metrics_path: "/metrics"
   # Metrics update interval in seconds. Default: 10
   collection_interval_sec: 10
-# log4rs settings.
-# See https://docs.rs/log4rs/1.0.0/log4rs/ for more details
-logger_settings:
-  appenders:
-    stdout:
-      kind: console
-      encoder:
-        pattern: "{h({l})} {M} = {m} {n}"
-  root:
-    level: error
-    appenders:
-      - stdout
-  loggers:
-    relay:
-      level: info
-      appenders:
-        - stdout
-      additive: false

@@ -8,6 +8,7 @@
 </p>
 
 ### Runtime requirements
+
 - CPU: 8 cores, 2 GHz
 - RAM: 16 GB
 - Storage: 200 GB fast SSD
@@ -21,11 +22,12 @@ there is a set of scripts for configuring the relay.
 NOTE: scripts are prepared and tested on **Ubuntu 20.04**. You may need to modify them a little for other distros.
 
 1. ##### Setup relay service
-   * Native version (a little more complex way, but gives some performance gain and reduces the load):
+
+   - Native version (a little more complex way, but gives some performance gain and reduces the load):
      ```bash
      ./scripts/setup.sh -t native
      ```
-   * **OR** docker version (the simplest way, but adds some overhead):
+   - **OR** docker version (the simplest way, but adds some overhead):
      ```bash
      ./scripts/setup.sh -t docker
      ```
@@ -35,7 +37,9 @@ NOTE: scripts are prepared and tested on **Ubuntu 20.04**. You may need to modif
    > Everscale node DB will be in `/var/db/relay`.
 
    **Do not start this service yet!**
+
 2. ##### Prepare config
+
    Either add the environment variables to the `[Service]` section of unit file.
    It is located at `/etc/systemd/system/relay.service`.
 
@@ -55,14 +59,17 @@ NOTE: scripts are prepared and tested on **Ubuntu 20.04**. You may need to modif
    Or simply replace the `${..}` parameters in the config. It is located at `/etc/relay/config.yaml`.
 
 3. ##### Generate keys
+
    ```bash
      ./scripts/generate.sh -t docker # or `native`, depends on your installation type
    ```
+
    > if you already have seed phrases that you want to import, then add the `-i` flag
 
    This script will print unencrypted data. **Be sure to write it down somewhere! And also make a backup of the `/etc/relay` folder!**
 
 4. ##### Link relay keys
+
    Use ETH address and Everscale public key from the previous step to link this relay setup
    with your staker address at https://octusbridge.io/relayers/create. When you start the linking process go to step 5 and start the relay. It will begin to confirm the public key and address on the air.
    It may take some time to sync at first (~40 minutes).
@@ -73,6 +80,7 @@ NOTE: scripts are prepared and tested on **Ubuntu 20.04**. You may need to modif
    > then you can change the values in the config.
 
 5. ##### Enable and start relay service
+
    ```bash
    systemctl enable relay
    systemctl start relay
@@ -81,6 +89,7 @@ NOTE: scripts are prepared and tested on **Ubuntu 20.04**. You may need to modif
    # Relay is fully operational when it prints `Initialized relay`
    journalctl -fu relay
    ```
+
    Relay will be running on UDP port `30000` by default, so make sure that this port is not blocked by firewall.
 
    NOTE: docker installation uses port 30000 in unit file, so you may need to update the service if you decide to change it.
@@ -172,8 +181,8 @@ bridge_settings:
       max_block_range: 5000
     # Smart Chain
     - chain_id: 56
-      # Public endpoint
-      endpoint: https://bsc-dataseed.binance.org
+      # Public endpoint (see https://docs.bscscan.com/misc-tools-and-utilities/public-rpc-nodes)
+      endpoint: https://bsc-dataseed1.binance.org
       get_timeout_sec: 10
       pool_size: 10
       poll_interval_sec: 60
@@ -244,6 +253,7 @@ events, relay sees and checks them.
   relay sends a rejection message.
 
   ##### Everscale-to-EVM ABI mapping rules:
+
   ```
   bytes => same
   string => same
@@ -281,12 +291,13 @@ events, relay sees and checks them.
   ```
 
   > When converting ABI from EVM format to Everscale, there is a mechanism for controlling this process.
-  > You can add a `bytes1` *(\*\*)* element which sets context flags to its value.
+  > You can add a `bytes1` _(\*\*)_ element which sets context flags to its value.
   >
   > Currently, there are only three flags:
-  > - `0x01` - place tuples to new cell (***)
-  > - `0x02` - interpret `bytes` as encoded TVM cell (*)
-  > - `0x04` - insert default cell in case of error with flag `0x02` (*)
+  >
+  > - `0x01` - place tuples to new cell (\*\*\*)
+  > - `0x02` - interpret `bytes` as encoded TVM cell (\*)
+  > - `0x04` - insert default cell in case of error with flag `0x02` (\*)
   >
   > NOTE: Flags can't be changed inside an array element! This would lead to inconsistent array items ABI.
 
@@ -297,124 +308,134 @@ more optimized than C++ node, so they don't harm the network.
 
 ### Changelog
 
+### 2.1.2 (2022-11-28)
+
+Features:
+
+- Improved logger
+
+Bugfixes:
+
+- Fixed transport issues
+
 ### 2.1.1 (2022-10-14)
 
 Bugfixes:
 
-* Fixed errors with SOL events during scanning all events
-* Increased default polling interval
+- Fixed errors with SOL events during scanning all events
+- Increased default polling interval
 
 ### 2.1.0 (2022-09-06)
 
 Features:
 
-* Add Solana
+- Add Solana
 
 Bugfixes:
 
-* Fixed outgoing RLDP transfers
+- Fixed outgoing RLDP transfers
 
 ### 2.0.13 (2022-07-22)
 
 Features:
 
-* Replace `tiny-adnl` with `everscale-network`
-* Optimize DB layout
+- Replace `tiny-adnl` with `everscale-network`
+- Optimize DB layout
 
 ### 2.0.12 (2022-06-03)
 
 Features:
 
-* Backport transport fixes
+- Backport transport fixes
 
 ### 2.0.11 (2022-04-13)
 
 Features:
 
-* Added archives assembly
-* Added new account model support
+- Added archives assembly
+- Added new account model support
 
 Bugfixes
 
-* Fixed ADNL channels
+- Fixed ADNL channels
 
 ### 2.0.10 (2022-04-03)
 
 Bugfixes
 
-* Fixed memory leaks. (New peers queue was read at a fixed rate).
+- Fixed memory leaks. (New peers queue was read at a fixed rate).
 
 ### 2.0.9 (2022-03-26)
 
 Features
 
-* Added packets compression support (enabled by default).
-* Various optimizations.
+- Added packets compression support (enabled by default).
+- Various optimizations.
 
 ### 2.0.8 (2022-02-12)
 
 Features
 
-* Updated ABI version to 2.2
-* Fixed memory leaks. (Shard states were slowly filling with loaded storage cells).
+- Updated ABI version to 2.2
+- Fixed memory leaks. (Shard states were slowly filling with loaded storage cells).
 
 ### 2.0.7 (2022-02-02)
 
 Features
 
-* ADNL security improvements
+- ADNL security improvements
 
 ### 2.0.6 (2021-12-31)
 
 Features
 
-* Optimized DB structure
+- Optimized DB structure
 
 ### 2.0.5 (2021-11-27)
 
 Features
 
-* Improved ETH events verification
-* Updated events ABI
-* Added `ton_subscriber_shard_client_time_diff`, `ton_subscriber_mc_block_seqno` and `ton_subscriber_shard_client_mc_block_seqno`
+- Improved ETH events verification
+- Updated events ABI
+- Added `ton_subscriber_shard_client_time_diff`, `ton_subscriber_mc_block_seqno` and `ton_subscriber_shard_client_mc_block_seqno`
   values into metrics
 
 ### 2.0.4 (2021-11-11)
 
 Features
 
-* Use jemalloc by default
+- Use jemalloc by default
 
 Bugfixes
 
-* Fixed blocks GC memory issues
+- Fixed blocks GC memory issues
 
 ### 2.0.3 (2021-11-09)
 
 Features
 
-* Hot reload for metrics exporter and logger settings (SIGHUP signal)
-* Blocks and states garbage collection
-* Additional EVM RPC timing controls
-* Improved database layout and increased data locality
+- Hot reload for metrics exporter and logger settings (SIGHUP signal)
+- Blocks and states garbage collection
+- Additional EVM RPC timing controls
+- Improved database layout and increased data locality
 
 Bugfixes
 
-* Fixed exported metrics format
-* Fixed event confirmation counters
-* Fixed time diff metrics
-* Reduced blocks range for `eth_getLogs`
-* Ignore descending blocks for ETH rpc
+- Fixed exported metrics format
+- Fixed event confirmation counters
+- Fixed time diff metrics
+- Reduced blocks range for `eth_getLogs`
+- Ignore descending blocks for ETH rpc
 
 ### 2.0.2
 
 Features
 
-* Added setup scripts for fast deployment
+- Added setup scripts for fast deployment
 
 Bugfixes
 
-* Fixed bridge contracts interaction logic according to new changes
+- Fixed bridge contracts interaction logic according to new changes
 
 ### 2.0.1
 
