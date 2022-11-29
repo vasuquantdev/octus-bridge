@@ -386,28 +386,17 @@ impl SolSubscriber {
                 || async {
                     let mem: Vec<u8> = vec![
                         true as u8,                                           // is_initialized
+                        false as u8,                                          // is_executed
                         AccountKind::Proposal(Default::default()).to_value(), // account_kind
                     ];
                     let memcmp = MemcmpEncodedBytes::Base58(bs58::encode(mem).into_string());
 
-                    let exec_status = vec![false as u8]; // is_executed
-                    let memcmp_exec_status =
-                        MemcmpEncodedBytes::Base58(bs58::encode(exec_status).into_string());
-                    let status_offset = 3;
-
                     let config = RpcProgramAccountsConfig {
-                        filters: Some(vec![
-                            RpcFilterType::Memcmp(Memcmp {
-                                offset: 0,
-                                bytes: memcmp,
-                                encoding: None,
-                            }),
-                            RpcFilterType::Memcmp(Memcmp {
-                                offset: status_offset,
-                                bytes: memcmp_exec_status,
-                                encoding: None,
-                            }),
-                        ]),
+                        filters: Some(vec![RpcFilterType::Memcmp(Memcmp {
+                            offset: 0,
+                            bytes: memcmp,
+                            encoding: None,
+                        })]),
                         account_config: RpcAccountInfoConfig {
                             encoding: Some(UiAccountEncoding::Base64),
                             commitment: Some(self.config.commitment),
