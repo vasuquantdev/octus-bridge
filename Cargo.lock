@@ -362,7 +362,7 @@ dependencies = [
 [[package]]
 name = "bridge-derive"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?rev=19537ac#19537ac00413e0e084d7013371a81dc63b8a9528"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#fbf73810832530ba8651c9968306377fefb5ee19"
 dependencies = [
  "darling 0.13.4",
  "proc-macro2 1.0.50",
@@ -373,11 +373,12 @@ dependencies = [
 [[package]]
 name = "bridge-utils"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?rev=19537ac#19537ac00413e0e084d7013371a81dc63b8a9528"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#fbf73810832530ba8651c9968306377fefb5ee19"
 dependencies = [
  "bincode",
  "borsh",
  "bridge-derive",
+ "enum-as-inner 0.5.1",
  "hex",
  "serde",
  "solana-program",
@@ -1243,6 +1244,18 @@ dependencies = [
  "proc-macro2 1.0.50",
  "quote 1.0.23",
  "syn 1.0.107",
+]
+
+[[package]]
+name = "enum-as-inner"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c9720bba047d567ffc8a3cba48bf19126600e249ab7f128e9233e6376976a116"
+dependencies = [
+ "heck",
+ "proc-macro2 1.0.47",
+ "quote 1.0.21",
+ "syn 1.0.104",
 ]
 
 [[package]]
@@ -3318,13 +3331,14 @@ dependencies = [
 [[package]]
 name = "round-loader"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?rev=19537ac#19537ac00413e0e084d7013371a81dc63b8a9528"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#fbf73810832530ba8651c9968306377fefb5ee19"
 dependencies = [
  "bincode",
  "borsh",
  "bridge-derive",
  "bridge-utils",
  "serde",
+ "serde-wasm-bindgen",
  "solana-program",
 ]
 
@@ -3470,6 +3484,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bb7d1f0d3021d347a83e556fc4683dea2ea09d87bccdf88ff5c12545d89d5efb"
 dependencies = [
  "serde_derive",
+]
+
+[[package]]
+name = "serde-wasm-bindgen"
+version = "0.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3b4c031cd0d9014307d82b8abf653c0290fbdaeb4c02d00c63cf52f728628bf"
+dependencies = [
+ "js-sys",
+ "serde",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -3713,7 +3738,7 @@ dependencies = [
 [[package]]
 name = "solana-bridge"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?rev=19537ac#19537ac00413e0e084d7013371a81dc63b8a9528"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#fbf73810832530ba8651c9968306377fefb5ee19"
 dependencies = [
  "borsh",
  "bridge-utils",
@@ -4623,16 +4648,18 @@ dependencies = [
 [[package]]
 name = "token-proxy"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?rev=19537ac#19537ac00413e0e084d7013371a81dc63b8a9528"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#fbf73810832530ba8651c9968306377fefb5ee19"
 dependencies = [
+ "base64 0.13.1",
  "bincode",
  "borsh",
  "bridge-derive",
  "bridge-utils",
- "enum-as-inner",
+ "enum-as-inner 0.5.1",
  "getrandom 0.2.8",
  "round-loader",
  "serde",
+ "serde-wasm-bindgen",
  "solana-program",
  "spl-associated-token-account",
  "spl-token",
@@ -4969,7 +4996,7 @@ dependencies = [
  "async-trait",
  "cfg-if",
  "data-encoding",
- "enum-as-inner",
+ "enum-as-inner 0.3.4",
  "futures-channel",
  "futures-io",
  "futures-util",

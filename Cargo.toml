@@ -76,7 +76,7 @@ ton_types = { git = "https://github.com/broxus/ton-labs-types" }
 eth-ton-abi-converter = { git = "https://github.com/broxus/eth-ton-abi-converter.git" }
 
 # Solana Bridge
-solana-bridge = { git = "https://github.com/broxus/octusbridge-solana-contracts.git", rev = "19537ac" }
+solana-bridge = { git = "https://github.com/broxus/octusbridge-solana-contracts.git", branch = "feature/multitoken_v2" }
 
 # Nekoton SDK
 nekoton-abi = { git = "https://github.com/broxus/nekoton.git", features = ["derive"] }

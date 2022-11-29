@@ -8,7 +8,7 @@ use rustc_hash::FxHashMap;
 use tokio::sync::{oneshot, Semaphore};
 
 use solana_account_decoder::{UiAccountEncoding, UiDataSliceConfig};
-use solana_bridge::bridge_state::Proposal;
+use solana_bridge::bridge_state::{AccountKind, Proposal};
 use solana_client::client_error::{ClientError, ClientErrorKind};
 use solana_client::rpc_client::RpcClient;
 use solana_client::rpc_config::{
@@ -385,18 +385,29 @@ impl SolSubscriber {
             retry(
                 || async {
                     let mem: Vec<u8> = vec![
-                        true as u8,                                               // is_initialized
-                        solana_bridge::bridge_state::AccountKind::Proposal as u8, // account_kind
-                        false as u8,                                              // is_executed
+                        true as u8,                                           // is_initialized
+                        AccountKind::Proposal(Default::default()).to_value(), // account_kind
                     ];
                     let memcmp = MemcmpEncodedBytes::Base58(bs58::encode(mem).into_string());
 
+                    let exec_status = vec![false as u8]; // is_executed
+                    let memcmp_exec_status =
+                        MemcmpEncodedBytes::Base58(bs58::encode(exec_status).into_string());
+                    let status_offset = 3;
+
                     let config = RpcProgramAccountsConfig {
-                        filters: Some(vec![RpcFilterType::Memcmp(Memcmp {
-                            offset: 0,
-                            bytes: memcmp,
-                            encoding: None,
-                        })]),
+                        filters: Some(vec![
+                            RpcFilterType::Memcmp(Memcmp {
+                                offset: 0,
+                                bytes: memcmp,
+                                encoding: None,
+                            }),
+                            RpcFilterType::Memcmp(Memcmp {
+                                offset: status_offset,
+                                bytes: memcmp_exec_status,
+                                encoding: None,
+                            }),
+                        ]),
                         account_config: RpcAccountInfoConfig {
                             encoding: Some(UiAccountEncoding::Base64),
                             commitment: Some(self.config.commitment),
@@ -560,11 +571,8 @@ impl SolSubscriber {
     }
 
     async fn verify_sol_ton_account(&self, data: SolTonAccountData) -> Result<VerificationStatus> {
-        let account_pubkey = solana_bridge::token_proxy::get_associated_deposit_address(
-            &data.program_id,
-            data.seed,
-            &data.settings,
-        );
+        let account_pubkey =
+            solana_bridge::token_proxy::get_associated_deposit_address(&data.program_id, data.seed);
 
         let now = std::time::Instant::now();
 
@@ -658,7 +666,6 @@ type VerificationStatusTx = oneshot::Sender<VerificationStatus>;
 
 pub struct SolTonAccountData {
     pub program_id: Pubkey,
-    pub settings: Pubkey,
     pub seed: u128,
     pub event_data: Vec<u8>,
 }
@@ -682,7 +689,7 @@ enum SolSubscriberError {
     DecodeTransactionError(String),
     #[error("Relay is not in the round `{0}`")]
     InvalidRound(u32),
-    #[error("Relay is not in the round `{0}`")]
+    #[error("Invalid vote position `{0}`")]
     InvalidVotePosition(usize),
     #[error("Relay round `{0}` doesn't exist")]
     InvalidRoundAccount(String),

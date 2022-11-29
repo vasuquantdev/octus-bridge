@@ -949,7 +949,6 @@ impl Bridge {
                 .map(|configuration| {
                     (
                         configuration.details.network_configuration.program,
-                        configuration.details.network_configuration.settings,
                         TokenValue::decode_params(
                             &configuration.event_abi,
                             event_init_data.vote_data.event_data.clone().into(),
@@ -960,11 +959,10 @@ impl Bridge {
                 })
         };
 
-        let (program, settings, decoded_event_data) = match data {
+        let (program, decoded_event_data) = match data {
             // Decode event data with event abi from configuration
-            Some((program, settings, data)) => (
+            Some((program, data)) => (
                 program,
-                settings,
                 data.and_then(|data| eth_ton_abi_converter::borsh::serialize(&data))?,
             ),
             // Do nothing when configuration was not found
@@ -983,7 +981,6 @@ impl Bridge {
             solana_sdk::signature::Signature::from_str(&event_init_data.vote_data.signature)?;
 
         let program_id = Pubkey::new_from_array(program.inner());
-        let settings = Pubkey::new_from_array(settings.inner());
 
         let transaction_data = SolTonTransactionData {
             program_id,
@@ -995,7 +992,6 @@ impl Bridge {
 
         let account_data = SolTonAccountData {
             program_id,
-            settings,
             seed: event_init_data.vote_data.account_seed,
             event_data: decoded_event_data,
         };
@@ -1096,7 +1092,6 @@ impl Bridge {
                 .map(|configuration| {
                     (
                         configuration.details.network_configuration.program,
-                        configuration.details.network_configuration.settings,
                         configuration.details.network_configuration.instruction,
                         configuration.details.network_configuration.execute_needed,
                         configuration
@@ -1113,41 +1108,33 @@ impl Bridge {
                 })
         };
 
-        let (
-            program_id,
-            settings,
-            instruction,
-            execute_needed,
-            execute_instruction,
-            decoded_event_data,
-        ) = match data {
-            // Decode event data with event abi from configuration
-            Some((program, settings, instruction, execute_needed, execute_instruction, data)) => (
-                Pubkey::new_from_array(program.inner()),
-                Pubkey::new_from_array(settings.inner()),
-                instruction,
-                execute_needed,
-                execute_instruction,
-                data.and_then(|data| eth_ton_abi_converter::borsh::serialize(&data))?,
-            ),
-            // Do nothing when configuration was not found
-            None => {
-                tracing::error!(
-                    event = %DisplayAddr(account),
-                    configuration = %DisplayAddr(event_init_data.configuration),
-                    "TON->SOL event configuration not found for event",
-                );
-                self.ton_sol_events_state.remove(&account);
-                return Ok(());
-            }
-        };
+        let (program_id, instruction, execute_needed, execute_instruction, decoded_event_data) =
+            match data {
+                // Decode event data with event abi from configuration
+                Some((program, instruction, execute_needed, execute_instruction, data)) => (
+                    Pubkey::new_from_array(program.inner()),
+                    instruction,
+                    execute_needed,
+                    execute_instruction,
+                    data.and_then(|data| eth_ton_abi_converter::borsh::serialize(&data))?,
+                ),
+                // Do nothing when configuration was not found
+                None => {
+                    tracing::error!(
+                        event = %DisplayAddr(account),
+                        configuration = %DisplayAddr(event_init_data.configuration),
+                        "TON->SOL event configuration not found for event",
+                    );
+                    self.ton_sol_events_state.remove(&account);
+                    return Ok(());
+                }
+            };
 
         let event_configuration = Pubkey::new_from_array(event_init_data.configuration.inner());
         let event_data = solana_sdk::hash::hash(&decoded_event_data);
 
         let proposal_pubkey = solana_bridge::bridge_helper::get_associated_proposal_address(
             &program_id,
-            &settings,
             round_number,
             event_init_data.vote_data.event_timestamp,
             event_init_data.vote_data.event_transaction_lt,

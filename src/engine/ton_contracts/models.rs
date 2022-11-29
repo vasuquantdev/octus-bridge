@@ -203,8 +203,6 @@ pub struct TonEthEventConfiguration {
 pub struct SolTonEventConfiguration {
     #[abi(uint256)]
     pub program: UInt256,
-    #[abi(uint256)]
-    pub settings: UInt256,
     #[abi(with = "address_only_hash")]
     pub proxy: UInt256,
     #[abi(uint64)]
@@ -217,8 +215,6 @@ pub struct SolTonEventConfiguration {
 pub struct TonSolEventConfiguration {
     #[abi(uint256)]
     pub program: UInt256,
-    #[abi(uint256)]
-    pub settings: UInt256,
     #[abi(with = "address_only_hash")]
     pub event_emitter: UInt256,
     #[abi(uint8)]
