@@ -362,7 +362,7 @@ dependencies = [
 [[package]]
 name = "bridge-derive"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#fbf73810832530ba8651c9968306377fefb5ee19"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#6a567f559fedd63d47d74c0f2432e5d4ad6d28ac"
 dependencies = [
  "darling 0.13.4",
  "proc-macro2 1.0.50",
@@ -373,7 +373,7 @@ dependencies = [
 [[package]]
 name = "bridge-utils"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#fbf73810832530ba8651c9968306377fefb5ee19"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#6a567f559fedd63d47d74c0f2432e5d4ad6d28ac"
 dependencies = [
  "bincode",
  "borsh",
@@ -3349,7 +3349,7 @@ dependencies = [
 [[package]]
 name = "round-loader"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#fbf73810832530ba8651c9968306377fefb5ee19"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#6a567f559fedd63d47d74c0f2432e5d4ad6d28ac"
 dependencies = [
  "bincode",
  "borsh",
@@ -3756,7 +3756,7 @@ dependencies = [
 [[package]]
 name = "solana-bridge"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#fbf73810832530ba8651c9968306377fefb5ee19"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#6a567f559fedd63d47d74c0f2432e5d4ad6d28ac"
 dependencies = [
  "borsh",
  "bridge-utils",
@@ -4666,7 +4666,7 @@ dependencies = [
 [[package]]
 name = "token-proxy"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#fbf73810832530ba8651c9968306377fefb5ee19"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#6a567f559fedd63d47d74c0f2432e5d4ad6d28ac"
 dependencies = [
  "base64 0.13.1",
  "bincode",
