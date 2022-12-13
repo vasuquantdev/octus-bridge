@@ -41,6 +41,23 @@ impl ExistingContract {
 
         tokens.ok_or_else(|| ExistingContractError::NonZeroResultCode(result_code).into())
     }
+
+    pub fn run_local_responsible(
+        &self,
+        function: &ton_abi::Function,
+        input: &[ton_abi::Token],
+    ) -> Result<Vec<ton_abi::Token>> {
+        let ExecutionOutput {
+            tokens,
+            result_code,
+        } = function.run_local_responsible(
+            &nekoton_utils::SimpleClock,
+            self.account.clone(),
+            input,
+        )?;
+
+        tokens.ok_or_else(|| ExistingContractError::NonZeroResultCode(result_code).into())
+    }
 }
 
 #[derive(thiserror::Error, Debug)]

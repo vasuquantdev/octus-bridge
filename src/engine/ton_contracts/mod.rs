@@ -59,8 +59,10 @@ pub struct EthTonEventContract<'a>(pub &'a ExistingContract);
 impl EthTonEventContract<'_> {
     pub fn event_init_data(&self) -> Result<EthTonEventInitData> {
         let function = eth_ton_event_contract::get_event_init_data();
-        let inputs = [answer_id()];
-        let event_init_data = self.0.run_local(function, &inputs)?.unpack_first()?;
+        let event_init_data = self
+            .0
+            .run_local_responsible(function, &[answer_id()])?
+            .unpack_first()?;
         Ok(event_init_data)
     }
 }
@@ -70,8 +72,10 @@ pub struct TonEthEventContract<'a>(pub &'a ExistingContract);
 impl TonEthEventContract<'_> {
     pub fn event_init_data(&self) -> Result<TonEthEventInitData> {
         let function = ton_eth_event_contract::get_event_init_data();
-        let inputs = [answer_id()];
-        let event_init_data = self.0.run_local(function, &inputs)?.unpack_first()?;
+        let event_init_data = self
+            .0
+            .run_local_responsible(function, &[answer_id()])?
+            .unpack_first()?;
         Ok(event_init_data)
     }
 }
@@ -81,8 +85,10 @@ pub struct SolTonEventContract<'a>(pub &'a ExistingContract);
 impl SolTonEventContract<'_> {
     pub fn event_init_data(&self) -> Result<SolTonEventInitData> {
         let function = sol_ton_event_contract::get_event_init_data();
-        let inputs = [answer_id()];
-        let event_init_data = self.0.run_local(function, &inputs)?.unpack_first()?;
+        let event_init_data = self
+            .0
+            .run_local_responsible(function, &[answer_id()])?
+            .unpack_first()?;
         Ok(event_init_data)
     }
 }
@@ -92,8 +98,10 @@ pub struct TonSolEventContract<'a>(pub &'a ExistingContract);
 impl TonSolEventContract<'_> {
     pub fn event_init_data(&self) -> Result<TonSolEventInitData> {
         let function = ton_sol_event_contract::get_event_init_data();
-        let inputs = [answer_id()];
-        let event_init_data = self.0.run_local(function, &inputs)?.unpack_first()?;
+        let event_init_data = self
+            .0
+            .run_local_responsible(function, &[answer_id()])?
+            .unpack_first()?;
         Ok(event_init_data)
     }
 }
@@ -103,7 +111,10 @@ pub struct EventConfigurationBaseContract<'a>(pub &'a ExistingContract);
 impl EventConfigurationBaseContract<'_> {
     pub fn get_type(&self) -> Result<EventType> {
         let function = base_event_configuration_contract::get_type();
-        let event_type = self.0.run_local(function, &[answer_id()])?.unpack_first()?;
+        let event_type = self
+            .0
+            .run_local_responsible(function, &[answer_id()])?
+            .unpack_first()?;
         Ok(event_type)
     }
 }
@@ -113,7 +124,10 @@ pub struct EthTonEventConfigurationContract<'a>(pub &'a ExistingContract);
 impl EthTonEventConfigurationContract<'_> {
     pub fn get_details(&self) -> Result<EthTonEventConfigurationDetails> {
         let function = eth_ton_event_configuration_contract::get_details();
-        let details = self.0.run_local(function, &[answer_id()])?.unpack()?;
+        let details = self
+            .0
+            .run_local_responsible(function, &[answer_id()])?
+            .unpack()?;
         Ok(details)
     }
 }
@@ -123,7 +137,10 @@ pub struct TonEthEventConfigurationContract<'a>(pub &'a ExistingContract);
 impl TonEthEventConfigurationContract<'_> {
     pub fn get_details(&self) -> Result<TonEthEventConfigurationDetails> {
         let function = ton_eth_event_configuration_contract::get_details();
-        let details = self.0.run_local(function, &[answer_id()])?.unpack()?;
+        let details = self
+            .0
+            .run_local_responsible(function, &[answer_id()])?
+            .unpack()?;
         Ok(details)
     }
 }
@@ -133,7 +150,10 @@ pub struct SolTonEventConfigurationContract<'a>(pub &'a ExistingContract);
 impl SolTonEventConfigurationContract<'_> {
     pub fn get_details(&self) -> Result<SolTonEventConfigurationDetails> {
         let function = sol_ton_event_configuration_contract::get_details();
-        let details = self.0.run_local(function, &[answer_id()])?.unpack()?;
+        let details = self
+            .0
+            .run_local_responsible(function, &[answer_id()])?
+            .unpack()?;
         Ok(details)
     }
 }
@@ -143,7 +163,10 @@ pub struct TonSolEventConfigurationContract<'a>(pub &'a ExistingContract);
 impl TonSolEventConfigurationContract<'_> {
     pub fn get_details(&self) -> Result<TonSolEventConfigurationDetails> {
         let function = ton_sol_event_configuration_contract::get_details();
-        let details = self.0.run_local(function, &[answer_id()])?.unpack()?;
+        let details = self
+            .0
+            .run_local_responsible(function, &[answer_id()])?
+            .unpack()?;
         Ok(details)
     }
 }
