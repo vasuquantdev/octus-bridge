@@ -2330,31 +2330,19 @@ impl BridgeState {
     }
 
     fn unique_eth_ton_event_configurations(&self) -> FxHashSet<UInt256> {
-        self.eth_ton_event_configurations
-            .iter()
-            .map(|(key, _)| *key)
-            .collect()
+        self.eth_ton_event_configurations.keys().copied().collect()
     }
 
     fn unique_ton_eth_event_configurations(&self) -> FxHashSet<UInt256> {
-        self.ton_eth_event_configurations
-            .iter()
-            .map(|(key, _)| *key)
-            .collect()
+        self.ton_eth_event_configurations.keys().copied().collect()
     }
 
     fn unique_sol_ton_event_configurations(&self) -> FxHashSet<UInt256> {
-        self.sol_ton_event_configurations
-            .iter()
-            .map(|(key, _)| *key)
-            .collect()
+        self.sol_ton_event_configurations.keys().copied().collect()
     }
 
     fn unique_ton_sol_event_configurations(&self) -> FxHashSet<UInt256> {
-        self.ton_sol_event_configurations
-            .iter()
-            .map(|(key, _)| *key)
-            .collect()
+        self.ton_sol_event_configurations.keys().copied().collect()
     }
 }
 

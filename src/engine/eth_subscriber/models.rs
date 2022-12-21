@@ -58,11 +58,14 @@ impl TryFrom<Log> for ParsedEthEvent {
             }));
         }
 
-        let topic_hash = log
-            .topics
-            .into_iter()
-            .next()
-            .context("Topic hash not found")?;
+        let mut topics = log.topics.into_iter();
+        let topic_hash = topics.next().context("Topic hash not found")?;
+
+        let mut data = Vec::with_capacity(topics.len() * 32 + log.data.0.len());
+        for topic in topics {
+            data.extend_from_slice(topic.as_bytes());
+        }
+        data.extend_from_slice(&log.data.0);
 
         let block_number = log
             .block_number
@@ -72,8 +75,6 @@ impl TryFrom<Log> for ParsedEthEvent {
         let block_hash = log
             .block_hash
             .context("Block hash was not found in event")?;
-
-        let data = log.data.0;
 
         tracing::debug!(
             block_number,
