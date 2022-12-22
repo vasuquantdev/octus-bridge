@@ -1276,8 +1276,8 @@ dependencies = [
 
 [[package]]
 name = "eth-ton-abi-converter"
-version = "0.5.0"
-source = "git+https://github.com/broxus/eth-ton-abi-converter.git#88443e352e50fa3add9047030991826e8c336091"
+version = "0.5.2"
+source = "git+https://github.com/broxus/eth-ton-abi-converter.git#fb8e896d22743df84ffaa99322c867ff6bd4c06e"
 dependencies = [
  "anyhow",
  "borsh",
