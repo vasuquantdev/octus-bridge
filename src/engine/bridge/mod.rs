@@ -9,6 +9,7 @@ use anyhow::{Context, Result};
 use borsh::BorshDeserialize;
 use eth_ton_abi_converter::{
     decode_ton_event_abi, make_mapped_ton_event, map_ton_tokens_to_eth_bytes, EthEventAbi,
+    EthToTonMappingContext,
 };
 use nekoton_abi::*;
 use nekoton_utils::TrustMe;
@@ -1495,13 +1496,24 @@ impl Bridge {
         account: &UInt256,
         contract: &ExistingContract,
     ) -> Result<()> {
+        let flags = EventConfigurationBaseContract(contract)
+            .get_flags()
+            .context("Failed to get ETH->TON event configuration flags")?;
+
         // Get configuration details
         let details = EthTonEventConfigurationContract(contract)
             .get_details()
             .context("Failed to get ETH->TON event configuration details")?;
 
+        let ctx = flags
+            .map(|flags| EthToTonMappingContext::from(flags as u8))
+            .unwrap_or_default();
+
         // Verify and prepare abi
-        let event_abi = Arc::new(EthEventAbi::new(&details.basic_configuration.event_abi)?);
+        let event_abi = Arc::new(EthEventAbi::new(
+            &details.basic_configuration.event_abi,
+            ctx,
+        )?);
         let topic_hash = event_abi.get_eth_topic_hash().to_fixed_bytes();
         let eth_contract_address = details.network_configuration.event_emitter;
 

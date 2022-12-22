@@ -11,6 +11,17 @@ pub fn get_type() -> &'static ton_abi::Function {
     })
 }
 
+pub fn get_flags() -> &'static ton_abi::Function {
+    crate::once!(ton_abi::Function, || {
+        FunctionBuilder::new_responsible("getFlags")
+            .abi_version(ton_abi::contract::ABI_VERSION_2_2)
+            .time_header()
+            .expire_header()
+            .output("flags", ton_abi::ParamType::Uint(64))
+            .build()
+    })
+}
+
 pub mod events {
     use super::*;
 
