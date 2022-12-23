@@ -68,7 +68,7 @@ if [[ "$setup_type" == "native" ]]; then
   echo 'INFO: building relay'
   cd "$REPO_DIR"
   RUSTFLAGS="-C target_cpu=native" cargo build --release
-  sudo cp "$REPO_DIR/target/release/relay" /usr/bin/relay
+  sudo cp "$REPO_DIR/target/release/relay" /usr/local/bin/relay
 
   echo 'INFO: creating systemd service'
   if [[ -f "$service_path" ]]; then
@@ -109,7 +109,7 @@ else
   sudo cp -n "$REPO_DIR/contrib/config.yaml" "$config_path"
 fi
 
-sudo wget -O /etc/relay/global.config.json \
+sudo wget -O /etc/relay/ton-global.config.json \
   https://raw.githubusercontent.com/tonlabs/main.ton.dev/master/configs/ton-global.config.json
 
 echo 'INFO: restarting timesyncd'

@@ -34,6 +34,6 @@ RUN apt-get update \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /etc/bridge
-COPY --from=builder relay/target/release/relay /usr/bin/relay
+COPY --from=builder relay/target/release/relay /usr/local/bin/relay
 
 ENTRYPOINT ["relay"]

@@ -85,7 +85,7 @@ if [[ "$setup_type" == "native" ]]; then
   echo 'INFO: building relay'
   cd "$REPO_DIR"
   RUSTFLAGS="-C target_cpu=native" cargo build --release
-  sudo cp "$REPO_DIR/target/release/relay" /usr/bin/relay
+  sudo cp "$REPO_DIR/target/release/relay" /usr/local/bin/relay
 
 elif [[ "$setup_type" == "docker" ]]; then
   if ! sudo docker info > /dev/null 2>&1; then
@@ -104,7 +104,7 @@ else
   exit 1
 fi
 
-sudo wget -O /etc/relay/global.config.json \
+sudo wget -O /etc/relay/ton-global.config.json \
   https://raw.githubusercontent.com/tonlabs/main.ton.dev/master/configs/ton-global.config.json
 
 echo "INFO: preparing environment"

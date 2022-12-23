@@ -61,7 +61,7 @@ if [[ "$setup_type" != "native" ]] && [[ "$setup_type" != "docker" ]]; then
 fi
 
 if [[ "$setup_type" == "native" ]]; then
-  relay_binary="/usr/bin/relay generate"
+  relay_binary="/usr/local/bin/relay generate"
 elif [[ "$setup_type" == "docker" ]]; then
   if ! sudo docker info > /dev/null 2>&1; then
     echo 'ERROR: This script uses docker, and it is not running or not configured properly.'
