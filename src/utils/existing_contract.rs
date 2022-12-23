@@ -61,7 +61,7 @@ impl ExistingContract {
 }
 
 #[derive(thiserror::Error, Debug)]
-enum ExistingContractError {
+pub enum ExistingContractError {
     #[error("Non zero result code: {}", .0)]
     NonZeroResultCode(i32),
 }

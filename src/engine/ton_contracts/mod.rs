@@ -117,6 +117,22 @@ impl EventConfigurationBaseContract<'_> {
             .unpack_first()?;
         Ok(event_type)
     }
+
+    pub fn get_flags(&self) -> Result<Option<u64>> {
+        let function = base_event_configuration_contract::get_flags();
+        let output = function.run_local_responsible(
+            &nekoton_utils::SimpleClock,
+            self.0.account.clone(),
+            &[answer_id()],
+        )?;
+        if output.result_code == 60 {
+            Ok(None)
+        } else if let Some(tokens) = output.tokens {
+            Ok(Some(tokens.unpack_first()?))
+        } else {
+            Err(ExistingContractError::NonZeroResultCode(output.result_code).into())
+        }
+    }
 }
 
 pub struct EthTonEventConfigurationContract<'a>(pub &'a ExistingContract);

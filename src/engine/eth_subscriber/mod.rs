@@ -359,7 +359,7 @@ impl EthSubscriber {
                     status_tx: Some(tx),
                     event_abi,
                     target_block,
-                    status: PendingConfirmationStatus::InProcess,
+                    status: None,
                 },
             );
 
@@ -506,7 +506,9 @@ impl EthSubscriber {
                             event_index = event.event_index,
                             "log removed"
                         );
-                        confirmation.status = PendingConfirmationStatus::Invalid
+                        confirmation.status = Some(VerificationStatus::NotExists {
+                            reason: "Log removed".to_owned(),
+                        })
                     }
                     ParsedEthEvent::Received(event) => {
                         tracing::info!(
@@ -515,7 +517,7 @@ impl EthSubscriber {
                             event_index = event.event_index,
                             "log received"
                         );
-                        confirmation.status = confirmation.check(event).into();
+                        confirmation.status = Some(confirmation.check(event));
                     }
                 }
             }
@@ -539,15 +541,15 @@ impl EthSubscriber {
                 "found pending confirmation to resolve"
             );
 
-            let status = match confirmation.status {
-                PendingConfirmationStatus::InProcess | PendingConfirmationStatus::Valid => {
+            let status = match confirmation.status.clone() {
+                None | Some(VerificationStatus::Exists) => {
                     events_to_check.push(async move {
                         let result = self.find_event(&event_id).await;
                         (event_id, result)
                     });
                     return true;
                 }
-                PendingConfirmationStatus::Invalid => VerificationStatus::NotExists,
+                Some(not_exists) => not_exists,
             };
 
             if let Some(tx) = confirmation.status_tx.take() {
@@ -566,7 +568,12 @@ impl EthSubscriber {
             if let hash_map::Entry::Occupied(mut entry) = pending_confirmations.entry(event_id) {
                 let status = match result {
                     Ok(Some(ParsedEthEvent::Received(event))) => entry.get_mut().check(event),
-                    Ok(_) => VerificationStatus::NotExists,
+                    Ok(Some(ParsedEthEvent::Removed(_))) => VerificationStatus::NotExists {
+                        reason: "Log removed".to_owned(),
+                    },
+                    Ok(None) => VerificationStatus::NotExists {
+                        reason: "Not found".to_owned(),
+                    },
                     Err(e) => {
                         tracing::error!(
                             chain_id,
@@ -779,7 +786,7 @@ struct PendingConfirmation {
     event_emitter: [u8; 20],
     event_abi: Arc<EthEventAbi>,
     target_block: u64,
-    status: PendingConfirmationStatus,
+    status: Option<VerificationStatus>,
 }
 
 impl PendingConfirmation {
@@ -788,39 +795,59 @@ impl PendingConfirmation {
 
         // NOTE: event_index and transaction_hash are already checked while searching
         // ETH event log, but here they are also checked just in case.
-        if event.address.0 != self.event_emitter
-            || &event.topic_hash != self.event_abi.get_eth_topic_hash()
-            || event.event_index != vote_data.event_index
-            || &event.transaction_hash.0 != vote_data.event_transaction.as_slice()
-            || event.block_number != vote_data.event_block_number as u64
-            || &event.block_hash.0 != vote_data.event_block.as_slice()
-        {
-            return VerificationStatus::NotExists;
-        }
-
-        // Event data is checked last, because it is quite expensive. `topic_hash`
-        // is checked earlier to also skip this without decoding data.
-        match self.event_abi.decode_and_map(&event.data) {
-            Ok(data) if data.repr_hash() == vote_data.event_data.repr_hash() => {
-                VerificationStatus::Exists
+        let result = if event.address.0 != self.event_emitter {
+            Err(format!(
+                "Event emitter address mismatch. From event: {:x}. Expected: {}",
+                event.address,
+                hex::encode(self.event_emitter.as_slice())
+            ))
+        } else if &event.topic_hash != self.event_abi.get_eth_topic_hash() {
+            Err(format!(
+                "Topic hash mismatch. From event: {:x}. Expected: {:x}",
+                event.topic_hash,
+                self.event_abi.get_eth_topic_hash(),
+            ))
+        } else if event.event_index != vote_data.event_index {
+            Err(format!(
+                "Event index mismatch. Received: {}. Expected: {}",
+                vote_data.event_index, event.event_index,
+            ))
+        } else if &event.transaction_hash.0 != vote_data.event_transaction.as_slice() {
+            Err(format!(
+                "Transaction hash mismatch. Received: {}. Expected: {:x}",
+                vote_data.event_transaction.to_hex_string(),
+                event.transaction_hash,
+            ))
+        } else if event.block_number != vote_data.event_block_number as u64 {
+            Err(format!(
+                "Block number mismatch. Received: {}. Expected: {}",
+                vote_data.event_block_number, event.block_number,
+            ))
+        } else if &event.block_hash.0 != vote_data.event_block.as_slice() {
+            Err(format!(
+                "Block hash mismatch. Received: {}. Expected: {:x}",
+                vote_data.event_block.to_hex_string(),
+                event.block_hash,
+            ))
+        } else {
+            // Event data is checked last, because it is quite expensive. `topic_hash`
+            // is checked earlier to also skip this without decoding data.
+            match self.event_abi.decode_and_map(&event.data) {
+                Ok(data) if data.repr_hash() == vote_data.event_data.repr_hash() => Ok(()),
+                Ok(data) => {
+                    let boc = ton_types::serialize_toc(&data).unwrap_or_default();
+                    Err(format!(
+                        "Event data mismatch. Expected: {}",
+                        base64::encode(boc)
+                    ))
+                }
+                Err(e) => Err(format!("Failed to convert event data: {e:?}")),
             }
-            _ => VerificationStatus::NotExists,
-        }
-    }
-}
+        };
 
-#[derive(Debug)]
-enum PendingConfirmationStatus {
-    InProcess,
-    Valid,
-    Invalid,
-}
-
-impl From<VerificationStatus> for PendingConfirmationStatus {
-    fn from(status: VerificationStatus) -> Self {
-        match status {
-            VerificationStatus::Exists => Self::Valid,
-            VerificationStatus::NotExists => Self::Invalid,
+        match result {
+            Ok(()) => VerificationStatus::Exists,
+            Err(reason) => VerificationStatus::NotExists { reason },
         }
     }
 }

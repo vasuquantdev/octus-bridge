@@ -9,6 +9,7 @@ use anyhow::{Context, Result};
 use borsh::BorshDeserialize;
 use eth_ton_abi_converter::{
     decode_ton_event_abi, make_mapped_ton_event, map_ton_tokens_to_eth_bytes, EthEventAbi,
+    EthToTonMappingContext,
 };
 use nekoton_abi::*;
 use nekoton_utils::TrustMe;
@@ -752,7 +753,14 @@ impl Bridge {
                 UnsignedMessage::new(eth_ton_event_contract::confirm(), account).arg(account_addr)
             }
             // Reject event if transaction not found
-            Ok(VerificationStatus::NotExists) => {
+            Ok(VerificationStatus::NotExists { reason }) => {
+                tracing::warn!(
+                    event = %DisplayAddr(account),
+                    configuration = %DisplayAddr(event_init_data.configuration),
+                    reason,
+                    "rejecting ETH->TON event",
+                );
+
                 UnsignedMessage::new(eth_ton_event_contract::reject(), account).arg(account_addr)
             }
             // Skip event otherwise
@@ -1002,7 +1010,14 @@ impl Bridge {
                 UnsignedMessage::new(sol_ton_event_contract::confirm(), account).arg(account_addr)
             }
             // Reject event if transaction not found
-            Ok(VerificationStatus::NotExists) => {
+            Ok(VerificationStatus::NotExists { reason }) => {
+                tracing::warn!(
+                    event = %DisplayAddr(account),
+                    configuration = %DisplayAddr(event_init_data.configuration),
+                    reason,
+                    "rejecting SOL->TON event",
+                );
+
                 UnsignedMessage::new(sol_ton_event_contract::reject(), account).arg(account_addr)
             }
             // Skip event otherwise
@@ -1193,7 +1208,14 @@ impl Bridge {
 
                 (sol_message_vote, sol_message_execute, ton_message)
             }
-            Ok(VerificationStatus::NotExists) => {
+            Ok(VerificationStatus::NotExists { reason }) => {
+                tracing::warn!(
+                    event = %DisplayAddr(account),
+                    configuration = %DisplayAddr(event_init_data.configuration),
+                    reason,
+                    "rejecting TON->SOL event",
+                );
+
                 let ix = solana_bridge::instructions::vote_for_proposal_ix(
                     program_id,
                     instruction,
@@ -1495,13 +1517,24 @@ impl Bridge {
         account: &UInt256,
         contract: &ExistingContract,
     ) -> Result<()> {
+        let flags = EventConfigurationBaseContract(contract)
+            .get_flags()
+            .context("Failed to get ETH->TON event configuration flags")?;
+
         // Get configuration details
         let details = EthTonEventConfigurationContract(contract)
             .get_details()
             .context("Failed to get ETH->TON event configuration details")?;
 
+        let ctx = flags
+            .map(|flags| EthToTonMappingContext::from(flags as u8))
+            .unwrap_or_default();
+
         // Verify and prepare abi
-        let event_abi = Arc::new(EthEventAbi::new(&details.basic_configuration.event_abi)?);
+        let event_abi = Arc::new(EthEventAbi::new(
+            &details.basic_configuration.event_abi,
+            ctx,
+        )?);
         let topic_hash = event_abi.get_eth_topic_hash().to_fixed_bytes();
         let eth_contract_address = details.network_configuration.event_emitter;
 
@@ -3019,10 +3052,10 @@ type SolTonEventConfigurationsMap = FxHashMap<UInt256, SolTonEventConfigurationS
 type TonSolEventConfigurationsMap = FxHashMap<UInt256, TonSolEventConfigurationState>;
 type EventCodeHashesMap = FxHashMap<UInt256, EventType>;
 
-#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Hash)]
 pub enum VerificationStatus {
     Exists,
-    NotExists,
+    NotExists { reason: String },
 }
 
 #[derive(thiserror::Error, Debug)]

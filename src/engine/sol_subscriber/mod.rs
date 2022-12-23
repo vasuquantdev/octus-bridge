@@ -143,13 +143,10 @@ impl SolSubscriber {
         transaction_data: SolTonTransactionData,
         account_data: SolTonAccountData,
     ) -> Result<VerificationStatus> {
-        if let VerificationStatus::NotExists =
-            self.verify_sol_ton_transaction(transaction_data).await?
-        {
-            return Ok(VerificationStatus::NotExists);
+        match self.verify_sol_ton_transaction(transaction_data).await? {
+            VerificationStatus::Exists => self.verify_sol_ton_account(account_data).await,
+            status @ VerificationStatus::NotExists { .. } => Ok(status),
         }
-
-        self.verify_sol_ton_account(account_data).await
     }
 
     pub async fn send_message(
@@ -543,7 +540,9 @@ impl SolSubscriber {
         let result = self.get_transaction(&data.signature).await?;
 
         if result.slot != data.slot || result.block_time != Some(data.block_time) {
-            return Ok(VerificationStatus::NotExists);
+            return Ok(VerificationStatus::NotExists {
+                reason: "Block slot or time mismatch".to_owned(),
+            });
         }
 
         let transaction = result.transaction.transaction.decode().ok_or_else(|| {
@@ -559,7 +558,9 @@ impl SolSubscriber {
             }
         }
 
-        Ok(VerificationStatus::NotExists)
+        Ok(VerificationStatus::NotExists {
+            reason: "Deposit seed not found".to_owned(),
+        })
     }
 
     async fn verify_sol_ton_account(&self, data: SolTonAccountData) -> Result<VerificationStatus> {
@@ -589,13 +590,17 @@ impl SolSubscriber {
             Some(account) => account,
             None => {
                 tracing::error!(%account_pubkey, "Solana account doesn't exist");
-                return Ok(VerificationStatus::NotExists);
+                return Ok(VerificationStatus::NotExists {
+                    reason: "Solana account doesn't exist".to_owned(),
+                });
             }
         };
 
         let account_data = solana_bridge::token_proxy::Deposit::unpack_from_slice(account.data())?;
         if data.event_data != account_data.event {
-            return Ok(VerificationStatus::NotExists);
+            return Ok(VerificationStatus::NotExists {
+                reason: "Event data mismatch".to_owned(),
+            });
         }
 
         Ok(VerificationStatus::Exists)
@@ -648,7 +653,9 @@ impl PendingEvent {
         if self.event_data == event_data {
             VerificationStatus::Exists
         } else {
-            VerificationStatus::NotExists
+            VerificationStatus::NotExists {
+                reason: "Event data mismatch".to_owned(),
+            }
         }
     }
 }
