@@ -753,7 +753,14 @@ impl Bridge {
                 UnsignedMessage::new(eth_ton_event_contract::confirm(), account).arg(account_addr)
             }
             // Reject event if transaction not found
-            Ok(VerificationStatus::NotExists) => {
+            Ok(VerificationStatus::NotExists { reason }) => {
+                tracing::warn!(
+                    event = %DisplayAddr(account),
+                    configuration = %DisplayAddr(event_init_data.configuration),
+                    reason,
+                    "rejecting ETH->TON event",
+                );
+
                 UnsignedMessage::new(eth_ton_event_contract::reject(), account).arg(account_addr)
             }
             // Skip event otherwise
@@ -1003,7 +1010,14 @@ impl Bridge {
                 UnsignedMessage::new(sol_ton_event_contract::confirm(), account).arg(account_addr)
             }
             // Reject event if transaction not found
-            Ok(VerificationStatus::NotExists) => {
+            Ok(VerificationStatus::NotExists { reason }) => {
+                tracing::warn!(
+                    event = %DisplayAddr(account),
+                    configuration = %DisplayAddr(event_init_data.configuration),
+                    reason,
+                    "rejecting SOL->TON event",
+                );
+
                 UnsignedMessage::new(sol_ton_event_contract::reject(), account).arg(account_addr)
             }
             // Skip event otherwise
@@ -1194,7 +1208,14 @@ impl Bridge {
 
                 (sol_message_vote, sol_message_execute, ton_message)
             }
-            Ok(VerificationStatus::NotExists) => {
+            Ok(VerificationStatus::NotExists { reason }) => {
+                tracing::warn!(
+                    event = %DisplayAddr(account),
+                    configuration = %DisplayAddr(event_init_data.configuration),
+                    reason,
+                    "rejecting TON->SOL event",
+                );
+
                 let ix = solana_bridge::instructions::vote_for_proposal_ix(
                     program_id,
                     instruction,
@@ -3031,10 +3052,10 @@ type SolTonEventConfigurationsMap = FxHashMap<UInt256, SolTonEventConfigurationS
 type TonSolEventConfigurationsMap = FxHashMap<UInt256, TonSolEventConfigurationState>;
 type EventCodeHashesMap = FxHashMap<UInt256, EventType>;
 
-#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Hash)]
 pub enum VerificationStatus {
     Exists,
-    NotExists,
+    NotExists { reason: String },
 }
 
 #[derive(thiserror::Error, Debug)]
