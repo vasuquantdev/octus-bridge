@@ -237,7 +237,7 @@ impl CmdExport {
             ton: ton.as_printable(),
         })?;
 
-        println!("{}", exported);
+        println!("{exported}");
         Ok(())
     }
 }

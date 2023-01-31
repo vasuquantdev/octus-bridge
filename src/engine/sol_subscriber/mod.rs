@@ -465,8 +465,7 @@ impl SolSubscriber {
         .await
         .map_err(|err| {
             ClientError::from(ClientErrorKind::Custom(format!(
-                "Failed to get solana account: {}",
-                err
+                "Failed to get solana account: {err}"
             )))
         })?
     }
@@ -488,8 +487,7 @@ impl SolSubscriber {
         .await
         .map_err(|err| {
             ClientError::from(ClientErrorKind::Custom(format!(
-                "Failed to get solana program accounts: {}",
-                err
+                "Failed to get solana program accounts: {err}",
             )))
         })?
     }
@@ -511,8 +509,7 @@ impl SolSubscriber {
         .await
         .map_err(|err| {
             ClientError::from(ClientErrorKind::Custom(format!(
-                "Failed to get solana transaction: {}",
-                err
+                "Failed to get solana transaction: {err}",
             )))
         })?
     }
@@ -527,8 +524,7 @@ impl SolSubscriber {
         .await
         .map_err(|err| {
             ClientError::from(ClientErrorKind::Custom(format!(
-                "Failed to get solana health: {}",
-                err
+                "Failed to get solana health: {err}",
             )))
         })?
     }
@@ -622,8 +618,7 @@ impl SolSubscriber {
                     .sign(message, rpc_client.get_latest_blockhash()?)
                     .map_err(|err| {
                         ClientError::from(ClientErrorKind::Custom(format!(
-                            "Failed to sign sol message: {}",
-                            err
+                            "Failed to sign sol message: {err}",
                         )))
                     })?;
 
@@ -633,8 +628,7 @@ impl SolSubscriber {
         .await
         .map_err(|err| {
             ClientError::from(ClientErrorKind::Custom(format!(
-                "Failed to send solana request: {}",
-                err
+                "Failed to send solana request: {err}",
             )))
         })?
     }

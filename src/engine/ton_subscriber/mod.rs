@@ -455,7 +455,7 @@ impl StateSubscription {
 
         let account_block = match account_blocks
             .get_with_aug(account)
-            .with_context(|| format!("Failed to get account block for {:x}", account))?
+            .with_context(|| format!("Failed to get account block for {account:x}"))?
         {
             Some((account_block, _)) => account_block,
             None => return Ok(()),

@@ -3011,7 +3011,7 @@ fn parse_client_error(err: ClientError) -> anyhow::Error {
                 SolanaBridgeError::InvalidRelay => {
                     anyhow::Error::msg(SolanaBridgeError::InvalidRelay.to_string())
                 }
-                _ => anyhow::Error::msg(format!("Solana RPC error: {}", err)),
+                _ => anyhow::Error::msg(format!("Solana RPC error: {err}")),
             }
         }
         ClientErrorKind::TransactionError(TransactionError::InstructionError(
@@ -3032,10 +3032,10 @@ fn parse_client_error(err: ClientError) -> anyhow::Error {
                 SolanaBridgeError::InvalidRelay => {
                     anyhow::Error::msg(SolanaBridgeError::InvalidRelay.to_string())
                 }
-                _ => anyhow::Error::msg(format!("Solana Transaction error: {}", err)),
+                _ => anyhow::Error::msg(format!("Solana Transaction error: {err}")),
             }
         }
-        _ => anyhow::Error::msg(format!("Solana Client error: {}", err)),
+        _ => anyhow::Error::msg(format!("Solana Client error: {err}")),
     }
 }
 

@@ -86,9 +86,7 @@ impl EthSubscriberRegistry {
         let chain_id = config.chain_id;
         let subscriber = EthSubscriber::new(self.last_block_numbers.clone(), config)
             .await
-            .with_context(|| {
-                format!("Failed to create EVM subscriber for chain id: {}", chain_id)
-            })?;
+            .with_context(|| format!("Failed to create EVM subscriber for chain id: {chain_id}"))?;
 
         match self.subscribers.entry(chain_id) {
             Entry::Vacant(entry) => {
@@ -279,7 +277,7 @@ impl EthSubscriber {
             .abi()
             .function("verify_relay_staker_address")
             .and_then(|function| function.encode_input(&[workchain_id, address_body]))
-            .map_err(|err| web3::error::Error::Decoder(format!("{:?}", err)))
+            .map_err(|err| web3::error::Error::Decoder(format!("{err:?}")))
             .context("Failed to prepare address verification transaction")?;
 
         let accounts = web3::api::Accounts::new(self.api.transport().clone());
@@ -478,8 +476,8 @@ impl EthSubscriber {
             Ok(Err(e)) => {
                 return Err(e).with_context(|| {
                     format!(
-                        "failed processing EVM-{chain_id} blocks in range from {} to {}",
-                        last_processed_block, current_block
+                        "failed processing EVM-{chain_id} blocks in range \
+                        from {last_processed_block} to {current_block}",
                     )
                 })
             }
