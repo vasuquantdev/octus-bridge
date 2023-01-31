@@ -217,7 +217,7 @@ impl EngineContext {
 
     async fn start(&self) -> Result<()> {
         self.ton_engine.start().await?;
-        self.ton_subscriber.start().await?;
+        self.ton_subscriber.start(&self.ton_engine).await?;
         Ok(())
     }
 
@@ -272,10 +272,12 @@ impl EngineContext {
     {
         // Check if message should be sent
         while condition() {
+            let signature_id = self.ton_subscriber.signature_id();
+
             // Prepare and send the message
             // NOTE: it must be signed every time before sending because it uses current
             // timestamp in headers. It will not work outside this loop
-            let message = self.keystore.ton.sign(&unsigned_message)?;
+            let message = self.keystore.ton.sign(&unsigned_message, signature_id)?;
 
             match self
                 .send_ton_message(&message.account, &message.message, message.expire_at)

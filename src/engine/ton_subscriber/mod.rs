@@ -1,6 +1,6 @@
 use std::collections::hash_map;
 use std::ops::Deref;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Weak};
 
 use anyhow::{Context, Result};
@@ -17,6 +17,7 @@ pub struct TonSubscriber {
     ready: AtomicBool,
     ready_signal: Notify,
     current_utime: AtomicU32,
+    signature_id: SignatureId,
     state_subscriptions: Mutex<FxHashMap<UInt256, StateSubscription>>,
     mc_block_awaiters: Mutex<FxHashMap<usize, Box<dyn BlockAwaiter>>>,
     messages_queue: Arc<PendingMessagesQueue>,
@@ -28,6 +29,7 @@ impl TonSubscriber {
             ready: AtomicBool::new(false),
             ready_signal: Notify::new(),
             current_utime: AtomicU32::new(0),
+            signature_id: SignatureId::default(),
             state_subscriptions: Mutex::new(FxHashMap::with_capacity_and_hasher(
                 128,
                 Default::default(),
@@ -44,11 +46,15 @@ impl TonSubscriber {
         TonSubscriberMetrics {
             ready: self.ready.load(Ordering::Acquire),
             current_utime: self.current_utime(),
+            signature_id: self.signature_id(),
             pending_message_count: self.messages_queue.len(),
         }
     }
 
-    pub async fn start(self: &Arc<Self>) -> Result<()> {
+    pub async fn start(self: &Arc<Self>, engine: &ton_indexer::Engine) -> Result<()> {
+        let last_key_block = engine.load_last_key_block().await?;
+        self.update_signature_id(last_key_block.block())?;
+
         self.wait_sync().await;
 
         let current_utime = chrono::Utc::now().timestamp() as u32;
@@ -61,6 +67,10 @@ impl TonSubscriber {
 
     pub fn current_utime(&self) -> u32 {
         self.current_utime.load(Ordering::Acquire)
+    }
+
+    pub fn signature_id(&self) -> Option<i32> {
+        self.signature_id.load()
     }
 
     pub async fn wait_shards(&self, since: Option<u32>) -> Result<LatestShardBlocks> {
@@ -239,11 +249,14 @@ impl TonSubscriber {
         let gen_utime = meta.gen_utime();
         self.current_utime.store(gen_utime, Ordering::Release);
 
+        let block_info = block.info.read_struct()?;
+        if block_info.key_block() {
+            self.update_signature_id(block)?;
+        }
+
         if !self.ready.load(Ordering::Acquire) {
             return Ok(());
         }
-
-        let block_info = block.info.read_struct()?;
 
         let mut mc_block_awaiters = self.mc_block_awaiters.lock();
         mc_block_awaiters.retain(
@@ -352,6 +365,21 @@ impl TonSubscriber {
         Ok(())
     }
 
+    fn update_signature_id(&self, key_block: &ton_block::Block) -> Result<()> {
+        let extra = key_block.read_extra()?;
+        let custom = extra
+            .read_custom()?
+            .context("McBlockExtra not found in the masterchain block")?;
+        let config = custom
+            .config()
+            .context("Config not found in the key block")?;
+
+        self.signature_id
+            .store(config.capabilities(), key_block.global_id);
+
+        Ok(())
+    }
+
     async fn wait_sync(&self) {
         if self.ready.load(Ordering::Acquire) {
             return;
@@ -386,6 +414,7 @@ impl ton_indexer::Subscriber for TonSubscriber {
 pub struct TonSubscriberMetrics {
     pub ready: bool,
     pub current_utime: u32,
+    pub signature_id: Option<i32>,
     pub pending_message_count: usize,
 }
 
@@ -596,6 +625,32 @@ pub fn start_listening_events<S, E, R>(
         events_rx.close();
         while events_rx.recv().await.is_some() {}
     });
+}
+
+#[derive(Default)]
+struct SignatureId(AtomicU64);
+
+impl SignatureId {
+    const WITH_SIGNATURE_ID: u64 = 1 << 32;
+
+    fn load(&self) -> Option<i32> {
+        let id = self.0.load(Ordering::Acquire);
+        if id & Self::WITH_SIGNATURE_ID != 0 {
+            Some(id as i32)
+        } else {
+            None
+        }
+    }
+
+    fn store(&self, capabilities: u64, global_id: i32) {
+        const CAP_WITH_SIGNATURE_ID: u64 = 0x4000000;
+        let id = if capabilities & CAP_WITH_SIGNATURE_ID != 0 {
+            Self::WITH_SIGNATURE_ID | (global_id as u32 as u64)
+        } else {
+            0
+        };
+        self.0.store(id, Ordering::Release);
+    }
 }
 
 type ShardAccountTx = watch::Sender<Option<ton_block::ShardAccount>>;
