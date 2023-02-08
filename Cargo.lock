@@ -524,7 +524,7 @@ dependencies = [
 [[package]]
 name = "bridge-derive"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=tbuild#bb60f55a16a5243f7a9656c606142ccf7414c3a7"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#ed317675d637f2d62cc377b64cbf5f93095cdee1"
 dependencies = [
  "darling 0.14.3",
  "proc-macro2 1.0.51",
@@ -535,7 +535,7 @@ dependencies = [
 [[package]]
 name = "bridge-utils"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=tbuild#bb60f55a16a5243f7a9656c606142ccf7414c3a7"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#ed317675d637f2d62cc377b64cbf5f93095cdee1"
 dependencies = [
  "bincode",
  "borsh",
@@ -3821,7 +3821,7 @@ dependencies = [
 [[package]]
 name = "round-loader"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=tbuild#bb60f55a16a5243f7a9656c606142ccf7414c3a7"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#ed317675d637f2d62cc377b64cbf5f93095cdee1"
 dependencies = [
  "bincode",
  "borsh",
@@ -4342,7 +4342,7 @@ dependencies = [
 [[package]]
 name = "solana-bridge"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=tbuild#bb60f55a16a5243f7a9656c606142ccf7414c3a7"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#ed317675d637f2d62cc377b64cbf5f93095cdee1"
 dependencies = [
  "borsh",
  "bridge-utils",
@@ -5438,9 +5438,9 @@ dependencies = [
 [[package]]
 name = "token-proxy"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=tbuild#bb60f55a16a5243f7a9656c606142ccf7414c3a7"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#ed317675d637f2d62cc377b64cbf5f93095cdee1"
 dependencies = [
- "base64 0.21.0",
+ "base64 0.12.3",
  "bincode",
  "borsh",
  "bridge-derive",
