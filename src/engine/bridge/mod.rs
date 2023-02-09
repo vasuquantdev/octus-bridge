@@ -276,13 +276,15 @@ impl Bridge {
     ) -> Result<()> {
         match event {
             // Create observer on each deployment event
-            EthTonEventConfigurationEvent::EventDeployed { address } => {
-                if self.add_pending_event(address, &self.eth_ton_events_state) {
-                    let this = self.clone();
-                    self.spawn_background_task("preprocess ETH->TON event", async move {
-                        this.preprocess_event(address, &this.eth_ton_events_state)
-                            .await
-                    });
+            EthTonEventConfigurationEvent::EventsDeployed { events } => {
+                for address in events {
+                    if self.add_pending_event(address, &self.eth_ton_events_state) {
+                        let this = self.clone();
+                        self.spawn_background_task("preprocess ETH->TON event", async move {
+                            this.preprocess_event(address, &this.eth_ton_events_state)
+                                .await
+                        });
+                    }
                 }
             }
             // Update configuration state
@@ -2604,17 +2606,18 @@ impl ReadFromTransaction for ConnectorEvent {
 }
 
 impl TxContext<'_> {
-    fn find_new_event_contract_address(&self) -> Option<UInt256> {
+    fn find_new_event_contract_addresses(&self) -> Vec<UInt256> {
         let event = base_event_configuration_contract::events::new_event_contract();
 
-        let mut address: Option<ton_block::MsgAddressInt> = None;
+        let mut result: Vec<UInt256> = Vec::new();
         self.iterate_events(|id, body| {
             if id == event.id {
-                match event
-                    .decode_input(body)
-                    .and_then(|tokens| tokens.unpack_first().map_err(anyhow::Error::from))
-                {
-                    Ok(parsed) => address = Some(parsed),
+                match event.decode_input(body).and_then(|tokens| {
+                    tokens
+                        .unpack_first::<ton_block::MsgAddressInt>()
+                        .map_err(anyhow::Error::from)
+                }) {
+                    Ok(parsed) => result.push(only_account_hash(parsed)),
                     Err(e) => {
                         tracing::error!(
                             tx = self.transaction_hash.to_hex_string(),
@@ -2625,15 +2628,7 @@ impl TxContext<'_> {
             }
         });
 
-        if let Some(address) = address {
-            Some(only_account_hash(address))
-        } else {
-            tracing::warn!(
-                tx = self.transaction_hash.to_hex_string(),
-                "NewEventContract was not found on deployEvent transaction",
-            );
-            None
-        }
+        result
     }
 }
 
@@ -2647,13 +2642,9 @@ impl ReadFromTransaction for TonEthEventConfigurationEvent {
     fn read_from_transaction(ctx: &TxContext<'_>) -> Option<Self> {
         let in_msg_body = ctx.in_msg_internal()?.body()?;
 
-        let deploy_event = ton_eth_event_configuration_contract::deploy_event();
         let set_end_timestamp = ton_eth_event_configuration_contract::set_end_timestamp();
 
         match read_function_id(&in_msg_body).ok()? {
-            id if id == deploy_event.input_id => Some(Self::EventDeployed {
-                address: ctx.find_new_event_contract_address()?,
-            }),
             id if id == set_end_timestamp.input_id => {
                 let end_timestamp = set_end_timestamp
                     .decode_input(in_msg_body, true)
@@ -2662,14 +2653,19 @@ impl ReadFromTransaction for TonEthEventConfigurationEvent {
 
                 Some(Self::SetEndTimestamp { end_timestamp })
             }
-            _ => None,
+            _ => {
+                let events = ctx.find_new_event_contract_addresses();
+                Some(Self::EventDeployed {
+                    address: events.into_iter().next()?,
+                })
+            }
         }
     }
 }
 
 #[derive(Debug, Clone)]
 enum EthTonEventConfigurationEvent {
-    EventDeployed { address: UInt256 },
+    EventsDeployed { events: Vec<UInt256> },
     SetEndBlockNumber { end_block_number: u32 },
 }
 
@@ -2677,13 +2673,9 @@ impl ReadFromTransaction for EthTonEventConfigurationEvent {
     fn read_from_transaction(ctx: &TxContext<'_>) -> Option<Self> {
         let in_msg_body = ctx.in_msg_internal()?.body()?;
 
-        let deploy_event = eth_ton_event_configuration_contract::deploy_event();
         let set_end_block_number = eth_ton_event_configuration_contract::set_end_block_number();
 
         match read_function_id(&in_msg_body).ok()? {
-            id if id == deploy_event.input_id => Some(Self::EventDeployed {
-                address: ctx.find_new_event_contract_address()?,
-            }),
             id if id == set_end_block_number.input_id => {
                 let end_block_number = set_end_block_number
                     .decode_input(in_msg_body, true)
@@ -2692,7 +2684,13 @@ impl ReadFromTransaction for EthTonEventConfigurationEvent {
 
                 Some(Self::SetEndBlockNumber { end_block_number })
             }
-            _ => None,
+            _ => {
+                let events = ctx.find_new_event_contract_addresses();
+                if events.is_empty() {
+                    return None;
+                }
+                Some(Self::EventsDeployed { events })
+            }
         }
     }
 }
@@ -2707,13 +2705,9 @@ impl ReadFromTransaction for TonSolEventConfigurationEvent {
     fn read_from_transaction(ctx: &TxContext<'_>) -> Option<Self> {
         let in_msg_body = ctx.in_msg_internal()?.body()?;
 
-        let deploy_event = ton_sol_event_configuration_contract::deploy_event();
         let set_end_timestamp = ton_sol_event_configuration_contract::set_end_timestamp();
 
         match nekoton_abi::read_function_id(&in_msg_body).ok()? {
-            id if id == deploy_event.input_id => Some(Self::EventDeployed {
-                address: ctx.find_new_event_contract_address()?,
-            }),
             id if id == set_end_timestamp.input_id => {
                 let end_timestamp = set_end_timestamp
                     .decode_input(in_msg_body, true)
@@ -2722,7 +2716,12 @@ impl ReadFromTransaction for TonSolEventConfigurationEvent {
 
                 Some(Self::SetEndTimestamp { end_timestamp })
             }
-            _ => None,
+            _ => {
+                let events = ctx.find_new_event_contract_addresses();
+                Some(Self::EventDeployed {
+                    address: events.into_iter().next()?,
+                })
+            }
         }
     }
 }
@@ -2737,13 +2736,9 @@ impl ReadFromTransaction for SolTonEventConfigurationEvent {
     fn read_from_transaction(ctx: &TxContext<'_>) -> Option<Self> {
         let in_msg_body = ctx.in_msg_internal()?.body()?;
 
-        let deploy_event = sol_ton_event_configuration_contract::deploy_event();
         let set_end_timestamp = sol_ton_event_configuration_contract::set_end_timestamp();
 
         match nekoton_abi::read_function_id(&in_msg_body).ok()? {
-            id if id == deploy_event.input_id => Some(Self::EventDeployed {
-                address: ctx.find_new_event_contract_address()?,
-            }),
             id if id == set_end_timestamp.input_id => {
                 let end_timestamp = set_end_timestamp
                     .decode_input(in_msg_body, true)
@@ -2752,7 +2747,12 @@ impl ReadFromTransaction for SolTonEventConfigurationEvent {
 
                 Some(Self::SetEndTimestamp { end_timestamp })
             }
-            _ => None,
+            _ => {
+                let events = ctx.find_new_event_contract_addresses();
+                Some(Self::EventDeployed {
+                    address: events.into_iter().next()?,
+                })
+            }
         }
     }
 }

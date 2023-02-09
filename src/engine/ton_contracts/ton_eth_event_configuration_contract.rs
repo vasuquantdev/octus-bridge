@@ -23,13 +23,3 @@ pub fn set_end_timestamp() -> &'static ton_abi::Function {
             .build()
     })
 }
-
-/// Internal function
-pub fn deploy_event() -> &'static ton_abi::Function {
-    crate::once!(ton_abi::Function, || {
-        FunctionBuilder::new("deployEvent")
-            .abi_version(ton_abi::contract::ABI_VERSION_2_2)
-            .input("vote_data", TonEthEventVoteData::param_type())
-            .build()
-    })
-}
