@@ -524,7 +524,7 @@ dependencies = [
 [[package]]
 name = "bridge-derive"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#90c2d382fc6c084883ed5b0fe580e25df21c8675"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#2a42b414e9f346e799b437f14c35bfed885feee8"
 dependencies = [
  "darling 0.14.3",
  "proc-macro2 1.0.51",
@@ -535,7 +535,7 @@ dependencies = [
 [[package]]
 name = "bridge-utils"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#90c2d382fc6c084883ed5b0fe580e25df21c8675"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#2a42b414e9f346e799b437f14c35bfed885feee8"
 dependencies = [
  "bincode",
  "borsh",
@@ -1578,7 +1578,7 @@ dependencies = [
 [[package]]
 name = "eth-ton-abi-converter"
 version = "0.5.2"
-source = "git+https://github.com/broxus/eth-ton-abi-converter.git#fb8e896d22743df84ffaa99322c867ff6bd4c06e"
+source = "git+https://github.com/broxus/eth-ton-abi-converter.git#ecfcec80a97ed64c96899d8d53ce5ff5a0ec4904"
 dependencies = [
  "anyhow",
  "borsh",
@@ -3821,7 +3821,7 @@ dependencies = [
 [[package]]
 name = "round-loader"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#90c2d382fc6c084883ed5b0fe580e25df21c8675"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#2a42b414e9f346e799b437f14c35bfed885feee8"
 dependencies = [
  "bincode",
  "borsh",
@@ -4342,7 +4342,7 @@ dependencies = [
 [[package]]
 name = "solana-bridge"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#90c2d382fc6c084883ed5b0fe580e25df21c8675"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#2a42b414e9f346e799b437f14c35bfed885feee8"
 dependencies = [
  "borsh",
  "bridge-utils",
@@ -5438,7 +5438,7 @@ dependencies = [
 [[package]]
 name = "token-proxy"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#90c2d382fc6c084883ed5b0fe580e25df21c8675"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#2a42b414e9f346e799b437f14c35bfed885feee8"
 dependencies = [
  "base64 0.21.0",
  "bincode",
