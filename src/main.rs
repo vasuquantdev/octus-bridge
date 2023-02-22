@@ -10,6 +10,7 @@ use relay::engine::*;
 use serde::Serialize;
 use tokio::signal::unix;
 use tokio::sync::mpsc;
+use tracing_subscriber::{prelude::*, EnvFilter};
 
 #[global_allocator]
 static GLOBAL: broxus_util::alloc::Allocator = broxus_util::alloc::allocator();
@@ -18,7 +19,10 @@ fn main() -> Result<()> {
     if atty::is(atty::Stream::Stdout) {
         tracing_subscriber::fmt::init();
     } else {
-        tracing_subscriber::fmt::fmt().without_time().init();
+        tracing_subscriber::registry()
+            .with(tracing_subscriber::fmt::layer())
+            .with(EnvFilter::from_default_env())
+            .init();
     }
 
     let app = argh::from_env::<App>();
