@@ -483,6 +483,24 @@ impl SolSubscriber {
             .await
     }
 
+    async fn get_latest_blockhash(&self) -> Result<solana_sdk::hash::Hash, ClientError> {
+        let _permit = self.pool.acquire().await;
+
+        let hash = {
+            retry(
+                || self.rpc_client.get_latest_blockhash(),
+                generate_default_timeout_config(Duration::from_secs(
+                    self.config.maximum_failed_responses_time_sec,
+                )),
+                NetworkType::SOL,
+                "get latest blockhash",
+            )
+            .await?
+        };
+
+        Ok(hash)
+    }
+
     async fn get_health(&self) -> Result<(), ClientError> {
         let _permit = self.pool.acquire().await;
 
@@ -573,7 +591,7 @@ impl SolSubscriber {
 
         let transaction = keystore
             .sol
-            .sign(message, self.rpc_client.get_latest_blockhash().await?)
+            .sign(message, self.get_latest_blockhash().await?)
             .map_err(|err| {
                 ClientError::from(ClientErrorKind::Custom(format!(
                     "Failed to sign sol message: {err}"
