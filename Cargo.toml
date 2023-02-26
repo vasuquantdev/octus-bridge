@@ -63,10 +63,10 @@ web3 = { version = "0.18.0", default-features = false, features = ["http-rustls-
 ethabi = "16.0.0"
 
 # Solana dependencies
-solana-sdk = { git = 'https://github.com/pashinov/solana', branch = 'feature/bump_curve25519' }
-solana-client = { git = 'https://github.com/pashinov/solana', branch = 'feature/bump_curve25519' }
-solana-account-decoder = { git = 'https://github.com/pashinov/solana', branch = 'feature/bump_curve25519' }
-solana-transaction-status = { git = 'https://github.com/pashinov/solana', branch = 'feature/bump_curve25519' }
+solana-sdk = { git = 'https://github.com/pashinov/solana', branch = 'broxus' }
+solana-client = { git = 'https://github.com/pashinov/solana', branch = 'broxus' }
+solana-account-decoder = { git = 'https://github.com/pashinov/solana', branch = 'broxus' }
+solana-transaction-status = { git = 'https://github.com/pashinov/solana', branch = 'broxus' }
 
 # TON specific dependencies
 ton_block = { git = "https://github.com/broxus/ton-labs-block" }
@@ -92,8 +92,8 @@ tempfile = "3.3.0"
 
 [patch.crates-io]
 hmac-drbg = { git = "https://github.com/Rexagon/rust-hmac-drbg" }
-solana-program = { git = 'https://github.com/pashinov/solana', branch = 'feature/bump_curve25519' }
-solana-zk-token-sdk = { git = 'https://github.com/pashinov/solana', branch = 'feature/bump_curve25519' }
+solana-program = { git = 'https://github.com/pashinov/solana', branch = 'broxus' }
+solana-zk-token-sdk = { git = 'https://github.com/pashinov/solana', branch = 'broxus' }
 
 [package.metadata.deb]
 maintainer = "Broxus <hello@broxus.com>"

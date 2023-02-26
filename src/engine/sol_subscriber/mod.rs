@@ -14,9 +14,8 @@ use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_client::rpc_config::{
     RpcAccountInfoConfig, RpcProgramAccountsConfig, RpcTransactionConfig,
 };
-use solana_client::rpc_filter::{Memcmp, MemcmpEncodedBytes, RpcFilterType};
+use solana_client::rpc_filter::{Memcmp, RpcFilterType};
 use solana_sdk::account::{Account, ReadableAccount};
-use solana_sdk::bs58;
 use solana_sdk::clock::{Slot, UnixTimestamp};
 use solana_sdk::commitment_config::CommitmentConfig;
 use solana_sdk::message::{Message, VersionedMessage};
@@ -389,9 +388,8 @@ impl SolSubscriber {
                         false as u8, // is_executed
                         AccountKind::Proposal(Default::default(), Default::default()).to_value(), // account_kind
                     ];
-                    let memcmp = MemcmpEncodedBytes::Base58(bs58::encode(mem).into_string());
                     let config = RpcProgramAccountsConfig {
-                        filters: Some(vec![RpcFilterType::Memcmp(Memcmp::new(0, memcmp))]),
+                        filters: Some(vec![RpcFilterType::Memcmp(Memcmp::new_raw_bytes(0, mem))]),
                         account_config: RpcAccountInfoConfig {
                             encoding: Some(UiAccountEncoding::Base64),
                             commitment: Some(self.config.commitment),
