@@ -427,7 +427,7 @@ dependencies = [
 [[package]]
 name = "bridge-derive"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#3111680b6040415fbc2e21fa4911b0510afab260"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#2d08d9d04e74fe0d9fa6b358c2c0f1214418ef21"
 dependencies = [
  "darling 0.14.3",
  "proc-macro2 1.0.51",
@@ -438,7 +438,7 @@ dependencies = [
 [[package]]
 name = "bridge-utils"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#3111680b6040415fbc2e21fa4911b0510afab260"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#2d08d9d04e74fe0d9fa6b358c2c0f1214418ef21"
 dependencies = [
  "bincode",
  "borsh",
@@ -3695,7 +3695,7 @@ dependencies = [
 [[package]]
 name = "round-loader"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#3111680b6040415fbc2e21fa4911b0510afab260"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#2d08d9d04e74fe0d9fa6b358c2c0f1214418ef21"
 dependencies = [
  "bincode",
  "borsh",
@@ -4154,7 +4154,7 @@ dependencies = [
 [[package]]
 name = "solana-bridge"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#3111680b6040415fbc2e21fa4911b0510afab260"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#2d08d9d04e74fe0d9fa6b358c2c0f1214418ef21"
 dependencies = [
  "borsh",
  "bridge-utils",
@@ -5096,9 +5096,9 @@ dependencies = [
 [[package]]
 name = "token-proxy"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git?branch=feature/multitoken_v2#3111680b6040415fbc2e21fa4911b0510afab260"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#2d08d9d04e74fe0d9fa6b358c2c0f1214418ef21"
 dependencies = [
- "base64 0.21.0",
+ "base64 0.12.3",
  "bincode",
  "borsh",
  "bridge-derive",
