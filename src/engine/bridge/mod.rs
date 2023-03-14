@@ -949,7 +949,6 @@ impl Bridge {
                 .map(|configuration| {
                     (
                         configuration.details.network_configuration.program,
-                        configuration.details.network_configuration.settings,
                         TokenValue::decode_params(
                             &configuration.event_abi,
                             event_init_data.vote_data.event_data.clone().into(),
@@ -960,11 +959,10 @@ impl Bridge {
                 })
         };
 
-        let (program, settings, decoded_event_data) = match data {
+        let (program, decoded_event_data) = match data {
             // Decode event data with event abi from configuration
-            Some((program, settings, data)) => (
+            Some((program, data)) => (
                 program,
-                settings,
                 data.and_then(|data| eth_ton_abi_converter::borsh::serialize(&data))?,
             ),
             // Do nothing when configuration was not found
@@ -983,7 +981,6 @@ impl Bridge {
             solana_sdk::signature::Signature::from_str(&event_init_data.vote_data.signature)?;
 
         let program_id = Pubkey::new_from_array(program.inner());
-        let settings = Pubkey::new_from_array(settings.inner());
 
         let transaction_data = SolTonTransactionData {
             program_id,
@@ -995,7 +992,6 @@ impl Bridge {
 
         let account_data = SolTonAccountData {
             program_id,
-            settings,
             seed: event_init_data.vote_data.account_seed,
             event_data: decoded_event_data,
         };
@@ -1096,13 +1092,16 @@ impl Bridge {
                 .map(|configuration| {
                     (
                         configuration.details.network_configuration.program,
-                        configuration.details.network_configuration.settings,
                         configuration.details.network_configuration.instruction,
                         configuration.details.network_configuration.execute_needed,
                         configuration
                             .details
                             .network_configuration
                             .execute_instruction,
+                        configuration
+                            .details
+                            .network_configuration
+                            .execute_payload_instruction,
                         TokenValue::decode_params(
                             &configuration.event_abi,
                             event_init_data.vote_data.event_data.clone().into(),
@@ -1115,19 +1114,26 @@ impl Bridge {
 
         let (
             program_id,
-            settings,
             instruction,
             execute_needed,
             execute_instruction,
+            execute_payload_instruction,
             decoded_event_data,
         ) = match data {
             // Decode event data with event abi from configuration
-            Some((program, settings, instruction, execute_needed, execute_instruction, data)) => (
-                Pubkey::new_from_array(program.inner()),
-                Pubkey::new_from_array(settings.inner()),
+            Some((
+                program,
                 instruction,
                 execute_needed,
                 execute_instruction,
+                execute_payload_instruction,
+                data,
+            )) => (
+                Pubkey::new_from_array(program.inner()),
+                instruction,
+                execute_needed,
+                execute_instruction,
+                execute_payload_instruction,
                 data.and_then(|data| eth_ton_abi_converter::borsh::serialize(&data))?,
             ),
             // Do nothing when configuration was not found
@@ -1147,7 +1153,6 @@ impl Bridge {
 
         let proposal_pubkey = solana_bridge::bridge_helper::get_associated_proposal_address(
             &program_id,
-            &settings,
             round_number,
             event_init_data.vote_data.event_timestamp,
             event_init_data.vote_data.event_transaction_lt,
@@ -1159,90 +1164,126 @@ impl Bridge {
 
         let account_addr = ton_block::MsgAddrStd::with_address(None, 0, account.into());
 
-        let (sol_message_vote, sol_message_execute, ton_message) = match sol_subscriber
-            .verify_ton_sol_event(proposal_pubkey, decoded_event_data)
-            .await
-        {
-            // Confirm event if transaction was found
-            Ok(VerificationStatus::Exists) => {
-                let vote_ix = solana_bridge::instructions::vote_for_proposal_ix(
-                    program_id,
-                    instruction,
-                    &voter_pubkey,
-                    &proposal_pubkey,
-                    round_number,
-                    solana_bridge::bridge_types::Vote::Confirm,
-                );
-
-                let sol_message_vote =
-                    solana_sdk::message::Message::new(&[vote_ix], Some(&voter_pubkey));
-
-                let mut sol_message_execute = None;
-                if execute_needed {
-                    let accounts = event_init_data
-                        .vote_data
-                        .execute_accounts
-                        .into_iter()
-                        .map(|account| {
-                            (
-                                Pubkey::new_from_array(account.account.inner()),
-                                account.read_only,
-                                account.is_signer,
-                            )
-                        })
-                        .collect();
-
-                    let execute_ix = solana_bridge::instructions::execute_proposal_ix(
+        let (sol_message_vote, sol_message_execute, sol_message_execute_payload, ton_message) =
+            match sol_subscriber
+                .verify_ton_sol_event(proposal_pubkey, decoded_event_data)
+                .await
+            {
+                // Confirm event if transaction was found
+                Ok(VerificationStatus::Exists) => {
+                    let vote_ix = solana_bridge::instructions::vote_for_proposal_ix(
                         program_id,
-                        execute_instruction,
-                        proposal_pubkey,
-                        accounts,
+                        instruction,
+                        &voter_pubkey,
+                        &proposal_pubkey,
+                        round_number,
+                        solana_bridge::bridge_types::Vote::Confirm,
                     );
 
-                    sol_message_execute = Some(solana_sdk::message::Message::new(
-                        &[execute_ix],
-                        Some(&voter_pubkey),
-                    ));
+                    let sol_message_vote =
+                        solana_sdk::message::Message::new(&[vote_ix], Some(&voter_pubkey));
+
+                    let mut sol_message_execute = None;
+                    let mut sol_message_execute_payload = None;
+                    if execute_needed {
+                        let accounts = event_init_data
+                            .vote_data
+                            .execute_accounts
+                            .into_iter()
+                            .map(|account| {
+                                (
+                                    Pubkey::new_from_array(account.account.inner()),
+                                    account.read_only,
+                                    account.is_signer,
+                                )
+                            })
+                            .collect();
+
+                        let execute_ix = solana_bridge::instructions::execute_proposal_ix(
+                            program_id,
+                            execute_instruction,
+                            proposal_pubkey,
+                            accounts,
+                        );
+
+                        sol_message_execute = Some(solana_sdk::message::Message::new(
+                            &[execute_ix],
+                            Some(&voter_pubkey),
+                        ));
+
+                        if event_init_data.vote_data.execute_payload_needed {
+                            let accounts = event_init_data
+                                .vote_data
+                                .execute_payload_accounts
+                                .into_iter()
+                                .map(|account| {
+                                    (
+                                        Pubkey::new_from_array(account.account.inner()),
+                                        account.read_only,
+                                        account.is_signer,
+                                    )
+                                })
+                                .collect();
+
+                            let execute_ix = solana_bridge::instructions::execute_payload_ix(
+                                program_id,
+                                execute_payload_instruction,
+                                proposal_pubkey,
+                                accounts,
+                            );
+
+                            sol_message_execute_payload = Some(solana_sdk::message::Message::new(
+                                &[execute_ix],
+                                Some(&voter_pubkey),
+                            ));
+                        }
+                    }
+
+                    let ton_message =
+                        UnsignedMessage::new(ton_sol_event_contract::confirm(), account)
+                            .arg(account_addr);
+
+                    (
+                        sol_message_vote,
+                        sol_message_execute,
+                        sol_message_execute_payload,
+                        ton_message,
+                    )
                 }
+                Ok(VerificationStatus::NotExists { reason }) => {
+                    tracing::warn!(
+                        event = %DisplayAddr(account),
+                        configuration = %DisplayAddr(event_init_data.configuration),
+                        reason,
+                        "rejecting TON->SOL event",
+                    );
 
-                let ton_message = UnsignedMessage::new(ton_sol_event_contract::confirm(), account)
-                    .arg(account_addr);
+                    let ix = solana_bridge::instructions::vote_for_proposal_ix(
+                        program_id,
+                        instruction,
+                        &voter_pubkey,
+                        &proposal_pubkey,
+                        round_number,
+                        solana_bridge::bridge_types::Vote::Reject,
+                    );
+                    let sol_message = solana_sdk::message::Message::new(&[ix], Some(&voter_pubkey));
 
-                (sol_message_vote, sol_message_execute, ton_message)
-            }
-            Ok(VerificationStatus::NotExists { reason }) => {
-                tracing::warn!(
-                    event = %DisplayAddr(account),
-                    configuration = %DisplayAddr(event_init_data.configuration),
-                    reason,
-                    "rejecting TON->SOL event",
-                );
+                    let ton_message =
+                        UnsignedMessage::new(ton_sol_event_contract::reject(), account)
+                            .arg(account_addr);
 
-                let ix = solana_bridge::instructions::vote_for_proposal_ix(
-                    program_id,
-                    instruction,
-                    &voter_pubkey,
-                    &proposal_pubkey,
-                    round_number,
-                    solana_bridge::bridge_types::Vote::Reject,
-                );
-                let sol_message = solana_sdk::message::Message::new(&[ix], Some(&voter_pubkey));
-
-                let ton_message = UnsignedMessage::new(ton_sol_event_contract::reject(), account)
-                    .arg(account_addr);
-
-                (sol_message, None, ton_message)
-            }
-            // Skip event otherwise
-            Err(e) => {
-                tracing::error!(
-                    event = %DisplayAddr(account),
-                    "failed to verify TON->SOL event: {e:?}",
-                );
-                self.ton_sol_events_state.remove(&account);
-                return Ok(());
-            }
-        };
+                    (sol_message, None, None, ton_message)
+                }
+                // Skip event otherwise
+                Err(e) => {
+                    tracing::error!(
+                        event = %DisplayAddr(account),
+                        "failed to verify TON->SOL event: {e:?}",
+                    );
+                    self.ton_sol_events_state.remove(&account);
+                    return Ok(());
+                }
+            };
 
         if !sol_subscriber
             .is_already_voted(round_number, &proposal_pubkey, &voter_pubkey)
@@ -1266,6 +1307,11 @@ impl Bridge {
 
             // Execute proposal
             if let Some(message) = sol_message_execute {
+                tracing::info!(
+                    %proposal_pubkey,
+                    "execute proposal",
+                );
+
                 if let Err(e) = sol_subscriber
                     .send_message(message, &self.context.keystore)
                     .await
@@ -1274,6 +1320,25 @@ impl Bridge {
                     tracing::error!(
                         %proposal_pubkey,
                         "failed to execute solana proposal: {e:?}",
+                    );
+                }
+            }
+
+            // Execute payload
+            if let Some(message) = sol_message_execute_payload {
+                tracing::info!(
+                    %proposal_pubkey,
+                    "execute payload",
+                );
+
+                if let Err(e) = sol_subscriber
+                    .send_message(message, &self.context.keystore)
+                    .await
+                    .map_err(parse_client_error)
+                {
+                    tracing::error!(
+                        %proposal_pubkey,
+                        "failed to execute solana payload: {e:?}",
                     );
                 }
             }

@@ -89,6 +89,10 @@ pub struct TonSolEventVoteData {
     pub event_timestamp: u32,
     #[abi(array)]
     pub execute_accounts: Vec<ExecuteAccount>,
+    #[abi(bool)]
+    pub execute_payload_needed: bool,
+    #[abi(array)]
+    pub execute_payload_accounts: Vec<ExecuteAccount>,
     #[abi(cell)]
     pub event_data: ton_types::Cell,
 }
@@ -203,8 +207,6 @@ pub struct TonEthEventConfiguration {
 pub struct SolTonEventConfiguration {
     #[abi(uint256)]
     pub program: UInt256,
-    #[abi(uint256)]
-    pub settings: UInt256,
     #[abi(with = "address_only_hash")]
     pub proxy: UInt256,
     #[abi(uint64)]
@@ -217,8 +219,6 @@ pub struct SolTonEventConfiguration {
 pub struct TonSolEventConfiguration {
     #[abi(uint256)]
     pub program: UInt256,
-    #[abi(uint256)]
-    pub settings: UInt256,
     #[abi(with = "address_only_hash")]
     pub event_emitter: UInt256,
     #[abi(uint8)]
@@ -231,6 +231,8 @@ pub struct TonSolEventConfiguration {
     pub execute_needed: bool,
     #[abi(uint8)]
     pub execute_instruction: u8,
+    #[abi(uint8)]
+    pub execute_payload_instruction: u8,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, PackAbi, UnpackAbi, KnownParamType)]
