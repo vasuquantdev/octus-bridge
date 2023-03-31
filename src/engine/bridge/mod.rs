@@ -598,9 +598,18 @@ impl Bridge {
             };
 
             match event {
-                // Remove event if voting process was finished
-                (TonSolEvent::Rejected, _)
-                | (_, EventStatus::Confirmed | EventStatus::Rejected) => remove_entry(),
+                // Remove event in confirmed state if the balance is not enough.
+                //
+                // NOTE: it is not strictly necessary to collect all signatures, so the
+                // contract subscription is allowed to be dropped on nearly empty balance.
+                //
+                // This state can be achieved by calling `close` method on transfer contract
+                // or execution `confirm` or `reject` after several years so that the cost of
+                // keeping the contract almost nullifies its balance.
+                (TonSolEvent::Closed, EventStatus::Confirmed) => remove_entry(),
+                // Remove event if it was rejected
+                (TonSolEvent::Rejected, _) | (_, EventStatus::Rejected) => remove_entry(),
+
                 // Handle event initialization
                 (TonSolEvent::ReceiveRoundRelays { keys }, _) => {
                     // Check if event contains our key
@@ -2992,6 +3001,7 @@ enum TonSolEvent {
     Confirm { public_key: UInt256 },
     Reject { public_key: UInt256 },
     Rejected,
+    Closed,
 }
 
 impl ReadFromTransaction for TonSolEvent {
@@ -3001,7 +3011,7 @@ impl ReadFromTransaction for TonSolEvent {
         }
 
         let in_msg = ctx.in_msg;
-        match in_msg.header() {
+        let event = match in_msg.header() {
             ton_block::CommonMsgInfo::ExtInMsgInfo(_) => {
                 let (public_key, body) = read_external_in_msg(&in_msg.body()?)?;
 
@@ -3031,7 +3041,16 @@ impl ReadFromTransaction for TonSolEvent {
                 }
             }
             ton_block::CommonMsgInfo::ExtOutMsgInfo(_) => None,
+        };
+
+        if event.is_none() {
+            let balance = ctx.get_account_state().ok()?.account.storage.balance.grams;
+            if balance.0 < MIN_EVENT_BALANCE {
+                return Some(Self::Closed);
+            }
         }
+
+        event
     }
 }
 
