@@ -308,6 +308,12 @@ more optimized than C++ node, so they don't harm the network.
 
 ### Changelog
 
+### 2.2.0 (2023-04-04)
+
+Bugfixes:
+
+- Stability fixes
+
 ### 2.1.2 (2022-12-23)
 
 Features:
