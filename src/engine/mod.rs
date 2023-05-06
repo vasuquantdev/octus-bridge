@@ -107,20 +107,30 @@ impl Engine {
             .get_details()
             .context("Failed to get bridge details")?;
 
-        // Initialize bridge
+        // Bridge
+        tracing::info!("initializing bridge...");
         let bridge = Bridge::new(self.context.clone(), bridge_account)
             .await
             .context("Failed to init bridge")?;
         *self.bridge.lock() = Some(bridge);
+        tracing::info!("initialized bridge");
 
-        // Initialize staking
-        let staking = Staking::new(self.context.clone(), bridge_details.staking)
-            .await
-            .context("Failed to init staking")?;
-        *self.staking.lock() = Some(staking);
+        // Staking
+        tracing::info!("initializing staking...");
+        {
+            let staking = Staking::new(self.context.clone(), bridge_details.staking)
+                .await
+                .context("Failed to init staking")?;
+            *self.staking.lock() = Some(staking);
+        }
+        tracing::info!("initialized staking");
 
+        // EVM subscriber
+        tracing::info!("starting ETH subscribers");
         self.context.eth_subscribers.start();
+
         if let Some(sol_subscriber) = &self.context.sol_subscriber {
+            tracing::info!("starting SOL subscriber");
             sol_subscriber.start();
         }
 

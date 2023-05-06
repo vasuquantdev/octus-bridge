@@ -218,7 +218,9 @@ impl Staking {
         }
     }
 
+    #[tracing::instrument(skip(self))]
     async fn collect_all_unclaimed_reward(self: &Arc<Self>) -> Result<()> {
+        tracing::info!("searching for the staking account");
         let shard_accounts = self.context.get_all_shard_accounts().await?;
         let staking_contract = shard_accounts
             .find_account(&self.staking_account)?
@@ -277,8 +279,10 @@ impl Staking {
             .context("Failed to get relay rounds details")?
             .current_relay_round;
         let oldest_relay_round = current_round.saturating_sub(2);
+        tracing::info!(current_round, oldest_relay_round);
 
         for relay_round in (oldest_relay_round..=current_round).rev() {
+            tracing::info!(relay_round, "collecting reward for an old relay round");
             try_collect_reward(relay_round)?;
         }
 

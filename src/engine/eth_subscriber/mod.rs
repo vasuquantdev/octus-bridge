@@ -56,6 +56,7 @@ impl EthSubscriberRegistry {
     /// Starts all subscribers
     pub fn start(&self) {
         for subscriber in &self.subscribers {
+            tracing::info!(chain_id = subscriber.chain_id, "starting subscriber");
             subscriber.start();
         }
     }
