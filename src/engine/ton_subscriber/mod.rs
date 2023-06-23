@@ -85,7 +85,7 @@ impl TonSubscriber {
                 block: &ton_block::Block,
                 block_info: &ton_block::BlockInfo,
             ) -> Result<BlockAwaiterAction> {
-                if matches!(self.since, Some(since) if block_info.gen_utime().0 < since) {
+                if matches!(self.since, Some(since) if block_info.gen_utime().as_u32() < since) {
                     return Ok(BlockAwaiterAction::Retain);
                 }
 
@@ -100,7 +100,7 @@ impl TonSubscriber {
             block: &ton_block::Block,
             block_info: &ton_block::BlockInfo,
         ) -> Result<LatestShardBlocks> {
-            let current_utime = block_info.gen_utime().0;
+            let current_utime = block_info.gen_utime().as_u32();
             let extra = block.extra.read_struct()?;
             let custom = match extra.read_custom()? {
                 Some(custom) => custom,
@@ -360,7 +360,7 @@ impl TonSubscriber {
         }
 
         self.messages_queue
-            .update(block_info.shard(), block_info.gen_utime().0);
+            .update(block_info.shard(), block_info.gen_utime().as_u32());
 
         Ok(())
     }

@@ -24,7 +24,7 @@ use solana_sdk::transaction::TransactionError;
 use tokio::sync::mpsc;
 use tokio::sync::RwLock;
 use ton_abi::TokenValue;
-use ton_block::{Deserializable, HashmapAugType};
+use ton_block::Deserializable;
 use ton_types::UInt256;
 
 use crate::engine::keystore::*;
@@ -840,12 +840,17 @@ impl Bridge {
                 .map(|configuration| {
                     (
                         configuration.details.network_configuration.proxy,
-                        ton_abi::TokenValue::decode_params(
-                            &configuration.event_abi,
-                            event_init_data.vote_data.event_data.clone().into(),
-                            &ton_abi::contract::ABI_VERSION_2_2,
-                            false,
-                        ),
+                        ton_types::SliceData::load_cell(
+                            event_init_data.vote_data.event_data.clone(),
+                        )
+                        .and_then(|cursor| {
+                            ton_abi::TokenValue::decode_params(
+                                &configuration.event_abi,
+                                cursor,
+                                &ton_abi::contract::ABI_VERSION_2_2,
+                                false,
+                            )
+                        }),
                     )
                 })
         };
@@ -958,12 +963,17 @@ impl Bridge {
                 .map(|configuration| {
                     (
                         configuration.details.network_configuration.program,
-                        TokenValue::decode_params(
-                            &configuration.event_abi,
-                            event_init_data.vote_data.event_data.clone().into(),
-                            &ton_abi::contract::ABI_VERSION_2_2,
-                            false,
-                        ),
+                        ton_types::SliceData::load_cell(
+                            event_init_data.vote_data.event_data.clone(),
+                        )
+                        .and_then(|cursor| {
+                            TokenValue::decode_params(
+                                &configuration.event_abi,
+                                cursor,
+                                &ton_abi::contract::ABI_VERSION_2_2,
+                                false,
+                            )
+                        }),
                     )
                 })
         };
@@ -1111,12 +1121,17 @@ impl Bridge {
                             .details
                             .network_configuration
                             .execute_payload_instruction,
-                        TokenValue::decode_params(
-                            &configuration.event_abi,
-                            event_init_data.vote_data.event_data.clone().into(),
-                            &ton_abi::contract::ABI_VERSION_2_2,
-                            false,
-                        ),
+                        ton_types::SliceData::load_cell(
+                            event_init_data.vote_data.event_data.clone(),
+                        )
+                        .and_then(|cursor| {
+                            TokenValue::decode_params(
+                                &configuration.event_abi,
+                                cursor,
+                                &ton_abi::contract::ABI_VERSION_2_2,
+                                false,
+                            )
+                        }),
                     )
                 })
         };
@@ -1917,26 +1932,37 @@ impl Bridge {
             unique_sol_ton_event_configurations: Arc<AccountsSet>,
             unique_ton_sol_event_configurations: Arc<AccountsSet>,
         ) -> Result<bool> {
+            use ton_types::HashmapType;
+
             let our_public_key = bridge.context.keystore.ton.public_key();
             let has_sol_subscriber = bridge.context.sol_subscriber.is_some();
 
-            accounts.iterate_with_keys(|hash, shard_account| {
+            let accounts = accounts.iter();
+            for entry in accounts {
+                let (key, mut value) = entry?;
+                let hash = ton_types::UInt256::from_le_bytes(key.data());
+
+                ton_block::DepthBalanceInfo::construct_from(&mut value)?;
+                let shard_account = ton_block::ShardAccount::construct_from(&mut value)?;
+
                 // Prefetch only contract code hash
-                let code_hash = match read_code_hash(&mut shard_account.account_cell().into())? {
+                let code_hash = match read_code_hash(&mut ton_types::SliceData::load_cell(
+                    shard_account.account_cell(),
+                )?)? {
                     Some(code_hash) => code_hash,
-                    None => return Ok(true),
+                    None => continue,
                 };
 
                 // Filter only known event contracts
                 let event_type = match event_code_hashes.get(&code_hash) {
                     Some(event_type) => event_type,
-                    None => return Ok(true),
+                    None => continue,
                 };
 
                 // Read account from shard state
                 let account = match shard_account.read_account()? {
                     ton_block::Account::Account(account) => account,
-                    ton_block::Account::AccountNone => return Ok(true),
+                    ton_block::Account::AccountNone => continue,
                 };
 
                 tracing::debug!(
@@ -1964,7 +1990,7 @@ impl Bridge {
                                     ?event_type,
                                     "failed to get event init data: {e:?}"
                                 );
-                                return Ok(true);
+                                continue;
                             }
                         }
                     };
@@ -1984,7 +2010,7 @@ impl Bridge {
                                     configuration = %DisplayAddr(configuration),
                                     "ETH->TON event configuration not found"
                                 );
-                                return Ok(true);
+                                continue;
                             }
 
                             if bridge.add_pending_event(hash, &bridge.eth_ton_events_state) {
@@ -2003,7 +2029,7 @@ impl Bridge {
                                     configuration = %DisplayAddr(configuration),
                                     "TON->ETH event configuration not found",
                                 );
-                                return Ok(true);
+                                continue;
                             }
 
                             if bridge.add_pending_event(hash, &bridge.ton_eth_events_state) {
@@ -2022,7 +2048,7 @@ impl Bridge {
                                     configuration = %DisplayAddr(configuration),
                                     "SOL->TON event configuration not found",
                                 );
-                                return Ok(true);
+                                continue;
                             }
 
                             if bridge.add_pending_event(hash, &bridge.sol_ton_events_state) {
@@ -2041,7 +2067,7 @@ impl Bridge {
                                     configuration = %DisplayAddr(configuration),
                                     "TON->SOL event configuration not found",
                                 );
-                                return Ok(true);
+                                continue;
                             }
 
                             if bridge.add_pending_event(hash, &bridge.ton_sol_events_state) {
@@ -2062,9 +2088,9 @@ impl Bridge {
                         );
                     }
                 }
+            }
 
-                Ok(true)
-            })
+            Ok(true)
         }
 
         // Wait all accounts
@@ -2544,7 +2570,7 @@ impl EventBaseContract<'_> {
             // Special case for TON->ETH event which must collect as much signatures as possible
             EventStatus::Confirmed
                 if require_all_signatures
-                    && self.0.account.storage.balance.grams.0 >= MIN_EVENT_BALANCE
+                    && self.0.account.storage.balance.grams.as_u128() >= MIN_EVENT_BALANCE
                     && self.get_voters(EventVote::Empty)?.contains(public_key)
                     && self.get_api_version().unwrap_or_default() == SUPPORTED_API_VERSION =>
             {
@@ -2937,7 +2963,7 @@ impl ReadFromTransaction for TonEthEvent {
 
         if event.is_none() {
             let balance = ctx.get_account_state().ok()?.account.storage.balance.grams;
-            if balance.0 < MIN_EVENT_BALANCE {
+            if balance.as_u128() < MIN_EVENT_BALANCE {
                 return Some(Self::Closed);
             }
         }
@@ -3045,7 +3071,7 @@ impl ReadFromTransaction for TonSolEvent {
 
         if event.is_none() {
             let balance = ctx.get_account_state().ok()?.account.storage.balance.grams;
-            if balance.0 < MIN_EVENT_BALANCE {
+            if balance.as_u128() < MIN_EVENT_BALANCE {
                 return Some(Self::Closed);
             }
         }

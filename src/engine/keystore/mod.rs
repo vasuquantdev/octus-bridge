@@ -203,7 +203,7 @@ impl TonSigner {
                 dst: unsigned_message.dst.clone(),
                 ..Default::default()
             },
-            body.into(),
+            ton_types::SliceData::load_builder(body)?,
         );
 
         Ok(SignedMessage {
@@ -302,7 +302,7 @@ impl UnsignedMessage {
                 dst: self.dst.clone(),
                 ..Default::default()
             },
-            body.into(),
+            ton_types::SliceData::load_builder(body)?,
         );
 
         Ok(SignedMessage {
