@@ -2138,7 +2138,7 @@ impl Bridge {
                 let mut virtual_shards = FxHashMap::default();
                 split_shard(
                     shard_ident,
-                    accounts.clone(),
+                    accounts,
                     bridge.context.settings.shard_split_depth,
                     &mut virtual_shards,
                 )
