@@ -238,8 +238,13 @@ impl EngineContext {
             FxHashMap::with_capacity_and_hasher(shard_blocks.len(), Default::default());
         for (shard_ident, block_id) in shard_blocks {
             let shard = self.ton_engine.wait_state(&block_id, None, false).await?;
-            let accounts = shard.state().read_accounts()?;
-            shard_accounts.insert(shard_ident, accounts);
+            shard_accounts.insert(
+                shard_ident,
+                ShardAccounts {
+                    items: shard.state().read_accounts()?,
+                    handle: shard.ref_mc_state_handle().clone(),
+                },
+            );
         }
 
         Ok(shard_accounts)

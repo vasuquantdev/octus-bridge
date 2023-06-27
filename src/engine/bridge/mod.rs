@@ -2138,13 +2138,16 @@ impl Bridge {
                 let mut virtual_shards = FxHashMap::default();
                 split_shard(
                     shard_ident,
-                    accounts,
+                    accounts.items,
                     bridge.context.settings.shard_split_depth,
                     &mut virtual_shards,
                 )
                 .context("Failed to split shard state into virtual shards")?;
 
                 tokio::spawn(tokio::task::spawn_blocking(move || {
+                    // NOTE: lives until the end of this scope and prevents state parts from GC
+                    let _state_guard = accounts.handle;
+
                     for (shard_ident, accounts) in virtual_shards {
                         let start = std::time::Instant::now();
                         let result = iterate_events(

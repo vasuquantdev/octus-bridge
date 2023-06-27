@@ -1,8 +1,10 @@
 use std::borrow::Borrow;
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use rustc_hash::FxHashMap;
 use ton_block::HashmapAugType;
+use ton_indexer::utils::RefMcStateHandle;
 use ton_types::UInt256;
 
 use super::existing_contract::*;
@@ -15,7 +17,12 @@ pub struct LatestShardBlocks {
     pub block_ids: ShardsMap,
 }
 
-pub type ShardAccountsMap = FxHashMap<ton_block::ShardIdent, ton_block::ShardAccounts>;
+pub type ShardAccountsMap = FxHashMap<ton_block::ShardIdent, ShardAccounts>;
+
+pub struct ShardAccounts {
+    pub items: ton_block::ShardAccounts,
+    pub handle: Arc<RefMcStateHandle>,
+}
 
 /// Helper trait to reduce boilerplate for getting accounts from shards state
 pub trait ShardAccountsMapExt {
@@ -42,7 +49,7 @@ impl ShardAccountsMapExt for ShardAccountsMap {
 
         match item {
             // Search account in shard state
-            Some((_, shard)) => shard.find_account(account),
+            Some((_, shard)) => shard.items.find_account(account),
             // Exceptional situation when no suitable shard was found
             None => Err(ShardUtilsError::InvalidContractAddress).context("No suitable shard found"),
         }
