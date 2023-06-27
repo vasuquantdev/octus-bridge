@@ -78,6 +78,10 @@ pub struct BridgeConfig {
     /// ETH address verification settings
     #[serde(default)]
     pub address_verification: AddressVerificationConfig,
+
+    /// Shard split depth. Default: 1
+    #[serde(default)]
+    pub shard_split_depth: u8,
 }
 
 /// ETH address verification settings

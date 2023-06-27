@@ -1924,13 +1924,13 @@ impl Bridge {
         type AccountsSet = FxHashSet<UInt256>;
 
         fn iterate_events(
-            bridge: Arc<Bridge>,
+            bridge: &Arc<Bridge>,
             accounts: ton_block::ShardAccounts,
-            event_code_hashes: Arc<EventCodeHashesMap>,
-            unique_eth_ton_event_configurations: Arc<AccountsSet>,
-            unique_ton_eth_event_configurations: Arc<AccountsSet>,
-            unique_sol_ton_event_configurations: Arc<AccountsSet>,
-            unique_ton_sol_event_configurations: Arc<AccountsSet>,
+            event_code_hashes: &EventCodeHashesMap,
+            unique_eth_ton_event_configurations: &AccountsSet,
+            unique_ton_eth_event_configurations: &AccountsSet,
+            unique_sol_ton_event_configurations: &AccountsSet,
+            unique_ton_sol_event_configurations: &AccountsSet,
         ) -> Result<bool> {
             use ton_types::HashmapType;
 
@@ -2134,23 +2134,35 @@ impl Bridge {
                     unique_ton_sol_event_configurations.clone();
                 let results_tx = results_tx.clone();
 
+                // Split on virtual shards
+                let mut virtual_shards = FxHashMap::default();
+                split_shard(
+                    shard_ident,
+                    accounts.clone(),
+                    bridge.context.settings.shard_split_depth,
+                    &mut virtual_shards,
+                )
+                .context("Failed to split shard state into virtual shards")?;
+
                 tokio::spawn(tokio::task::spawn_blocking(move || {
-                    let start = std::time::Instant::now();
-                    let result = iterate_events(
-                        bridge,
-                        accounts,
-                        event_code_hashes,
-                        unique_eth_ton_event_configurations,
-                        unique_ton_eth_event_configurations,
-                        unique_sol_ton_event_configurations,
-                        unique_ton_sol_event_configurations,
-                    );
-                    tracing::info!(
-                        shard = shard_ident.shard_prefix_as_str_with_tag(),
-                        elapsed_sec = start.elapsed().as_secs(),
-                        "processed accounts in shard",
-                    );
-                    results_tx.send(result).ok();
+                    for (shard_ident, accounts) in virtual_shards {
+                        let start = std::time::Instant::now();
+                        let result = iterate_events(
+                            &bridge,
+                            accounts,
+                            &event_code_hashes,
+                            &unique_eth_ton_event_configurations,
+                            &unique_ton_eth_event_configurations,
+                            &unique_sol_ton_event_configurations,
+                            &unique_ton_sol_event_configurations,
+                        );
+                        tracing::info!(
+                            shard = shard_ident.shard_prefix_as_str_with_tag(),
+                            elapsed_sec = start.elapsed().as_secs(),
+                            "processed accounts in shard",
+                        );
+                        results_tx.send(result).ok();
+                    }
                 }));
             }
 
@@ -3147,6 +3159,26 @@ fn parse_client_error(err: ClientError) -> anyhow::Error {
         }
         _ => anyhow::Error::msg(format!("Solana Client error: {err}")),
     }
+}
+
+fn split_shard(
+    ident: ton_block::ShardIdent,
+    accounts: ton_block::ShardAccounts,
+    depth: u8,
+    shards: &mut FxHashMap<ton_block::ShardIdent, ton_block::ShardAccounts>,
+) -> Result<()> {
+    if depth == 0 {
+        shards.insert(ident, accounts);
+        return Ok(());
+    }
+
+    let (left_shard_ident, right_shard_ident) = ident.split()?;
+    let (left_accounts, right_accounts) = accounts.split(&ident.shard_key(false))?;
+
+    split_shard(left_shard_ident, left_accounts, depth - 1, shards)?;
+    split_shard(right_shard_ident, right_accounts, depth - 1, shards)?;
+
+    Ok(())
 }
 
 const MIN_EVENT_BALANCE: u128 = 100_000_000; // 0.1 TON
