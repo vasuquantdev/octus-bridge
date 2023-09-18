@@ -108,6 +108,7 @@ multiple blockchains. Supports all EVM based networks."""
 depends = "$auto"
 section = "utility"
 priority = "optional"
+features = ["venom"]
 assets = [
     [
         "target/release/relay",
