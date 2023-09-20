@@ -190,7 +190,7 @@ impl EngineContext {
                 .await
                 .context("Failed to build node config")?,
             global_config,
-            vec![ton_subscriber.clone() as Arc<dyn ton_indexer::Subscriber>],
+            ton_subscriber.clone(),
         )
         .await
         .context("Failed to start TON node")?;

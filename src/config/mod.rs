@@ -182,6 +182,7 @@ impl NodeConfig {
                     enable_for_sync: true,
                     ..Default::default()
                 }),
+            persistent_state_options: Default::default(),
             shard_state_cache_options: None, // self.shard_state_cache_options,
             db_options: self.db_options,
             archive_options: Some(Default::default()),
