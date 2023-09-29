@@ -32,6 +32,7 @@ use crate::engine::sol_subscriber::*;
 use crate::engine::ton_contracts::*;
 use crate::engine::ton_subscriber::*;
 use crate::engine::EngineContext;
+use crate::storage::{make_existing_contract, tables};
 use crate::utils::*;
 
 /// Events part of relays logic
@@ -1921,252 +1922,229 @@ impl Bridge {
     }
 
     async fn get_all_events(self: &Arc<Self>) -> Result<()> {
-        type AccountsSet = FxHashSet<UInt256>;
-
-        fn iterate_events(
-            bridge: &Arc<Bridge>,
-            accounts: ton_block::ShardAccounts,
-            event_code_hashes: &EventCodeHashesMap,
-            unique_eth_ton_event_configurations: &AccountsSet,
-            unique_ton_eth_event_configurations: &AccountsSet,
-            unique_sol_ton_event_configurations: &AccountsSet,
-            unique_ton_sol_event_configurations: &AccountsSet,
-        ) -> Result<bool> {
-            use ton_types::HashmapType;
-
-            let our_public_key = bridge.context.keystore.ton.public_key();
-            let has_sol_subscriber = bridge.context.sol_subscriber.is_some();
-
-            let accounts = accounts.iter();
-            for entry in accounts {
-                let (key, mut value) = entry?;
-                let hash = ton_types::UInt256::from_le_bytes(key.data());
-
-                ton_block::DepthBalanceInfo::construct_from(&mut value)?;
-                let shard_account = ton_block::ShardAccount::construct_from(&mut value)?;
-
-                // Prefetch only contract code hash
-                let code_hash = match read_code_hash(&mut ton_types::SliceData::load_cell(
-                    shard_account.account_cell(),
-                )?)? {
-                    Some(code_hash) => code_hash,
-                    None => continue,
-                };
-
-                // Filter only known event contracts
-                let event_type = match event_code_hashes.get(&code_hash) {
-                    Some(event_type) => event_type,
-                    None => continue,
-                };
-
-                // Read account from shard state
-                let account = match shard_account.read_account()? {
-                    ton_block::Account::Account(account) => account,
-                    ton_block::Account::AccountNone => continue,
-                };
-
-                tracing::debug!(
-                    event = %DisplayAddr(hash),
-                    ?event_type,
-                    "found event in shard state"
-                );
-
-                // Extract data
-                let contract = ExistingContract {
-                    account,
-                    last_transaction_id: LastTransactionId::Exact(TransactionId {
-                        lt: shard_account.last_trans_lt(),
-                        hash: *shard_account.last_trans_hash(),
-                    }),
-                };
-
-                macro_rules! check_configuration {
-                    ($contract: ident) => {
-                        match $contract(&contract).event_init_data() {
-                            Ok(init_data) => init_data.configuration,
-                            Err(e) => {
-                                tracing::info!(
-                                    event = %DisplayAddr(hash),
-                                    ?event_type,
-                                    "failed to get event init data: {e:?}"
-                                );
-                                continue;
-                            }
-                        }
-                    };
-                }
-
-                // Process event
-                match EventBaseContract(&contract)
-                    .process(our_public_key, *event_type == EventType::TonEth)
-                {
-                    Ok(EventAction::Nop | EventAction::Vote) => match event_type {
-                        EventType::EthTon => {
-                            let configuration = check_configuration!(EthTonEventContract);
-
-                            if !unique_eth_ton_event_configurations.contains(&configuration) {
-                                tracing::warn!(
-                                    event = %DisplayAddr(hash),
-                                    configuration = %DisplayAddr(configuration),
-                                    "ETH->TON event configuration not found"
-                                );
-                                continue;
-                            }
-
-                            if bridge.add_pending_event(hash, &bridge.eth_ton_events_state) {
-                                bridge.spawn_background_task(
-                                    "initial update ETH->TON event",
-                                    bridge.clone().update_eth_ton_event(hash),
-                                );
-                            }
-                        }
-                        EventType::TonEth => {
-                            let configuration = check_configuration!(TonEthEventContract);
-
-                            if !unique_ton_eth_event_configurations.contains(&configuration) {
-                                tracing::warn!(
-                                    event = %DisplayAddr(hash),
-                                    configuration = %DisplayAddr(configuration),
-                                    "TON->ETH event configuration not found",
-                                );
-                                continue;
-                            }
-
-                            if bridge.add_pending_event(hash, &bridge.ton_eth_events_state) {
-                                bridge.spawn_background_task(
-                                    "initial update TON->ETH event",
-                                    bridge.clone().update_ton_eth_event(hash),
-                                );
-                            }
-                        }
-                        EventType::SolTon if has_sol_subscriber => {
-                            let configuration = check_configuration!(SolTonEventContract);
-
-                            if !unique_sol_ton_event_configurations.contains(&configuration) {
-                                tracing::warn!(
-                                    event = %DisplayAddr(hash),
-                                    configuration = %DisplayAddr(configuration),
-                                    "SOL->TON event configuration not found",
-                                );
-                                continue;
-                            }
-
-                            if bridge.add_pending_event(hash, &bridge.sol_ton_events_state) {
-                                bridge.spawn_background_task(
-                                    "initial update SOL->TON event",
-                                    bridge.clone().update_sol_ton_event(hash),
-                                );
-                            }
-                        }
-                        EventType::TonSol if has_sol_subscriber => {
-                            let configuration = check_configuration!(TonSolEventContract);
-
-                            if !unique_ton_sol_event_configurations.contains(&configuration) {
-                                tracing::warn!(
-                                    event = %DisplayAddr(hash),
-                                    configuration = %DisplayAddr(configuration),
-                                    "TON->SOL event configuration not found",
-                                );
-                                continue;
-                            }
-
-                            if bridge.add_pending_event(hash, &bridge.ton_sol_events_state) {
-                                bridge.spawn_background_task(
-                                    "initial update TON->SOL event",
-                                    bridge.clone().update_ton_sol_event(hash),
-                                );
-                            }
-                        }
-                        _ => {}
-                    },
-                    Ok(EventAction::Remove) => { /* do nothing */ }
-                    Err(e) => {
-                        tracing::error!(
-                            event = %DisplayAddr(hash),
-                            ?event_type,
-                            "failed to get event details: {e:?}",
-                        );
-                    }
-                }
+        fn extract_address(bytes: &[u8]) -> Result<ton_block::MsgAddressInt> {
+            if bytes.len() != 33 {
+                anyhow::bail!("invalid address")
             }
 
-            Ok(true)
+            let workchain_id = bytes[0] as i8;
+            let address = ton_types::AccountId::from(<[u8; 32]>::try_from(&bytes[1..33])?);
+
+            ton_block::MsgAddressInt::with_standart(None, workchain_id, address)
         }
 
-        // Wait all accounts
-        let shard_accounts = self.context.get_all_shard_accounts().await?;
+        async fn event_waiter<F>(
+            fut: F,
+            results_tx: mpsc::UnboundedSender<Result<()>>,
+        ) -> Result<()>
+        where
+            F: Future<Output = Result<()>> + Send + 'static,
+        {
+            let result = fut.await;
+            results_tx.send(result).ok();
 
-        let start = std::time::Instant::now();
+            Ok(())
+        }
 
         // Lock state to prevent adding new configurations
         let state = self.state.read().await;
 
+        let Some(snapshot) = self.context.persistent_storage.load_snapshot() else {
+            return Err(BridgeError::StorageNotReady.into());
+        };
+
         // Prepare shard task context
-        let event_code_hashes = Arc::new(state.event_code_hashes.clone());
+        let event_code_hashes = &state.event_code_hashes;
 
         // NOTE: configuration sets are explicitly constructed from state instead of
         // just using [eth/ton]_event_counters. It is done on purpose to use the actual
         // configurations. It is acceptable that event counters will not be relevant
-        let unique_eth_ton_event_configurations =
-            Arc::new(state.unique_eth_ton_event_configurations());
-        let unique_ton_eth_event_configurations =
-            Arc::new(state.unique_ton_eth_event_configurations());
-        let unique_sol_ton_event_configurations =
-            Arc::new(state.unique_sol_ton_event_configurations());
-        let unique_ton_sol_event_configurations =
-            Arc::new(state.unique_ton_sol_event_configurations());
+        let unique_eth_ton_event_configurations = &state.unique_eth_ton_event_configurations();
+        let unique_ton_eth_event_configurations = &state.unique_ton_eth_event_configurations();
+        let unique_sol_ton_event_configurations = &state.unique_sol_ton_event_configurations();
+        let unique_ton_sol_event_configurations = &state.unique_ton_sol_event_configurations();
 
-        // Process shards in parallel
+        let start = std::time::Instant::now();
+
         tracing::info!("started searching for all events");
         let mut results_rx = {
+            let bridge = self;
+
+            let our_public_key = bridge.context.keystore.ton.public_key();
+            let has_sol_subscriber = bridge.context.sol_subscriber.is_some();
+
             let (results_tx, results_rx) = mpsc::unbounded_channel();
 
-            for (shard_ident, accounts) in shard_accounts {
-                let bridge = self.clone();
-                let event_code_hashes = event_code_hashes.clone();
-                let unique_eth_ton_event_configurations =
-                    unique_eth_ton_event_configurations.clone();
-                let unique_ton_eth_event_configurations =
-                    unique_ton_eth_event_configurations.clone();
-                let unique_sol_ton_event_configurations =
-                    unique_sol_ton_event_configurations.clone();
-                let unique_ton_sol_event_configurations =
-                    unique_ton_sol_event_configurations.clone();
-                let results_tx = results_tx.clone();
+            for (code_hash, event_type) in event_code_hashes {
+                let mut key = [0u8; { tables::CodeHashes::KEY_LEN }];
+                key[0..32].copy_from_slice(code_hash.as_slice());
 
-                // Split on virtual shards
-                let mut virtual_shards = FxHashMap::default();
-                split_shard(
-                    shard_ident,
-                    accounts.items,
-                    bridge.context.settings.shard_split_depth,
-                    &mut virtual_shards,
-                )
-                .context("Failed to split shard state into virtual shards")?;
+                let mut upper_bound = Vec::with_capacity(tables::CodeHashes::KEY_LEN);
+                upper_bound.extend_from_slice(&key[..32]);
+                upper_bound.extend_from_slice(&[0xff; 33]);
 
-                tokio::spawn(tokio::task::spawn_blocking(move || {
-                    // NOTE: lives until the end of this scope and prevents state parts from GC
-                    let _state_guard = accounts.handle;
+                let mut readopts = self
+                    .context
+                    .persistent_storage
+                    .code_hashes
+                    .new_read_config();
+                readopts.set_snapshot(&snapshot);
+                readopts.set_iterate_upper_bound(upper_bound); // NOTE: somehow make the range inclusive
 
-                    for (shard_ident, accounts) in virtual_shards {
-                        let start = std::time::Instant::now();
-                        let result = iterate_events(
-                            &bridge,
-                            accounts,
-                            &event_code_hashes,
-                            &unique_eth_ton_event_configurations,
-                            &unique_ton_eth_event_configurations,
-                            &unique_sol_ton_event_configurations,
-                            &unique_ton_sol_event_configurations,
+                let code_hashes_cf = self.context.persistent_storage.code_hashes.cf();
+                let mut iter = self
+                    .context
+                    .persistent_storage
+                    .inner
+                    .raw()
+                    .raw_iterator_cf_opt(&code_hashes_cf, readopts);
+
+                iter.seek(key);
+                while let Some(key) = iter.key() {
+                    if key.len() != tables::CodeHashes::KEY_LEN {
+                        tracing::warn!(
+                            code_hash = %DisplayAddr(code_hash),
+                            "invalid code hash key length"
                         );
-                        tracing::info!(
-                            shard = shard_ident.shard_prefix_as_str_with_tag(),
-                            elapsed_sec = start.elapsed().as_secs(),
-                            "processed accounts in shard",
-                        );
-                        results_tx.send(result).ok();
+
+                        iter.next();
+                        continue;
                     }
-                }));
+
+                    let address = extract_address(&key[32..])?;
+                    let hash = UInt256::from_be_bytes(&address.address().get_bytestring(0));
+
+                    let contract = self
+                        .context
+                        .runtime_storage
+                        .get_contract_state(&hash)
+                        .and_then(make_existing_contract)?
+                        .ok_or(BridgeError::AccountNotFound(hash.to_hex_string()))?;
+
+                    macro_rules! check_configuration {
+                        ($contract: ident) => {
+                            match $contract(&contract).event_init_data() {
+                                Ok(init_data) => init_data.configuration,
+                                Err(e) => {
+                                    tracing::info!(
+                                        event = %DisplayAddr(hash),
+                                        ?event_type,
+                                        "failed to get event init data: {e:?}"
+                                    );
+                                    iter.next();
+                                    continue;
+                                }
+                            }
+                        };
+                    }
+
+                    // Process event
+                    match EventBaseContract(&contract)
+                        .process(our_public_key, *event_type == EventType::TonEth)
+                    {
+                        Ok(EventAction::Nop | EventAction::Vote) => match event_type {
+                            EventType::EthTon => {
+                                let configuration = check_configuration!(EthTonEventContract);
+
+                                if !unique_eth_ton_event_configurations.contains(&configuration) {
+                                    tracing::warn!(
+                                        event = %DisplayAddr(hash),
+                                        configuration = %DisplayAddr(configuration),
+                                        "ETH->TON event configuration not found"
+                                    );
+                                    continue;
+                                }
+
+                                if bridge.add_pending_event(hash, &bridge.eth_ton_events_state) {
+                                    bridge.spawn_background_task(
+                                        "initial update ETH->TON event",
+                                        event_waiter(
+                                            bridge.clone().update_eth_ton_event(hash),
+                                            results_tx.clone(),
+                                        ),
+                                    );
+                                }
+                            }
+                            EventType::TonEth => {
+                                let configuration = check_configuration!(TonEthEventContract);
+
+                                if !unique_ton_eth_event_configurations.contains(&configuration) {
+                                    tracing::warn!(
+                                        event = %DisplayAddr(hash),
+                                        configuration = %DisplayAddr(configuration),
+                                        "TON->ETH event configuration not found",
+                                    );
+                                    continue;
+                                }
+
+                                if bridge.add_pending_event(hash, &bridge.ton_eth_events_state) {
+                                    bridge.spawn_background_task(
+                                        "initial update TON->ETH event",
+                                        event_waiter(
+                                            bridge.clone().update_ton_eth_event(hash),
+                                            results_tx.clone(),
+                                        ),
+                                    );
+                                }
+                            }
+                            EventType::SolTon if has_sol_subscriber => {
+                                let configuration = check_configuration!(SolTonEventContract);
+
+                                if !unique_sol_ton_event_configurations.contains(&configuration) {
+                                    tracing::warn!(
+                                        event = %DisplayAddr(hash),
+                                        configuration = %DisplayAddr(configuration),
+                                        "SOL->TON event configuration not found",
+                                    );
+                                    continue;
+                                }
+
+                                if bridge.add_pending_event(hash, &bridge.sol_ton_events_state) {
+                                    bridge.spawn_background_task(
+                                        "initial update SOL->TON event",
+                                        event_waiter(
+                                            bridge.clone().update_sol_ton_event(hash),
+                                            results_tx.clone(),
+                                        ),
+                                    );
+                                }
+                            }
+                            EventType::TonSol if has_sol_subscriber => {
+                                let configuration = check_configuration!(TonSolEventContract);
+
+                                if !unique_ton_sol_event_configurations.contains(&configuration) {
+                                    tracing::warn!(
+                                        event = %DisplayAddr(hash),
+                                        configuration = %DisplayAddr(configuration),
+                                        "TON->SOL event configuration not found",
+                                    );
+                                    continue;
+                                }
+
+                                if bridge.add_pending_event(hash, &bridge.ton_sol_events_state) {
+                                    bridge.spawn_background_task(
+                                        "initial update TON->SOL event",
+                                        event_waiter(
+                                            bridge.clone().update_ton_sol_event(hash),
+                                            results_tx.clone(),
+                                        ),
+                                    );
+                                }
+                            }
+                            _ => {}
+                        },
+                        Ok(EventAction::Remove) => { /* do nothing */ }
+                        Err(e) => {
+                            tracing::error!(
+                                event = %DisplayAddr(hash),
+                                ?event_type,
+                                "failed to get event details: {e:?}",
+                            );
+                        }
+                    }
+
+                    iter.next();
+                }
             }
 
             results_rx
@@ -2516,6 +2494,7 @@ fn add_event_code_hash(
     Ok(())
 }
 
+#[allow(dead_code)]
 fn read_code_hash(cell: &mut ton_types::SliceData) -> Result<Option<UInt256>> {
     // 1. Read account
     if !cell.get_next_bit()? && (cell.remaining_bits() == 0 || cell.get_next_int(3)? != 1) {
@@ -3164,6 +3143,7 @@ fn parse_client_error(err: ClientError) -> anyhow::Error {
     }
 }
 
+#[allow(dead_code)]
 fn split_shard(
     ident: ton_block::ShardIdent,
     accounts: ton_block::ShardAccounts,
@@ -3217,4 +3197,8 @@ enum BridgeError {
     InvalidEventConfiguration,
     #[error("Event configuration already exists")]
     EventConfigurationAlreadyExists,
+    #[error("Storage not ready")]
+    StorageNotReady,
+    #[error("Account `{0}` not found")]
+    AccountNotFound(String),
 }

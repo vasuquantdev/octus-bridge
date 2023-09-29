@@ -8,6 +8,8 @@ use rand::Rng;
 use secstr::SecUtf8;
 use serde::{Deserialize, Serialize};
 
+use crate::storage::PersistentStorageConfig;
+
 pub use self::eth_config::*;
 pub use self::sol_config::*;
 pub use self::stored_keys::*;
@@ -38,6 +40,9 @@ pub struct AppConfig {
     /// TON node settings
     #[serde(default)]
     pub node_settings: NodeConfig,
+
+    /// Persistent accounts storage settings
+    pub storage: PersistentStorageConfig,
 
     /// Prometheus metrics exporter settings.
     /// Completely disable when not specified

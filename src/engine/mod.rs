@@ -16,6 +16,7 @@ use self::staking::*;
 use self::ton_contracts::*;
 use self::ton_subscriber::*;
 use crate::config::*;
+use crate::storage::*;
 use crate::utils::*;
 
 mod bridge;
@@ -157,6 +158,8 @@ pub struct EngineContext {
     pub ton_engine: Arc<ton_indexer::Engine>,
     pub eth_subscribers: Arc<EthSubscriberRegistry>,
     pub sol_subscriber: Option<Arc<SolSubscriber>>,
+    pub persistent_storage: Arc<PersistentStorage>,
+    pub runtime_storage: Arc<RuntimeStorage>,
 }
 
 impl Drop for EngineContext {
@@ -180,9 +183,15 @@ impl EngineContext {
         let keystore = KeyStore::new(&settings.keys_path, config.master_password, protection_keys)
             .context("Failed to create keystore")?;
 
+        let runtime_storage = Arc::new(RuntimeStorage::default());
         let messages_queue = PendingMessagesQueue::new(16);
+        let persistent_storage = Arc::new(PersistentStorage::new(&config.storage)?);
+        let ton_subscriber = TonSubscriber::new(
+            messages_queue.clone(),
+            persistent_storage.clone(),
+            runtime_storage.clone(),
+        );
 
-        let ton_subscriber = TonSubscriber::new(messages_queue.clone());
         let ton_engine = ton_indexer::Engine::new(
             config
                 .node_settings
@@ -222,6 +231,8 @@ impl EngineContext {
             ton_engine,
             eth_subscribers,
             sol_subscriber,
+            persistent_storage,
+            runtime_storage,
         }))
     }
 

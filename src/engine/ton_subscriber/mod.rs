@@ -8,9 +8,11 @@ use parking_lot::Mutex;
 use rustc_hash::FxHashMap;
 use tokio::sync::{mpsc, oneshot, watch, Notify};
 use ton_block::{BinTreeType, Deserializable, HashmapAugType};
+use ton_indexer::utils::ShardStateStuff;
 use ton_indexer::{BriefBlockMeta, EngineStatus, ProcessBlockContext};
 use ton_types::{HashmapType, UInt256};
 
+use crate::storage::*;
 use crate::utils::*;
 
 pub struct TonSubscriber {
@@ -21,10 +23,16 @@ pub struct TonSubscriber {
     state_subscriptions: Mutex<FxHashMap<UInt256, StateSubscription>>,
     mc_block_awaiters: Mutex<FxHashMap<usize, Box<dyn BlockAwaiter>>>,
     messages_queue: Arc<PendingMessagesQueue>,
+    persistent_storage: Arc<PersistentStorage>,
+    runtime_storage: Arc<RuntimeStorage>,
 }
 
 impl TonSubscriber {
-    pub fn new(messages_queue: Arc<PendingMessagesQueue>) -> Arc<Self> {
+    pub fn new(
+        messages_queue: Arc<PendingMessagesQueue>,
+        persistent_storage: Arc<PersistentStorage>,
+        runtime_storage: Arc<RuntimeStorage>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             ready: AtomicBool::new(false),
             ready_signal: Notify::new(),
@@ -39,6 +47,8 @@ impl TonSubscriber {
                 Default::default(),
             )),
             messages_queue,
+            persistent_storage,
+            runtime_storage,
         })
     }
 
@@ -406,6 +416,37 @@ impl ton_indexer::Subscriber for TonSubscriber {
                 self.handle_shard_block(ctx.id(), ctx.block(), shard_state)?;
             }
         }
+
+        self.persistent_storage.update(
+            ctx.block_stuff().id(),
+            ctx.block_stuff().block(),
+            ctx.shard_state_stuff(),
+        )?;
+
+        if let Some(shard_state) = &ctx.shard_state_stuff() {
+            let block_info = &ctx.block_stuff().block().read_info()?;
+            self.runtime_storage.update_contract_states(
+                ctx.block_stuff().id(),
+                block_info,
+                shard_state,
+            )?;
+        }
+
+        Ok(())
+    }
+
+    async fn process_full_state(&self, state: Arc<ShardStateStuff>) -> Result<()> {
+        self.persistent_storage
+            .reset_accounts(state)
+            .await
+            .context("Failed to update server state")
+    }
+
+    async fn process_blocks_edge(
+        &self,
+        _: ton_indexer::ProcessBlocksEdgeContext<'_>,
+    ) -> Result<()> {
+        self.persistent_storage.update_snapshot();
         Ok(())
     }
 }

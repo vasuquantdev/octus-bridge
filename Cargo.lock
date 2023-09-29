@@ -3593,6 +3593,7 @@ name = "relay"
 version = "2.2.3"
 dependencies = [
  "anyhow",
+ "arc-swap",
  "argh",
  "async-trait",
  "atty",
@@ -3610,18 +3611,22 @@ dependencies = [
  "eth-ton-abi-converter",
  "ethabi",
  "everscale-network",
+ "fdlimit",
  "futures-util",
  "hex",
+ "humantime",
  "hyper",
  "nekoton-abi",
  "nekoton-utils",
  "num-traits",
+ "num_cpus",
  "once_cell",
  "parking_lot",
  "pkey_mprotect",
  "pomfrit",
  "pretty_assertions",
  "rand 0.8.5",
+ "rlimit 0.10.1",
  "rustc-hash",
  "secp256k1",
  "secstr",
@@ -3646,6 +3651,7 @@ dependencies = [
  "tryhard",
  "url",
  "web3",
+ "weedb",
 ]
 
 [[package]]
@@ -3709,6 +3715,15 @@ name = "rlimit"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8a29d87a652dc4d43c586328706bb5cdff211f3f39a530f240b53f7221dab8e"
+dependencies = [
+ "libc",
+]
+
+[[package]]
+name = "rlimit"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3560f70f30a0f16d11d01ed078a07740fe6b489667abc7c7b029155d9f21c3d8"
 dependencies = [
  "libc",
 ]
@@ -5348,7 +5363,7 @@ dependencies = [
  "parking_lot",
  "quick_cache",
  "rand 0.8.5",
- "rlimit",
+ "rlimit 0.9.1",
  "serde",
  "serde_json",
  "sha2 0.10.7",
