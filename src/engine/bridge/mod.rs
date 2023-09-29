@@ -682,11 +682,14 @@ impl Bridge {
         }
 
         let keystore = &self.context.keystore;
-        let ton_subscriber = &self.context.ton_subscriber;
+        let runtime_storage = &self.context.runtime_storage;
         let eth_subscribers = &self.context.eth_subscribers;
 
-        // Wait contract state
-        let contract = ton_subscriber.wait_contract_state(account).await?;
+        // Get contract state
+        let contract = runtime_storage
+            .get_contract_state(&account)
+            .and_then(make_existing_contract)?
+            .ok_or(BridgeError::AccountNotFound(account.to_hex_string()))?;
 
         match EventBaseContract(&contract).process(keystore.ton.public_key(), false)? {
             EventAction::Nop => return Ok(()),
@@ -810,10 +813,13 @@ impl Bridge {
         }
 
         let keystore = &self.context.keystore;
-        let ton_subscriber = &self.context.ton_subscriber;
+        let runtime_storage = &self.context.runtime_storage;
 
-        // Wait contract state
-        let contract = ton_subscriber.wait_contract_state(account).await?;
+        // Get contract state
+        let contract = runtime_storage
+            .get_contract_state(&account)
+            .and_then(make_existing_contract)?
+            .ok_or(BridgeError::AccountNotFound(account.to_hex_string()))?;
         let base_event_contract = EventBaseContract(&contract);
 
         // Check further steps based on event statuses
@@ -937,10 +943,13 @@ impl Bridge {
         };
 
         let keystore = &self.context.keystore;
-        let ton_subscriber = &self.context.ton_subscriber;
+        let runtime_storage = &self.context.runtime_storage;
 
-        // Wait contract state
-        let contract = ton_subscriber.wait_contract_state(account).await?;
+        // Get contract state
+        let contract = runtime_storage
+            .get_contract_state(&account)
+            .and_then(make_existing_contract)?
+            .ok_or(BridgeError::AccountNotFound(account.to_hex_string()))?;
 
         match EventBaseContract(&contract).process(keystore.ton.public_key(), false)? {
             EventAction::Nop => return Ok(()),
@@ -1081,10 +1090,13 @@ impl Bridge {
         };
 
         let keystore = &self.context.keystore;
-        let ton_subscriber = &self.context.ton_subscriber;
+        let runtime_storage = &self.context.runtime_storage;
 
-        // Wait contract state
-        let contract = ton_subscriber.wait_contract_state(account).await?;
+        // Get contract state
+        let contract = runtime_storage
+            .get_contract_state(&account)
+            .and_then(make_existing_contract)?
+            .ok_or(BridgeError::AccountNotFound(account.to_hex_string()))?;
         let base_event_contract = EventBaseContract(&contract);
 
         // Check further steps based on event statuses
