@@ -13,7 +13,7 @@ use ton_indexer::utils::{RefMcStateHandle, ShardStateStuff};
 use ton_types::{HashmapType, UInt256};
 use weedb::{rocksdb, Caches, Migrations, Semver, Table, WeeDb};
 
-use crate::utils::{contains_account, ExistingContract};
+use crate::utils::{contains_account, ExistingContract, ShardAccountsMapExt};
 
 pub mod tables;
 
@@ -34,7 +34,7 @@ impl RuntimeStorage {
 
         let shard_accounts = ShardAccounts {
             accounts,
-            state_handle,
+            _state_handle: state_handle,
         };
 
         if !block_id.shard_id.is_masterchain() {
@@ -80,19 +80,19 @@ impl RuntimeStorage {
         Ok(())
     }
 
-    pub fn get_contract_state(&self, account: &ton_types::UInt256) -> Result<Option<ShardAccount>> {
+    pub fn get_contract_state(
+        &self,
+        account: &ton_types::UInt256,
+    ) -> Result<Option<ExistingContract>> {
         let cache = self.shard_accounts_cache.read();
-        let mut state = Ok(None);
 
         for (shard_ident, shard_accounts) in cache.iter() {
-            if !contains_account(shard_ident, account) {
-                continue;
+            if contains_account(shard_ident, account) {
+                return shard_accounts.accounts.find_account(account);
             }
-
-            state = shard_accounts.get(account)
         }
 
-        state
+        Ok(None)
     }
 }
 
@@ -103,19 +103,7 @@ pub struct ShardAccount {
 
 struct ShardAccounts {
     accounts: ton_block::ShardAccounts,
-    state_handle: Arc<RefMcStateHandle>,
-}
-
-impl ShardAccounts {
-    fn get(&self, account: &ton_types::UInt256) -> Result<Option<ShardAccount>> {
-        match self.accounts.get(account)? {
-            Some(account) => Ok(Some(ShardAccount {
-                data: account,
-                state_handle: self.state_handle.clone(),
-            })),
-            None => Ok(None),
-        }
-    }
+    _state_handle: Arc<RefMcStateHandle>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
