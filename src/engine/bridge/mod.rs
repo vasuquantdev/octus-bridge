@@ -24,7 +24,6 @@ use solana_sdk::transaction::TransactionError;
 use tokio::sync::mpsc;
 use tokio::sync::RwLock;
 use ton_abi::TokenValue;
-use ton_block::Deserializable;
 use ton_types::UInt256;
 
 use crate::engine::keystore::*;
@@ -682,13 +681,11 @@ impl Bridge {
         }
 
         let keystore = &self.context.keystore;
-        let runtime_storage = &self.context.runtime_storage;
+        let ton_subscriber = &self.context.ton_subscriber;
         let eth_subscribers = &self.context.eth_subscribers;
 
-        // Get contract state
-        let contract = runtime_storage
-            .get_contract_state(&account)?
-            .ok_or(BridgeError::AccountNotFound(account.to_hex_string()))?;
+        // Wait contract state
+        let contract = ton_subscriber.wait_contract_state(account).await?;
 
         match EventBaseContract(&contract).process(keystore.ton.public_key(), false)? {
             EventAction::Nop => return Ok(()),
@@ -812,12 +809,10 @@ impl Bridge {
         }
 
         let keystore = &self.context.keystore;
-        let runtime_storage = &self.context.runtime_storage;
+        let ton_subscriber = &self.context.ton_subscriber;
 
-        // Get contract state
-        let contract = runtime_storage
-            .get_contract_state(&account)?
-            .ok_or(BridgeError::AccountNotFound(account.to_hex_string()))?;
+        // Wait contract state
+        let contract = ton_subscriber.wait_contract_state(account).await?;
         let base_event_contract = EventBaseContract(&contract);
 
         // Check further steps based on event statuses
@@ -941,12 +936,10 @@ impl Bridge {
         };
 
         let keystore = &self.context.keystore;
-        let runtime_storage = &self.context.runtime_storage;
+        let ton_subscriber = &self.context.ton_subscriber;
 
-        // Get contract state
-        let contract = runtime_storage
-            .get_contract_state(&account)?
-            .ok_or(BridgeError::AccountNotFound(account.to_hex_string()))?;
+        // Wait contract state
+        let contract = ton_subscriber.wait_contract_state(account).await?;
 
         match EventBaseContract(&contract).process(keystore.ton.public_key(), false)? {
             EventAction::Nop => return Ok(()),
@@ -1087,12 +1080,10 @@ impl Bridge {
         };
 
         let keystore = &self.context.keystore;
-        let runtime_storage = &self.context.runtime_storage;
+        let ton_subscriber = &self.context.ton_subscriber;
 
-        // Get contract state
-        let contract = runtime_storage
-            .get_contract_state(&account)?
-            .ok_or(BridgeError::AccountNotFound(account.to_hex_string()))?;
+        // Wait contract state
+        let contract = ton_subscriber.wait_contract_state(account).await?;
         let base_event_contract = EventBaseContract(&contract);
 
         // Check further steps based on event statuses
@@ -2530,58 +2521,6 @@ fn add_event_code_hash(
     Ok(())
 }
 
-#[allow(dead_code)]
-fn read_code_hash(cell: &mut ton_types::SliceData) -> Result<Option<UInt256>> {
-    // 1. Read account
-    if !cell.get_next_bit()? && (cell.remaining_bits() == 0 || cell.get_next_int(3)? != 1) {
-        // Empty account
-        return Ok(None);
-    }
-
-    // 2. Skip non-standard address
-    if cell.get_next_int(2)? != 0b10 || cell.get_next_bit()? {
-        return Ok(None);
-    }
-    cell.move_by(8 + 256)?;
-
-    // 3. Skip storage info
-    // 3.1. Skip storage used
-    ton_block::StorageUsed::skip(cell)?;
-    // 3.2. Skip last paid
-    cell.move_by(32)?;
-    // 3.3. Skip due payment
-    if cell.get_next_bit()? {
-        ton_block::Grams::skip(cell)?;
-    }
-
-    // 4. Skip storage
-    // 4.1. Skip last transaction lt
-    cell.move_by(64)?;
-    // 4.2. Skip balance
-    ton_block::CurrencyCollection::skip(cell)?;
-
-    // 5. Skip account state
-    if !cell.get_next_bit()? {
-        return Ok(None);
-    }
-    // 5.1. Skip optional split depth (`ton_block::Number5`)
-    if cell.get_next_bit()? {
-        cell.move_by(5)?;
-    }
-    // 5.2. Skip optional ticktock (`ton_block::TickTock`)
-    if cell.get_next_bit()? {
-        cell.move_by(2)?;
-    }
-    // 5.3. Skip empty code
-    if !cell.get_next_bit()? {
-        return Ok(None);
-    }
-
-    // Read code hash
-    let code = cell.checked_drain_reference()?;
-    Ok(Some(code.repr_hash()))
-}
-
 impl EventBaseContract<'_> {
     /// Determine event action
     fn process(&self, public_key: &UInt256, require_all_signatures: bool) -> Result<EventAction> {
@@ -3177,27 +3116,6 @@ fn parse_client_error(err: ClientError) -> anyhow::Error {
         }
         _ => anyhow::Error::msg(format!("Solana Client error: {err}")),
     }
-}
-
-#[allow(dead_code)]
-fn split_shard(
-    ident: ton_block::ShardIdent,
-    accounts: ton_block::ShardAccounts,
-    depth: u8,
-    shards: &mut FxHashMap<ton_block::ShardIdent, ton_block::ShardAccounts>,
-) -> Result<()> {
-    if depth == 0 {
-        shards.insert(ident, accounts);
-        return Ok(());
-    }
-
-    let (left_shard_ident, right_shard_ident) = ident.split()?;
-    let (left_accounts, right_accounts) = accounts.split(&ident.shard_key(false))?;
-
-    split_shard(left_shard_ident, left_accounts, depth - 1, shards)?;
-    split_shard(right_shard_ident, right_accounts, depth - 1, shards)?;
-
-    Ok(())
 }
 
 const MIN_EVENT_BALANCE: u128 = 100_000_000; // 0.1 TON
