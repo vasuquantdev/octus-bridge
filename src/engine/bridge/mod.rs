@@ -2023,6 +2023,7 @@ impl Bridge {
                                     configuration = %DisplayAddr(configuration),
                                     "ETH->TON event configuration not found"
                                 );
+                                iter.next();
                                 continue;
                             }
 
@@ -2042,6 +2043,7 @@ impl Bridge {
                                     configuration = %DisplayAddr(configuration),
                                     "TON->ETH event configuration not found",
                                 );
+                                iter.next();
                                 continue;
                             }
 
@@ -2061,6 +2063,7 @@ impl Bridge {
                                     configuration = %DisplayAddr(configuration),
                                     "SOL->TON event configuration not found",
                                 );
+                                iter.next();
                                 continue;
                             }
 
@@ -2080,6 +2083,7 @@ impl Bridge {
                                     configuration = %DisplayAddr(configuration),
                                     "TON->SOL event configuration not found",
                                 );
+                                iter.next();
                                 continue;
                             }
 
