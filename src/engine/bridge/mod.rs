@@ -1320,7 +1320,7 @@ impl Bridge {
             tracing::info!(
                 vote = ?ix.vote,
                 %proposal_pubkey,
-                "sending a vote for Solana proposal",
+                "vote for solana proposal",
             );
 
             // Send confirm/reject to Solana
@@ -1328,6 +1328,12 @@ impl Bridge {
                 .send_message(sol_message_vote, &self.context.keystore)
                 .await
                 .map_err(parse_client_error)?;
+
+            tracing::info!(
+                vote = ?ix.vote,
+                %proposal_pubkey,
+                "vote was sent",
+            );
 
             // Execute proposal
             if let Some(message) = sol_message_execute {
