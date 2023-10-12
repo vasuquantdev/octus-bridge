@@ -20,7 +20,6 @@ use web3::{transports::Http, Transport};
 use self::models::*;
 use crate::config::*;
 use crate::engine::bridge::*;
-use crate::engine::keystore::*;
 use crate::engine::ton_contracts::*;
 use crate::utils::*;
 
@@ -166,7 +165,7 @@ impl EthSubscriber {
     pub async fn verify_relay_staker_address(
         &self,
         settings: &AddressVerificationConfig,
-        eth_signer: EthSignerHandle,
+        secret_key: &secp256k1::SecretKey,
         relay_address: &ethabi::Address,
         staker_address: UInt256,
         verifier_address: &ethabi::Address,
@@ -290,7 +289,7 @@ impl EthSubscriber {
         };
 
         let signed = accounts
-            .sign_transaction(tx, eth_signer.secret_key())
+            .sign_transaction(tx, secret_key)
             .await
             .context("Failed to sign address verification transaction")?;
 

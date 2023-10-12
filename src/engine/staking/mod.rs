@@ -855,7 +855,7 @@ impl UserDataContract<'_> {
             subscriber
                 .verify_relay_staker_address(
                     &context.settings.address_verification,
-                    context.keystore.eth.handle(),
+                    context.keystore.eth.secret_key(),
                     context.keystore.eth.address(),
                     context.staker_account,
                     &bridge_event_configuration
