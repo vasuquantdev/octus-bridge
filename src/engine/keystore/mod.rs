@@ -429,6 +429,9 @@ mod tst {
 
         Arc::new(Keys {
             eth_secret_key,
+            sol_keypair: {
+                solana_sdk::signature::Keypair::from_bytes(ton_secret_key.as_bytes()).unwrap()
+            },
             ton_keypair: {
                 ed25519_dalek::Keypair {
                     secret: ton_secret_key,
