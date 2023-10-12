@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use parking_lot::Mutex;
-use pkey_mprotect::*;
 use pomfrit::formatter::*;
 use rustc_hash::FxHashMap;
 use tokio::sync::mpsc;
@@ -38,15 +37,12 @@ impl Engine {
     pub async fn new(
         config: AppConfig,
         global_config: ton_indexer::GlobalConfig,
-        protection_keys: Arc<ProtectionKeys>,
         shutdown_requests_tx: ShutdownRequestsTx,
     ) -> Result<Arc<Self>> {
         let (metrics_exporter, metrics_writer) =
             pomfrit::create_exporter(config.metrics_settings.clone()).await?;
 
-        let context =
-            EngineContext::new(config, global_config, protection_keys, shutdown_requests_tx)
-                .await?;
+        let context = EngineContext::new(config, global_config, shutdown_requests_tx).await?;
 
         let engine = Arc::new(Self {
             metrics_exporter,
@@ -172,7 +168,6 @@ impl EngineContext {
     async fn new(
         config: AppConfig,
         global_config: ton_indexer::GlobalConfig,
-        protection_keys: Arc<ProtectionKeys>,
         shutdown_requests_tx: ShutdownRequestsTx,
     ) -> Result<Arc<Self>> {
         let staker_account =
@@ -180,7 +175,7 @@ impl EngineContext {
         let staker_account_str = config.staker_address.to_string();
         let settings = config.bridge_settings;
 
-        let keystore = KeyStore::new(&settings.keys_path, config.master_password, protection_keys)
+        let keystore = KeyStore::new(&settings.keys_path, config.master_password)
             .context("Failed to create keystore")?;
 
         let runtime_storage = Arc::new(RuntimeStorage::default());

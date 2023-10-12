@@ -26,10 +26,6 @@ pub struct AppConfig {
     /// Password, used to encode and decode data in keystore
     pub master_password: SecUtf8,
 
-    /// Whether the protected area will be used for the keystore
-    #[serde(default)]
-    pub require_protected_keystore: bool,
-
     /// Staker address from which keys were submitted
     #[serde(with = "serde_address")]
     pub staker_address: ton_block::MsgAddressInt,

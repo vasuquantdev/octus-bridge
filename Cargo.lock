@@ -3404,17 +3404,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pkey_mprotect"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "10f701e21a221433bc6bc336aeea184bc0e06430fadff74144b9638cfa181398"
-dependencies = [
- "libc",
- "log",
- "thiserror",
-]
-
-[[package]]
 name = "pkg-config"
 version = "0.3.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3879,7 +3868,6 @@ dependencies = [
  "num_cpus",
  "once_cell",
  "parking_lot",
- "pkey_mprotect",
  "pomfrit",
  "pretty_assertions",
  "rand 0.8.5",

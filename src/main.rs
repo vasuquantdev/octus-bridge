@@ -4,7 +4,6 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use argh::FromArgs;
 use dialoguer::{Confirm, Input, Password};
-use pkey_mprotect::*;
 use relay::config::*;
 use relay::engine::*;
 use serde::Serialize;
@@ -64,18 +63,13 @@ impl CmdRun {
         let global_config = ton_indexer::GlobalConfig::from_file(&self.global_config)
             .context("Failed to open global config")?;
 
-        // NOTE: protection keys must be called in the main thread
-        let protection_keys = ProtectionKeys::new(config.require_protected_keystore)
-            .context("Failed to create protection keys")?;
-
         // Create engine future
         let engine = async move {
             // Spawn SIGHUP signal listener
             relay.start_listening_reloads()?;
 
             tracing::info!("initializing relay...");
-            let mut shutdown_requests_rx =
-                relay.init(config, global_config, protection_keys).await?;
+            let mut shutdown_requests_rx = relay.init(config, global_config).await?;
             tracing::info!("initialized relay");
 
             shutdown_requests_rx.recv().await;
@@ -285,11 +279,10 @@ impl Relay {
         &self,
         config: AppConfig,
         global_config: ton_indexer::GlobalConfig,
-        protection_keys: Arc<ProtectionKeys>,
     ) -> Result<ShutdownRequestsRx> {
         let (shutdown_requests_tx, shutdown_requests_rx) = mpsc::unbounded_channel();
 
-        let engine = Engine::new(config, global_config, protection_keys, shutdown_requests_tx)
+        let engine = Engine::new(config, global_config, shutdown_requests_tx)
             .await
             .context("Failed to create engine")?;
         *self.engine.lock().await = Some(engine.clone());
