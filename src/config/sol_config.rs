@@ -7,8 +7,8 @@ use crate::utils::*;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SolConfig {
-    /// RPC endpoint
-    pub endpoint: String,
+    /// RPC endpoints
+    pub endpoints: Vec<String>,
 
     /// Connection timeout. Default: 60
     #[serde(default = "const_u64::<60>")]

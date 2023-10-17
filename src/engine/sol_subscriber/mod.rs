@@ -29,10 +29,11 @@ use crate::engine::bridge::*;
 use crate::engine::keystore::*;
 use crate::utils::*;
 
+static ROUND_ROBIN_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
 pub struct SolSubscriber {
     config: SolConfig,
-    rpc_client: Arc<RpcClient>,
-    pool: Arc<Semaphore>,
+    rpc_clients: Vec<SolClient>,
     programs_to_subscribe: parking_lot::RwLock<Vec<Pubkey>>,
     pending_events: tokio::sync::Mutex<FxHashMap<Pubkey, PendingEvent>>,
     pending_events_count: AtomicUsize,
@@ -41,21 +42,31 @@ pub struct SolSubscriber {
 
 impl SolSubscriber {
     pub async fn new(config: SolConfig) -> Result<Arc<Self>> {
-        let rpc_client = Arc::new(RpcClient::new_with_timeout_and_commitment(
-            config.endpoint.clone(),
-            Duration::from_secs(config.connection_timeout_sec),
-            config.commitment,
-        ));
+        let rpc_clients = config
+            .endpoints
+            .iter()
+            .map(|endpoint| SolClient {
+                rpc_client: RpcClient::new_with_timeout_and_commitment(
+                    endpoint.clone(),
+                    Duration::from_secs(config.connection_timeout_sec),
+                    config.commitment,
+                ),
+                pool: Semaphore::new(config.pool_size),
+            })
+            .collect::<Vec<_>>();
 
-        let block_height = rpc_client.get_block_height().await?;
-        tracing::info!(block_height, "created SOL subscriber");
-
-        let pool = Arc::new(Semaphore::new(config.pool_size));
+        for client in rpc_clients.iter() {
+            let block_height = client.rpc_client.get_block_height().await?;
+            tracing::info!(
+                block_height,
+                url = &client.rpc_client.url(),
+                "SOL subscriber"
+            );
+        }
 
         let subscriber = Arc::new(Self {
             config,
-            rpc_client,
-            pool,
+            rpc_clients,
             programs_to_subscribe: Default::default(),
             pending_events: Default::default(),
             pending_events_count: Default::default(),
@@ -449,9 +460,11 @@ impl SolSubscriber {
         account_pubkey: &Pubkey,
         commitment_config: CommitmentConfig,
     ) -> Result<Option<Account>, ClientError> {
-        let _permit = self.pool.acquire().await;
+        let client = self.get_rpc_client()?;
+        let _permit = client.pool.acquire().await;
 
-        self.rpc_client
+        client
+            .rpc_client
             .get_account_with_commitment(account_pubkey, commitment_config)
             .await
             .map(|response| response.value)
@@ -462,9 +475,11 @@ impl SolSubscriber {
         program_pubkey: &Pubkey,
         config: RpcProgramAccountsConfig,
     ) -> Result<Vec<(Pubkey, Account)>, ClientError> {
-        let _permit = self.pool.acquire().await;
+        let client = self.get_rpc_client()?;
+        let _permit = client.pool.acquire().await;
 
-        self.rpc_client
+        client
+            .rpc_client
             .get_program_accounts_with_config(program_pubkey, config)
             .await
     }
@@ -474,19 +489,22 @@ impl SolSubscriber {
         signature: &Signature,
         config: RpcTransactionConfig,
     ) -> Result<EncodedConfirmedTransactionWithStatusMeta, ClientError> {
-        let _permit = self.pool.acquire().await;
+        let client = self.get_rpc_client()?;
+        let _permit = client.pool.acquire().await;
 
-        self.rpc_client
+        client
+            .rpc_client
             .get_transaction_with_config(signature, config)
             .await
     }
 
     async fn get_latest_blockhash(&self) -> Result<solana_sdk::hash::Hash, ClientError> {
-        let _permit = self.pool.acquire().await;
+        let client = self.get_rpc_client()?;
+        let _permit = client.pool.acquire().await;
 
         let hash = {
             retry(
-                || self.rpc_client.get_latest_blockhash(),
+                || client.rpc_client.get_latest_blockhash(),
                 generate_default_timeout_config(Duration::from_secs(
                     self.config.maximum_failed_responses_time_sec,
                 )),
@@ -500,9 +518,10 @@ impl SolSubscriber {
     }
 
     async fn get_health(&self) -> Result<(), ClientError> {
-        let _permit = self.pool.acquire().await;
+        let client = self.get_rpc_client()?;
+        let _permit = client.pool.acquire().await;
 
-        self.rpc_client.get_health().await
+        client.rpc_client.get_health().await
     }
 
     async fn verify_sol_ton_transaction(
@@ -585,7 +604,8 @@ impl SolSubscriber {
         message: Message,
         keystore: &Arc<KeyStore>,
     ) -> Result<Signature, ClientError> {
-        let _permit = self.pool.acquire().await;
+        let client = self.get_rpc_client()?;
+        let _permit = client.pool.acquire().await;
 
         let transaction = keystore
             .sol
@@ -596,10 +616,26 @@ impl SolSubscriber {
                 )))
             })?;
 
-        self.rpc_client
+        client
+            .rpc_client
             .send_and_confirm_transaction(&transaction)
             .await
     }
+
+    fn get_rpc_client(&self) -> Result<&SolClient, ClientError> {
+        let index = ROUND_ROBIN_COUNTER.fetch_add(1, Ordering::Release) % self.rpc_clients.len();
+
+        self.rpc_clients
+            .get(index)
+            .ok_or(ClientError::from(ClientErrorKind::Custom(
+                "Failed to get solana RPC client".to_string(),
+            )))
+    }
+}
+
+struct SolClient {
+    rpc_client: RpcClient,
+    pool: Semaphore,
 }
 
 struct PendingEvent {
