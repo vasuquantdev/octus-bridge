@@ -269,7 +269,7 @@ impl SolSubscriber {
         let programs_to_subscribe = self.programs_to_subscribe.read().clone();
         for program_pubkey in programs_to_subscribe {
             let mut pending_proposals = self.get_pending_proposals(&program_pubkey).await?;
-            if pending_proposals.is_empty() {
+            if !pending_proposals.is_empty() {
                 tracing::info!(?pending_proposals, "found withdrawal proposals to vote");
             }
 
