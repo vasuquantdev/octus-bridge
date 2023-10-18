@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
+use num_traits::Zero;
 use rustc_hash::FxHashMap;
 use tokio::sync::{oneshot, Semaphore};
 
@@ -254,10 +255,13 @@ impl SolSubscriber {
     }
 
     async fn update(&self) -> Result<()> {
-        tracing::info!(
-            pending_events = self.pending_events_count.load(Ordering::Acquire),
-            "updating SOL subscriber",
-        );
+        let pending_events_count = self.pending_events_count.load(Ordering::Acquire);
+        if !pending_events_count.is_zero() {
+            tracing::info!(
+                pending_events = pending_events_count,
+                "updating SOL subscriber",
+            );
+        }
 
         let mut accounts_to_check = HashSet::new();
 
@@ -265,7 +269,9 @@ impl SolSubscriber {
         let programs_to_subscribe = self.programs_to_subscribe.read().clone();
         for program_pubkey in programs_to_subscribe {
             let mut pending_proposals = self.get_pending_proposals(&program_pubkey).await?;
-            tracing::info!(?pending_proposals, "found withdrawal proposals to vote");
+            if pending_proposals.is_empty() {
+                tracing::info!(?pending_proposals, "found withdrawal proposals to vote");
+            }
 
             let pending_events = self.pending_events.lock().await;
 
@@ -273,11 +279,13 @@ impl SolSubscriber {
                 .iter()
                 .filter(|account| !pending_events.contains_key(account))
                 .count();
-            tracing::info!(
-                %program_pubkey,
-                ?unrecognized_proposals,
-                "found unrecognized proposals",
-            );
+            if !unrecognized_proposals.is_zero() {
+                tracing::info!(
+                    %program_pubkey,
+                    ?unrecognized_proposals,
+                    "found unrecognized proposals",
+                );
+            }
 
             self.unrecognized_proposals_count
                 .store(unrecognized_proposals, Ordering::Release);

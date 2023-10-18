@@ -1320,7 +1320,7 @@ impl Bridge {
             tracing::info!(
                 vote = ?ix.vote,
                 %proposal_pubkey,
-                "vote for solana proposal",
+                "voting for solana proposal...",
             );
 
             // Send confirm/reject to Solana
