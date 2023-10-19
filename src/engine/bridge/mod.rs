@@ -1015,11 +1015,12 @@ impl Bridge {
             event_data: decoded_event_data,
         };
 
+        let rpc_client = sol_subscriber.get_rpc_client()?;
         let account_addr = ton_block::MsgAddrStd::with_address(None, 0, account.into());
 
         // Verify SOL->TON event and create message to event contract
         let message = match sol_subscriber
-            .verify_sol_ton_event(transaction_data, account_data)
+            .verify_sol_ton_event(rpc_client, transaction_data, account_data)
             .await
         {
             // Confirm event if transaction was found
@@ -1309,8 +1310,10 @@ impl Bridge {
                 }
             };
 
+        let rpc_client = sol_subscriber.get_rpc_client()?;
+
         if !sol_subscriber
-            .is_already_voted(round_number, &proposal_pubkey, &voter_pubkey)
+            .is_already_voted(rpc_client, round_number, &proposal_pubkey, &voter_pubkey)
             .await?
         {
             // Extract vote and log it
@@ -1325,7 +1328,7 @@ impl Bridge {
 
             // Send confirm/reject to Solana
             sol_subscriber
-                .send_message(sol_message_vote, &self.context.keystore)
+                .send_message(rpc_client, sol_message_vote, &self.context.keystore)
                 .await
                 .map_err(parse_client_error)?;
 
@@ -1343,7 +1346,7 @@ impl Bridge {
                 );
 
                 if let Err(e) = sol_subscriber
-                    .send_message(message, &self.context.keystore)
+                    .send_message(rpc_client, message, &self.context.keystore)
                     .await
                     .map_err(parse_client_error)
                 {
@@ -1362,7 +1365,7 @@ impl Bridge {
                 );
 
                 if let Err(e) = sol_subscriber
-                    .send_message(message, &self.context.keystore)
+                    .send_message(rpc_client, message, &self.context.keystore)
                     .await
                     .map_err(parse_client_error)
                 {
