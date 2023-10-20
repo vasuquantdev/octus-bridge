@@ -435,7 +435,6 @@ async fn get_account(
         retry(
             || async {
                 let _permit = client.pool.acquire().await;
-
                 client
                     .rpc_client
                     .get_account_with_commitment(account_pubkey, commitment_config)
@@ -460,7 +459,6 @@ async fn get_program_accounts_with_config(
     config: RpcProgramAccountsConfig,
 ) -> Result<Vec<(Pubkey, Account)>, ClientError> {
     let _permit = client.pool.acquire().await;
-
     client
         .rpc_client
         .get_program_accounts_with_config(program_pubkey, config)
@@ -483,7 +481,6 @@ async fn get_transaction(
                 };
 
                 let _permit = client.pool.acquire().await;
-
                 client
                     .rpc_client
                     .get_transaction_with_config(signature, config)
@@ -505,11 +502,12 @@ async fn get_latest_blockhash(
     client: &SolClient,
     maximum_failed_responses_time_secs: u64,
 ) -> Result<solana_sdk::hash::Hash, ClientError> {
-    let _permit = client.pool.acquire().await;
-
     let hash = {
         retry(
-            || client.rpc_client.get_latest_blockhash(),
+            || async {
+                let _permit = client.pool.acquire().await;
+                client.rpc_client.get_latest_blockhash().await
+            },
             generate_default_timeout_config(Duration::from_secs(
                 maximum_failed_responses_time_secs,
             )),
@@ -543,8 +541,6 @@ async fn send_and_confirm_message(
     keystore: &Arc<KeyStore>,
     maximum_failed_responses_time_secs: u64,
 ) -> Result<Signature, ClientError> {
-    let _permit = client.pool.acquire().await;
-
     let transaction = keystore
         .sol
         .sign(
@@ -557,6 +553,7 @@ async fn send_and_confirm_message(
             )))
         })?;
 
+    let _permit = client.pool.acquire().await;
     client
         .rpc_client
         .send_and_confirm_transaction(&transaction)
