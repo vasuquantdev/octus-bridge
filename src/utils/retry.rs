@@ -8,6 +8,7 @@ use tryhard::{NoOnRetry, RetryFutureConfig, RetryPolicy};
 use solana_client::client_error::ClientError;
 use solana_client::client_error::ClientErrorKind;
 use solana_client::rpc_request::{RpcError, RpcResponseErrorData};
+use solana_client::rpc_response::RpcSimulateTransactionResult;
 use solana_sdk::instruction::InstructionError;
 use solana_sdk::transaction::TransactionError;
 
@@ -76,6 +77,16 @@ impl<'a> BackoffStrategy<'a, ClientError> for SolRpcBackoffStrategy {
 
     fn delay(&mut self, attempt: u32, error: &'a ClientError) -> Self::Output {
         match &error.kind {
+            ClientErrorKind::RpcError(RpcError::RpcResponseError {
+                data:
+                    RpcResponseErrorData::SendTransactionPreflightFailure(
+                        RpcSimulateTransactionResult {
+                            err: Some(TransactionError::BlockhashNotFound),
+                            ..
+                        },
+                    ),
+                ..
+            }) => RetryPolicy::Delay(self.inner.delay(attempt, error)),
             ClientErrorKind::RpcError(RpcError::RpcResponseError {
                 data: RpcResponseErrorData::SendTransactionPreflightFailure(_),
                 ..
