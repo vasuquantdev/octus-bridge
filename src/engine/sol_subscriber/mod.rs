@@ -147,10 +147,10 @@ impl SolSubscriber {
 
     pub async fn verify_sol_ton_event(
         &self,
-        client: &SolClient,
         transaction_data: SolTonTransactionData,
         account_data: SolTonAccountData,
     ) -> Result<VerificationStatus> {
+        let client = self.get_rpc_client()?;
         match verify_sol_ton_transaction(client, transaction_data, &self.config).await? {
             VerificationStatus::Exists => {
                 verify_sol_ton_account(client, account_data, &self.config).await

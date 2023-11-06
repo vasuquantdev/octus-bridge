@@ -1021,12 +1021,11 @@ impl Bridge {
             event_data: decoded_event_data,
         };
 
-        let rpc_client = sol_subscriber.get_rpc_client()?;
         let account_addr = ton_block::MsgAddrStd::with_address(None, 0, account.into());
 
         // Verify SOL->TON event and create message to event contract
         let message = match sol_subscriber
-            .verify_sol_ton_event(rpc_client, transaction_data, account_data)
+            .verify_sol_ton_event(transaction_data, account_data)
             .await
         {
             // Confirm event if transaction was found
