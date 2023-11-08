@@ -306,24 +306,22 @@ impl Bridge {
     ) -> Result<()> {
         match event {
             // Create observer on each deployment event
-            TonEthEventConfigurationEvent::EventsDeployed { addresses, .. } => {
-                for address in addresses {
-                    if self.add_pending_event(address, &self.ton_eth_events_state) {
-                        let this = self.clone();
-                        self.spawn_background_task("preprocess TON->ETH event", async move {
-                            this.preprocess_event(address, &this.ton_eth_events_state)
-                                .await
-                        });
-                    } else {
-                        // NOTE: Each TON event must be unique on the contracts level,
-                        // so receiving message with duplicated address is
-                        // a signal that something went wrong
-                        tracing::warn!(
-                            configuration = %DisplayAddr(account),
-                            event = %DisplayAddr(address),
-                            "got deployment message for pending event",
-                        );
-                    }
+            TonEthEventConfigurationEvent::EventDeployed { address, .. } => {
+                if self.add_pending_event(address, &self.ton_eth_events_state) {
+                    let this = self.clone();
+                    self.spawn_background_task("preprocess TON->ETH event", async move {
+                        this.preprocess_event(address, &this.ton_eth_events_state)
+                            .await
+                    });
+                } else {
+                    // NOTE: Each TON event must be unique on the contracts level,
+                    // so receiving message with duplicated address is
+                    // a signal that something went wrong
+                    tracing::warn!(
+                        configuration = %DisplayAddr(account),
+                        event = %DisplayAddr(address),
+                        "got deployment message for pending event",
+                    );
                 }
             }
             // Update configuration state
@@ -345,8 +343,8 @@ impl Bridge {
     ) -> Result<()> {
         match event {
             // Create observer on each deployment event
-            SolTonEventConfigurationEvent::EventsDeployed { addresses } => {
-                for address in addresses {
+            SolTonEventConfigurationEvent::EventsDeployed { events } => {
+                for address in events {
                     if self.add_pending_event(address, &self.sol_ton_events_state) {
                         let this = self.clone();
                         self.spawn_background_task("preprocess SOL->TON event", async move {
@@ -375,24 +373,22 @@ impl Bridge {
     ) -> Result<()> {
         match event {
             // Create observer on each deployment event
-            TonSolEventConfigurationEvent::EventsDeployed { addresses, .. } => {
-                for address in addresses {
-                    if self.add_pending_event(address, &self.ton_sol_events_state) {
-                        let this = self.clone();
-                        self.spawn_background_task("preprocess TON->SOL event", async move {
-                            this.preprocess_event(address, &this.ton_sol_events_state)
-                                .await
-                        });
-                    } else {
-                        // NOTE: Each TON event must be unique on the contracts level,
-                        // so receiving message with duplicated address is
-                        // a signal that something went wrong
-                        tracing::warn!(
-                            configuration = %DisplayAddr(account),
-                            event = %DisplayAddr(address),
-                            "got deployment message for pending event",
-                        );
-                    }
+            TonSolEventConfigurationEvent::EventDeployed { address, .. } => {
+                if self.add_pending_event(address, &self.ton_sol_events_state) {
+                    let this = self.clone();
+                    self.spawn_background_task("preprocess TON->SOL event", async move {
+                        this.preprocess_event(address, &this.ton_sol_events_state)
+                            .await
+                    });
+                } else {
+                    // NOTE: Each TON event must be unique on the contracts level,
+                    // so receiving message with duplicated address is
+                    // a signal that something went wrong
+                    tracing::warn!(
+                        configuration = %DisplayAddr(account),
+                        event = %DisplayAddr(address),
+                        "got deployment message for pending event",
+                    );
                 }
             }
             // Update configuration state
@@ -2721,7 +2717,7 @@ impl TxContext<'_> {
 
 #[derive(Debug, Clone)]
 enum TonEthEventConfigurationEvent {
-    EventsDeployed { addresses: Vec<UInt256> },
+    EventDeployed { address: UInt256 },
     SetEndTimestamp { end_timestamp: u32 },
 }
 
@@ -2741,8 +2737,10 @@ impl ReadFromTransaction for TonEthEventConfigurationEvent {
                 Some(Self::SetEndTimestamp { end_timestamp })
             }
             _ => {
-                let addresses = ctx.find_new_event_contract_addresses();
-                Some(Self::EventsDeployed { addresses })
+                let events = ctx.find_new_event_contract_addresses();
+                Some(Self::EventDeployed {
+                    address: events.into_iter().next()?,
+                })
             }
         }
     }
@@ -2782,7 +2780,7 @@ impl ReadFromTransaction for EthTonEventConfigurationEvent {
 
 #[derive(Debug, Clone)]
 enum TonSolEventConfigurationEvent {
-    EventsDeployed { addresses: Vec<UInt256> },
+    EventDeployed { address: UInt256 },
     SetEndTimestamp { end_timestamp: u32 },
 }
 
@@ -2802,8 +2800,10 @@ impl ReadFromTransaction for TonSolEventConfigurationEvent {
                 Some(Self::SetEndTimestamp { end_timestamp })
             }
             _ => {
-                let addresses = ctx.find_new_event_contract_addresses();
-                Some(Self::EventsDeployed { addresses })
+                let events = ctx.find_new_event_contract_addresses();
+                Some(Self::EventDeployed {
+                    address: events.into_iter().next()?,
+                })
             }
         }
     }
@@ -2811,7 +2811,7 @@ impl ReadFromTransaction for TonSolEventConfigurationEvent {
 
 #[derive(Debug, Clone)]
 enum SolTonEventConfigurationEvent {
-    EventsDeployed { addresses: Vec<UInt256> },
+    EventsDeployed { events: Vec<UInt256> },
     SetEndTimestamp { end_timestamp: u64 },
 }
 
@@ -2831,8 +2831,11 @@ impl ReadFromTransaction for SolTonEventConfigurationEvent {
                 Some(Self::SetEndTimestamp { end_timestamp })
             }
             _ => {
-                let addresses = ctx.find_new_event_contract_addresses();
-                Some(Self::EventsDeployed { addresses })
+                let events = ctx.find_new_event_contract_addresses();
+                if events.is_empty() {
+                    return None;
+                }
+                Some(Self::EventsDeployed { events })
             }
         }
     }
