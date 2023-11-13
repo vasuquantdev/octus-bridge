@@ -18,7 +18,6 @@ use solana_client::rpc_config::{
 use solana_client::rpc_filter::{Memcmp, RpcFilterType};
 use solana_sdk::account::{Account, ReadableAccount};
 use solana_sdk::clock::{Slot, UnixTimestamp};
-use solana_sdk::commitment_config::CommitmentConfig;
 use solana_sdk::message::{Message, VersionedMessage};
 use solana_sdk::program_pack::Pack;
 use solana_sdk::pubkey::Pubkey;
@@ -50,7 +49,7 @@ impl SolSubscriber {
                 rpc_client: RpcClient::new_with_timeout_and_commitment(
                     endpoint.clone(),
                     Duration::from_secs(config.connection_timeout_sec),
-                    config.commitment,
+                    Default::default(),
                 ),
                 pool: Semaphore::new(config.pool_size),
             })
@@ -196,14 +195,12 @@ impl SolSubscriber {
         proposal_pubkey: &Pubkey,
         voter_pubkey: &Pubkey,
     ) -> Result<bool> {
-        let commitment_config = self.config.commitment;
         let maximum_failed_responses_time_secs = self.config.maximum_failed_responses_time_sec;
 
         let relay_round_pubkey = solana_bridge::round_loader::get_relay_round_address(round_number);
         let relay_round_account = get_account(
             client,
             &relay_round_pubkey,
-            commitment_config,
             maximum_failed_responses_time_secs,
         )
         .await?;
@@ -216,13 +213,8 @@ impl SolSubscriber {
             }
         };
 
-        let proposal_account = get_account(
-            client,
-            proposal_pubkey,
-            commitment_config,
-            maximum_failed_responses_time_secs,
-        )
-        .await?;
+        let proposal_account =
+            get_account(client, proposal_pubkey, maximum_failed_responses_time_secs).await?;
         let proposal_data = match proposal_account {
             Some(account) => Proposal::unpack_from_slice(account.data())?,
             None => {
@@ -248,7 +240,6 @@ impl SolSubscriber {
 
     async fn update(&self) -> Result<()> {
         let rpc_client = self.get_rpc_client()?;
-        let commitment_config = self.config.commitment;
         let maximum_failed_responses_time_secs = self.config.maximum_failed_responses_time_sec;
 
         let pending_events_count = self.pending_events_count.load(Ordering::Acquire);
@@ -267,7 +258,6 @@ impl SolSubscriber {
             let mut pending_proposals = get_pending_proposals(
                 rpc_client,
                 &program_pubkey,
-                commitment_config,
                 maximum_failed_responses_time_secs,
             )
             .await?;
@@ -335,7 +325,6 @@ impl SolSubscriber {
             match get_account(
                 rpc_client,
                 &account_pubkey,
-                commitment_config,
                 maximum_failed_responses_time_secs,
             )
             .await
@@ -360,7 +349,6 @@ impl SolSubscriber {
                         match get_account(
                             rpc_client,
                             &round_pubkey,
-                            commitment_config,
                             maximum_failed_responses_time_secs,
                         )
                         .await
@@ -428,7 +416,6 @@ impl SolSubscriber {
 async fn get_account(
     client: &SolClient,
     account_pubkey: &Pubkey,
-    commitment_config: CommitmentConfig,
     maximum_failed_responses_time_secs: u64,
 ) -> Result<Option<Account>> {
     let account = {
@@ -437,7 +424,7 @@ async fn get_account(
                 let _permit = client.pool.acquire().await;
                 client
                     .rpc_client
-                    .get_account_with_commitment(account_pubkey, commitment_config)
+                    .get_account_with_commitment(account_pubkey, Default::default())
                     .await
                     .map(|response| response.value)
             },
@@ -468,14 +455,12 @@ async fn get_program_accounts_with_config(
 async fn get_transaction(
     client: &SolClient,
     signature: &Signature,
-    commitment_config: CommitmentConfig,
     maximum_failed_responses_time_secs: u64,
 ) -> Result<EncodedConfirmedTransactionWithStatusMeta> {
     let transaction = {
         retry(
             || async {
                 let config = RpcTransactionConfig {
-                    commitment: Some(commitment_config),
                     encoding: Some(UiTransactionEncoding::Base64),
                     ..Default::default()
                 };
@@ -563,7 +548,6 @@ async fn send_and_confirm_message(
 async fn get_pending_proposals(
     client: &SolClient,
     program_pubkey: &Pubkey,
-    commitment_config: CommitmentConfig,
     maximum_failed_responses_time_secs: u64,
 ) -> Result<Vec<Pubkey>> {
     let accounts = {
@@ -578,7 +562,6 @@ async fn get_pending_proposals(
                     filters: Some(vec![RpcFilterType::Memcmp(Memcmp::new_raw_bytes(0, mem))]),
                     account_config: RpcAccountInfoConfig {
                         encoding: Some(UiAccountEncoding::Base64),
-                        commitment: Some(commitment_config),
                         data_slice: Some(UiDataSliceConfig {
                             offset: 0,
                             length: 0,
@@ -613,18 +596,12 @@ async fn verify_sol_ton_account(
     let now = std::time::Instant::now();
 
     let result = loop {
-        let commitment_config = config.commitment;
         let maximum_failed_responses_time_secs = config.maximum_failed_responses_time_sec;
 
         healthcheck(client, maximum_failed_responses_time_secs).await?;
 
-        if let Some(account) = get_account(
-            client,
-            &account_pubkey,
-            commitment_config,
-            maximum_failed_responses_time_secs,
-        )
-        .await?
+        if let Some(account) =
+            get_account(client, &account_pubkey, maximum_failed_responses_time_secs).await?
         {
             break Some(account);
         }
@@ -661,16 +638,10 @@ async fn verify_sol_ton_transaction(
     data: SolTonTransactionData,
     config: &SolConfig,
 ) -> Result<VerificationStatus> {
-    let commitment_config = config.commitment;
     let maximum_failed_responses_time_secs = config.maximum_failed_responses_time_sec;
 
-    let result = get_transaction(
-        client,
-        &data.signature,
-        commitment_config,
-        maximum_failed_responses_time_secs,
-    )
-    .await?;
+    let result =
+        get_transaction(client, &data.signature, maximum_failed_responses_time_secs).await?;
 
     if result.slot != data.slot || result.block_time != Some(data.block_time) {
         return Ok(VerificationStatus::NotExists {
