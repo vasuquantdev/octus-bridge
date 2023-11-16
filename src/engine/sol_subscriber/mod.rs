@@ -46,10 +46,9 @@ impl SolSubscriber {
             .endpoints
             .iter()
             .map(|endpoint| SolClient {
-                rpc_client: RpcClient::new_with_timeout_and_commitment(
+                rpc_client: RpcClient::new_with_timeout(
                     endpoint.clone(),
                     Duration::from_secs(config.connection_timeout_sec),
-                    Default::default(),
                 ),
                 pool: Semaphore::new(config.pool_size),
             })
