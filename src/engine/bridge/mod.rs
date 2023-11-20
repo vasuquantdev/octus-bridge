@@ -1328,8 +1328,13 @@ impl Bridge {
             );
 
             // Send confirm/reject to Solana
-            sol_subscriber
+            let signature = sol_subscriber
                 .send_message(rpc_client, sol_message_vote, &self.context.keystore)
+                .await
+                .map_err(parse_client_error)?;
+
+            sol_subscriber
+                .get_signature_status(rpc_client, &signature)
                 .await
                 .map_err(parse_client_error)?;
 

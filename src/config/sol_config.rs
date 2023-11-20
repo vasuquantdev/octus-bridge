@@ -36,4 +36,8 @@ pub struct SolConfig {
     /// Deposits polling interval. Default: 5
     #[serde(default = "const_u64::<5>")]
     pub poll_deposits_interval_sec: u64,
+
+    /// Signature status polling interval. Default: 5
+    #[serde(default = "const_u64::<5>")]
+    pub poll_signature_status_interval_sec: u64,
 }

@@ -8,14 +8,10 @@ use num_traits::Zero;
 use rustc_hash::FxHashMap;
 use tokio::sync::{oneshot, Semaphore};
 
-use solana_account_decoder::{UiAccountEncoding, UiDataSliceConfig};
-use solana_bridge::bridge_state::{AccountKind, Proposal};
+use solana_bridge::bridge_state::Proposal;
 use solana_client::client_error::{ClientError, ClientErrorKind};
 use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_client::rpc_config::{
-    RpcAccountInfoConfig, RpcProgramAccountsConfig, RpcTransactionConfig,
-};
-use solana_client::rpc_filter::{Memcmp, RpcFilterType};
+use solana_client::rpc_config::RpcTransactionConfig;
 use solana_sdk::account::{Account, ReadableAccount};
 use solana_sdk::clock::{Slot, UnixTimestamp};
 use solana_sdk::message::{Message, VersionedMessage};
@@ -55,7 +51,8 @@ impl SolSubscriber {
             .collect::<Vec<_>>();
 
         for client in rpc_clients.iter() {
-            let block_height = client.rpc_client.get_block_height().await?;
+            let block_height =
+                get_block_height(client, config.maximum_failed_responses_time_sec).await?;
             tracing::info!(
                 block_height,
                 url = &client.rpc_client.url(),
@@ -162,8 +159,8 @@ impl SolSubscriber {
         client: &SolClient,
         message: Message,
         keystore: &Arc<KeyStore>,
-    ) -> Result<(), ClientError> {
-        let _ = {
+    ) -> Result<Signature, ClientError> {
+        let signature = {
             retry(
                 || async {
                     let message = message.clone();
@@ -184,7 +181,45 @@ impl SolSubscriber {
             .await?
         };
 
-        Ok(())
+        Ok(signature)
+    }
+
+    pub async fn get_signature_status(
+        &self,
+        client: &SolClient,
+        signature: &Signature,
+    ) -> Result<(), ClientError> {
+        let res = loop {
+            let status = {
+                retry(
+                    || async {
+                        let _permit = client.pool.acquire().await;
+                        client.rpc_client.get_signature_status(signature).await
+                    },
+                    generate_default_timeout_config(Duration::from_secs(
+                        self.config.maximum_failed_responses_time_sec,
+                    )),
+                    NetworkType::SOL,
+                    "get transaction",
+                )
+                .await?
+            };
+
+            if let Some(res) = status {
+                break res;
+            }
+
+            // Transaction has not yet been finalized. Retry after timeout.
+            tokio::time::sleep(Duration::from_secs(
+                self.config.poll_signature_status_interval_sec,
+            ))
+            .await;
+        };
+
+        match res {
+            Ok(()) => Ok(()),
+            Err(e) => Err(e.into()),
+        }
     }
 
     pub async fn is_already_voted(
@@ -251,48 +286,12 @@ impl SolSubscriber {
 
         let mut accounts_to_check = HashSet::new();
 
-        // Get pending Solana proposals to check
-        let programs_to_subscribe = self.programs_to_subscribe.read().clone();
-        for program_pubkey in programs_to_subscribe {
-            let mut pending_proposals = get_pending_proposals(
-                rpc_client,
-                &program_pubkey,
-                maximum_failed_responses_time_secs,
-            )
-            .await?;
-            if !pending_proposals.is_empty() {
-                tracing::info!(?pending_proposals, "found withdrawal proposals to vote");
-            }
-
-            let pending_events = self.pending_events.lock().await;
-
-            let unrecognized_proposals = pending_proposals
-                .iter()
-                .filter(|account| !pending_events.contains_key(account))
-                .count();
-            if !unrecognized_proposals.is_zero() {
-                tracing::info!(
-                    %program_pubkey,
-                    ?unrecognized_proposals,
-                    "found unrecognized proposals",
-                );
-            }
-
-            self.unrecognized_proposals_count
-                .store(unrecognized_proposals, Ordering::Release);
-
-            // Get rid of unrecognized proposals
-            pending_proposals.retain(|account| pending_events.contains_key(account));
-
-            accounts_to_check.extend(pending_proposals.into_iter().collect::<HashSet<Pubkey>>());
-        }
-
         // Get pending TON events to check
         let time = chrono::Utc::now().timestamp() as u64;
 
         let mut pending_events = self.pending_events.lock().await;
         for (account, event) in pending_events.iter_mut() {
-            if !accounts_to_check.contains(account) && time > event.time {
+            if time > event.time {
                 tracing::info!(
                     account_pubkey = %account,
                     "adding proposal account from TON->SOL pending events to checklist",
@@ -439,18 +438,6 @@ async fn get_account(
     Ok(account)
 }
 
-async fn get_program_accounts_with_config(
-    client: &SolClient,
-    program_pubkey: &Pubkey,
-    config: RpcProgramAccountsConfig,
-) -> Result<Vec<(Pubkey, Account)>, ClientError> {
-    let _permit = client.pool.acquire().await;
-    client
-        .rpc_client
-        .get_program_accounts_with_config(program_pubkey, config)
-        .await
-}
-
 async fn get_transaction(
     client: &SolClient,
     signature: &Signature,
@@ -504,6 +491,28 @@ async fn get_latest_blockhash(
     Ok(hash)
 }
 
+async fn get_block_height(
+    client: &SolClient,
+    maximum_failed_responses_time_secs: u64,
+) -> Result<u64> {
+    let block_height = {
+        retry(
+            || async {
+                let _permit = client.pool.acquire().await;
+                client.rpc_client.get_block_height().await
+            },
+            generate_default_timeout_config(Duration::from_secs(
+                maximum_failed_responses_time_secs,
+            )),
+            NetworkType::SOL,
+            "get block height",
+        )
+        .await?
+    };
+
+    Ok(block_height)
+}
+
 async fn healthcheck(client: &SolClient, maximum_failed_responses_time_secs: u64) -> Result<()> {
     retry(
         || async {
@@ -542,46 +551,6 @@ async fn send_and_confirm_message(
         .rpc_client
         .send_and_confirm_transaction(&transaction)
         .await
-}
-
-async fn get_pending_proposals(
-    client: &SolClient,
-    program_pubkey: &Pubkey,
-    maximum_failed_responses_time_secs: u64,
-) -> Result<Vec<Pubkey>> {
-    let accounts = {
-        retry(
-            || async {
-                let mem: Vec<u8> = vec![
-                    true as u8,                                                               // is_initialized
-                    false as u8, // is_executed
-                    AccountKind::Proposal(Default::default(), Default::default()).to_value(), // account_kind
-                ];
-                let config = RpcProgramAccountsConfig {
-                    filters: Some(vec![RpcFilterType::Memcmp(Memcmp::new_raw_bytes(0, mem))]),
-                    account_config: RpcAccountInfoConfig {
-                        encoding: Some(UiAccountEncoding::Base64),
-                        data_slice: Some(UiDataSliceConfig {
-                            offset: 0,
-                            length: 0,
-                        }),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                };
-
-                get_program_accounts_with_config(client, program_pubkey, config).await
-            },
-            generate_default_timeout_config(Duration::from_secs(
-                maximum_failed_responses_time_secs,
-            )),
-            NetworkType::SOL,
-            "get program accounts",
-        )
-        .await?
-    };
-
-    Ok(accounts.into_iter().map(|(pubkey, _)| pubkey).collect())
 }
 
 async fn verify_sol_ton_account(
