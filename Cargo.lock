@@ -665,7 +665,7 @@ dependencies = [
 [[package]]
 name = "bridge-derive"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#04df0abf3dbf736cf1cd60228d4453e7d0cd4b42"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#021b8bc02b8a67b9c0952255df2b71b8c3dcd561"
 dependencies = [
  "darling 0.20.3",
  "proc-macro2 1.0.69",
@@ -676,7 +676,7 @@ dependencies = [
 [[package]]
 name = "bridge-utils"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#04df0abf3dbf736cf1cd60228d4453e7d0cd4b42"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#021b8bc02b8a67b9c0952255df2b71b8c3dcd561"
 dependencies = [
  "bincode",
  "borsh 0.10.3",
@@ -4011,7 +4011,7 @@ dependencies = [
 [[package]]
 name = "round-loader"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#04df0abf3dbf736cf1cd60228d4453e7d0cd4b42"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#021b8bc02b8a67b9c0952255df2b71b8c3dcd561"
 dependencies = [
  "bincode",
  "borsh 0.10.3",
@@ -4539,7 +4539,7 @@ dependencies = [
 [[package]]
 name = "solana-bridge"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#04df0abf3dbf736cf1cd60228d4453e7d0cd4b42"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#021b8bc02b8a67b9c0952255df2b71b8c3dcd561"
 dependencies = [
  "borsh 0.10.3",
  "bridge-utils",
@@ -5802,7 +5802,7 @@ dependencies = [
 [[package]]
 name = "token-proxy"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#04df0abf3dbf736cf1cd60228d4453e7d0cd4b42"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#021b8bc02b8a67b9c0952255df2b71b8c3dcd561"
 dependencies = [
  "base64 0.21.4",
  "bincode",
