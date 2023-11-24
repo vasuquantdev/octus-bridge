@@ -665,7 +665,7 @@ dependencies = [
 [[package]]
 name = "bridge-derive"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#021b8bc02b8a67b9c0952255df2b71b8c3dcd561"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#d60ccb073fbdca777f833dcd6828b153d87ba3ce"
 dependencies = [
  "darling 0.20.3",
  "proc-macro2 1.0.69",
@@ -676,7 +676,7 @@ dependencies = [
 [[package]]
 name = "bridge-utils"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#021b8bc02b8a67b9c0952255df2b71b8c3dcd561"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#d60ccb073fbdca777f833dcd6828b153d87ba3ce"
 dependencies = [
  "bincode",
  "borsh 0.10.3",
@@ -4011,7 +4011,7 @@ dependencies = [
 [[package]]
 name = "round-loader"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#021b8bc02b8a67b9c0952255df2b71b8c3dcd561"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#d60ccb073fbdca777f833dcd6828b153d87ba3ce"
 dependencies = [
  "bincode",
  "borsh 0.10.3",
@@ -4494,8 +4494,8 @@ dependencies = [
 
 [[package]]
 name = "solana-account-decoder"
-version = "1.16.16"
-source = "git+https://github.com/broxus/solana?branch=broxus#4c7e873af975f168ddd16d8225db4cd48be5ae48"
+version = "1.16.20"
+source = "git+https://github.com/broxus/solana?branch=broxus#8bbf45bd88d03ea68158c7646488b30b67191f48"
 dependencies = [
  "Inflector",
  "base64 0.21.4",
@@ -4518,8 +4518,8 @@ dependencies = [
 
 [[package]]
 name = "solana-address-lookup-table-program"
-version = "1.16.16"
-source = "git+https://github.com/broxus/solana?branch=broxus#4c7e873af975f168ddd16d8225db4cd48be5ae48"
+version = "1.16.20"
+source = "git+https://github.com/broxus/solana?branch=broxus#8bbf45bd88d03ea68158c7646488b30b67191f48"
 dependencies = [
  "bincode",
  "bytemuck",
@@ -4539,7 +4539,7 @@ dependencies = [
 [[package]]
 name = "solana-bridge"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#021b8bc02b8a67b9c0952255df2b71b8c3dcd561"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#d60ccb073fbdca777f833dcd6828b153d87ba3ce"
 dependencies = [
  "borsh 0.10.3",
  "bridge-utils",
@@ -4550,8 +4550,8 @@ dependencies = [
 
 [[package]]
 name = "solana-clap-utils"
-version = "1.16.16"
-source = "git+https://github.com/broxus/solana?branch=broxus#4c7e873af975f168ddd16d8225db4cd48be5ae48"
+version = "1.16.20"
+source = "git+https://github.com/broxus/solana?branch=broxus#8bbf45bd88d03ea68158c7646488b30b67191f48"
 dependencies = [
  "chrono",
  "clap 2.34.0",
@@ -4567,8 +4567,8 @@ dependencies = [
 
 [[package]]
 name = "solana-client"
-version = "1.16.16"
-source = "git+https://github.com/broxus/solana?branch=broxus#4c7e873af975f168ddd16d8225db4cd48be5ae48"
+version = "1.16.20"
+source = "git+https://github.com/broxus/solana?branch=broxus#8bbf45bd88d03ea68158c7646488b30b67191f48"
 dependencies = [
  "async-trait",
  "bincode",
@@ -4599,8 +4599,8 @@ dependencies = [
 
 [[package]]
 name = "solana-config-program"
-version = "1.16.16"
-source = "git+https://github.com/broxus/solana?branch=broxus#4c7e873af975f168ddd16d8225db4cd48be5ae48"
+version = "1.16.20"
+source = "git+https://github.com/broxus/solana?branch=broxus#8bbf45bd88d03ea68158c7646488b30b67191f48"
 dependencies = [
  "bincode",
  "chrono",
@@ -4612,8 +4612,8 @@ dependencies = [
 
 [[package]]
 name = "solana-connection-cache"
-version = "1.16.16"
-source = "git+https://github.com/broxus/solana?branch=broxus#4c7e873af975f168ddd16d8225db4cd48be5ae48"
+version = "1.16.20"
+source = "git+https://github.com/broxus/solana?branch=broxus#8bbf45bd88d03ea68158c7646488b30b67191f48"
 dependencies = [
  "async-trait",
  "bincode",
@@ -4632,8 +4632,8 @@ dependencies = [
 
 [[package]]
 name = "solana-frozen-abi"
-version = "1.16.16"
-source = "git+https://github.com/broxus/solana?branch=broxus#4c7e873af975f168ddd16d8225db4cd48be5ae48"
+version = "1.16.20"
+source = "git+https://github.com/broxus/solana?branch=broxus#8bbf45bd88d03ea68158c7646488b30b67191f48"
 dependencies = [
  "ahash 0.8.3",
  "blake3",
@@ -4664,8 +4664,8 @@ dependencies = [
 
 [[package]]
 name = "solana-frozen-abi-macro"
-version = "1.16.16"
-source = "git+https://github.com/broxus/solana?branch=broxus#4c7e873af975f168ddd16d8225db4cd48be5ae48"
+version = "1.16.20"
+source = "git+https://github.com/broxus/solana?branch=broxus#8bbf45bd88d03ea68158c7646488b30b67191f48"
 dependencies = [
  "proc-macro2 1.0.69",
  "quote 1.0.33",
@@ -4675,8 +4675,8 @@ dependencies = [
 
 [[package]]
 name = "solana-logger"
-version = "1.16.16"
-source = "git+https://github.com/broxus/solana?branch=broxus#4c7e873af975f168ddd16d8225db4cd48be5ae48"
+version = "1.16.20"
+source = "git+https://github.com/broxus/solana?branch=broxus#8bbf45bd88d03ea68158c7646488b30b67191f48"
 dependencies = [
  "env_logger",
  "lazy_static",
@@ -4685,8 +4685,8 @@ dependencies = [
 
 [[package]]
 name = "solana-measure"
-version = "1.16.16"
-source = "git+https://github.com/broxus/solana?branch=broxus#4c7e873af975f168ddd16d8225db4cd48be5ae48"
+version = "1.16.20"
+source = "git+https://github.com/broxus/solana?branch=broxus#8bbf45bd88d03ea68158c7646488b30b67191f48"
 dependencies = [
  "log",
  "solana-sdk",
@@ -4694,8 +4694,8 @@ dependencies = [
 
 [[package]]
 name = "solana-metrics"
-version = "1.16.16"
-source = "git+https://github.com/broxus/solana?branch=broxus#4c7e873af975f168ddd16d8225db4cd48be5ae48"
+version = "1.16.20"
+source = "git+https://github.com/broxus/solana?branch=broxus#8bbf45bd88d03ea68158c7646488b30b67191f48"
 dependencies = [
  "crossbeam-channel",
  "gethostname",
@@ -4707,8 +4707,8 @@ dependencies = [
 
 [[package]]
 name = "solana-net-utils"
-version = "1.16.16"
-source = "git+https://github.com/broxus/solana?branch=broxus#4c7e873af975f168ddd16d8225db4cd48be5ae48"
+version = "1.16.20"
+source = "git+https://github.com/broxus/solana?branch=broxus#8bbf45bd88d03ea68158c7646488b30b67191f48"
 dependencies = [
  "bincode",
  "clap 3.2.25",
@@ -4728,8 +4728,8 @@ dependencies = [
 
 [[package]]
 name = "solana-perf"
-version = "1.16.16"
-source = "git+https://github.com/broxus/solana?branch=broxus#4c7e873af975f168ddd16d8225db4cd48be5ae48"
+version = "1.16.20"
+source = "git+https://github.com/broxus/solana?branch=broxus#8bbf45bd88d03ea68158c7646488b30b67191f48"
 dependencies = [
  "ahash 0.8.3",
  "bincode",
@@ -4754,8 +4754,8 @@ dependencies = [
 
 [[package]]
 name = "solana-program"
-version = "1.16.16"
-source = "git+https://github.com/broxus/solana?branch=broxus#4c7e873af975f168ddd16d8225db4cd48be5ae48"
+version = "1.16.20"
+source = "git+https://github.com/broxus/solana?branch=broxus#8bbf45bd88d03ea68158c7646488b30b67191f48"
 dependencies = [
  "ark-bn254",
  "ark-ec",
@@ -4808,8 +4808,8 @@ dependencies = [
 
 [[package]]
 name = "solana-program-runtime"
-version = "1.16.16"
-source = "git+https://github.com/broxus/solana?branch=broxus#4c7e873af975f168ddd16d8225db4cd48be5ae48"
+version = "1.16.20"
+source = "git+https://github.com/broxus/solana?branch=broxus#8bbf45bd88d03ea68158c7646488b30b67191f48"
 dependencies = [
  "base64 0.21.4",
  "bincode",
@@ -4835,8 +4835,8 @@ dependencies = [
 
 [[package]]
 name = "solana-pubsub-client"
-version = "1.16.16"
-source = "git+https://github.com/broxus/solana?branch=broxus#4c7e873af975f168ddd16d8225db4cd48be5ae48"
+version = "1.16.20"
+source = "git+https://github.com/broxus/solana?branch=broxus#8bbf45bd88d03ea68158c7646488b30b67191f48"
 dependencies = [
  "crossbeam-channel",
  "futures-util",
@@ -4859,8 +4859,8 @@ dependencies = [
 
 [[package]]
 name = "solana-quic-client"
-version = "1.16.16"
-source = "git+https://github.com/broxus/solana?branch=broxus#4c7e873af975f168ddd16d8225db4cd48be5ae48"
+version = "1.16.20"
+source = "git+https://github.com/broxus/solana?branch=broxus#8bbf45bd88d03ea68158c7646488b30b67191f48"
 dependencies = [
  "async-mutex",
  "async-trait",
@@ -4886,8 +4886,8 @@ dependencies = [
 
 [[package]]
 name = "solana-rayon-threadlimit"
-version = "1.16.16"
-source = "git+https://github.com/broxus/solana?branch=broxus#4c7e873af975f168ddd16d8225db4cd48be5ae48"
+version = "1.16.20"
+source = "git+https://github.com/broxus/solana?branch=broxus#8bbf45bd88d03ea68158c7646488b30b67191f48"
 dependencies = [
  "lazy_static",
  "num_cpus",
@@ -4895,8 +4895,8 @@ dependencies = [
 
 [[package]]
 name = "solana-remote-wallet"
-version = "1.16.16"
-source = "git+https://github.com/broxus/solana?branch=broxus#4c7e873af975f168ddd16d8225db4cd48be5ae48"
+version = "1.16.20"
+source = "git+https://github.com/broxus/solana?branch=broxus#8bbf45bd88d03ea68158c7646488b30b67191f48"
 dependencies = [
  "console",
  "dialoguer",
@@ -4913,8 +4913,8 @@ dependencies = [
 
 [[package]]
 name = "solana-rpc-client"
-version = "1.16.16"
-source = "git+https://github.com/broxus/solana?branch=broxus#4c7e873af975f168ddd16d8225db4cd48be5ae48"
+version = "1.16.20"
+source = "git+https://github.com/broxus/solana?branch=broxus#8bbf45bd88d03ea68158c7646488b30b67191f48"
 dependencies = [
  "async-trait",
  "base64 0.21.4",
@@ -4938,8 +4938,8 @@ dependencies = [
 
 [[package]]
 name = "solana-rpc-client-api"
-version = "1.16.16"
-source = "git+https://github.com/broxus/solana?branch=broxus#4c7e873af975f168ddd16d8225db4cd48be5ae48"
+version = "1.16.20"
+source = "git+https://github.com/broxus/solana?branch=broxus#8bbf45bd88d03ea68158c7646488b30b67191f48"
 dependencies = [
  "base64 0.21.4",
  "bs58",
@@ -4959,8 +4959,8 @@ dependencies = [
 
 [[package]]
 name = "solana-rpc-client-nonce-utils"
-version = "1.16.16"
-source = "git+https://github.com/broxus/solana?branch=broxus#4c7e873af975f168ddd16d8225db4cd48be5ae48"
+version = "1.16.20"
+source = "git+https://github.com/broxus/solana?branch=broxus#8bbf45bd88d03ea68158c7646488b30b67191f48"
 dependencies = [
  "clap 2.34.0",
  "solana-clap-utils",
@@ -4971,8 +4971,8 @@ dependencies = [
 
 [[package]]
 name = "solana-sdk"
-version = "1.16.16"
-source = "git+https://github.com/broxus/solana?branch=broxus#4c7e873af975f168ddd16d8225db4cd48be5ae48"
+version = "1.16.20"
+source = "git+https://github.com/broxus/solana?branch=broxus#8bbf45bd88d03ea68158c7646488b30b67191f48"
 dependencies = [
  "assert_matches",
  "base64 0.21.4",
@@ -5023,8 +5023,8 @@ dependencies = [
 
 [[package]]
 name = "solana-sdk-macro"
-version = "1.16.16"
-source = "git+https://github.com/broxus/solana?branch=broxus#4c7e873af975f168ddd16d8225db4cd48be5ae48"
+version = "1.16.20"
+source = "git+https://github.com/broxus/solana?branch=broxus#8bbf45bd88d03ea68158c7646488b30b67191f48"
 dependencies = [
  "bs58",
  "proc-macro2 1.0.69",
@@ -5035,8 +5035,8 @@ dependencies = [
 
 [[package]]
 name = "solana-streamer"
-version = "1.16.16"
-source = "git+https://github.com/broxus/solana?branch=broxus#4c7e873af975f168ddd16d8225db4cd48be5ae48"
+version = "1.16.20"
+source = "git+https://github.com/broxus/solana?branch=broxus#8bbf45bd88d03ea68158c7646488b30b67191f48"
 dependencies = [
  "async-channel",
  "bytes",
@@ -5067,8 +5067,8 @@ dependencies = [
 
 [[package]]
 name = "solana-thin-client"
-version = "1.16.16"
-source = "git+https://github.com/broxus/solana?branch=broxus#4c7e873af975f168ddd16d8225db4cd48be5ae48"
+version = "1.16.20"
+source = "git+https://github.com/broxus/solana?branch=broxus#8bbf45bd88d03ea68158c7646488b30b67191f48"
 dependencies = [
  "bincode",
  "log",
@@ -5081,8 +5081,8 @@ dependencies = [
 
 [[package]]
 name = "solana-tpu-client"
-version = "1.16.16"
-source = "git+https://github.com/broxus/solana?branch=broxus#4c7e873af975f168ddd16d8225db4cd48be5ae48"
+version = "1.16.20"
+source = "git+https://github.com/broxus/solana?branch=broxus#8bbf45bd88d03ea68158c7646488b30b67191f48"
 dependencies = [
  "async-trait",
  "bincode",
@@ -5105,8 +5105,8 @@ dependencies = [
 
 [[package]]
 name = "solana-transaction-status"
-version = "1.16.16"
-source = "git+https://github.com/broxus/solana?branch=broxus#4c7e873af975f168ddd16d8225db4cd48be5ae48"
+version = "1.16.20"
+source = "git+https://github.com/broxus/solana?branch=broxus#8bbf45bd88d03ea68158c7646488b30b67191f48"
 dependencies = [
  "Inflector",
  "base64 0.21.4",
@@ -5130,8 +5130,8 @@ dependencies = [
 
 [[package]]
 name = "solana-udp-client"
-version = "1.16.16"
-source = "git+https://github.com/broxus/solana?branch=broxus#4c7e873af975f168ddd16d8225db4cd48be5ae48"
+version = "1.16.20"
+source = "git+https://github.com/broxus/solana?branch=broxus#8bbf45bd88d03ea68158c7646488b30b67191f48"
 dependencies = [
  "async-trait",
  "solana-connection-cache",
@@ -5144,8 +5144,8 @@ dependencies = [
 
 [[package]]
 name = "solana-version"
-version = "1.16.16"
-source = "git+https://github.com/broxus/solana?branch=broxus#4c7e873af975f168ddd16d8225db4cd48be5ae48"
+version = "1.16.20"
+source = "git+https://github.com/broxus/solana?branch=broxus#8bbf45bd88d03ea68158c7646488b30b67191f48"
 dependencies = [
  "log",
  "rustc_version",
@@ -5159,8 +5159,8 @@ dependencies = [
 
 [[package]]
 name = "solana-vote-program"
-version = "1.16.16"
-source = "git+https://github.com/broxus/solana?branch=broxus#4c7e873af975f168ddd16d8225db4cd48be5ae48"
+version = "1.16.20"
+source = "git+https://github.com/broxus/solana?branch=broxus#8bbf45bd88d03ea68158c7646488b30b67191f48"
 dependencies = [
  "bincode",
  "log",
@@ -5180,8 +5180,8 @@ dependencies = [
 
 [[package]]
 name = "solana-zk-token-sdk"
-version = "1.16.16"
-source = "git+https://github.com/broxus/solana?branch=broxus#4c7e873af975f168ddd16d8225db4cd48be5ae48"
+version = "1.16.20"
+source = "git+https://github.com/broxus/solana?branch=broxus#8bbf45bd88d03ea68158c7646488b30b67191f48"
 dependencies = [
  "aes-gcm-siv",
  "base64 0.21.4",
@@ -5802,7 +5802,7 @@ dependencies = [
 [[package]]
 name = "token-proxy"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#021b8bc02b8a67b9c0952255df2b71b8c3dcd561"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#d60ccb073fbdca777f833dcd6828b153d87ba3ce"
 dependencies = [
  "base64 0.21.4",
  "bincode",
