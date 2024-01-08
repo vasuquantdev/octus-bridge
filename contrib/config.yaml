@@ -25,7 +25,7 @@ bridge_settings:
       # Idle polling interval. Default: 60
       poll_interval_sec: 60
       # Maximum blocks range for getLogs request
-      max_block_range: 5000
+      max_block_range: 1000
     # Smart Chain
     - chain_id: 56
       # Public endpoint (see https://docs.bscscan.com/misc-tools-and-utilities/public-rpc-nodes)
@@ -33,7 +33,7 @@ bridge_settings:
       get_timeout_sec: 10
       pool_size: 10
       poll_interval_sec: 60
-      max_block_range: 5000
+      max_block_range: 1000
     # Fantom Opera
     - chain_id: 250
       # Public endpoint
@@ -41,14 +41,14 @@ bridge_settings:
       get_timeout_sec: 10
       pool_size: 10
       poll_interval_sec: 60
-      max_block_range: 5000
+      max_block_range: 1000
     # Polygon
     - chain_id: 137
       endpoint: "${POLYGON_URL}"
       get_timeout_sec: 10
       pool_size: 10
       poll_interval_sec: 60
-      max_block_range: 5000
+      max_block_range: 1000
     # Milkomeda
     - chain_id: 2001
       endpoint: https://rpc-mainnet-cardano-evm.c1.milkomeda.com
@@ -56,6 +56,7 @@ bridge_settings:
       pool_size: 10
       poll_interval_sec: 60
       maximum_failed_responses_time_sec: 604800
+      max_block_range: 1000
     # Avalanche Network
     - chain_id: 43114
       endpoint: https://api.avax.network/ext/bc/C/rpc
@@ -63,12 +64,21 @@ bridge_settings:
       pool_size: 10
       poll_interval_sec: 60
       maximum_failed_responses_time_sec: 604800
+      max_block_range: 1000
+    # BlockPI
+    - chain_id: 8217
+      endpoint: https://klaytn.blockpi.network/v1/rpc/public
+      get_timeout_sec: 10
+      pool_size: 10
+      poll_interval_sec: 60
+      maximum_failed_responses_time_sec: 604800
+      max_block_range: 5000
   # Solana network config
   sol_network:
     # Public endpoint
-    endpoint: https://solana-api.projectserum.com
-    # Commitment level
-    commitment: "finalized"
+    endpoints: ["https://api.mainnet-beta.solana.com"]
+    # Events polling interval
+    poll_interval_sec: 30
   # ETH address verification settings
   address_verification:
     # Minimal balance on user's wallet to start address verification
@@ -88,6 +98,11 @@ node_settings:
   # NOTE: Will be generated if it was not there.
   # Default: "./adnl-keys.json"
   temp_keys_path: "/etc/relay/adnl-keys.json"
+  db_options:
+    rocksdb_lru_capacity: "2 GB"
+    cells_cache_size: "4 GB"
+storage:
+  persistent_db_path: "/var/db/relay-events"
 metrics_settings:
   # Listen address of metrics. Used by the client to gather prometheus metrics.
   # Default: "127.0.0.1:10000"
