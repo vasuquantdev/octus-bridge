@@ -13,12 +13,17 @@ use solana_client::client_error::{ClientError, ClientErrorKind};
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_client::rpc_config::RpcTransactionConfig;
 use solana_sdk::account::{Account, ReadableAccount};
+use solana_sdk::bs58;
 use solana_sdk::clock::{Slot, UnixTimestamp};
+use solana_sdk::instruction::CompiledInstruction;
 use solana_sdk::message::{Message, VersionedMessage};
 use solana_sdk::program_pack::Pack;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Signature;
-use solana_transaction_status::{EncodedConfirmedTransactionWithStatusMeta, UiTransactionEncoding};
+use solana_transaction_status::option_serializer::OptionSerializer;
+use solana_transaction_status::{
+    EncodedConfirmedTransactionWithStatusMeta, UiInstruction, UiTransactionEncoding,
+};
 
 use crate::config::*;
 use crate::engine::bridge::*;
@@ -622,10 +627,40 @@ async fn verify_sol_ton_transaction(
             SolSubscriberError::DecodeTransactionError(data.signature.to_string())
         })?;
 
-    let (account_keys, instructions) = match transaction.message {
+    let (account_keys, mut instructions) = match transaction.message {
         VersionedMessage::Legacy(message) => (message.account_keys, message.instructions),
         VersionedMessage::V0(message) => (message.account_keys, message.instructions),
     };
+
+    // Handle CPI instructions
+    let inner_instructions = result
+        .transaction
+        .meta
+        .as_ref()
+        .and_then(|t| {
+            if let OptionSerializer::Some(instructions) = &t.inner_instructions {
+                Some(
+                    instructions
+                        .iter()
+                        .flat_map(|ix| ix.instructions.clone())
+                        .collect::<Vec<_>>(),
+                )
+            } else {
+                None
+            }
+        })
+        .unwrap_or_default();
+
+    for ix in inner_instructions {
+        if let UiInstruction::Compiled(ix) = ix {
+            let c_ix = CompiledInstruction {
+                program_id_index: ix.program_id_index,
+                accounts: ix.accounts,
+                data: bs58::decode(&ix.data).into_vec()?,
+            };
+            instructions.push(c_ix);
+        }
+    }
 
     for ix in instructions {
         if account_keys[ix.program_id_index as usize] == data.program_id {
