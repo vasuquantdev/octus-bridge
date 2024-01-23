@@ -589,7 +589,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4114279215a005bc675e386011e594e1d9b800918cea18fcadadcce864a2046b"
 dependencies = [
  "borsh-derive 0.10.3",
- "hashbrown 0.12.3",
+ "hashbrown 0.11.2",
 ]
 
 [[package]]
@@ -2031,7 +2031,7 @@ checksum = "d2fabcfbdc87f4758337ca535fb41a6d701b65693ce38287d856d1674551ec9b"
 [[package]]
 name = "global-config"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#fc49ab9bc31eb7c9bfee56b62e8e925a65958af1"
+source = "git+https://github.com/broxus/ton-indexer.git#bedf6072ace855d6f9e1c1d3833b18e551260df0"
 dependencies = [
  "anyhow",
  "base64 0.13.1",
@@ -2095,9 +2095,6 @@ name = "hashbrown"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
-dependencies = [
- "ahash 0.7.6",
-]
 
 [[package]]
 name = "hashbrown"
@@ -5450,6 +5447,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "stable_deref_trait"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
+
+[[package]]
 name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5940,7 +5943,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer"
 version = "0.3.2"
-source = "git+https://github.com/broxus/ton-indexer.git#fc49ab9bc31eb7c9bfee56b62e8e925a65958af1"
+source = "git+https://github.com/broxus/ton-indexer.git#bedf6072ace855d6f9e1c1d3833b18e551260df0"
 dependencies = [
  "ahash 0.8.3",
  "anyhow",
@@ -5978,6 +5981,7 @@ dependencies = [
  "ton_block",
  "ton_types",
  "tracing",
+ "triomphe",
  "weedb",
 ]
 
@@ -6006,7 +6010,7 @@ dependencies = [
 [[package]]
 name = "ton_block"
 version = "1.9.73"
-source = "git+https://github.com/broxus/ton-labs-block#66b3ccb8e6187e6d9f611f6541c0f59d3eb77cbf"
+source = "git+https://github.com/broxus/ton-labs-block#44824b29903dfd556332e720fa932eabe1917f39"
 dependencies = [
  "anyhow",
  "base64 0.13.1",
@@ -6159,6 +6163,16 @@ dependencies = [
  "tracing",
  "tracing-core",
  "tracing-log",
+]
+
+[[package]]
+name = "triomphe"
+version = "0.1.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "859eb650cfee7434994602c3a68b25d77ad9e68c8a6cd491616ef86661382eb3"
+dependencies = [
+ "serde",
+ "stable_deref_trait",
 ]
 
 [[package]]
