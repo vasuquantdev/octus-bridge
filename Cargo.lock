@@ -589,7 +589,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4114279215a005bc675e386011e594e1d9b800918cea18fcadadcce864a2046b"
 dependencies = [
  "borsh-derive 0.10.3",
- "hashbrown 0.11.2",
+ "hashbrown 0.12.3",
 ]
 
 [[package]]
@@ -665,7 +665,7 @@ dependencies = [
 [[package]]
 name = "bridge-derive"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#b7574928deccde6f689f5997c20ecf46d98aec37"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#5a72d51979a76b9367ab94aaf1cd3755abc033bb"
 dependencies = [
  "darling 0.20.3",
  "proc-macro2 1.0.69",
@@ -676,7 +676,7 @@ dependencies = [
 [[package]]
 name = "bridge-utils"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#b7574928deccde6f689f5997c20ecf46d98aec37"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#5a72d51979a76b9367ab94aaf1cd3755abc033bb"
 dependencies = [
  "bincode",
  "borsh 0.10.3",
@@ -2095,6 +2095,9 @@ name = "hashbrown"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
+dependencies = [
+ "ahash 0.7.6",
+]
 
 [[package]]
 name = "hashbrown"
@@ -4008,7 +4011,7 @@ dependencies = [
 [[package]]
 name = "round-loader"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#b7574928deccde6f689f5997c20ecf46d98aec37"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#5a72d51979a76b9367ab94aaf1cd3755abc033bb"
 dependencies = [
  "bincode",
  "borsh 0.10.3",
@@ -4536,12 +4539,13 @@ dependencies = [
 [[package]]
 name = "solana-bridge"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#b7574928deccde6f689f5997c20ecf46d98aec37"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#5a72d51979a76b9367ab94aaf1cd3755abc033bb"
 dependencies = [
  "borsh 0.10.3",
  "bridge-utils",
  "round-loader",
  "solana-program",
+ "spl-token",
  "token-proxy",
 ]
 
@@ -5805,7 +5809,7 @@ dependencies = [
 [[package]]
 name = "token-proxy"
 version = "0.1.0"
-source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#b7574928deccde6f689f5997c20ecf46d98aec37"
+source = "git+https://github.com/broxus/octusbridge-solana-contracts.git#5a72d51979a76b9367ab94aaf1cd3755abc033bb"
 dependencies = [
  "base64 0.21.4",
  "bincode",
@@ -5819,6 +5823,7 @@ dependencies = [
  "solana-program",
  "spl-associated-token-account",
  "spl-token",
+ "spl-token-2022",
  "uuid",
 ]
 

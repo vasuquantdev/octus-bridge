@@ -1348,37 +1348,53 @@ impl Bridge {
             if let Some(message) = sol_message_execute {
                 tracing::info!(
                     %proposal_pubkey,
-                    "execute proposal",
+                    "executing proposal...",
                 );
 
-                if let Err(e) = sol_subscriber
+                match sol_subscriber
                     .send_message(rpc_client, message, &self.context.keystore)
                     .await
                     .map_err(parse_client_error)
                 {
-                    tracing::error!(
-                        %proposal_pubkey,
-                        "failed to execute solana proposal: {e:?}",
-                    );
-                }
-            }
+                    Ok(_) => {
+                        tracing::info!(
+                            %proposal_pubkey,
+                            "proposal was executed",
+                        );
 
-            // Execute payload
-            if let Some(message) = sol_message_execute_payload {
-                tracing::info!(
-                    %proposal_pubkey,
-                    "execute payload",
-                );
+                        // Execute payload
+                        if let Some(message) = sol_message_execute_payload {
+                            tracing::info!(
+                                %proposal_pubkey,
+                                "executing payload...",
+                            );
 
-                if let Err(e) = sol_subscriber
-                    .send_message(rpc_client, message, &self.context.keystore)
-                    .await
-                    .map_err(parse_client_error)
-                {
-                    tracing::error!(
-                        %proposal_pubkey,
-                        "failed to execute solana payload: {e:?}",
-                    );
+                            match sol_subscriber
+                                .send_message(rpc_client, message, &self.context.keystore)
+                                .await
+                                .map_err(parse_client_error)
+                            {
+                                Ok(_) => {
+                                    tracing::info!(
+                                        %proposal_pubkey,
+                                        "payload was executed",
+                                    );
+                                }
+                                Err(e) => {
+                                    tracing::error!(
+                                        %proposal_pubkey,
+                                        "failed to execute solana payload: {e:?}",
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            %proposal_pubkey,
+                            "failed to execute solana proposal: {e:?}",
+                        );
+                    }
                 }
             }
         }
