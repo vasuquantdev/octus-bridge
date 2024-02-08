@@ -323,6 +323,16 @@ more optimized than C++ node, so they don't harm the network.
 
 ### Changelog
 
+### 2.3.1 (2024-02-08)
+
+Features:
+
+- Improved shard states GC
+
+Bugfixes:
+
+- Fixed Solana events parsing
+
 ### 2.3.0 (2024-01-08)
 
 Features:
