@@ -257,9 +257,8 @@ impl SolSubscriber {
         let proposal_data = match proposal_account {
             Some(account) => Proposal::unpack_from_slice(account.data())?,
             None => {
-                return Err(
-                    SolSubscriberError::InvalidProposalAccount(proposal_pubkey.to_string()).into(),
-                )
+                // Here only in case if event is expired. Don't vote in Solana
+                return Ok(true);
             }
         };
 
@@ -304,7 +303,16 @@ impl SolSubscriber {
         pending_events.retain(|account, event| {
             const EXPIRED_PERIOD: u64 = 14 * 24 * 60 * 60; // 14 days
             match time > event.created_at + EXPIRED_PERIOD {
-                true => false,
+                true => {
+                    if let Some(tx) = event.status_tx.take() {
+                        tx.send(VerificationStatus::NotExists {
+                            reason: "TON->SOL event is expired".to_owned(),
+                        })
+                        .ok();
+                    }
+
+                    false
+                }
                 false => {
                     if time > event.time {
                         tracing::info!(
@@ -746,6 +754,4 @@ enum SolSubscriberError {
     InvalidVotePosition(usize),
     #[error("Relay round `{0}` doesn't exist")]
     InvalidRoundAccount(String),
-    #[error("Proposal `{0}` doesn't exist")]
-    InvalidProposalAccount(String),
 }
