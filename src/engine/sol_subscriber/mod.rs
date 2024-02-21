@@ -114,22 +114,21 @@ impl SolSubscriber {
         &self,
         account_pubkey: Pubkey,
         event_data: Vec<u8>,
+        created_at: u32,
     ) -> Result<VerificationStatus> {
         let rx = {
             let mut pending_events = self.pending_events.lock().await;
 
             let (tx, rx) = oneshot::channel();
 
-            let created_at = chrono::Utc::now().timestamp() as u64;
-
-            const INIT_INTERVAL_DELAY_SEC: u32 = 300;
+            const INIT_INTERVAL_DELAY_SEC: u32 = 300; // 5 min
 
             pending_events.insert(
                 account_pubkey,
                 PendingEvent {
                     event_data,
                     status_tx: Some(tx),
-                    created_at,
+                    created_at: created_at as u64,
                     delay: INIT_INTERVAL_DELAY_SEC,
                     time: Default::default(),
                 },
@@ -295,29 +294,37 @@ impl SolSubscriber {
         let time = chrono::Utc::now().timestamp() as u64;
 
         let mut pending_events = self.pending_events.lock().await;
-        for (account, event) in pending_events.iter_mut() {
-            if time > event.time {
-                tracing::info!(
-                    account_pubkey = %account,
-                    "adding proposal account from TON->SOL pending events to checklist",
-                );
+        pending_events.retain(|account, event| {
+            const EXPIRED_PERIOD: u64 = 14 * 24 * 60 * 60; // 14 days
+            match time > event.created_at + EXPIRED_PERIOD {
+                true => false,
+                false => {
+                    if time > event.time {
+                        tracing::info!(
+                            account_pubkey = %account,
+                            "adding proposal account from TON->SOL pending events to checklist",
+                        );
 
-                let time_diff = time - event.created_at;
-                match time_diff {
-                    // First 5 min
-                    0..=300 => event.time = time,
-                    // Starting from 5 min until 1 hour, double interval
-                    301..=3600 => {
-                        event.time = time + event.delay as u64;
-                        event.delay *= 2;
+                        let time_diff = time - event.created_at;
+                        match time_diff {
+                            // First 5 min
+                            0..=300 => event.time = time,
+                            // Starting from 5 min until 1 hour, double interval
+                            301..=3600 => {
+                                event.time = time + event.delay as u64;
+                                event.delay *= 2;
+                            }
+                            // After 1 hour poll using interval from config (Default: 1 hour)
+                            _ => event.time = time + self.config.poll_proposals_interval_sec,
+                        };
+
+                        accounts_to_check.insert(*account);
                     }
-                    // After 1 hour poll using interval from config (Default: 1 hour)
-                    _ => event.time = time + self.config.poll_proposals_interval_sec,
-                };
 
-                accounts_to_check.insert(*account);
+                    true
+                }
             }
-        }
+        });
 
         if !accounts_to_check.is_empty() {
             tracing::info!(?accounts_to_check);
