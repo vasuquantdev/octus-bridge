@@ -523,9 +523,9 @@ impl std::fmt::Display for LabeledSolSubscriberMetrics<'_> {
         if let Some(sol_subscriber) = &self.0.sol_subscriber {
             let metrics = sol_subscriber.metrics();
 
-            f.begin_metric("sol_subscriber_unrecognized_proposals_count")
+            f.begin_metric("sol_subscriber_pending_events_count")
                 .label(LABEL_STAKER, &self.0.staker_account_str)
-                .value(metrics.unrecognized_proposals_count)?;
+                .value(metrics.pending_events_count)?;
         }
 
         Ok(())

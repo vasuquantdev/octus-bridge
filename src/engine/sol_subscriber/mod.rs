@@ -4,9 +4,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use num_traits::Zero;
 use rustc_hash::FxHashMap;
-use tokio::sync::{oneshot, Semaphore};
+use tokio::sync::{oneshot, Notify, Semaphore};
 
 use solana_bridge::bridge_state::Proposal;
 use solana_client::client_error::{ClientError, ClientErrorKind};
@@ -38,7 +37,7 @@ pub struct SolSubscriber {
     programs_to_subscribe: parking_lot::RwLock<Vec<Pubkey>>,
     pending_events: tokio::sync::Mutex<FxHashMap<Pubkey, PendingEvent>>,
     pending_events_count: AtomicUsize,
-    unrecognized_proposals_count: AtomicUsize,
+    new_events_notify: Notify,
 }
 
 impl SolSubscriber {
@@ -71,7 +70,7 @@ impl SolSubscriber {
             programs_to_subscribe: Default::default(),
             pending_events: Default::default(),
             pending_events_count: Default::default(),
-            unrecognized_proposals_count: Default::default(),
+            new_events_notify: Notify::new(),
         });
 
         Ok(subscriber)
@@ -106,7 +105,7 @@ impl SolSubscriber {
 
     pub fn metrics(&self) -> SolSubscriberMetrics {
         SolSubscriberMetrics {
-            unrecognized_proposals_count: self.unrecognized_proposals_count.load(Ordering::Acquire),
+            pending_events_count: self.pending_events_count.load(Ordering::Acquire),
         }
     }
 
@@ -136,6 +135,8 @@ impl SolSubscriber {
 
             self.pending_events_count
                 .store(pending_events.len(), Ordering::Release);
+
+            self.new_events_notify.notify_waiters();
 
             rx
         };
@@ -277,16 +278,22 @@ impl SolSubscriber {
     }
 
     async fn update(&self) -> Result<()> {
+        if self.pending_events.lock().await.is_empty() {
+            // Wait until new events appeared or idle poll interval passed.
+            // NOTE: Idle polling is needed there to prevent large intervals from occurring (e.g. BSC)
+            tokio::select! {
+                _ = self.new_events_notify.notified() => {},
+                _ = tokio::time::sleep(Duration::from_secs(self.config.poll_interval_sec)) => {},
+            }
+        }
+
         let rpc_client = self.get_rpc_client()?;
         let maximum_failed_responses_time_secs = self.config.maximum_failed_responses_time_sec;
 
-        let pending_events_count = self.pending_events_count.load(Ordering::Acquire);
-        if !pending_events_count.is_zero() {
-            tracing::info!(
-                pending_events = pending_events_count,
-                "updating SOL subscriber",
-            );
-        }
+        tracing::info!(
+            pending_events = self.pending_events_count.load(Ordering::Acquire),
+            "updating SOL subscriber",
+        );
 
         let mut accounts_to_check = HashSet::new();
 
@@ -726,7 +733,7 @@ pub struct SolTonTransactionData {
 
 #[derive(Debug, Copy, Clone)]
 pub struct SolSubscriberMetrics {
-    pub unrecognized_proposals_count: usize,
+    pub pending_events_count: usize,
 }
 
 #[derive(thiserror::Error, Debug)]
