@@ -17,7 +17,7 @@ pub struct SolConfig {
     #[serde(default = "const_usize::<10>")]
     pub pool_size: usize,
 
-    /// Blocks polling interval. Default: 15
+    /// Events polling interval. Default: 30
     #[serde(default = "const_u64::<30>")]
     pub poll_interval_sec: u64,
 

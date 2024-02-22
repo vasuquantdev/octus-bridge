@@ -24,6 +24,17 @@ pub fn round_number() -> &'static ton_abi::Function {
     })
 }
 
+/// External function
+pub fn created_at() -> &'static ton_abi::Function {
+    crate::once!(ton_abi::Function, || {
+        FunctionBuilder::new("createdAt")
+            .abi_version(ton_abi::contract::ABI_VERSION_2_2)
+            .default_headers()
+            .output("createdAt", u32::param_type())
+            .build()
+    })
+}
+
 /// External responsible function
 pub fn get_voters() -> &'static ton_abi::Function {
     crate::once!(ton_abi::Function, || {

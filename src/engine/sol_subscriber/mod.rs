@@ -4,9 +4,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use num_traits::Zero;
 use rustc_hash::FxHashMap;
-use tokio::sync::{oneshot, Semaphore};
+use tokio::sync::{oneshot, Notify, Semaphore};
 
 use solana_bridge::bridge_state::Proposal;
 use solana_client::client_error::{ClientError, ClientErrorKind};
@@ -38,7 +37,7 @@ pub struct SolSubscriber {
     programs_to_subscribe: parking_lot::RwLock<Vec<Pubkey>>,
     pending_events: tokio::sync::Mutex<FxHashMap<Pubkey, PendingEvent>>,
     pending_events_count: AtomicUsize,
-    unrecognized_proposals_count: AtomicUsize,
+    new_events_notify: Notify,
 }
 
 impl SolSubscriber {
@@ -71,7 +70,7 @@ impl SolSubscriber {
             programs_to_subscribe: Default::default(),
             pending_events: Default::default(),
             pending_events_count: Default::default(),
-            unrecognized_proposals_count: Default::default(),
+            new_events_notify: Notify::new(),
         });
 
         Ok(subscriber)
@@ -90,8 +89,6 @@ impl SolSubscriber {
                 if let Err(e) = subscriber.update().await {
                     tracing::error!("error occurred during SOL subscriber update: {e:?}");
                 }
-
-                tokio::time::sleep(Duration::from_secs(subscriber.config.poll_interval_sec)).await;
             }
         });
     }
@@ -106,7 +103,7 @@ impl SolSubscriber {
 
     pub fn metrics(&self) -> SolSubscriberMetrics {
         SolSubscriberMetrics {
-            unrecognized_proposals_count: self.unrecognized_proposals_count.load(Ordering::Acquire),
+            pending_events_count: self.pending_events_count.load(Ordering::Acquire),
         }
     }
 
@@ -114,22 +111,21 @@ impl SolSubscriber {
         &self,
         account_pubkey: Pubkey,
         event_data: Vec<u8>,
+        created_at: u32,
     ) -> Result<VerificationStatus> {
         let rx = {
             let mut pending_events = self.pending_events.lock().await;
 
             let (tx, rx) = oneshot::channel();
 
-            let created_at = chrono::Utc::now().timestamp() as u64;
-
-            const INIT_INTERVAL_DELAY_SEC: u32 = 300;
+            const INIT_INTERVAL_DELAY_SEC: u32 = 300; // 5 min
 
             pending_events.insert(
                 account_pubkey,
                 PendingEvent {
                     event_data,
                     status_tx: Some(tx),
-                    created_at,
+                    created_at: created_at as u64,
                     delay: INIT_INTERVAL_DELAY_SEC,
                     time: Default::default(),
                 },
@@ -137,6 +133,8 @@ impl SolSubscriber {
 
             self.pending_events_count
                 .store(pending_events.len(), Ordering::Release);
+
+            self.new_events_notify.notify_waiters();
 
             rx
         };
@@ -257,9 +255,8 @@ impl SolSubscriber {
         let proposal_data = match proposal_account {
             Some(account) => Proposal::unpack_from_slice(account.data())?,
             None => {
-                return Err(
-                    SolSubscriberError::InvalidProposalAccount(proposal_pubkey.to_string()).into(),
-                )
+                // Here only in case if event is expired. Don't vote in Solana
+                return Ok(true);
             }
         };
 
@@ -278,16 +275,22 @@ impl SolSubscriber {
     }
 
     async fn update(&self) -> Result<()> {
+        if self.pending_events.lock().await.is_empty() {
+            // Wait until new events appeared or idle poll interval passed.
+            // NOTE: Idle polling is needed there to prevent large intervals from occurring (e.g. BSC)
+            tokio::select! {
+                _ = self.new_events_notify.notified() => {},
+                _ = tokio::time::sleep(Duration::from_secs(self.config.poll_interval_sec)) => {},
+            }
+        }
+
         let rpc_client = self.get_rpc_client()?;
         let maximum_failed_responses_time_secs = self.config.maximum_failed_responses_time_sec;
 
-        let pending_events_count = self.pending_events_count.load(Ordering::Acquire);
-        if !pending_events_count.is_zero() {
-            tracing::info!(
-                pending_events = pending_events_count,
-                "updating SOL subscriber",
-            );
-        }
+        tracing::info!(
+            pending_events = self.pending_events_count.load(Ordering::Acquire),
+            "updating SOL subscriber",
+        );
 
         let mut accounts_to_check = HashSet::new();
 
@@ -295,29 +298,46 @@ impl SolSubscriber {
         let time = chrono::Utc::now().timestamp() as u64;
 
         let mut pending_events = self.pending_events.lock().await;
-        for (account, event) in pending_events.iter_mut() {
-            if time > event.time {
-                tracing::info!(
-                    account_pubkey = %account,
-                    "adding proposal account from TON->SOL pending events to checklist",
-                );
-
-                let time_diff = time - event.created_at;
-                match time_diff {
-                    // First 5 min
-                    0..=300 => event.time = time,
-                    // Starting from 5 min until 1 hour, double interval
-                    301..=3600 => {
-                        event.time = time + event.delay as u64;
-                        event.delay *= 2;
+        pending_events.retain(|account, event| {
+            const EXPIRED_PERIOD: u64 = 14 * 24 * 60 * 60; // 14 days
+            match time > event.created_at + EXPIRED_PERIOD {
+                true => {
+                    if let Some(tx) = event.status_tx.take() {
+                        tx.send(VerificationStatus::NotExists {
+                            reason: "TON->SOL event is expired".to_owned(),
+                        })
+                        .ok();
                     }
-                    // After 1 hour poll using interval from config (Default: 1 hour)
-                    _ => event.time = time + self.config.poll_proposals_interval_sec,
-                };
 
-                accounts_to_check.insert(*account);
+                    false
+                }
+                false => {
+                    if time > event.time {
+                        tracing::info!(
+                            account_pubkey = %account,
+                            "adding proposal account from TON->SOL pending events to checklist",
+                        );
+
+                        let time_diff = time - event.created_at;
+                        match time_diff {
+                            // First 5 min
+                            0..=300 => event.time = time,
+                            // Starting from 5 min until 1 hour, double interval
+                            301..=3600 => {
+                                event.time = time + event.delay as u64;
+                                event.delay *= 2;
+                            }
+                            // After 1 hour poll using interval from config (Default: 1 hour)
+                            _ => event.time = time + self.config.poll_proposals_interval_sec,
+                        };
+
+                        accounts_to_check.insert(*account);
+                    }
+
+                    true
+                }
             }
-        }
+        });
 
         if !accounts_to_check.is_empty() {
             tracing::info!(?accounts_to_check);
@@ -719,7 +739,7 @@ pub struct SolTonTransactionData {
 
 #[derive(Debug, Copy, Clone)]
 pub struct SolSubscriberMetrics {
-    pub unrecognized_proposals_count: usize,
+    pub pending_events_count: usize,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -732,6 +752,4 @@ enum SolSubscriberError {
     InvalidVotePosition(usize),
     #[error("Relay round `{0}` doesn't exist")]
     InvalidRoundAccount(String),
-    #[error("Proposal `{0}` doesn't exist")]
-    InvalidProposalAccount(String),
 }

@@ -1098,6 +1098,7 @@ impl Bridge {
             EventAction::Vote => { /* continue voting */ }
         }
         let round_number = base_event_contract.round_number()?;
+        let created_at = base_event_contract.created_at()?;
 
         // Get event details
         let event_init_data = TonSolEventContract(&contract).event_init_data()?;
@@ -1192,7 +1193,7 @@ impl Bridge {
 
         let (sol_message_vote, sol_message_execute, sol_message_execute_payload, ton_message) =
             match sol_subscriber
-                .verify_ton_sol_event(proposal_pubkey, decoded_event_data)
+                .verify_ton_sol_event(proposal_pubkey, decoded_event_data, created_at)
                 .await
             {
                 // Confirm event if transaction was found
