@@ -89,8 +89,6 @@ impl SolSubscriber {
                 if let Err(e) = subscriber.update().await {
                     tracing::error!("error occurred during SOL subscriber update: {e:?}");
                 }
-
-                tokio::time::sleep(Duration::from_secs(subscriber.config.poll_interval_sec)).await;
             }
         });
     }
