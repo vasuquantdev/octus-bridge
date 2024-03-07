@@ -323,6 +323,17 @@ more optimized than C++ node, so they don't harm the network.
 
 ### Changelog
 
+### 2.3.2 (2024-03-07)
+
+Features:
+
+- Close expired Solana events
+- Improve Solana metrics
+
+Bugfixes:
+
+- Fixed clearing Solana events from pending buffer
+
 ### 2.3.1 (2024-02-08)
 
 Features:
