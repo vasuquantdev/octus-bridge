@@ -173,8 +173,8 @@ impl NodeConfig {
             rocks_db_path: self.db_path.join("rocksdb"),
             file_db_path: self.db_path.join("files"),
             state_gc_options: self.states_gc_enabled.then(|| ton_indexer::StateGcOptions {
-                offset_sec: rand::thread_rng().gen_range(0..60),
-                interval_sec: 60,
+                offset_sec: rand::thread_rng().gen_range(0..3600),
+                interval_sec: 3600,
             }),
             blocks_gc_options: self
                 .blocks_gc_enabled

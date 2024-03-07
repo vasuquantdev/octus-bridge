@@ -2031,7 +2031,7 @@ checksum = "d2fabcfbdc87f4758337ca535fb41a6d701b65693ce38287d856d1674551ec9b"
 [[package]]
 name = "global-config"
 version = "0.1.0"
-source = "git+https://github.com/broxus/ton-indexer.git#bedf6072ace855d6f9e1c1d3833b18e551260df0"
+source = "git+https://github.com/broxus/ton-indexer.git#fc49ab9bc31eb7c9bfee56b62e8e925a65958af1"
 dependencies = [
  "anyhow",
  "base64 0.13.1",
@@ -3833,7 +3833,7 @@ checksum = "c08c74e62047bb2de4ff487b251e4a92e24f48745648451635cec7d591162d9f"
 
 [[package]]
 name = "relay"
-version = "2.3.1"
+version = "2.3.3-hotfix"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -5448,12 +5448,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "stable_deref_trait"
-version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
-
-[[package]]
 name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5943,7 +5937,7 @@ dependencies = [
 [[package]]
 name = "ton-indexer"
 version = "0.3.2"
-source = "git+https://github.com/broxus/ton-indexer.git#bedf6072ace855d6f9e1c1d3833b18e551260df0"
+source = "git+https://github.com/broxus/ton-indexer.git#fc49ab9bc31eb7c9bfee56b62e8e925a65958af1"
 dependencies = [
  "ahash 0.8.3",
  "anyhow",
@@ -5981,7 +5975,6 @@ dependencies = [
  "ton_block",
  "ton_types",
  "tracing",
- "triomphe",
  "weedb",
 ]
 
@@ -6010,7 +6003,7 @@ dependencies = [
 [[package]]
 name = "ton_block"
 version = "1.9.73"
-source = "git+https://github.com/broxus/ton-labs-block#44824b29903dfd556332e720fa932eabe1917f39"
+source = "git+https://github.com/broxus/ton-labs-block#66b3ccb8e6187e6d9f611f6541c0f59d3eb77cbf"
 dependencies = [
  "anyhow",
  "base64 0.13.1",
@@ -6163,16 +6156,6 @@ dependencies = [
  "tracing",
  "tracing-core",
  "tracing-log",
-]
-
-[[package]]
-name = "triomphe"
-version = "0.1.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "859eb650cfee7434994602c3a68b25d77ad9e68c8a6cd491616ef86661382eb3"
-dependencies = [
- "serde",
- "stable_deref_trait",
 ]
 
 [[package]]
