@@ -985,6 +985,7 @@ macro_rules! parse_tokens {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 enum StakingEvent {
     ElectionStarted(ElectionStartedEvent),
     ElectionEnded(ElectionEndedEvent),
