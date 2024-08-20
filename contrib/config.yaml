@@ -10,6 +10,8 @@ bridge_settings:
   bridge_address: "0:1d51fb47566d0d283ebbf83c641c01ebebaad6c3cec55895b0074b802036094e"
   # If set, relay will not participate in elections. Default: false
   ignore_elections: false
+  # Shard split depth
+  shard_split_depth: 10
   # EVM network configs
   evm_networks:
     # Ethereum
