@@ -57,7 +57,7 @@ tokio = { version = "1", features = [
 ] }
 tryhard = "0.5.0"
 url = { version = "2.2.2", features = ["serde"] }
-weedb = { version = "0.1", features = ["zstd", "lz4", "jemalloc"] }
+weedb = { version = "0.2.3", features = ["zstd", "lz4", "jemalloc"] }
 
 ed25519-dalek = { git = "https://github.com/broxus/ed25519-dalek.git" }
 tiny-bip39 = { git = "https://github.com/broxus/tiny-bip39.git" }
@@ -92,6 +92,7 @@ ton-indexer = { git = "https://github.com/broxus/ton-indexer.git" }
 
 [features]
 venom = ["ton_block/venom", "ton-indexer/venom"]
+ton = ["ton_block/ton", "ton-indexer/ton"]
 
 [dev-dependencies]
 cargo-husky = { version = "1", features = ["default", "run-cargo-fmt", "run-cargo-check"] }

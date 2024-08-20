@@ -101,6 +101,8 @@ node_settings:
   db_options:
     rocksdb_lru_capacity: "2 GB"
     cells_cache_size: "4 GB"
+  adnl_options:
+    force_use_priority_channels: false
 storage:
   persistent_db_path: "/var/db/relay-events"
 metrics_settings:
