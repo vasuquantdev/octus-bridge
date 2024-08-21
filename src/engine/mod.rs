@@ -1,27 +1,29 @@
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
-use parking_lot::Mutex;
-use pomfrit::formatter::*;
-use rustc_hash::FxHashMap;
-use tokio::sync::mpsc;
-use ton_block::Serializable;
-
 use self::bridge::*;
 use self::eth_subscriber::*;
 use self::keystore::*;
 use self::sol_subscriber::*;
+#[cfg(not(feature = "disable-staking"))]
 use self::staking::*;
 use self::ton_contracts::*;
 use self::ton_subscriber::*;
 use crate::config::*;
 use crate::storage::*;
 use crate::utils::*;
+use anyhow::{Context, Result};
+use parking_lot::Mutex;
+use pomfrit::formatter::*;
+use rustc_hash::FxHashMap;
+use tokio::sync::mpsc;
+use ton_block::Serializable;
+use ton_types::UInt256;
 
 mod bridge;
 mod eth_subscriber;
 mod keystore;
 mod sol_subscriber;
+#[cfg(not(feature = "disable-staking"))]
 mod staking;
 mod ton_contracts;
 mod ton_subscriber;
@@ -30,6 +32,7 @@ pub struct Engine {
     metrics_exporter: Arc<pomfrit::MetricsExporter>,
     context: Arc<EngineContext>,
     bridge: Mutex<Option<Arc<Bridge>>>,
+    #[cfg(not(feature = "disable-staking"))]
     staking: Mutex<Option<Arc<Staking>>>,
 }
 
@@ -48,6 +51,7 @@ impl Engine {
             metrics_exporter,
             context,
             bridge: Mutex::new(None),
+            #[cfg(not(feature = "disable-staking"))]
             staking: Mutex::new(None),
         });
 
@@ -71,6 +75,7 @@ impl Engine {
                     });
                 };
 
+                #[cfg(not(feature = "disable-staking"))]
                 if let Some(staking) = &*engine.staking.lock() {
                     buffer.write(LabeledStakingMetrics {
                         context: &engine.context,
@@ -90,6 +95,38 @@ impl Engine {
         // Fetch bridge configuration
         let bridge_account = only_account_hash(&self.context.settings.bridge_address);
 
+        // Bridge
+        self.initialize_bridge(bridge_account).await?;
+
+        #[cfg(not(feature = "disable-staking"))]
+        // Staking
+        self.initialize_staking(bridge_account).await?;
+
+        // EVM subscriber
+        tracing::info!("starting ETH subscribers");
+        self.context.eth_subscribers.start();
+
+        if let Some(sol_subscriber) = &self.context.sol_subscriber {
+            tracing::info!("starting SOL subscriber");
+            sol_subscriber.start();
+        }
+
+        // Done
+        Ok(())
+    }
+
+    async fn initialize_bridge(self: &Arc<Self>, bridge_account: UInt256) -> Result<()> {
+        tracing::info!("initializing bridge...");
+        let bridge = Bridge::new(self.context.clone(), bridge_account)
+            .await
+            .context("Failed to init bridge")?;
+        *self.bridge.lock() = Some(bridge);
+        tracing::info!("initialized bridge");
+        Ok(())
+    }
+
+    #[cfg(not(feature = "disable-staking"))]
+    async fn initialize_staking(self: &Arc<Self>, bridge_account: UInt256) -> Result<()> {
         let bridge_contract = match self
             .context
             .ton_subscriber
@@ -104,15 +141,6 @@ impl Engine {
             .get_details()
             .context("Failed to get bridge details")?;
 
-        // Bridge
-        tracing::info!("initializing bridge...");
-        let bridge = Bridge::new(self.context.clone(), bridge_account)
-            .await
-            .context("Failed to init bridge")?;
-        *self.bridge.lock() = Some(bridge);
-        tracing::info!("initialized bridge");
-
-        // Staking
         tracing::info!("initializing staking...");
         {
             let staking = Staking::new(self.context.clone(), bridge_details.staking)
@@ -121,17 +149,6 @@ impl Engine {
             *self.staking.lock() = Some(staking);
         }
         tracing::info!("initialized staking");
-
-        // EVM subscriber
-        tracing::info!("starting ETH subscribers");
-        self.context.eth_subscribers.start();
-
-        if let Some(sol_subscriber) = &self.context.sol_subscriber {
-            tracing::info!("starting SOL subscriber");
-            sol_subscriber.start();
-        }
-
-        // Done
         Ok(())
     }
 
@@ -370,11 +387,13 @@ impl std::fmt::Display for LabeledBridgeMetrics<'_> {
     }
 }
 
+#[cfg(not(feature = "disable-staking"))]
 struct LabeledStakingMetrics<'a> {
     context: &'a EngineContext,
     staking: &'a Staking,
 }
 
+#[cfg(not(feature = "disable-staking"))]
 impl std::fmt::Display for LabeledStakingMetrics<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let metrics = self.staking.metrics();

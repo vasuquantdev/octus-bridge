@@ -379,6 +379,7 @@ pub struct UserDataRewardRound {
     pub reward_debt: u128,
 }
 
+#[cfg(not(feature = "disable-staking"))]
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct StakingDetails {
     #[abi(with = "address_only_hash")]

@@ -91,8 +91,9 @@ nekoton-utils = { git = "https://github.com/broxus/nekoton.git", features = ["en
 ton-indexer = { git = "https://github.com/broxus/ton-indexer.git" }
 
 [features]
+disable-staking = []
 venom = ["ton_block/venom", "ton-indexer/venom"]
-ton = ["ton_block/ton", "ton-indexer/ton"]
+ton = ["ton_block/ton", "ton-indexer/ton", "disable-staking"]
 
 [dev-dependencies]
 cargo-husky = { version = "1", features = ["default", "run-cargo-fmt", "run-cargo-check"] }

@@ -162,6 +162,7 @@ impl EthSubscriber {
         }
     }
 
+    #[cfg(not(feature = "disable-staking"))]
     pub async fn verify_relay_staker_address(
         &self,
         settings: &AddressVerificationConfig,

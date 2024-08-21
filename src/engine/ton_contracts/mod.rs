@@ -15,6 +15,7 @@ pub mod eth_ton_event_contract;
 pub mod relay_round_contract;
 pub mod sol_ton_event_configuration_contract;
 pub mod sol_ton_event_contract;
+#[cfg(not(feature = "disable-staking"))]
 pub mod staking_contract;
 pub mod ton_eth_event_configuration_contract;
 pub mod ton_eth_event_contract;
@@ -229,8 +230,10 @@ impl ConnectorContract<'_> {
     }
 }
 
+#[cfg(not(feature = "disable-staking"))]
 pub struct StakingContract<'a>(pub &'a ExistingContract);
 
+#[cfg(not(feature = "disable-staking"))]
 impl StakingContract<'_> {
     pub fn get_details(&self) -> Result<StakingDetails> {
         let function = staking_contract::get_details();
