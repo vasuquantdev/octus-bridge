@@ -6,7 +6,6 @@ use self::keystore::*;
 use self::sol_subscriber::*;
 #[cfg(not(feature = "disable-staking"))]
 use self::staking::*;
-use self::ton_contracts::*;
 use self::ton_subscriber::*;
 use crate::config::*;
 use crate::storage::*;
@@ -137,7 +136,7 @@ impl Engine {
             None => return Err(EngineError::BridgeAccountNotFound.into()),
         };
 
-        let bridge_details = BridgeContract(&bridge_contract)
+        let bridge_details = ton_contracts::BridgeContract(&bridge_contract)
             .get_details()
             .context("Failed to get bridge details")?;
 
@@ -396,6 +395,8 @@ struct LabeledStakingMetrics<'a> {
 #[cfg(not(feature = "disable-staking"))]
 impl std::fmt::Display for LabeledStakingMetrics<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        const LABEL_ROUND_NUM: &str = "round_num";
+
         let metrics = self.staking.metrics();
 
         f.begin_metric("staking_user_data_tokens_balance")
@@ -553,7 +554,6 @@ impl std::fmt::Display for LabeledSolSubscriberMetrics<'_> {
 
 const LABEL_STAKER: &str = "staker";
 const LABEL_CHAIN_ID: &str = "chain_id";
-const LABEL_ROUND_NUM: &str = "round_num";
 
 pub type ShutdownRequestsRx = mpsc::UnboundedReceiver<()>;
 pub type ShutdownRequestsTx = mpsc::UnboundedSender<()>;
@@ -562,6 +562,7 @@ pub type ShutdownRequestsTx = mpsc::UnboundedSender<()>;
 enum EngineError {
     #[error("External ton message expected")]
     ExternalTonMessageExpected,
+    #[cfg(not(feature = "disable-staking"))]
     #[error("Bridge account not found")]
     BridgeAccountNotFound,
 }

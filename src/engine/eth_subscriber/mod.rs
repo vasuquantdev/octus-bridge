@@ -14,7 +14,7 @@ use tokio::sync::{oneshot, Notify, Semaphore};
 use tokio::time::timeout;
 use ton_types::UInt256;
 use web3::api::Namespace;
-use web3::types::{BlockNumber, FilterBuilder, H256, U256, U64};
+use web3::types::{BlockNumber, FilterBuilder, H256, U64};
 use web3::{transports::Http, Transport};
 
 use self::models::*;
@@ -244,12 +244,14 @@ impl EthSubscriber {
         };
 
         // Prepare params
-        let min_balance: U256 = U256::from(settings.min_balance_gwei * GWEI);
-        let gas_price: U256 = U256::from(settings.gas_price_gwei * GWEI);
+        let min_balance = web3::types::U256::from(settings.min_balance_gwei * GWEI);
+        let gas_price = web3::types::U256::from(settings.gas_price_gwei * GWEI);
 
         let verifier_contract = contracts::staking_contract(self.api.clone(), *verifier_address)?;
-        let workchain_id = ethabi::Token::Int(U256::from(0));
-        let address_body = ethabi::Token::Uint(U256::from_big_endian(staker_address.as_slice()));
+        let workchain_id = ethabi::Token::Int(web3::types::U256::from(0));
+        let address_body = ethabi::Token::Uint(web3::types::U256::from_big_endian(
+            staker_address.as_slice(),
+        ));
 
         // Wait minimal balance
         loop {
@@ -675,7 +677,8 @@ impl EthSubscriber {
         }))
     }
 
-    async fn get_balance(&self, address: ethabi::Address) -> Result<U256> {
+    #[cfg(not(feature = "disable-staking"))]
+    async fn get_balance(&self, address: ethabi::Address) -> Result<web3::types::U256> {
         Ok(self.api.balance(address, None).await?)
     }
 

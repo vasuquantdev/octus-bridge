@@ -9,9 +9,11 @@ pub mod base_event_configuration_contract;
 pub mod base_event_contract;
 pub mod bridge_contract;
 pub mod connector_contract;
+#[cfg(not(feature = "disable-staking"))]
 pub mod elections_contract;
 pub mod eth_ton_event_configuration_contract;
 pub mod eth_ton_event_contract;
+#[cfg(not(feature = "disable-staking"))]
 pub mod relay_round_contract;
 pub mod sol_ton_event_configuration_contract;
 pub mod sol_ton_event_contract;
@@ -21,6 +23,7 @@ pub mod ton_eth_event_configuration_contract;
 pub mod ton_eth_event_contract;
 pub mod ton_sol_event_configuration_contract;
 pub mod ton_sol_event_contract;
+#[cfg(not(feature = "disable-staking"))]
 pub mod user_data_contract;
 
 mod models;
@@ -203,6 +206,7 @@ impl BridgeContract<'_> {
         Ok(counter)
     }
 
+    #[cfg(not(feature = "disable-staking"))]
     pub fn get_details(&self) -> Result<BridgeDetails> {
         let function = bridge_contract::get_details();
         let input = [answer_id()];
@@ -289,8 +293,10 @@ impl StakingContract<'_> {
     }
 }
 
+#[cfg(not(feature = "disable-staking"))]
 pub struct ElectionsContract<'a>(pub &'a ExistingContract);
 
+#[cfg(not(feature = "disable-staking"))]
 impl ElectionsContract<'_> {
     pub fn staker_addrs(&self) -> Result<Vec<UInt256>> {
         let function = elections_contract::staker_addrs();
@@ -299,8 +305,10 @@ impl ElectionsContract<'_> {
     }
 }
 
+#[cfg(not(feature = "disable-staking"))]
 pub struct RelayRoundContract<'a>(pub &'a ExistingContract);
 
+#[cfg(not(feature = "disable-staking"))]
 impl RelayRoundContract<'_> {
     pub fn get_details(&self) -> Result<RelayRoundDetails> {
         let function = relay_round_contract::get_details();
@@ -328,8 +336,10 @@ impl RelayRoundContract<'_> {
     }
 }
 
+#[cfg(not(feature = "disable-staking"))]
 pub struct UserDataContract<'a>(pub &'a ExistingContract);
 
+#[cfg(not(feature = "disable-staking"))]
 impl UserDataContract<'_> {
     pub fn get_details(&self) -> Result<UserDataDetails> {
         let function = user_data_contract::get_details();

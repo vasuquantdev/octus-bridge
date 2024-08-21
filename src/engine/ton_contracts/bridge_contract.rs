@@ -13,6 +13,7 @@ pub fn connector_counter() -> &'static ton_abi::Function {
     })
 }
 
+#[cfg(not(feature = "disable-staking"))]
 /// External responsible function
 pub fn get_details() -> &'static ton_abi::Function {
     crate::once!(ton_abi::Function, || {
