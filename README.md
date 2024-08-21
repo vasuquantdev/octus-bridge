@@ -157,6 +157,8 @@ bridge_settings:
   bridge_address: "0:1d51fb47566d0d283ebbf83c641c01ebebaad6c3cec55895b0074b802036094e"
   # If set, relay will not participate in elections. Default: false
   ignore_elections: false
+  # Shard split depth
+  shard_split_depth: 10
   # Solana network config
   sol_network:
     # Public endpoint
@@ -238,6 +240,8 @@ node_settings:
   db_options:
     rocksdb_lru_capacity: "2 GB"
     cells_cache_size: "4 GB"
+  adnl_options:
+    force_use_priority_channels: false
 storage:
   persistent_db_path: "/var/db/relay-events"
 metrics_settings:
