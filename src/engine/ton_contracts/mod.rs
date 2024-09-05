@@ -1,5 +1,7 @@
 use anyhow::Result;
 use nekoton_abi::*;
+#[cfg(feature = "ton")]
+use ton_block::Deserializable;
 use ton_types::UInt256;
 
 pub use self::models::*;
@@ -74,6 +76,16 @@ impl EthTonEventContract<'_> {
             .run_local_responsible(function, &[answer_id()])?
             .unpack_first()?;
         Ok(event_init_data)
+    }
+
+    #[cfg(feature = "ton")]
+    pub fn event_decoded_data(&self) -> Result<EthTonEventDecodedData> {
+        let function = eth_ton_event_contract::get_decoded_data();
+        let event_decoded_data = self
+            .0
+            .run_local_responsible(function, &[answer_id()])?
+            .unpack()?;
+        Ok(event_decoded_data)
     }
 }
 
@@ -344,5 +356,50 @@ impl UserDataContract<'_> {
     pub fn get_details(&self) -> Result<UserDataDetails> {
         let function = user_data_contract::get_details();
         Ok(self.0.run_local(function, &[answer_id()])?.unpack_first()?)
+    }
+}
+
+#[cfg(feature = "ton")]
+pub struct JettonWalletContract<'a>(pub &'a ExistingContract);
+
+#[cfg(feature = "ton")]
+impl JettonWalletContract<'_> {
+    pub fn get_jetton_minter(&self) -> Result<ton_block::MsgAddressInt> {
+        let data = self.get_wallet_data()?;
+
+        const JETTON_MINTER_ITEM_POS: usize = 2;
+        let StackItem::Cell(jetton_minter) = &data.stack[JETTON_MINTER_ITEM_POS] else {
+            return Err(
+                ExistingContractError::UnexpectedStackItemType(JETTON_MINTER_ITEM_POS).into(),
+            );
+        };
+
+        let jetton_minter_address =
+            ton_block::MsgAddressInt::construct_from_cell(jetton_minter.clone())?;
+
+        Ok(jetton_minter_address)
+    }
+
+    pub fn get_wallet_data(&self) -> Result<VmGetterOutput> {
+        let context = ExecutionContext {
+            clock: &nekoton_utils::SimpleClock,
+            account_stuff: &self.0.account,
+        };
+        let data = context.run_getter("get_wallet_data", &[])?;
+
+        if !data.is_ok || data.exit_code != 0 {
+            return Err(ExistingContractError::NonZeroResultCode(data.exit_code).into());
+        }
+
+        const EXPECTED_STACK_LEN: usize = 4;
+        if !data.stack.len() == EXPECTED_STACK_LEN {
+            return Err(ExistingContractError::ItemsStackLenMismatch {
+                expected: EXPECTED_STACK_LEN,
+                actual: data.stack.len(),
+            }
+            .into());
+        }
+
+        Ok(data)
     }
 }

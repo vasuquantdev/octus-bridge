@@ -589,7 +589,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4114279215a005bc675e386011e594e1d9b800918cea18fcadadcce864a2046b"
 dependencies = [
  "borsh-derive 0.10.3",
- "hashbrown 0.13.2",
+ "hashbrown 0.11.2",
 ]
 
 [[package]]
@@ -1678,11 +1678,11 @@ dependencies = [
 
 [[package]]
 name = "eth-ton-abi-converter"
-version = "0.5.2"
-source = "git+https://github.com/broxus/eth-ton-abi-converter.git#e36c2f524a746534975330b3b0c4bc0f887cd341"
+version = "0.5.3"
+source = "git+https://github.com/broxus/eth-ton-abi-converter.git#2f115737359f6e92fd3d09d100aa8f5024ec120b"
 dependencies = [
  "anyhow",
- "borsh 0.9.3",
+ "borsh 0.10.3",
  "ed25519-dalek 1.0.1",
  "either",
  "ethabi",

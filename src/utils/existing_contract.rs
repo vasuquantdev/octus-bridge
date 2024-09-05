@@ -64,4 +64,8 @@ impl ExistingContract {
 pub enum ExistingContractError {
     #[error("Non zero result code: {}", .0)]
     NonZeroResultCode(i32),
+    #[error("Output stack length mismatch, should be {expected}, got {actual}")]
+    ItemsStackLenMismatch { expected: usize, actual: usize },
+    #[error("Unexpected stack item type on position {}", .0)]
+    UnexpectedStackItemType(usize),
 }

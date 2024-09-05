@@ -312,11 +312,12 @@ events, relay sees and checks them.
   > When converting ABI from EVM format to Everscale, there is a mechanism for controlling this process.
   > You can add a `bytes1` _(\*\*)_ element which sets context flags to its value.
   >
-  > Currently, there are only three flags:
+  > Currently, there are only four flags:
   >
   > - `0x01` - place tuples to new cell (\*\*\*)
   > - `0x02` - interpret `bytes` as encoded TVM cell (\*)
   > - `0x04` - insert default cell in case of error with flag `0x02` (\*)
+  > - `0x08` - check token root for token wallet
   >
   > NOTE: Flags can't be changed inside an array element! This would lead to inconsistent array items ABI.
 

@@ -700,29 +700,77 @@ impl Bridge {
 
         let event_init_data = EthTonEventContract(&contract).event_init_data()?;
 
+        struct ConfigData {
+            chain_id: u32,
+            event_emitter: [u8; 20],
+            abi: Arc<EthEventAbi>,
+            blocks_to_confirm: u16,
+            #[cfg(feature = "ton")]
+            check_token_root: bool,
+        }
+
         // Get event configuration data
         let data = {
             let state = self.state.read().await;
             state
                 .eth_ton_event_configurations
                 .get(&event_init_data.configuration)
-                .map(|configuration| {
-                    (
-                        configuration.details.network_configuration.chain_id,
-                        configuration.details.network_configuration.event_emitter,
-                        configuration.event_abi.clone(),
-                        configuration
-                            .details
-                            .network_configuration
-                            .event_blocks_to_confirm,
-                    )
+                .map(|configuration| ConfigData {
+                    chain_id: configuration.details.network_configuration.chain_id,
+                    event_emitter: configuration.details.network_configuration.event_emitter,
+                    abi: configuration.event_abi.clone(),
+                    blocks_to_confirm: configuration
+                        .details
+                        .network_configuration
+                        .event_blocks_to_confirm,
+                    #[cfg(feature = "ton")]
+                    check_token_root: configuration.mapping_context.check_token_root,
                 })
         };
 
         // NOTE: be sure to drop `eth_event_configurations` lock before that
         let (eth_subscriber, event_emitter, event_abi, blocks_to_confirm) = match data {
             // Configuration found
-            Some((chain_id, event_emitter, abi, blocks_to_confirm)) => {
+            Some(ConfigData {
+                chain_id,
+                event_emitter,
+                abi,
+                blocks_to_confirm,
+                #[cfg(feature = "ton")]
+                check_token_root,
+            }) => {
+                // Check token root if required
+                #[cfg(feature = "ton")]
+                if check_token_root {
+                    tracing::info!(
+                        event = %DisplayAddr(account),
+                        chain_id,
+                        "ETH->TON checking token root for token wallet",
+                    );
+                    let event_decoded_data = EthTonEventContract(&contract).event_decoded_data()?;
+
+                    let address = event_decoded_data.token_wallet.address();
+                    let address = UInt256::from_be_bytes(&address.get_bytestring(0));
+                    let wallet_contract = ton_subscriber.wait_contract_state(address).await?;
+                    let token_root = JettonWalletContract(&wallet_contract).get_jetton_minter()?;
+                    if event_decoded_data.token != token_root {
+                        let expected =
+                            UInt256::from_be_bytes(&token_root.address().get_bytestring(0));
+                        let actual = UInt256::from_be_bytes(
+                            &event_decoded_data.token.address().get_bytestring(0),
+                        );
+                        tracing::error!(
+                            event = %DisplayAddr(account),
+                            chain_id,
+                            expected_token_root = %DisplayAddr(expected),
+                            actual_token_root = %DisplayAddr(actual),
+                            "ETH->TON token wallet with wrong token root",
+                        );
+                        self.eth_ton_events_state.remove(&account);
+                        return Ok(());
+                    }
+                }
+
                 // Get required subscriber
                 match eth_subscribers.get_subscriber(chain_id) {
                     Some(subscriber) => (subscriber, event_emitter, abi, blocks_to_confirm),
@@ -1690,6 +1738,8 @@ impl Bridge {
                 entry.insert(EthTonEventConfigurationState {
                     details,
                     event_abi,
+                    #[cfg(feature = "ton")]
+                    mapping_context: ctx,
                     _observer: observer.clone(),
                 });
             }
@@ -2601,6 +2651,9 @@ enum EventAction {
 struct EthTonEventConfigurationState {
     /// Configuration details
     details: EthTonEventConfigurationDetails,
+    /// Mapping context
+    #[cfg(feature = "ton")]
+    mapping_context: EthToTonMappingContext,
     /// Parsed and mapped event ABI
     event_abi: Arc<EthEventAbi>,
 

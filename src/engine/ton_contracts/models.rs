@@ -1,5 +1,6 @@
 use nekoton_abi::*;
-use ton_types::UInt256;
+use ton_block::MsgAddressInt;
+use ton_types::{Cell, UInt256};
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct EthTonEventInitData {
@@ -25,6 +26,26 @@ pub struct EthTonEventVoteData {
     pub event_block_number: u32,
     #[abi(uint256)]
     pub event_block: UInt256,
+}
+
+#[derive(Debug, Clone, PackAbi, UnpackAbiPlain, KnownParamTypePlain)]
+pub struct EthTonEventDecodedData {
+    #[abi(name = "token_")]
+    pub token: MsgAddressInt,
+    #[abi(name = "amount_")]
+    pub amount: u128,
+    #[abi(name = "recipient_")]
+    pub recipient: MsgAddressInt,
+    #[abi(name = "value_")]
+    pub value: UInt256,
+    #[abi(name = "expected_evers_")]
+    pub expected_evers: UInt256,
+    #[abi(name = "payload_")]
+    pub payload: Cell,
+    #[abi(name = "proxy_")]
+    pub proxy: MsgAddressInt,
+    #[abi(name = "tokenWallet_")]
+    pub token_wallet: MsgAddressInt,
 }
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
