@@ -6,7 +6,7 @@ use super::models::*;
 pub fn get_event_init_data() -> &'static ton_abi::Function {
     crate::once!(ton_abi::Function, || {
         FunctionBuilder::new_responsible("getEventInitData")
-            .abi_version(ton_abi::contract::ABI_VERSION_2_2)
+            .abi_version(ton_abi::contract::ABI_VERSION_2_3)
             .default_headers()
             .output("details", TonSolEventInitData::param_type())
             .build()
@@ -17,7 +17,7 @@ pub fn get_event_init_data() -> &'static ton_abi::Function {
 pub fn confirm() -> &'static ton_abi::Function {
     crate::once!(ton_abi::Function, || {
         FunctionBuilder::new("confirm")
-            .abi_version(ton_abi::contract::ABI_VERSION_2_2)
+            .abi_version(ton_abi::contract::ABI_VERSION_2_3)
             .default_headers()
             .input("voteReceiver", ton_abi::ParamType::Address)
             .build()
@@ -28,7 +28,7 @@ pub fn confirm() -> &'static ton_abi::Function {
 pub fn reject() -> &'static ton_abi::Function {
     crate::once!(ton_abi::Function, || {
         FunctionBuilder::new("reject")
-            .abi_version(ton_abi::contract::ABI_VERSION_2_2)
+            .abi_version(ton_abi::contract::ABI_VERSION_2_3)
             .default_headers()
             .input("voteReceiver", ton_abi::ParamType::Address)
             .build()
