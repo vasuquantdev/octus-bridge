@@ -170,7 +170,7 @@ impl TonSigner {
             &unsigned_message.inputs,
             false,
             Some((&self.keypair, signature_id)),
-            None,
+            Some(unsigned_message.dst.clone()),
         )?;
 
         let message = ton_block::Message::with_ext_in_header_and_body(
