@@ -897,7 +897,7 @@ impl Bridge {
                             ton_abi::TokenValue::decode_params(
                                 &configuration.event_abi,
                                 cursor,
-                                &ton_abi::contract::ABI_VERSION_2_3,
+                                &ton_abi::contract::ABI_VERSION_2_2,
                                 false,
                             )
                         }),
@@ -1020,7 +1020,7 @@ impl Bridge {
                             TokenValue::decode_params(
                                 &configuration.event_abi,
                                 cursor,
-                                &ton_abi::contract::ABI_VERSION_2_3,
+                                &ton_abi::contract::ABI_VERSION_2_2,
                                 false,
                             )
                         }),
@@ -1179,7 +1179,7 @@ impl Bridge {
                             TokenValue::decode_params(
                                 &configuration.event_abi,
                                 cursor,
-                                &ton_abi::contract::ABI_VERSION_2_3,
+                                &ton_abi::contract::ABI_VERSION_2_2,
                                 false,
                             )
                         }),
