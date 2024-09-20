@@ -879,6 +879,13 @@ impl Bridge {
         // Get event details
         let event_init_data = TonEthEventContract(&contract).event_init_data()?;
 
+        struct ConfigData {
+            proxy: [u8; 20],
+            data: Result<Vec<ton_abi::Token>>,
+            #[cfg(feature = "ton")]
+            verify_token_meta: bool,
+        }
+
         // Find suitable configuration
         // NOTE: be sure to drop `self.state` lock before removing pending ton event.
         // It may deadlock otherwise!
@@ -887,37 +894,92 @@ impl Bridge {
             state
                 .ton_eth_event_configurations
                 .get(&event_init_data.configuration)
-                .map(|configuration| {
-                    (
-                        configuration.details.network_configuration.proxy,
-                        ton_types::SliceData::load_cell(
-                            event_init_data.vote_data.event_data.clone(),
-                        )
-                        .and_then(|cursor| {
-                            ton_abi::TokenValue::decode_params(
-                                &configuration.event_abi,
-                                cursor,
-                                &ton_abi::contract::ABI_VERSION_2_2,
-                                false,
-                            )
-                        }),
+                .map(|configuration| ConfigData {
+                    proxy: configuration.details.network_configuration.proxy,
+                    data: ton_types::SliceData::load_cell(
+                        event_init_data.vote_data.event_data.clone(),
                     )
+                    .and_then(|cursor| {
+                        ton_abi::TokenValue::decode_params(
+                            &configuration.event_abi,
+                            cursor,
+                            &ton_abi::contract::ABI_VERSION_2_2,
+                            false,
+                        )
+                    }),
+                    #[cfg(feature = "ton")]
+                    verify_token_meta: configuration.context.verify_token_meta,
                 })
         };
 
         let decoded_data = match data {
             // Decode event data with event abi from configuration
-            Some((proxy, data)) => data.and_then(|data| {
-                Ok(make_mapped_ton_event(
-                    event_init_data.vote_data.event_transaction_lt,
-                    event_init_data.vote_data.event_timestamp,
-                    map_ton_tokens_to_eth_bytes(data)?,
-                    event_init_data.configuration,
-                    account,
-                    proxy,
-                    round_number,
-                ))
-            }),
+            Some(ConfigData {
+                proxy,
+                data,
+                #[cfg(feature = "ton")]
+                verify_token_meta,
+            }) => {
+                #[cfg(feature = "ton")]
+                if verify_token_meta {
+                    tracing::info!(
+                        event = %DisplayAddr(account),
+                        "TON->ETH checking token meta",
+                    );
+                    let event_decoded_data = TonEthEventContract(&contract).event_decoded_data()?;
+                    let expected_meta = self
+                        .context
+                        .tokens_meta_client
+                        .get_token_meta(&event_decoded_data.token.to_string())
+                        .await?;
+
+                    let mut meta_mismatch = false;
+                    if event_decoded_data.name != expected_meta.name {
+                        tracing::error!(
+                            event = %DisplayAddr(account),
+                            expected_token_name = expected_meta.name,
+                            actual_token_name = event_decoded_data.name,
+                            "TON->ETH token name mismatch",
+                        );
+                        meta_mismatch = true;
+                    }
+                    if event_decoded_data.symbol != expected_meta.symbol {
+                        tracing::error!(
+                            event = %DisplayAddr(account),
+                            expected_token_symbol = expected_meta.symbol,
+                            actual_token_symbol = event_decoded_data.symbol,
+                            "TON->ETH token symbol mismatch",
+                        );
+                        meta_mismatch = true;
+                    }
+                    if event_decoded_data.decimals != expected_meta.decimals {
+                        tracing::error!(
+                            event = %DisplayAddr(account),
+                            expected_token_decimals = expected_meta.decimals,
+                            actual_token_decimals = event_decoded_data.decimals,
+                            "TON->ETH token decimals mismatch",
+                        );
+                        meta_mismatch = true;
+                    }
+
+                    if meta_mismatch {
+                        self.ton_eth_events_state.remove(&account);
+                        return Ok(());
+                    }
+                }
+
+                data.and_then(|data| {
+                    Ok(make_mapped_ton_event(
+                        event_init_data.vote_data.event_transaction_lt,
+                        event_init_data.vote_data.event_timestamp,
+                        map_ton_tokens_to_eth_bytes(data)?,
+                        event_init_data.configuration,
+                        account,
+                        proxy,
+                        round_number,
+                    ))
+                })
+            }
             // Do nothing when configuration was not found
             None => {
                 tracing::error!(
@@ -1770,10 +1832,20 @@ impl Bridge {
         account: &UInt256,
         contract: &ExistingContract,
     ) -> Result<()> {
+        #[cfg(feature = "ton")]
+        let flags = EventConfigurationBaseContract(contract)
+            .get_flags()
+            .context("Failed to get TON->ETH event configuration flags")?;
+
         // Get configuration details
         let details = TonEthEventConfigurationContract(contract)
             .get_details()
             .context("Failed to get TON->ETH event configuration details")?;
+
+        #[cfg(feature = "ton")]
+        let ctx = flags
+            .map(|flags| eth_ton_abi_converter::TonToEthContext::from(flags as u8))
+            .unwrap_or_default();
 
         // Check if configuration is expired
         let current_timestamp = self.context.ton_subscriber.current_utime();
@@ -1813,6 +1885,8 @@ impl Bridge {
 
                 entry.insert(TonEthEventConfigurationState {
                     details,
+                    #[cfg(feature = "ton")]
+                    context: ctx,
                     event_abi,
                     _observer: observer.clone(),
                 });
@@ -2666,6 +2740,9 @@ struct EthTonEventConfigurationState {
 struct TonEthEventConfigurationState {
     /// Configuration details
     details: TonEthEventConfigurationDetails,
+    /// Context
+    #[cfg(feature = "ton")]
+    context: eth_ton_abi_converter::TonToEthContext,
     /// Parsed `eventData` ABI
     event_abi: Vec<ton_abi::Param>,
 

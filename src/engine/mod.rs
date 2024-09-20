@@ -6,6 +6,8 @@ use self::keystore::*;
 use self::sol_subscriber::*;
 #[cfg(not(feature = "disable-staking"))]
 use self::staking::*;
+#[cfg(feature = "ton")]
+use self::ton_meta::*;
 use self::ton_subscriber::*;
 use crate::config::*;
 use crate::storage::*;
@@ -25,6 +27,8 @@ mod sol_subscriber;
 #[cfg(not(feature = "disable-staking"))]
 mod staking;
 mod ton_contracts;
+#[cfg(feature = "ton")]
+mod ton_meta;
 mod ton_subscriber;
 
 pub struct Engine {
@@ -172,6 +176,8 @@ pub struct EngineContext {
     pub sol_subscriber: Option<Arc<SolSubscriber>>,
     pub persistent_storage: Arc<PersistentStorage>,
     pub runtime_storage: Arc<RuntimeStorage>,
+    #[cfg(feature = "ton")]
+    pub tokens_meta_client: TokenMetaClient,
 }
 
 impl Drop for EngineContext {
@@ -202,6 +208,8 @@ impl EngineContext {
             persistent_storage.clone(),
             runtime_storage.clone(),
         );
+        #[cfg(feature = "ton")]
+        let tokens_meta_client = TokenMetaClient::new(&settings.token_meta_base_url);
 
         let ton_engine = ton_indexer::Engine::new(
             config
@@ -244,6 +252,8 @@ impl EngineContext {
             sol_subscriber,
             persistent_storage,
             runtime_storage,
+            #[cfg(feature = "ton")]
+            tokens_meta_client,
         }))
     }
 

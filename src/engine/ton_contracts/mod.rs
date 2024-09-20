@@ -100,6 +100,16 @@ impl TonEthEventContract<'_> {
             .unpack_first()?;
         Ok(event_init_data)
     }
+
+    #[cfg(feature = "ton")]
+    pub fn event_decoded_data(&self) -> Result<TonEthEventDecodedData> {
+        let function = ton_eth_event_contract::get_decoded_data();
+        let event_decoded_data = self
+            .0
+            .run_local_responsible(function, &[answer_id()])?
+            .unpack()?;
+        Ok(event_decoded_data)
+    }
 }
 
 pub struct SolTonEventContract<'a>(pub &'a ExistingContract);

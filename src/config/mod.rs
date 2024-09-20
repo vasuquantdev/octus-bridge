@@ -83,6 +83,10 @@ pub struct BridgeConfig {
     /// Shard split depth. Default: 1
     #[serde(default)]
     pub shard_split_depth: u8,
+
+    /// Ton token metadata endpoint base url
+    #[cfg(feature = "ton")]
+    pub token_meta_base_url: String,
 }
 
 /// ETH address verification settings
