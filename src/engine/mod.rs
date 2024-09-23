@@ -11,6 +11,8 @@ use crate::config::*;
 use crate::storage::*;
 use crate::utils::*;
 use anyhow::{Context, Result};
+use everscale_rpc_client::jrpc::JrpcClient;
+use everscale_rpc_client::{Client, ClientOptions};
 use parking_lot::Mutex;
 use pomfrit::formatter::*;
 use rustc_hash::FxHashMap;
@@ -172,6 +174,7 @@ pub struct EngineContext {
     pub sol_subscriber: Option<Arc<SolSubscriber>>,
     pub persistent_storage: Arc<PersistentStorage>,
     pub runtime_storage: Arc<RuntimeStorage>,
+    pub jrpc_client: JrpcClient,
 }
 
 impl Drop for EngineContext {
@@ -231,6 +234,9 @@ impl EngineContext {
             }
         };
 
+        let jrpc_client =
+            JrpcClient::new(settings.jrpc_endpoints.clone(), ClientOptions::default()).await?;
+
         Ok(Arc::new(Self {
             shutdown_requests_tx,
             staker_account_str,
@@ -244,6 +250,7 @@ impl EngineContext {
             sol_subscriber,
             persistent_storage,
             runtime_storage,
+            jrpc_client,
         }))
     }
 
@@ -290,8 +297,12 @@ impl EngineContext {
             .messages_queue
             .add_message(*account, cells.repr_hash(), expire_at)?;
 
-        self.ton_engine
-            .broadcast_external_message(to, &serialized)?;
+        if let Err(e) = self.ton_engine.broadcast_external_message(to, &serialized) {
+            tracing::warn!("Failed broadcasting message: {e}");
+        }
+
+        tracing::warn!("Duplicating external message broadcasting via JRPC");
+        self.jrpc_client.broadcast_message(message.clone()).await?;
 
         let status = rx.await?;
         Ok(status)

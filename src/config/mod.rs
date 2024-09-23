@@ -1,14 +1,14 @@
 use std::net::{Ipv4Addr, SocketAddrV4};
 use std::path::{Path, PathBuf};
 
+use crate::storage::PersistentStorageConfig;
 use anyhow::{Context, Result};
 use everscale_network::{adnl, dht, overlay, rldp};
 use nekoton_utils::*;
 use rand::Rng;
 use secstr::SecUtf8;
 use serde::{Deserialize, Serialize};
-
-use crate::storage::PersistentStorageConfig;
+use url::Url;
 
 pub use self::eth_config::*;
 pub use self::sol_config::*;
@@ -83,6 +83,8 @@ pub struct BridgeConfig {
     /// Shard split depth. Default: 1
     #[serde(default)]
     pub shard_split_depth: u8,
+
+    pub jrpc_endpoints: Vec<Url>,
 }
 
 /// ETH address verification settings

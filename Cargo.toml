@@ -27,6 +27,7 @@ dashmap = "5.3"
 dialoguer = "0.10.0"
 either = "1.6.1"
 everscale-network = "0.5.5"
+everscale-rpc-client = { git = "https://github.com/broxus/everscale-jrpc.git", version = "0.6.1" }
 fdlimit = "0.2.1"
 futures-util = "0.3"
 hex = "0.4"
