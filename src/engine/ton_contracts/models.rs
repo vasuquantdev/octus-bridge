@@ -68,6 +68,42 @@ pub struct TonEthEventVoteData {
     pub event_data: ton_types::Cell,
 }
 
+#[derive(Debug, Clone, PackAbi, UnpackAbiPlain, KnownParamTypePlain)]
+pub struct TonEthEventDecodedData {
+    #[abi(name = "proxy_")]
+    pub proxy: MsgAddressInt,
+    #[abi(name = "tokenWallet_")]
+    pub token_wallet: MsgAddressInt,
+    #[abi(name = "token_")]
+    pub token: MsgAddressInt,
+    #[abi(name = "remainingGasTo_")]
+    pub remaining_gas_to: MsgAddressInt,
+    #[abi(name = "amount_")]
+    pub amount: u128,
+    #[abi(name = "recipient_", with = "uint160_bytes")]
+    pub recipient: [u8; 20],
+    #[abi(name = "chainId_")]
+    pub chain_id: UInt256,
+    #[abi]
+    pub callback: TonEthEventDecodedDataCallback,
+    #[abi(name = "name_", string)]
+    pub name: String,
+    #[abi(name = "symbol_", string)]
+    pub symbol: String,
+    #[abi(name = "decimals_")]
+    pub decimals: u8,
+}
+
+#[derive(Debug, Clone, UnpackAbi, PackAbi, KnownParamType)]
+pub struct TonEthEventDecodedDataCallback {
+    #[abi(with = "uint160_bytes")]
+    pub recipient: [u8; 20],
+    #[abi]
+    pub payload: Vec<u8>,
+    #[abi]
+    pub strict: bool,
+}
+
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct SolTonEventInitData {
     #[abi]

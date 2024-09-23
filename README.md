@@ -159,6 +159,8 @@ bridge_settings:
   ignore_elections: false
   # Shard split depth
   shard_split_depth: 10
+  # Ton token metadata endpoint base url
+  token_meta_base_url: "https://ton-tokens-api.meta"
   # Solana network config
   sol_network:
     # Public endpoint
@@ -267,7 +269,7 @@ should subscribe to the event configuration contract. Each configuration contrac
 events, relay sees and checks them.
 
 - For Everscale-to-EVM events, only the correctness of data packing is checked (all other stuff is verified on the contracts
-  side). If the event is correct, the relay converts this data into ETH ABI encoded bytes and signs it with its
+  side). You can enforce token metadata check though (currently for TON only, use flag `0x01` on contract level to enable). If the event is correct, the relay converts this data into ETH ABI encoded bytes and signs it with its
   ETH key. This signature is sent along with a confirmation message. If the data in the event was invalid then the
   relay sends a rejection message.
 

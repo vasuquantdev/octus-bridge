@@ -84,6 +84,10 @@ pub struct BridgeConfig {
     #[serde(default)]
     pub shard_split_depth: u8,
 
+    /// Ton token metadata endpoint base url
+    #[cfg(feature = "ton")]
+    pub token_meta_base_url: String,
+
     pub jrpc_endpoints: Vec<Url>,
 }
 
