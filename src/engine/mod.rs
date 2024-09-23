@@ -6,6 +6,8 @@ use self::keystore::*;
 use self::sol_subscriber::*;
 #[cfg(not(feature = "disable-staking"))]
 use self::staking::*;
+#[cfg(feature = "ton")]
+use self::ton_meta::*;
 use self::ton_subscriber::*;
 use crate::config::*;
 use crate::storage::*;
@@ -221,8 +223,8 @@ impl EngineContext {
             global_config,
             ton_subscriber.clone(),
         )
-        .await
-        .context("Failed to start TON node")?;
+            .await
+            .context("Failed to start TON node")?;
 
         let eth_subscribers = EthSubscriberRegistry::new(settings.evm_networks.clone())
             .await
