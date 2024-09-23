@@ -223,8 +223,8 @@ impl EngineContext {
             global_config,
             ton_subscriber.clone(),
         )
-            .await
-            .context("Failed to start TON node")?;
+        .await
+        .context("Failed to start TON node")?;
 
         let eth_subscribers = EthSubscriberRegistry::new(settings.evm_networks.clone())
             .await
