@@ -749,22 +749,30 @@ impl Bridge {
                     );
                     let event_decoded_data = EthTonEventContract(&contract).event_decoded_data()?;
 
-                    let address = event_decoded_data.token_wallet.address();
-                    let address = UInt256::from_be_bytes(&address.get_bytestring(0));
-                    let wallet_contract = ton_subscriber.wait_contract_state(address).await?;
-                    let token_root = JettonWalletContract(&wallet_contract).get_jetton_minter()?;
-                    if event_decoded_data.token != token_root {
-                        let expected =
-                            UInt256::from_be_bytes(&token_root.address().get_bytestring(0));
+                    let token_root = event_decoded_data.token.address();
+                    let token_root = UInt256::from_be_bytes(&token_root.get_bytestring(0));
+                    let minter_contract = ton_subscriber.wait_contract_state(token_root).await?;
+                    let proxy_wallet_address = JettonMinterContract(&minter_contract)
+                        .get_wallet_address(&event_decoded_data.proxy)?;
+
+                    if event_decoded_data.token_wallet != proxy_wallet_address {
+                        let proxy = UInt256::from_be_bytes(
+                            &event_decoded_data.proxy.address().get_bytestring(0),
+                        );
+                        let expected = UInt256::from_be_bytes(
+                            &proxy_wallet_address.address().get_bytestring(0),
+                        );
                         let actual = UInt256::from_be_bytes(
-                            &event_decoded_data.token.address().get_bytestring(0),
+                            &event_decoded_data.token_wallet.address().get_bytestring(0),
                         );
                         tracing::error!(
                             event = %DisplayAddr(account),
                             chain_id,
-                            expected_token_root = %DisplayAddr(expected),
-                            actual_token_root = %DisplayAddr(actual),
-                            "ETH->TON token wallet with wrong token root",
+                            proxy = %DisplayAddr(proxy),
+                            token_root = %DisplayAddr(token_root),
+                            expected_token_wallet = %DisplayAddr(expected),
+                            actual_token_wallet = %DisplayAddr(actual),
+                            "ETH->TON wrong token wallet for given token root",
                         );
                         self.eth_ton_events_state.remove(&account);
                         return Ok(());

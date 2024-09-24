@@ -1,7 +1,7 @@
 use anyhow::Result;
 use nekoton_abi::*;
 #[cfg(feature = "ton")]
-use ton_block::Deserializable;
+use ton_block::{Deserializable, Serializable};
 use ton_types::UInt256;
 
 pub use self::models::*;
@@ -29,6 +29,9 @@ pub mod ton_sol_event_contract;
 pub mod user_data_contract;
 
 mod models;
+
+#[cfg(test)]
+mod tests;
 
 pub struct EventBaseContract<'a>(pub &'a ExistingContract);
 
@@ -370,38 +373,27 @@ impl UserDataContract<'_> {
 }
 
 #[cfg(feature = "ton")]
-pub struct JettonWalletContract<'a>(pub &'a ExistingContract);
+pub struct JettonMinterContract<'a>(pub &'a ExistingContract);
 
 #[cfg(feature = "ton")]
-impl JettonWalletContract<'_> {
-    pub fn get_jetton_minter(&self) -> Result<ton_block::MsgAddressInt> {
-        let data = self.get_wallet_data()?;
-
-        const JETTON_MINTER_ITEM_POS: usize = 2;
-        let StackItem::Cell(jetton_minter) = &data.stack[JETTON_MINTER_ITEM_POS] else {
-            return Err(
-                ExistingContractError::UnexpectedStackItemType(JETTON_MINTER_ITEM_POS).into(),
-            );
-        };
-
-        let jetton_minter_address =
-            ton_block::MsgAddressInt::construct_from_cell(jetton_minter.clone())?;
-
-        Ok(jetton_minter_address)
-    }
-
-    pub fn get_wallet_data(&self) -> Result<VmGetterOutput> {
+impl JettonMinterContract<'_> {
+    pub fn get_wallet_address(
+        &self,
+        owner_address: &ton_block::MsgAddressInt,
+    ) -> Result<ton_block::MsgAddressInt> {
         let context = ExecutionContext {
             clock: &nekoton_utils::SimpleClock,
             account_stuff: &self.0.account,
         };
-        let data = context.run_getter("get_wallet_data", &[])?;
+        let owner_address =
+            StackItem::Slice(ton_types::SliceData::load_cell(owner_address.serialize()?)?);
+        let data = context.run_getter("get_wallet_address", &[owner_address])?;
 
         if !data.is_ok || data.exit_code != 0 {
             return Err(ExistingContractError::NonZeroResultCode(data.exit_code).into());
         }
 
-        const EXPECTED_STACK_LEN: usize = 4;
+        const EXPECTED_STACK_LEN: usize = 1;
         if !data.stack.len() == EXPECTED_STACK_LEN {
             return Err(ExistingContractError::ItemsStackLenMismatch {
                 expected: EXPECTED_STACK_LEN,
@@ -410,6 +402,27 @@ impl JettonWalletContract<'_> {
             .into());
         }
 
-        Ok(data)
+        const JETTON_MINTER_ITEM_POS: usize = 0;
+        let jetton_wallet_address = read_address(data.stack, JETTON_MINTER_ITEM_POS)?;
+
+        Ok(jetton_wallet_address)
+    }
+}
+
+#[cfg(feature = "ton")]
+pub fn read_address(
+    mut stack_items: Vec<StackItem>,
+    pos: usize,
+) -> Result<ton_block::MsgAddressInt> {
+    match stack_items[pos] {
+        StackItem::Cell(ref cell) => {
+            Ok(ton_block::MsgAddressInt::construct_from_cell(cell.clone())?)
+        }
+        StackItem::Slice(ref mut slice) => {
+            let mut addr: ton_block::MsgAddressInt = Default::default();
+            ton_block::MsgAddressInt::read_from(&mut addr, slice)?;
+            Ok(addr)
+        }
+        _ => Err(ExistingContractError::UnexpectedStackItemType(pos).into()),
     }
 }
