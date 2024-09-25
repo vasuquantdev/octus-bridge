@@ -1,6 +1,6 @@
 [package]
 name = "relay"
-version = "2.3.3-hotfix"
+version = "2.3.4"
 edition = "2021"
 authors = ["Broxus team"]
 publish = false

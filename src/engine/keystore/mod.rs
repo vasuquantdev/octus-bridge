@@ -169,7 +169,7 @@ impl TonSigner {
             &headers,
             &unsigned_message.inputs,
             false,
-            Some((&self.keypair, None)),
+            Some((&self.keypair, signature_id)),
             Some(unsigned_message.dst.clone()),
         )?;
 

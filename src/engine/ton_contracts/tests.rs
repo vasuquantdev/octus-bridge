@@ -6,8 +6,10 @@ use tokio::sync::OnceCell;
 use ton_block::MsgAddressInt;
 use url::Url;
 
+#[allow(unused_imports)]
 use super::*;
 
+#[allow(dead_code)]
 async fn get_rpc_client() -> &'static RpcClient {
     static RPC_CLIENT: Lazy<OnceCell<RpcClient>> = Lazy::new(OnceCell::new);
     RPC_CLIENT
@@ -22,6 +24,7 @@ async fn get_rpc_client() -> &'static RpcClient {
         .await
 }
 
+#[allow(dead_code)]
 async fn get_existing_contract(address: &str) -> ExistingContract {
     let rpc_client = get_rpc_client().await;
 
