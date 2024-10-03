@@ -339,7 +339,14 @@ impl EthSubscriber {
         event_emitter: [u8; 20],
         event_abi: Arc<EthEventAbi>,
         blocks_to_confirm: u16,
+        preliminary_checks_succeeded: bool,
     ) -> Result<VerificationStatus> {
+        if !preliminary_checks_succeeded {
+            return Ok(VerificationStatus::NotExists {
+                reason: "failed preliminary checks".to_string(),
+            });
+        }
+
         let rx = {
             let mut pending_confirmations = self.pending_confirmations.lock().await;
 

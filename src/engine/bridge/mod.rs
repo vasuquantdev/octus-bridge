@@ -729,7 +729,13 @@ impl Bridge {
         };
 
         // NOTE: be sure to drop `eth_event_configurations` lock before that
-        let (eth_subscriber, event_emitter, event_abi, blocks_to_confirm) = match data {
+        let (
+            eth_subscriber,
+            event_emitter,
+            event_abi,
+            blocks_to_confirm,
+            preliminary_checks_succeeded,
+        ) = match data {
             // Configuration found
             Some(ConfigData {
                 chain_id,
@@ -739,6 +745,7 @@ impl Bridge {
                 #[cfg(feature = "ton")]
                 check_token_root,
             }) => {
+                let mut preliminary_checks_succeeded = true;
                 // Check token root if required
                 #[cfg(feature = "ton")]
                 if check_token_root {
@@ -774,14 +781,19 @@ impl Bridge {
                             actual_token_wallet = %DisplayAddr(actual),
                             "ETH->TON wrong token wallet for given token root",
                         );
-                        self.eth_ton_events_state.remove(&account);
-                        return Ok(());
+                        preliminary_checks_succeeded = false;
                     }
                 }
 
                 // Get required subscriber
                 match eth_subscribers.get_subscriber(chain_id) {
-                    Some(subscriber) => (subscriber, event_emitter, abi, blocks_to_confirm),
+                    Some(subscriber) => (
+                        subscriber,
+                        event_emitter,
+                        abi,
+                        blocks_to_confirm,
+                        preliminary_checks_succeeded,
+                    ),
                     None => {
                         tracing::error!(
                             event = %DisplayAddr(account),
@@ -814,6 +826,7 @@ impl Bridge {
                 event_emitter,
                 event_abi,
                 blocks_to_confirm,
+                preliminary_checks_succeeded,
             )
             .await
         {
@@ -928,6 +941,7 @@ impl Bridge {
                 #[cfg(feature = "ton")]
                 verify_token_meta,
             }) => {
+                let mut verification_error = None;
                 #[cfg(feature = "ton")]
                 if verify_token_meta {
                     tracing::info!(
@@ -971,22 +985,25 @@ impl Bridge {
                     }
 
                     if meta_mismatch {
-                        self.ton_eth_events_state.remove(&account);
-                        return Ok(());
+                        verification_error = Some(BridgeError::TokenMetadataMismatch.into());
                     }
                 }
 
-                data.and_then(|data| {
-                    Ok(make_mapped_ton_event(
-                        event_init_data.vote_data.event_transaction_lt,
-                        event_init_data.vote_data.event_timestamp,
-                        map_ton_tokens_to_eth_bytes(data)?,
-                        event_init_data.configuration,
-                        account,
-                        proxy,
-                        round_number,
-                    ))
-                })
+                if let Some(err) = verification_error {
+                    Err(err)
+                } else {
+                    data.and_then(|data| {
+                        Ok(make_mapped_ton_event(
+                            event_init_data.vote_data.event_transaction_lt,
+                            event_init_data.vote_data.event_timestamp,
+                            map_ton_tokens_to_eth_bytes(data)?,
+                            event_init_data.configuration,
+                            account,
+                            proxy,
+                            round_number,
+                        ))
+                    })
+                }
             }
             // Do nothing when configuration was not found
             None => {
@@ -3330,4 +3347,7 @@ enum BridgeError {
     StorageNotReady,
     #[error("Account `{0}` not found")]
     AccountNotFound(String),
+    #[cfg(feature = "ton")]
+    #[error("Token metadata mismatch")]
+    TokenMetadataMismatch,
 }
