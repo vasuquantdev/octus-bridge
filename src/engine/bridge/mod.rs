@@ -705,7 +705,6 @@ impl Bridge {
             event_emitter: [u8; 20],
             abi: Arc<EthEventAbi>,
             blocks_to_confirm: u16,
-            #[cfg(feature = "ton")]
             check_token_root: bool,
         }
 
@@ -723,7 +722,6 @@ impl Bridge {
                         .details
                         .network_configuration
                         .event_blocks_to_confirm,
-                    #[cfg(feature = "ton")]
                     check_token_root: configuration.mapping_context.check_token_root,
                 })
         };
@@ -742,12 +740,10 @@ impl Bridge {
                 event_emitter,
                 abi,
                 blocks_to_confirm,
-                #[cfg(feature = "ton")]
                 check_token_root,
             }) => {
                 let mut preliminary_checks_succeeded = true;
                 // Check token root if required
-                #[cfg(feature = "ton")]
                 if check_token_root {
                     tracing::info!(
                         event = %DisplayAddr(account),
@@ -758,9 +754,13 @@ impl Bridge {
 
                     let token_root = event_decoded_data.token.address();
                     let token_root = UInt256::from_be_bytes(&token_root.get_bytestring(0));
-                    let minter_contract = ton_subscriber.wait_contract_state(token_root).await?;
-                    let proxy_wallet_address = JettonMinterContract(&minter_contract)
+                    let root_contract = ton_subscriber.wait_contract_state(token_root).await?;
+                    #[cfg(feature = "ton")]
+                    let proxy_wallet_address = JettonMinterContract(&root_contract)
                         .get_wallet_address(&event_decoded_data.proxy)?;
+                    #[cfg(not(feature = "ton"))]
+                    let proxy_wallet_address =
+                        TokenRootContract(&root_contract).wallet_of(&event_decoded_data.proxy)?;
 
                     if event_decoded_data.token_wallet != proxy_wallet_address {
                         let proxy = UInt256::from_be_bytes(
@@ -1825,7 +1825,6 @@ impl Bridge {
                 entry.insert(EthTonEventConfigurationState {
                     details,
                     event_abi,
-                    #[cfg(feature = "ton")]
                     mapping_context: ctx,
                     _observer: observer.clone(),
                 });
@@ -2751,7 +2750,6 @@ struct EthTonEventConfigurationState {
     /// Configuration details
     details: EthTonEventConfigurationDetails,
     /// Mapping context
-    #[cfg(feature = "ton")]
     mapping_context: EthToTonMappingContext,
     /// Parsed and mapped event ABI
     event_abi: Arc<EthEventAbi>,

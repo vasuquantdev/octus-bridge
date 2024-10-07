@@ -21,6 +21,8 @@ pub mod sol_ton_event_configuration_contract;
 pub mod sol_ton_event_contract;
 #[cfg(not(feature = "disable-staking"))]
 pub mod staking_contract;
+#[cfg(not(feature = "ton"))]
+pub mod token_root_contract;
 pub mod ton_eth_event_configuration_contract;
 pub mod ton_eth_event_contract;
 pub mod ton_sol_event_configuration_contract;
@@ -81,7 +83,6 @@ impl EthTonEventContract<'_> {
         Ok(event_init_data)
     }
 
-    #[cfg(feature = "ton")]
     pub fn event_decoded_data(&self) -> Result<EthTonEventDecodedData> {
         let function = eth_ton_event_contract::get_decoded_data();
         let event_decoded_data = self
@@ -424,5 +425,26 @@ pub fn read_address(
             Ok(addr)
         }
         _ => Err(ExistingContractError::UnexpectedStackItemType(pos).into()),
+    }
+}
+
+#[cfg(not(feature = "ton"))]
+pub struct TokenRootContract<'a>(pub &'a ExistingContract);
+
+#[cfg(not(feature = "ton"))]
+impl TokenRootContract<'_> {
+    pub fn wallet_of(
+        &self,
+        address: &ton_block::MsgAddressInt,
+    ) -> Result<ton_block::MsgAddressInt> {
+        let function = token_root_contract::wallet_of();
+        let token_wallet = self
+            .0
+            .run_local_responsible(
+                function,
+                &[answer_id(), address.token_value().named("walletOwner")],
+            )?
+            .unpack_first()?;
+        Ok(token_wallet)
     }
 }

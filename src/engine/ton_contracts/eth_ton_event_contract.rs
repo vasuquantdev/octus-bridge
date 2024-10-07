@@ -14,7 +14,6 @@ pub fn get_event_init_data() -> &'static ton_abi::Function {
 }
 
 /// External responsible function
-#[cfg(feature = "ton")]
 pub fn get_decoded_data() -> &'static ton_abi::Function {
     crate::once!(ton_abi::Function, || {
         FunctionBuilder::new_responsible("getDecodedData")

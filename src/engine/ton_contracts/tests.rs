@@ -6,16 +6,20 @@ use tokio::sync::OnceCell;
 use ton_block::MsgAddressInt;
 use url::Url;
 
-#[allow(unused_imports)]
 use super::*;
 
-#[allow(dead_code)]
+#[cfg(feature = "ton")]
+const RPC_URL: &str = "https://jrpc-ton.broxus.com/proto";
+
+#[cfg(not(feature = "ton"))]
+const RPC_URL: &str = "https://jrpc.everwallet.net/proto";
+
 async fn get_rpc_client() -> &'static RpcClient {
     static RPC_CLIENT: Lazy<OnceCell<RpcClient>> = Lazy::new(OnceCell::new);
     RPC_CLIENT
         .get_or_init(|| async {
             RpcClient::new(
-                vec![Url::from_str("https://jrpc-ton.broxus.com/proto").unwrap()],
+                vec![Url::from_str(RPC_URL).unwrap()],
                 ClientOptions::default(),
             )
             .await
@@ -24,7 +28,6 @@ async fn get_rpc_client() -> &'static RpcClient {
         .await
 }
 
-#[allow(dead_code)]
 async fn get_existing_contract(address: &str) -> ExistingContract {
     let rpc_client = get_rpc_client().await;
 
@@ -96,5 +99,47 @@ async fn get_jetton_wallet_address_test() {
     assert_eq!(
         wallet_address.to_string(),
         "0:b40d62f8f20e725cf64101c0a933693b2453d94405ee867fdf18f4d6956a29d1" // Bridge Proxy USDT Wallet
+    );
+}
+
+#[cfg(not(feature = "ton"))]
+#[tokio::test]
+async fn get_eth_ton_decoded_data_test() {
+    let contract =
+        get_existing_contract("0:8b176c8b79211250259748842df71776375e4e72996c2b3545b90563820dda4a") // EVM -> TON native event
+            .await;
+    let data = EthTonEventContract(&contract).event_decoded_data().unwrap();
+
+    assert_eq!(
+        data.token.to_string(),
+        "0:a49cd4e158a9a15555e624759e2e4e766d22600b7800d891e46f9291f044a93d" // USDT token root
+    );
+    assert_eq!(
+        data.proxy.to_string(),
+        "0:36122a25a11e8772dc5d94f5f6a653d4661f6e474bc85cb275aece185acd62a4" // Bridge Proxy
+    );
+    assert_eq!(
+        data.token_wallet.to_string(),
+        "0:969013414cc804caec5229de43c253d993dca794eca7913fe7d2af4ff52d15f4" // Bridge Proxy USDT Wallet
+    );
+}
+
+#[cfg(not(feature = "ton"))]
+#[tokio::test]
+async fn get_wallet_of_test() {
+    let contract =
+        get_existing_contract("0:a49cd4e158a9a15555e624759e2e4e766d22600b7800d891e46f9291f044a93d") // USDT token root
+            .await;
+    let owner_address = MsgAddressInt::from_str(
+        "0:36122a25a11e8772dc5d94f5f6a653d4661f6e474bc85cb275aece185acd62a4", // Bridge Proxy
+    )
+    .unwrap();
+    let wallet_address = TokenRootContract(&contract)
+        .wallet_of(&owner_address)
+        .unwrap();
+
+    assert_eq!(
+        wallet_address.to_string(),
+        "0:969013414cc804caec5229de43c253d993dca794eca7913fe7d2af4ff52d15f4" // Bridge Proxy USDT Wallet
     );
 }
