@@ -201,7 +201,7 @@ dependencies = [
  "ark-std",
  "derivative",
  "hashbrown 0.13.2",
- "itertools",
+ "itertools 0.10.5",
  "num-traits",
  "zeroize",
 ]
@@ -218,7 +218,7 @@ dependencies = [
  "ark-std",
  "derivative",
  "digest 0.10.7",
- "itertools",
+ "itertools 0.10.5",
  "num-bigint 0.4.4",
  "num-traits",
  "paste",
@@ -427,6 +427,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 
 [[package]]
+name = "axum-core"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "759fa577a247914fd3f7f76d62972792636412fbfd634cd452f6a385a74d2d2c"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "futures-util",
+ "http",
+ "http-body",
+ "mime",
+ "rustversion",
+ "tower-layer",
+ "tower-service",
+]
+
+[[package]]
 name = "backtrace"
 version = "0.3.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -489,7 +506,7 @@ dependencies = [
  "bitflags 2.4.0",
  "cexpr",
  "clang-sys",
- "itertools",
+ "itertools 0.10.5",
  "lazy_static",
  "lazycell",
  "proc-macro2 1.0.69",
@@ -589,7 +606,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4114279215a005bc675e386011e594e1d9b800918cea18fcadadcce864a2046b"
 dependencies = [
  "borsh-derive 0.10.3",
- "hashbrown 0.13.2",
+ "hashbrown 0.12.3",
 ]
 
 [[package]]
@@ -1513,6 +1530,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "downcast-rs"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75b325c5dbd37f80359721ad39aca5a29fb04c89279657cffdda8736d0c0b9d2"
+
+[[package]]
+name = "dyn-clone"
+version = "1.0.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d6ef0072f8a535281e4876be788938b528e9a1d43900b82c2569af7da799125"
+
+[[package]]
 name = "eager"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1678,11 +1707,11 @@ dependencies = [
 
 [[package]]
 name = "eth-ton-abi-converter"
-version = "0.5.2"
-source = "git+https://github.com/broxus/eth-ton-abi-converter.git#e36c2f524a746534975330b3b0c4bc0f887cd341"
+version = "0.5.4"
+source = "git+https://github.com/broxus/eth-ton-abi-converter.git#5d91078e3c2f1c18c7a13a2487cf96618fa1e262"
 dependencies = [
  "anyhow",
- "borsh 0.9.3",
+ "borsh 0.10.3",
  "ed25519-dalek 1.0.1",
  "either",
  "ethabi",
@@ -1759,9 +1788,9 @@ dependencies = [
 
 [[package]]
 name = "everscale-network"
-version = "0.5.4"
+version = "0.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c027f89fc3be3dc5eb9a6e30fc4118d254ed56f8f53a31e6addccf56f27067ef"
+checksum = "19f25d8b1ab4e223f7141db064f5b5d197d1c20cd1d44560661748ae7dc1fbf8"
 dependencies = [
  "aes",
  "ahash 0.8.11",
@@ -1797,6 +1826,54 @@ name = "everscale-raptorq"
 version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "719e7eca52068b4712789379ef850e5c08b3316bccab5be12d1cb9fcb323a57c"
+
+[[package]]
+name = "everscale-rpc-client"
+version = "0.6.1"
+source = "git+https://github.com/broxus/everscale-jrpc.git#c65a1fdbc9eb9d7fa22399d0003f17ef4fd38ce3"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.13.1",
+ "everscale-rpc-models",
+ "futures",
+ "hex",
+ "itertools 0.11.0",
+ "nekoton",
+ "nekoton-abi",
+ "nekoton-proto",
+ "nekoton-utils",
+ "parking_lot",
+ "rand 0.8.5",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "ton_abi",
+ "ton_block",
+ "ton_executor",
+ "ton_types",
+ "tracing",
+]
+
+[[package]]
+name = "everscale-rpc-models"
+version = "0.1.0"
+source = "git+https://github.com/broxus/everscale-jrpc.git#c65a1fdbc9eb9d7fa22399d0003f17ef4fd38ce3"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum-core",
+ "http",
+ "http-body",
+ "nekoton-abi",
+ "nekoton-proto",
+ "nekoton-utils",
+ "serde",
+ "ton_block",
+ "tracing",
+]
 
 [[package]]
 name = "fastrand"
@@ -1862,6 +1939,21 @@ name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
+
+[[package]]
+name = "foreign-types"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f6f339eb8adc052cd2ca78910fda869aefa38d22d5cb648e6485e4d3fc06f3b1"
+dependencies = [
+ "foreign-types-shared",
+]
+
+[[package]]
+name = "foreign-types-shared"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
 
 [[package]]
 name = "form_urlencoded"
@@ -2105,6 +2197,9 @@ name = "hashbrown"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
+dependencies = [
+ "ahash 0.7.6",
+]
 
 [[package]]
 name = "hashbrown"
@@ -2310,6 +2405,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "hyper-tls"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d6183ddfa99b85da61a140bea0efc93fdf56ceaa041b37d553518030827f9905"
+dependencies = [
+ "bytes",
+ "hyper",
+ "native-tls",
+ "tokio",
+ "tokio-native-tls",
+]
+
+[[package]]
 name = "iana-time-zone"
 version = "0.1.57"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2475,6 +2583,15 @@ name = "itertools"
 version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b0fd2260e829bddf4cb6ea802289de2f86d6a7a690192fbe91b3f46e0f2c8473"
+dependencies = [
+ "either",
+]
+
+[[package]]
+name = "itertools"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1c173a5686ce8bfa551b3563d0c2170bf24ca44da99c7ca4bfdab5418c3fe57"
 dependencies = [
  "either",
 ]
@@ -2822,9 +2939,56 @@ dependencies = [
 ]
 
 [[package]]
+name = "native-tls"
+version = "0.2.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8614eb2c83d59d1c8cc974dd3f920198647674a0a035e1af1fa58707e317466"
+dependencies = [
+ "libc",
+ "log",
+ "openssl",
+ "openssl-probe",
+ "openssl-sys",
+ "schannel",
+ "security-framework",
+ "security-framework-sys",
+ "tempfile",
+]
+
+[[package]]
+name = "nekoton"
+version = "0.13.1"
+source = "git+https://github.com/broxus/nekoton.git#c933b4632756de787eda244a31ca020ffe4c644a"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.13.1",
+ "downcast-rs",
+ "dyn-clone",
+ "futures-util",
+ "hex",
+ "log",
+ "nekoton-abi",
+ "nekoton-contracts",
+ "nekoton-utils",
+ "num-bigint 0.4.4",
+ "once_cell",
+ "parking_lot",
+ "quick_cache 0.4.3",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "ton_abi",
+ "ton_block",
+ "ton_executor",
+ "ton_types",
+]
+
+[[package]]
 name = "nekoton-abi"
 version = "0.13.0"
-source = "git+https://github.com/broxus/nekoton.git#f34223c5b4c1f4edef4ab9ca833e68abe559750b"
+source = "git+https://github.com/broxus/nekoton.git#63e4dfc50fd577b95b44110f717d9d32c2404e83"
 dependencies = [
  "anyhow",
  "base64 0.13.1",
@@ -2849,9 +3013,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "nekoton-contracts"
+version = "0.13.0"
+source = "git+https://github.com/broxus/nekoton.git#c933b4632756de787eda244a31ca020ffe4c644a"
+dependencies = [
+ "anyhow",
+ "nekoton-abi",
+ "nekoton-utils",
+ "once_cell",
+ "serde",
+ "thiserror",
+ "ton_abi",
+ "ton_block",
+ "ton_types",
+]
+
+[[package]]
 name = "nekoton-derive"
 version = "0.13.0"
-source = "git+https://github.com/broxus/nekoton.git#f34223c5b4c1f4edef4ab9ca833e68abe559750b"
+source = "git+https://github.com/broxus/nekoton.git#63e4dfc50fd577b95b44110f717d9d32c2404e83"
 dependencies = [
  "either",
  "proc-macro2 1.0.69",
@@ -2860,9 +3040,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "nekoton-proto"
+version = "0.1.0"
+source = "git+https://github.com/broxus/nekoton.git#c933b4632756de787eda244a31ca020ffe4c644a"
+dependencies = [
+ "anyhow",
+ "nekoton-abi",
+ "prost",
+ "ton_block",
+ "ton_types",
+]
+
+[[package]]
 name = "nekoton-utils"
 version = "0.13.0"
-source = "git+https://github.com/broxus/nekoton.git#f34223c5b4c1f4edef4ab9ca833e68abe559750b"
+source = "git+https://github.com/broxus/nekoton.git#63e4dfc50fd577b95b44110f717d9d32c2404e83"
 dependencies = [
  "anyhow",
  "base64 0.13.1",
@@ -3174,10 +3366,48 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "624a8340c38c1b80fd549087862da4ba43e08858af025b236e509b6649fc13d5"
 
 [[package]]
+name = "openssl"
+version = "0.10.66"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9529f4786b70a3e8c61e11179af17ab6188ad8d0ded78c5529441ed39d4bd9c1"
+dependencies = [
+ "bitflags 2.4.0",
+ "cfg-if",
+ "foreign-types",
+ "libc",
+ "once_cell",
+ "openssl-macros",
+ "openssl-sys",
+]
+
+[[package]]
+name = "openssl-macros"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a948666b637a0f465e8564c73e89d4dde00d72d4d473cc972f390fc3dcee7d9c"
+dependencies = [
+ "proc-macro2 1.0.69",
+ "quote 1.0.33",
+ "syn 2.0.38",
+]
+
+[[package]]
 name = "openssl-probe"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff011a302c396a5197692431fc1948019154afc178baf7d8e37367442a4601cf"
+
+[[package]]
+name = "openssl-sys"
+version = "0.9.103"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f9e8deee91df40a943c71b917e5874b951d32a802526c85721ce3b776c929d6"
+dependencies = [
+ "cc",
+ "libc",
+ "pkg-config",
+ "vcpkg",
+]
 
 [[package]]
 name = "os_str_bytes"
@@ -3551,6 +3781,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "prost"
+version = "0.11.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b82eaa1d779e9a4bc1c3217db8ffbeabaae1dca241bf70183242128d48681cd"
+dependencies = [
+ "bytes",
+ "prost-derive",
+]
+
+[[package]]
+name = "prost-derive"
+version = "0.11.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5d2d8d10f3c6ded6da8b05b5fb3b8a5082514344d56c9f871412d29b4e075b4"
+dependencies = [
+ "anyhow",
+ "itertools 0.10.5",
+ "proc-macro2 1.0.69",
+ "quote 1.0.33",
+ "syn 1.0.109",
+]
+
+[[package]]
 name = "public-ip"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3578,6 +3831,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d464fae65fff2680baf48019211ce37aaec0c78e9264c84a3e484717f965104e"
 dependencies = [
  "percent-encoding",
+]
+
+[[package]]
+name = "quick_cache"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4a4b807ec70346b4fac3c13ae967634237847d49871f623fe0d455403346bad4"
+dependencies = [
+ "ahash 0.8.11",
+ "equivalent",
+ "hashbrown 0.14.1",
+ "parking_lot",
 ]
 
 [[package]]
@@ -3843,7 +4108,7 @@ checksum = "c08c74e62047bb2de4ff487b251e4a92e24f48745648451635cec7d591162d9f"
 
 [[package]]
 name = "relay"
-version = "2.3.3-hotfix"
+version = "2.3.5"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -3864,6 +4129,7 @@ dependencies = [
  "eth-ton-abi-converter",
  "ethabi",
  "everscale-network",
+ "everscale-rpc-client",
  "fdlimit 0.2.1",
  "futures-util",
  "hex",
@@ -3878,6 +4144,7 @@ dependencies = [
  "pomfrit",
  "pretty_assertions",
  "rand 0.8.5",
+ "reqwest",
  "rlimit",
  "rustc-hash",
  "secp256k1",
@@ -3923,10 +4190,12 @@ dependencies = [
  "http-body",
  "hyper",
  "hyper-rustls",
+ "hyper-tls",
  "ipnet",
  "js-sys",
  "log",
  "mime",
+ "native-tls",
  "once_cell",
  "percent-encoding",
  "pin-project-lite",
@@ -3937,6 +4206,7 @@ dependencies = [
  "serde_urlencoded",
  "system-configuration",
  "tokio",
+ "tokio-native-tls",
  "tokio-rustls 0.24.1",
  "tokio-util",
  "tower-service",
@@ -4775,7 +5045,7 @@ dependencies = [
  "console_log",
  "curve25519-dalek",
  "getrandom 0.2.10",
- "itertools",
+ "itertools 0.10.5",
  "js-sys",
  "lazy_static",
  "libc",
@@ -4814,7 +5084,7 @@ dependencies = [
  "bincode",
  "eager",
  "enum-iterator",
- "itertools",
+ "itertools 0.10.5",
  "libc",
  "log",
  "num-derive 0.3.3",
@@ -4864,7 +5134,7 @@ dependencies = [
  "async-mutex",
  "async-trait",
  "futures",
- "itertools",
+ "itertools 0.10.5",
  "lazy_static",
  "log",
  "quinn",
@@ -4988,7 +5258,7 @@ dependencies = [
  "ed25519-dalek-bip32",
  "generic-array",
  "hmac 0.12.1",
- "itertools",
+ "itertools 0.10.5",
  "js-sys",
  "lazy_static",
  "libsecp256k1 0.6.0",
@@ -5043,7 +5313,7 @@ dependencies = [
  "futures-util",
  "histogram",
  "indexmap 1.9.3",
- "itertools",
+ "itertools 0.10.5",
  "libc",
  "log",
  "nix",
@@ -5189,7 +5459,7 @@ dependencies = [
  "byteorder",
  "curve25519-dalek",
  "getrandom 0.1.16",
- "itertools",
+ "itertools 0.10.5",
  "lazy_static",
  "merlin",
  "num-derive 0.3.3",
@@ -5856,6 +6126,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-native-tls"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbae76ab933c85776efabc971569dd6119c580d8f5d448769dec1764bf796ef2"
+dependencies = [
+ "native-tls",
+ "tokio",
+]
+
+[[package]]
 name = "tokio-rustls"
 version = "0.23.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5971,7 +6251,7 @@ dependencies = [
  "num-traits",
  "once_cell",
  "parking_lot",
- "quick_cache",
+ "quick_cache 0.5.2",
  "rand 0.8.5",
  "rlimit",
  "serde",
@@ -6089,6 +6369,12 @@ dependencies = [
  "ton_block",
  "ton_types",
 ]
+
+[[package]]
+name = "tower-layer"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "121c2a6cda46980bb0fcd1647ffaf6cd3fc79a013de288782836f6df9c48780e"
 
 [[package]]
 name = "tower-service"

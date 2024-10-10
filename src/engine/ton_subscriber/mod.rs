@@ -375,6 +375,7 @@ impl TonSubscriber {
         Ok(())
     }
 
+    #[cfg(not(feature = "ton"))]
     fn update_signature_id(&self, key_block: &ton_block::Block) -> Result<()> {
         let extra = key_block.read_extra()?;
         let custom = extra
@@ -386,6 +387,13 @@ impl TonSubscriber {
 
         self.signature_id
             .store(config.capabilities(), key_block.global_id);
+
+        Ok(())
+    }
+
+    #[cfg(feature = "ton")]
+    fn update_signature_id(&self, key_block: &ton_block::Block) -> Result<()> {
+        self.signature_id.store(0x0, key_block.global_id);
 
         Ok(())
     }
@@ -703,4 +711,27 @@ pub type AccountEventsTx<T> = mpsc::UnboundedSender<(UInt256, T)>;
 enum TonSubscriberError {
     #[error("Account is frozen")]
     AccountIsFrozen,
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::engine::ton_subscriber::SignatureId;
+
+    #[test]
+    fn test_signature_id() {
+        let signature_id = SignatureId::default();
+
+        signature_id.store(0x4000000, 1337);
+        let id = signature_id.load();
+        assert_eq!(id, Some(1337));
+    }
+
+    #[test]
+    fn test_signature_id_without_capabilities() {
+        let signature_id = SignatureId::default();
+
+        signature_id.store(0x0, 1337);
+        let id = signature_id.load();
+        assert_eq!(id, None);
+    }
 }

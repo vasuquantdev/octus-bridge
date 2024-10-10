@@ -157,6 +157,10 @@ bridge_settings:
   bridge_address: "0:1d51fb47566d0d283ebbf83c641c01ebebaad6c3cec55895b0074b802036094e"
   # If set, relay will not participate in elections. Default: false
   ignore_elections: false
+  # Shard split depth
+  shard_split_depth: 10
+  # Ton token metadata endpoint base url
+  token_meta_base_url: "https://ton-tokens-api.meta"
   # Solana network config
   sol_network:
     # Public endpoint
@@ -265,7 +269,7 @@ should subscribe to the event configuration contract. Each configuration contrac
 events, relay sees and checks them.
 
 - For Everscale-to-EVM events, only the correctness of data packing is checked (all other stuff is verified on the contracts
-  side). If the event is correct, the relay converts this data into ETH ABI encoded bytes and signs it with its
+  side). You can enforce token metadata check though (currently for TON only, use flag `0x01` on contract level to enable). If the event is correct, the relay converts this data into ETH ABI encoded bytes and signs it with its
   ETH key. This signature is sent along with a confirmation message. If the data in the event was invalid then the
   relay sends a rejection message.
 
@@ -310,11 +314,12 @@ events, relay sees and checks them.
   > When converting ABI from EVM format to Everscale, there is a mechanism for controlling this process.
   > You can add a `bytes1` _(\*\*)_ element which sets context flags to its value.
   >
-  > Currently, there are only three flags:
+  > Currently, there are only four flags:
   >
   > - `0x01` - place tuples to new cell (\*\*\*)
   > - `0x02` - interpret `bytes` as encoded TVM cell (\*)
   > - `0x04` - insert default cell in case of error with flag `0x02` (\*)
+  > - `0x08` - check token root for token wallet
   >
   > NOTE: Flags can't be changed inside an array element! This would lead to inconsistent array items ABI.
 

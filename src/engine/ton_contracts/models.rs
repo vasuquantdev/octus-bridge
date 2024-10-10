@@ -1,5 +1,6 @@
 use nekoton_abi::*;
-use ton_types::UInt256;
+use ton_block::MsgAddressInt;
+use ton_types::{Cell, UInt256};
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct EthTonEventInitData {
@@ -27,6 +28,26 @@ pub struct EthTonEventVoteData {
     pub event_block: UInt256,
 }
 
+#[derive(Debug, Clone, PackAbi, UnpackAbiPlain, KnownParamTypePlain)]
+pub struct EthTonEventDecodedData {
+    #[abi(name = "token_")]
+    pub token: MsgAddressInt,
+    #[abi(name = "amount_")]
+    pub amount: u128,
+    #[abi(name = "recipient_")]
+    pub recipient: MsgAddressInt,
+    #[abi(name = "value_")]
+    pub value: UInt256,
+    #[abi(name = "expected_evers_")]
+    pub expected_evers: UInt256,
+    #[abi(name = "payload_")]
+    pub payload: Cell,
+    #[abi(name = "proxy_")]
+    pub proxy: MsgAddressInt,
+    #[abi(name = "tokenWallet_")]
+    pub token_wallet: MsgAddressInt,
+}
+
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct TonEthEventInitData {
     #[abi]
@@ -45,6 +66,42 @@ pub struct TonEthEventVoteData {
     pub event_timestamp: u32,
     #[abi(cell)]
     pub event_data: ton_types::Cell,
+}
+
+#[derive(Debug, Clone, PackAbi, UnpackAbiPlain, KnownParamTypePlain)]
+pub struct TonEthEventDecodedData {
+    #[abi(name = "proxy_")]
+    pub proxy: MsgAddressInt,
+    #[abi(name = "tokenWallet_")]
+    pub token_wallet: MsgAddressInt,
+    #[abi(name = "token_")]
+    pub token: MsgAddressInt,
+    #[abi(name = "remainingGasTo_")]
+    pub remaining_gas_to: MsgAddressInt,
+    #[abi(name = "amount_")]
+    pub amount: u128,
+    #[abi(name = "recipient_", with = "uint160_bytes")]
+    pub recipient: [u8; 20],
+    #[abi(name = "chainId_")]
+    pub chain_id: UInt256,
+    #[abi]
+    pub callback: TonEthEventDecodedDataCallback,
+    #[abi(name = "name_", string)]
+    pub name: String,
+    #[abi(name = "symbol_", string)]
+    pub symbol: String,
+    #[abi(name = "decimals_")]
+    pub decimals: u8,
+}
+
+#[derive(Debug, Clone, UnpackAbi, PackAbi, KnownParamType)]
+pub struct TonEthEventDecodedDataCallback {
+    #[abi(with = "uint160_bytes")]
+    pub recipient: [u8; 20],
+    #[abi]
+    pub payload: Vec<u8>,
+    #[abi]
+    pub strict: bool,
 }
 
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
@@ -379,6 +436,7 @@ pub struct UserDataRewardRound {
     pub reward_debt: u128,
 }
 
+#[cfg(not(feature = "disable-staking"))]
 #[derive(Debug, Clone, PackAbi, UnpackAbi, KnownParamType)]
 pub struct StakingDetails {
     #[abi(with = "address_only_hash")]

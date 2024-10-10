@@ -170,6 +170,9 @@ impl TonSigner {
             &unsigned_message.inputs,
             false,
             Some((&self.keypair, signature_id)),
+            #[cfg(feature = "ton")]
+            Some(unsigned_message.dst.clone()),
+            #[cfg(not(feature = "ton"))]
             None,
         )?;
 
@@ -180,6 +183,9 @@ impl TonSigner {
             },
             ton_types::SliceData::load_builder(body)?,
         );
+
+        let bytes = ton_block::Serializable::write_to_bytes(&message)?;
+        tracing::info!("MESSAGE: {}", base64::encode(bytes));
 
         Ok(SignedMessage {
             account: unsigned_message.account,

@@ -1,5 +1,7 @@
 use anyhow::Result;
 use nekoton_abi::*;
+#[cfg(feature = "ton")]
+use ton_block::{Deserializable, Serializable};
 use ton_types::UInt256;
 
 pub use self::models::*;
@@ -9,20 +11,34 @@ pub mod base_event_configuration_contract;
 pub mod base_event_contract;
 pub mod bridge_contract;
 pub mod connector_contract;
+#[cfg(not(feature = "disable-staking"))]
 pub mod elections_contract;
 pub mod eth_ton_event_configuration_contract;
 pub mod eth_ton_event_contract;
+#[cfg(not(feature = "disable-staking"))]
 pub mod relay_round_contract;
 pub mod sol_ton_event_configuration_contract;
 pub mod sol_ton_event_contract;
+#[cfg(not(feature = "disable-staking"))]
 pub mod staking_contract;
+#[cfg(not(feature = "ton"))]
+pub mod token_root_contract;
 pub mod ton_eth_event_configuration_contract;
 pub mod ton_eth_event_contract;
 pub mod ton_sol_event_configuration_contract;
 pub mod ton_sol_event_contract;
+#[cfg(not(feature = "disable-staking"))]
 pub mod user_data_contract;
 
 mod models;
+
+#[cfg(test)]
+mod tests;
+
+#[cfg(not(feature = "ton"))]
+const TON_ABI_VERSION: ton_abi::contract::AbiVersion = ton_abi::contract::ABI_VERSION_2_2;
+#[cfg(feature = "ton")]
+const TON_ABI_VERSION: ton_abi::contract::AbiVersion = ton_abi::contract::ABI_VERSION_2_3;
 
 pub struct EventBaseContract<'a>(pub &'a ExistingContract);
 
@@ -71,6 +87,15 @@ impl EthTonEventContract<'_> {
             .unpack_first()?;
         Ok(event_init_data)
     }
+
+    pub fn event_decoded_data(&self) -> Result<EthTonEventDecodedData> {
+        let function = eth_ton_event_contract::get_decoded_data();
+        let event_decoded_data = self
+            .0
+            .run_local_responsible(function, &[answer_id()])?
+            .unpack()?;
+        Ok(event_decoded_data)
+    }
 }
 
 pub struct TonEthEventContract<'a>(pub &'a ExistingContract);
@@ -83,6 +108,16 @@ impl TonEthEventContract<'_> {
             .run_local_responsible(function, &[answer_id()])?
             .unpack_first()?;
         Ok(event_init_data)
+    }
+
+    #[cfg(feature = "ton")]
+    pub fn event_decoded_data(&self) -> Result<TonEthEventDecodedData> {
+        let function = ton_eth_event_contract::get_decoded_data();
+        let event_decoded_data = self
+            .0
+            .run_local_responsible(function, &[answer_id()])?
+            .unpack()?;
+        Ok(event_decoded_data)
     }
 }
 
@@ -202,6 +237,7 @@ impl BridgeContract<'_> {
         Ok(counter)
     }
 
+    #[cfg(not(feature = "disable-staking"))]
     pub fn get_details(&self) -> Result<BridgeDetails> {
         let function = bridge_contract::get_details();
         let input = [answer_id()];
@@ -229,8 +265,10 @@ impl ConnectorContract<'_> {
     }
 }
 
+#[cfg(not(feature = "disable-staking"))]
 pub struct StakingContract<'a>(pub &'a ExistingContract);
 
+#[cfg(not(feature = "disable-staking"))]
 impl StakingContract<'_> {
     pub fn get_details(&self) -> Result<StakingDetails> {
         let function = staking_contract::get_details();
@@ -286,8 +324,10 @@ impl StakingContract<'_> {
     }
 }
 
+#[cfg(not(feature = "disable-staking"))]
 pub struct ElectionsContract<'a>(pub &'a ExistingContract);
 
+#[cfg(not(feature = "disable-staking"))]
 impl ElectionsContract<'_> {
     pub fn staker_addrs(&self) -> Result<Vec<UInt256>> {
         let function = elections_contract::staker_addrs();
@@ -296,8 +336,10 @@ impl ElectionsContract<'_> {
     }
 }
 
+#[cfg(not(feature = "disable-staking"))]
 pub struct RelayRoundContract<'a>(pub &'a ExistingContract);
 
+#[cfg(not(feature = "disable-staking"))]
 impl RelayRoundContract<'_> {
     pub fn get_details(&self) -> Result<RelayRoundDetails> {
         let function = relay_round_contract::get_details();
@@ -325,11 +367,89 @@ impl RelayRoundContract<'_> {
     }
 }
 
+#[cfg(not(feature = "disable-staking"))]
 pub struct UserDataContract<'a>(pub &'a ExistingContract);
 
+#[cfg(not(feature = "disable-staking"))]
 impl UserDataContract<'_> {
     pub fn get_details(&self) -> Result<UserDataDetails> {
         let function = user_data_contract::get_details();
         Ok(self.0.run_local(function, &[answer_id()])?.unpack_first()?)
+    }
+}
+
+#[cfg(feature = "ton")]
+pub struct JettonMinterContract<'a>(pub &'a ExistingContract);
+
+#[cfg(feature = "ton")]
+impl JettonMinterContract<'_> {
+    pub fn get_wallet_address(
+        &self,
+        owner_address: &ton_block::MsgAddressInt,
+    ) -> Result<ton_block::MsgAddressInt> {
+        let context = ExecutionContext {
+            clock: &nekoton_utils::SimpleClock,
+            account_stuff: &self.0.account,
+        };
+        let owner_address =
+            StackItem::Slice(ton_types::SliceData::load_cell(owner_address.serialize()?)?);
+        let data = context.run_getter("get_wallet_address", &[owner_address])?;
+
+        if !data.is_ok || data.exit_code != 0 {
+            return Err(ExistingContractError::NonZeroResultCode(data.exit_code).into());
+        }
+
+        const EXPECTED_STACK_LEN: usize = 1;
+        if !data.stack.len() == EXPECTED_STACK_LEN {
+            return Err(ExistingContractError::ItemsStackLenMismatch {
+                expected: EXPECTED_STACK_LEN,
+                actual: data.stack.len(),
+            }
+            .into());
+        }
+
+        const JETTON_MINTER_ITEM_POS: usize = 0;
+        let jetton_wallet_address = read_address(data.stack, JETTON_MINTER_ITEM_POS)?;
+
+        Ok(jetton_wallet_address)
+    }
+}
+
+#[cfg(feature = "ton")]
+pub fn read_address(
+    mut stack_items: Vec<StackItem>,
+    pos: usize,
+) -> Result<ton_block::MsgAddressInt> {
+    match stack_items[pos] {
+        StackItem::Cell(ref cell) => {
+            Ok(ton_block::MsgAddressInt::construct_from_cell(cell.clone())?)
+        }
+        StackItem::Slice(ref mut slice) => {
+            let mut addr: ton_block::MsgAddressInt = Default::default();
+            ton_block::MsgAddressInt::read_from(&mut addr, slice)?;
+            Ok(addr)
+        }
+        _ => Err(ExistingContractError::UnexpectedStackItemType(pos).into()),
+    }
+}
+
+#[cfg(not(feature = "ton"))]
+pub struct TokenRootContract<'a>(pub &'a ExistingContract);
+
+#[cfg(not(feature = "ton"))]
+impl TokenRootContract<'_> {
+    pub fn wallet_of(
+        &self,
+        address: &ton_block::MsgAddressInt,
+    ) -> Result<ton_block::MsgAddressInt> {
+        let function = token_root_contract::wallet_of();
+        let token_wallet = self
+            .0
+            .run_local_responsible(
+                function,
+                &[answer_id(), address.token_value().named("walletOwner")],
+            )?
+            .unpack_first()?;
+        Ok(token_wallet)
     }
 }

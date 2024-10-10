@@ -1,18 +1,23 @@
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
+#[cfg(feature = "double-broadcast")]
+use everscale_rpc_client::{jrpc::JrpcClient, Client, ClientOptions};
 use parking_lot::Mutex;
 use pomfrit::formatter::*;
 use rustc_hash::FxHashMap;
 use tokio::sync::mpsc;
 use ton_block::Serializable;
+use ton_types::UInt256;
 
 use self::bridge::*;
 use self::eth_subscriber::*;
 use self::keystore::*;
 use self::sol_subscriber::*;
+#[cfg(not(feature = "disable-staking"))]
 use self::staking::*;
-use self::ton_contracts::*;
+#[cfg(feature = "ton")]
+use self::ton_meta::*;
 use self::ton_subscriber::*;
 use crate::config::*;
 use crate::storage::*;
@@ -22,14 +27,18 @@ mod bridge;
 mod eth_subscriber;
 mod keystore;
 mod sol_subscriber;
+#[cfg(not(feature = "disable-staking"))]
 mod staking;
 mod ton_contracts;
+#[cfg(feature = "ton")]
+mod ton_meta;
 mod ton_subscriber;
 
 pub struct Engine {
     metrics_exporter: Arc<pomfrit::MetricsExporter>,
     context: Arc<EngineContext>,
     bridge: Mutex<Option<Arc<Bridge>>>,
+    #[cfg(not(feature = "disable-staking"))]
     staking: Mutex<Option<Arc<Staking>>>,
 }
 
@@ -48,6 +57,7 @@ impl Engine {
             metrics_exporter,
             context,
             bridge: Mutex::new(None),
+            #[cfg(not(feature = "disable-staking"))]
             staking: Mutex::new(None),
         });
 
@@ -71,6 +81,7 @@ impl Engine {
                     });
                 };
 
+                #[cfg(not(feature = "disable-staking"))]
                 if let Some(staking) = &*engine.staking.lock() {
                     buffer.write(LabeledStakingMetrics {
                         context: &engine.context,
@@ -90,37 +101,12 @@ impl Engine {
         // Fetch bridge configuration
         let bridge_account = only_account_hash(&self.context.settings.bridge_address);
 
-        let bridge_contract = match self
-            .context
-            .ton_subscriber
-            .get_contract_state(bridge_account)
-            .await?
-        {
-            Some(contract) => contract,
-            None => return Err(EngineError::BridgeAccountNotFound.into()),
-        };
-
-        let bridge_details = BridgeContract(&bridge_contract)
-            .get_details()
-            .context("Failed to get bridge details")?;
-
         // Bridge
-        tracing::info!("initializing bridge...");
-        let bridge = Bridge::new(self.context.clone(), bridge_account)
-            .await
-            .context("Failed to init bridge")?;
-        *self.bridge.lock() = Some(bridge);
-        tracing::info!("initialized bridge");
+        self.initialize_bridge(bridge_account).await?;
 
+        #[cfg(not(feature = "disable-staking"))]
         // Staking
-        tracing::info!("initializing staking...");
-        {
-            let staking = Staking::new(self.context.clone(), bridge_details.staking)
-                .await
-                .context("Failed to init staking")?;
-            *self.staking.lock() = Some(staking);
-        }
-        tracing::info!("initialized staking");
+        self.initialize_staking(bridge_account).await?;
 
         // EVM subscriber
         tracing::info!("starting ETH subscribers");
@@ -132,6 +118,43 @@ impl Engine {
         }
 
         // Done
+        Ok(())
+    }
+
+    async fn initialize_bridge(self: &Arc<Self>, bridge_account: UInt256) -> Result<()> {
+        tracing::info!("initializing bridge...");
+        let bridge = Bridge::new(self.context.clone(), bridge_account)
+            .await
+            .context("Failed to init bridge")?;
+        *self.bridge.lock() = Some(bridge);
+        tracing::info!("initialized bridge");
+        Ok(())
+    }
+
+    #[cfg(not(feature = "disable-staking"))]
+    async fn initialize_staking(self: &Arc<Self>, bridge_account: UInt256) -> Result<()> {
+        let bridge_contract = match self
+            .context
+            .ton_subscriber
+            .get_contract_state(bridge_account)
+            .await?
+        {
+            Some(contract) => contract,
+            None => return Err(EngineError::BridgeAccountNotFound.into()),
+        };
+
+        let bridge_details = ton_contracts::BridgeContract(&bridge_contract)
+            .get_details()
+            .context("Failed to get bridge details")?;
+
+        tracing::info!("initializing staking...");
+        {
+            let staking = Staking::new(self.context.clone(), bridge_details.staking)
+                .await
+                .context("Failed to init staking")?;
+            *self.staking.lock() = Some(staking);
+        }
+        tracing::info!("initialized staking");
         Ok(())
     }
 
@@ -156,6 +179,10 @@ pub struct EngineContext {
     pub sol_subscriber: Option<Arc<SolSubscriber>>,
     pub persistent_storage: Arc<PersistentStorage>,
     pub runtime_storage: Arc<RuntimeStorage>,
+    #[cfg(feature = "ton")]
+    pub tokens_meta_client: TokenMetaClient,
+    #[cfg(feature = "double-broadcast")]
+    pub jrpc_client: JrpcClient,
 }
 
 impl Drop for EngineContext {
@@ -186,6 +213,8 @@ impl EngineContext {
             persistent_storage.clone(),
             runtime_storage.clone(),
         );
+        #[cfg(feature = "ton")]
+        let tokens_meta_client = TokenMetaClient::new(&settings.token_meta_base_url);
 
         let ton_engine = ton_indexer::Engine::new(
             config
@@ -215,6 +244,10 @@ impl EngineContext {
             }
         };
 
+        #[cfg(feature = "double-broadcast")]
+        let jrpc_client =
+            JrpcClient::new(settings.jrpc_endpoints.clone(), ClientOptions::default()).await?;
+
         Ok(Arc::new(Self {
             shutdown_requests_tx,
             staker_account_str,
@@ -228,6 +261,10 @@ impl EngineContext {
             sol_subscriber,
             persistent_storage,
             runtime_storage,
+            #[cfg(feature = "ton")]
+            tokens_meta_client,
+            #[cfg(feature = "double-broadcast")]
+            jrpc_client,
         }))
     }
 
@@ -274,8 +311,15 @@ impl EngineContext {
             .messages_queue
             .add_message(*account, cells.repr_hash(), expire_at)?;
 
-        self.ton_engine
-            .broadcast_external_message(to, &serialized)?;
+        if let Err(e) = self.ton_engine.broadcast_external_message(to, &serialized) {
+            tracing::warn!("Failed broadcasting message: {e}");
+        }
+
+        #[cfg(feature = "double-broadcast")]
+        {
+            tracing::warn!("Duplicating external message broadcasting via JRPC");
+            self.jrpc_client.broadcast_message(message.clone()).await?;
+        }
 
         let status = rx.await?;
         Ok(status)
@@ -370,13 +414,17 @@ impl std::fmt::Display for LabeledBridgeMetrics<'_> {
     }
 }
 
+#[cfg(not(feature = "disable-staking"))]
 struct LabeledStakingMetrics<'a> {
     context: &'a EngineContext,
     staking: &'a Staking,
 }
 
+#[cfg(not(feature = "disable-staking"))]
 impl std::fmt::Display for LabeledStakingMetrics<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        const LABEL_ROUND_NUM: &str = "round_num";
+
         let metrics = self.staking.metrics();
 
         f.begin_metric("staking_user_data_tokens_balance")
@@ -534,7 +582,6 @@ impl std::fmt::Display for LabeledSolSubscriberMetrics<'_> {
 
 const LABEL_STAKER: &str = "staker";
 const LABEL_CHAIN_ID: &str = "chain_id";
-const LABEL_ROUND_NUM: &str = "round_num";
 
 pub type ShutdownRequestsRx = mpsc::UnboundedReceiver<()>;
 pub type ShutdownRequestsTx = mpsc::UnboundedSender<()>;
@@ -543,6 +590,7 @@ pub type ShutdownRequestsTx = mpsc::UnboundedSender<()>;
 enum EngineError {
     #[error("External ton message expected")]
     ExternalTonMessageExpected,
+    #[cfg(not(feature = "disable-staking"))]
     #[error("Bridge account not found")]
     BridgeAccountNotFound,
 }
