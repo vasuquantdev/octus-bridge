@@ -941,6 +941,7 @@ impl Bridge {
                 #[cfg(feature = "ton")]
                 verify_token_meta,
             }) => {
+                #[allow(unused_mut)]
                 let mut verification_error = None;
                 #[cfg(feature = "ton")]
                 if verify_token_meta {

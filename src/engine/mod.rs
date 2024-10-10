@@ -13,8 +13,8 @@ use crate::config::*;
 use crate::storage::*;
 use crate::utils::*;
 use anyhow::{Context, Result};
-use everscale_rpc_client::jrpc::JrpcClient;
-use everscale_rpc_client::{Client, ClientOptions};
+#[cfg(feature = "double-broadcast")]
+use everscale_rpc_client::{jrpc::JrpcClient, Client, ClientOptions};
 use parking_lot::Mutex;
 use pomfrit::formatter::*;
 use rustc_hash::FxHashMap;
@@ -180,6 +180,7 @@ pub struct EngineContext {
     pub runtime_storage: Arc<RuntimeStorage>,
     #[cfg(feature = "ton")]
     pub tokens_meta_client: TokenMetaClient,
+    #[cfg(feature = "double-broadcast")]
     pub jrpc_client: JrpcClient,
 }
 
@@ -242,6 +243,7 @@ impl EngineContext {
             }
         };
 
+        #[cfg(feature = "double-broadcast")]
         let jrpc_client =
             JrpcClient::new(settings.jrpc_endpoints.clone(), ClientOptions::default()).await?;
 
@@ -260,6 +262,7 @@ impl EngineContext {
             runtime_storage,
             #[cfg(feature = "ton")]
             tokens_meta_client,
+            #[cfg(feature = "double-broadcast")]
             jrpc_client,
         }))
     }
@@ -311,8 +314,11 @@ impl EngineContext {
             tracing::warn!("Failed broadcasting message: {e}");
         }
 
-        tracing::warn!("Duplicating external message broadcasting via JRPC");
-        self.jrpc_client.broadcast_message(message.clone()).await?;
+        #[cfg(feature = "double-broadcast")]
+        {
+            tracing::warn!("Duplicating external message broadcasting via JRPC");
+            self.jrpc_client.broadcast_message(message.clone()).await?;
+        }
 
         let status = rx.await?;
         Ok(status)

@@ -94,8 +94,9 @@ ton-indexer = { git = "https://github.com/broxus/ton-indexer.git" }
 
 [features]
 disable-staking = []
+double-broadcast = []
 venom = ["ton_block/venom", "ton-indexer/venom"]
-ton = ["ton_block/ton", "ton-indexer/ton", "disable-staking"]
+ton = ["ton_block/ton", "ton-indexer/ton", "disable-staking", "double-broadcast"]
 
 [dev-dependencies]
 cargo-husky = { version = "1", features = ["default", "run-cargo-fmt", "run-cargo-check"] }

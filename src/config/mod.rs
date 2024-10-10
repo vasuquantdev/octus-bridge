@@ -1,14 +1,14 @@
 use std::net::{Ipv4Addr, SocketAddrV4};
 use std::path::{Path, PathBuf};
 
-use crate::storage::PersistentStorageConfig;
 use anyhow::{Context, Result};
 use everscale_network::{adnl, dht, overlay, rldp};
 use nekoton_utils::*;
 use rand::Rng;
 use secstr::SecUtf8;
 use serde::{Deserialize, Serialize};
-use url::Url;
+
+use crate::storage::PersistentStorageConfig;
 
 pub use self::eth_config::*;
 pub use self::sol_config::*;
@@ -88,7 +88,8 @@ pub struct BridgeConfig {
     #[cfg(feature = "ton")]
     pub token_meta_base_url: String,
 
-    pub jrpc_endpoints: Vec<Url>,
+    #[cfg(feature = "double-broadcast")]
+    pub jrpc_endpoints: Vec<url::Url>,
 }
 
 /// ETH address verification settings
