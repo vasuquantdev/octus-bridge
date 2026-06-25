@@ -1,6 +1,7 @@
 /target
 **/*.rs.bk
 /.idea
+/.vscode
 /.cargo
 persistent_storage*/
 

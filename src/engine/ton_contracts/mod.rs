@@ -23,6 +23,8 @@ pub mod sol_ton_event_contract;
 pub mod staking_contract;
 #[cfg(not(feature = "ton"))]
 pub mod token_root_contract;
+#[cfg(not(feature = "ton"))]
+pub mod token_wallet_contract;
 pub mod ton_eth_event_configuration_contract;
 pub mod ton_eth_event_contract;
 pub mod ton_sol_event_configuration_contract;
@@ -416,6 +418,38 @@ impl JettonMinterContract<'_> {
 }
 
 #[cfg(feature = "ton")]
+pub struct JettonWalletContract<'a>(pub &'a ExistingContract);
+
+#[cfg(feature = "ton")]
+impl JettonWalletContract<'_> {
+    pub fn root(&self) -> Result<ton_block::MsgAddressInt> {
+        let context = ExecutionContext {
+            clock: &nekoton_utils::SimpleClock,
+            account_stuff: &self.0.account,
+        };
+
+        let data = context.run_getter("get_wallet_data", &[])?;
+        if !data.is_ok || data.exit_code != 0 {
+            return Err(ExistingContractError::NonZeroResultCode(data.exit_code).into());
+        }
+
+        const EXPECTED_STACK_LEN: usize = 4;
+        if !data.stack.len() == EXPECTED_STACK_LEN {
+            return Err(ExistingContractError::ItemsStackLenMismatch {
+                expected: EXPECTED_STACK_LEN,
+                actual: data.stack.len(),
+            }
+            .into());
+        }
+
+        const JETTON_MINTER_ITEM_POS: usize = 2;
+        let jetton_wallet_address = read_address(data.stack, JETTON_MINTER_ITEM_POS)?;
+
+        Ok(jetton_wallet_address)
+    }
+}
+
+#[cfg(feature = "ton")]
 pub fn read_address(
     mut stack_items: Vec<StackItem>,
     pos: usize,
@@ -451,5 +485,20 @@ impl TokenRootContract<'_> {
             )?
             .unpack_first()?;
         Ok(token_wallet)
+    }
+}
+
+#[cfg(not(feature = "ton"))]
+pub struct TokenWalletContract<'a>(pub &'a ExistingContract);
+
+#[cfg(not(feature = "ton"))]
+impl TokenWalletContract<'_> {
+    pub fn root(&self) -> Result<ton_block::MsgAddressInt> {
+        let function = token_wallet_contract::root();
+        let token_root = self
+            .0
+            .run_local_responsible(function, &[answer_id()])?
+            .unpack_first()?;
+        Ok(token_root)
     }
 }

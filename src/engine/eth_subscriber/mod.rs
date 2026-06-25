@@ -865,7 +865,7 @@ type VerificationStatusTx = oneshot::Sender<VerificationStatus>;
 
 fn parse_transaction_logs(
     logs: Vec<web3::types::Log>,
-) -> impl Iterator<Item = ParsedEthEvent> + DoubleEndedIterator {
+) -> impl DoubleEndedIterator<Item = ParsedEthEvent> {
     logs.into_iter()
         .map(ParsedEthEvent::try_from)
         .filter_map(|event| match event {

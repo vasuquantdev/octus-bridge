@@ -752,36 +752,82 @@ impl Bridge {
                     );
                     let event_decoded_data = EthTonEventContract(&contract).event_decoded_data()?;
 
-                    let token_root = event_decoded_data.token.address();
-                    let token_root = UInt256::from_be_bytes(&token_root.get_bytestring(0));
-                    let root_contract = ton_subscriber.wait_contract_state(token_root).await?;
-                    #[cfg(feature = "ton")]
-                    let proxy_wallet_address = JettonMinterContract(&root_contract)
-                        .get_wallet_address(&event_decoded_data.proxy)?;
-                    #[cfg(not(feature = "ton"))]
-                    let proxy_wallet_address =
-                        TokenRootContract(&root_contract).wallet_of(&event_decoded_data.proxy)?;
+                    'check: {
+                        if event_decoded_data.token.workchain_id() != 0
+                            || event_decoded_data.token_wallet.workchain_id() != 0
+                        {
+                            tracing::error!(
+                                event = %DisplayAddr(account),
+                                chain_id,
+                                proxy = %event_decoded_data.proxy,
+                                token_root = %event_decoded_data.token,
+                                token_wallet = %event_decoded_data.token_wallet,
+                                "ETH->TON wrong token address workchain",
+                            );
+                            preliminary_checks_succeeded = false;
+                            break 'check;
+                        }
 
-                    if event_decoded_data.token_wallet != proxy_wallet_address {
-                        let proxy = UInt256::from_be_bytes(
-                            &event_decoded_data.proxy.address().get_bytestring(0),
-                        );
-                        let expected = UInt256::from_be_bytes(
-                            &proxy_wallet_address.address().get_bytestring(0),
-                        );
-                        let actual = UInt256::from_be_bytes(
-                            &event_decoded_data.token_wallet.address().get_bytestring(0),
-                        );
-                        tracing::error!(
-                            event = %DisplayAddr(account),
-                            chain_id,
-                            proxy = %DisplayAddr(proxy),
-                            token_root = %DisplayAddr(token_root),
-                            expected_token_wallet = %DisplayAddr(expected),
-                            actual_token_wallet = %DisplayAddr(actual),
-                            "ETH->TON wrong token wallet for given token root",
-                        );
-                        preliminary_checks_succeeded = false;
+                        // Verify that token wallet is for the proxy.
+                        let token_root = event_decoded_data.token.address();
+                        let token_root = UInt256::from_be_bytes(&token_root.get_bytestring(0));
+                        let root_contract = ton_subscriber.wait_contract_state(token_root).await?;
+                        #[cfg(feature = "ton")]
+                        let computed_token_wallet = JettonMinterContract(&root_contract)
+                            .get_wallet_address(&event_decoded_data.proxy)?;
+                        #[cfg(not(feature = "ton"))]
+                        let computed_token_wallet = TokenRootContract(&root_contract)
+                            .wallet_of(&event_decoded_data.proxy)?;
+
+                        if event_decoded_data.token_wallet != computed_token_wallet {
+                            tracing::error!(
+                                event = %DisplayAddr(account),
+                                chain_id,
+                                proxy = %event_decoded_data.proxy,
+                                token_root = %event_decoded_data.token,
+                                %computed_token_wallet,
+                                received_token_wallet = %event_decoded_data.token_wallet,
+                                "ETH->TON wrong token wallet for given token root",
+                            );
+                            preliminary_checks_succeeded = false;
+                            break 'check;
+                        }
+
+                        // Verify that token wallet returned by the root belongs to it.
+                        let token_wallet = event_decoded_data.token_wallet.address();
+                        let token_wallet = UInt256::from_be_bytes(&token_wallet.get_bytestring(0));
+                        let Some(wallet_contract) =
+                            ton_subscriber.get_contract_state(token_wallet).await?
+                        else {
+                            tracing::error!(
+                                event = %DisplayAddr(account),
+                                chain_id,
+                                proxy = %event_decoded_data.proxy,
+                                token_wallet = %event_decoded_data.token_wallet,
+                                token_root = %event_decoded_data.token,
+                                "ETH->TON token wallet must exist for a proxy",
+                            );
+                            preliminary_checks_succeeded = false;
+                            break 'check;
+                        };
+                        #[cfg(feature = "ton")]
+                        let computed_token_root = JettonWalletContract(&wallet_contract).root()?;
+                        #[cfg(not(feature = "ton"))]
+                        let computed_token_root = TokenWalletContract(&wallet_contract).root()?;
+
+                        if event_decoded_data.token != computed_token_root {
+                            tracing::error!(
+                                event = %DisplayAddr(account),
+                                chain_id,
+                                proxy = %event_decoded_data.proxy,
+                                token_wallet = %event_decoded_data.token_wallet,
+                                %computed_token_root,
+                                received_token_root = %event_decoded_data.token,
+                                "ETH->TON wrong token root for the proxy token wallet",
+                            );
+                            preliminary_checks_succeeded = false;
+                            break 'check;
+                        }
                     }
                 }
 
