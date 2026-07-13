@@ -74,7 +74,7 @@ if [[ "$setup_type" == "native" ]]; then
   if [[ -f "$service_path" ]]; then
     echo "WARN: $service_path already exists"
   else
-    sudo cp "$REPO_DIR/contrib/relay.native.service" "$service_path"
+    sudo cp "$REPO_DIR/deploy/systemd/relay.native.service" "$service_path"
   fi
 
 elif [[ "$setup_type" == "docker" ]]; then
@@ -93,7 +93,7 @@ elif [[ "$setup_type" == "docker" ]]; then
   if [[ -f "$service_path" ]]; then
     echo "WARN: $service_path already exists"
   else
-    sudo cp "$REPO_DIR/contrib/relay.docker.service" "$service_path"
+    sudo cp "$REPO_DIR/deploy/systemd/relay.docker.service" "$service_path"
   fi
 else
   echo 'ERROR: Unexpected'
@@ -106,7 +106,7 @@ sudo mkdir -p /var/db/relay
 if [[ -f "$config_path" ]]; then
   echo "WARN: $config_path already exists"
 else
-  sudo cp -n "$REPO_DIR/contrib/config.yaml" "$config_path"
+  sudo cp -n "$REPO_DIR/deploy/config/config.yaml" "$config_path"
 fi
 
 sudo wget -O /etc/relay/ton-global.config.json \

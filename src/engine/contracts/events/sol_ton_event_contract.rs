@@ -1,6 +1,6 @@
 use nekoton_abi::*;
 
-use super::{models::*, TON_ABI_VERSION};
+use super::super::{models::*, TON_ABI_VERSION};
 
 /// External responsible function
 pub fn get_event_init_data() -> &'static ton_abi::Function {
@@ -8,7 +8,7 @@ pub fn get_event_init_data() -> &'static ton_abi::Function {
         FunctionBuilder::new_responsible("getEventInitData")
             .abi_version(TON_ABI_VERSION)
             .default_headers()
-            .output("details", TonSolEventInitData::param_type())
+            .output("details", SolTonEventInitData::param_type())
             .build()
     })
 }

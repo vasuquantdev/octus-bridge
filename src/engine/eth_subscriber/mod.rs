@@ -20,7 +20,7 @@ use web3::{transports::Http, Transport};
 use self::models::*;
 use crate::config::*;
 use crate::engine::bridge::*;
-use crate::engine::ton_contracts::*;
+use crate::engine::contracts::*;
 use crate::utils::*;
 
 mod contracts;

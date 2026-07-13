@@ -28,7 +28,7 @@ use ton_types::UInt256;
 
 use crate::engine::keystore::*;
 use crate::engine::sol_subscriber::*;
-use crate::engine::ton_contracts::*;
+use crate::engine::contracts::*;
 use crate::engine::ton_subscriber::*;
 use crate::engine::EngineContext;
 use crate::storage::*;

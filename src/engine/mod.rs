@@ -29,7 +29,7 @@ mod keystore;
 mod sol_subscriber;
 #[cfg(not(feature = "disable-staking"))]
 mod staking;
-mod ton_contracts;
+mod contracts;
 #[cfg(feature = "ton")]
 mod ton_meta;
 mod ton_subscriber;
@@ -143,7 +143,7 @@ impl Engine {
             None => return Err(EngineError::BridgeAccountNotFound.into()),
         };
 
-        let bridge_details = ton_contracts::BridgeContract(&bridge_contract)
+        let bridge_details = contracts::BridgeContract(&bridge_contract)
             .get_details()
             .context("Failed to get bridge details")?;
 

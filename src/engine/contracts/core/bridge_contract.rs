@@ -1,6 +1,6 @@
 use nekoton_abi::*;
 
-use super::{models::*, TON_ABI_VERSION};
+use super::super::{models::*, TON_ABI_VERSION};
 
 /// External function
 pub fn connector_counter() -> &'static ton_abi::Function {

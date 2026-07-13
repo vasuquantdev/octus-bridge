@@ -1,6 +1,6 @@
 use nekoton_abi::*;
 
-use super::TON_ABI_VERSION;
+use super::super::TON_ABI_VERSION;
 
 /// Token root address
 pub fn root() -> &'static ton_abi::Function {

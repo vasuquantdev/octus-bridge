@@ -1,6 +1,6 @@
 use nekoton_abi::*;
 
-use super::{models::*, TON_ABI_VERSION};
+use super::super::{models::*, TON_ABI_VERSION};
 
 /// External responsible function
 pub fn get_details() -> &'static ton_abi::Function {

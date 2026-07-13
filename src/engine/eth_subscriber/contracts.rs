@@ -6,6 +6,9 @@ pub fn staking_contract<T>(
 where
     T: web3::Transport,
 {
-    let json = include_bytes!("StakingRelayVerifier.abi");
+    let json = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/contracts/evm/StakingRelayVerifier.abi"
+    ));
     Ok(web3::contract::Contract::from_json(eth, address, json)?)
 }

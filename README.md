@@ -60,10 +60,18 @@ octusbridge-relay/
 ├── LICENSE
 ├── README.md
 │
-├── contrib/                    # Deployment artifacts
-│   ├── config.yaml             # Default relay configuration template
-│   ├── relay.native.service    # systemd unit for native installs
-│   └── relay.docker.service    # systemd unit for Docker installs
+├── contracts/                  # On-chain contract artifacts
+│   └── evm/
+│       ├── StakingRelayVerifier.sol
+│       └── StakingRelayVerifier.abi
+│
+├── deploy/                     # Deployment artifacts
+│   ├── config/
+│   │   └── config.yaml         # Default relay configuration template
+│   ├── debian/                 # Debian package maintainer scripts
+│   └── systemd/
+│       ├── relay.native.service
+│       └── relay.docker.service
 │
 ├── scripts/                    # Operational helper scripts (Ubuntu)
 │   ├── setup.sh                # Install relay (native or docker)
@@ -86,33 +94,20 @@ octusbridge-relay/
     │   ├── mod.rs              # Engine orchestration and metrics
     │   ├── bridge/             # Bridge contract observer and event processor
     │   ├── eth_subscriber/     # EVM chain log polling and verification
-    │   │   ├── StakingRelayVerifier.sol
-    │   │   └── StakingRelayVerifier.abi
     │   ├── sol_subscriber/     # Solana event polling
     │   ├── ton_subscriber/     # Everscale contract state subscription
     │   ├── keystore/           # ETH / TON key management and signing
     │   ├── staking/            # Relay elections and round participation
     │   ├── ton_meta/           # TON token metadata client (TON builds)
-    │   └── ton_contracts/      # Bridge smart-contract bindings
-    │       ├── bridge_contract.rs
-    │       ├── connector_contract.rs
-    │       ├── base_event_contract.rs
-    │       ├── base_event_configuration_contract.rs
-    │       ├── eth_ton_event_contract.rs
-    │       ├── eth_ton_event_configuration_contract.rs
-    │       ├── ton_eth_event_contract.rs
-    │       ├── ton_eth_event_configuration_contract.rs
-    │       ├── sol_ton_event_contract.rs
-    │       ├── sol_ton_event_configuration_contract.rs
-    │       ├── ton_sol_event_contract.rs
-    │       ├── ton_sol_event_configuration_contract.rs
-    │       ├── staking_contract.rs
-    │       ├── elections_contract.rs
-    │       ├── relay_round_contract.rs
-    │       ├── user_data_contract.rs
-    │       ├── token_root_contract.rs
-    │       ├── token_wallet_contract.rs
-    │       └── tests.rs
+    │   └── contracts/          # Bridge smart-contract bindings
+    │       ├── mod.rs          # Contract facades and shared logic
+    │       ├── models.rs       # ABI data types
+    │       ├── tests.rs        # Contract integration tests
+    │       ├── core/           # Bridge and connector contracts
+    │       ├── events/         # Cross-chain event contracts
+    │       ├── configurations/ # Event configuration contracts
+    │       ├── staking/        # Staking, elections, relay rounds
+    │       └── tokens/         # Token root and wallet contracts
     │
     ├── storage/                # Persistent and runtime state
     │   ├── mod.rs              # RocksDB-backed event storage
@@ -215,7 +210,7 @@ For Docker deployments, pass all environment variables to the container (e.g. `-
 
 Environment variable substitution is supported throughout the config file using `${VAR}` syntax.
 
-See [`contrib/config.yaml`](contrib/config.yaml) for the canonical template. Key sections:
+See [`deploy/config/config.yaml`](deploy/config/config.yaml) for the canonical template. Key sections:
 
 | Section | Description |
 |---------|-------------|
@@ -455,7 +450,7 @@ cargo build --release --features ton
 ### Run locally
 
 ```bash
-relay run -c contrib/config.yaml -g /path/to/ton-global.config.json
+relay run -c deploy/config/config.yaml -g /path/to/ton-global.config.json
 ```
 
 ### Update deployed relay

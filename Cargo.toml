@@ -126,12 +126,12 @@ assets = [
         "755",
     ],
     [
-        "contrib/config.yaml",
+        "deploy/config/config.yaml",
         "etc/relay/",
         "644",
     ],
     [
-        "contrib/global.config.json",
+        "deploy/global.config.json",
         "etc/relay/",
         "644",
     ],
@@ -141,5 +141,5 @@ assets = [
         "644",
     ],
 ]
-maintainer-scripts = "contrib/"
+maintainer-scripts = "deploy/debian/"
 systemd-units = { enable = true }

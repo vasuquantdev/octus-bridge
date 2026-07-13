@@ -1,6 +1,6 @@
 use nekoton_abi::*;
 
-use super::{models::*, TON_ABI_VERSION};
+use super::super::{models::*, TON_ABI_VERSION};
 
 pub fn start_election_on_new_round() -> &'static ton_abi::Function {
     crate::once!(ton_abi::Function, || {

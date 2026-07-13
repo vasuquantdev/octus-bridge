@@ -7,30 +7,29 @@ use ton_types::UInt256;
 pub use self::models::*;
 use crate::utils::*;
 
-pub mod base_event_configuration_contract;
-pub mod base_event_contract;
-pub mod bridge_contract;
-pub mod connector_contract;
+pub mod configurations;
+pub mod core;
+pub mod events;
+pub mod staking;
+pub mod tokens;
+
+pub use self::configurations::{
+    eth_ton_event_configuration_contract, sol_ton_event_configuration_contract,
+    ton_eth_event_configuration_contract, ton_sol_event_configuration_contract,
+};
+pub use self::core::{
+    base_event_configuration_contract, base_event_contract, bridge_contract, connector_contract,
+};
+pub use self::events::{
+    eth_ton_event_contract, sol_ton_event_contract, ton_eth_event_contract,
+    ton_sol_event_contract,
+};
 #[cfg(not(feature = "disable-staking"))]
-pub mod elections_contract;
-pub mod eth_ton_event_configuration_contract;
-pub mod eth_ton_event_contract;
-#[cfg(not(feature = "disable-staking"))]
-pub mod relay_round_contract;
-pub mod sol_ton_event_configuration_contract;
-pub mod sol_ton_event_contract;
-#[cfg(not(feature = "disable-staking"))]
-pub mod staking_contract;
+pub use self::staking::{
+    elections_contract, relay_round_contract, staking_contract, user_data_contract,
+};
 #[cfg(not(feature = "ton"))]
-pub mod token_root_contract;
-#[cfg(not(feature = "ton"))]
-pub mod token_wallet_contract;
-pub mod ton_eth_event_configuration_contract;
-pub mod ton_eth_event_contract;
-pub mod ton_sol_event_configuration_contract;
-pub mod ton_sol_event_contract;
-#[cfg(not(feature = "disable-staking"))]
-pub mod user_data_contract;
+pub use self::tokens::{token_root_contract, token_wallet_contract};
 
 mod models;
 

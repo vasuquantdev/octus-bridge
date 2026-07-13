@@ -9,5 +9,5 @@ stages:
 cloudbuild:package:
   extends: .cloudbuild:deb-package
   before_script:
-    - cp contrib/relay.native.service contrib/service
-    - wget -O contrib/global.config.json https://raw.githubusercontent.com/tonlabs/main.ton.dev/master/configs/ton-global.config.json
+    - cp deploy/systemd/relay.native.service deploy/debian/service
+    - wget -O deploy/global.config.json https://raw.githubusercontent.com/tonlabs/main.ton.dev/master/configs/ton-global.config.json

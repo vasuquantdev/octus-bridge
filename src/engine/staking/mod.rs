@@ -10,7 +10,7 @@ use tokio::sync::Notify;
 use ton_types::UInt256;
 
 use crate::engine::keystore::*;
-use crate::engine::ton_contracts::*;
+use crate::engine::contracts::*;
 use crate::engine::ton_subscriber::*;
 use crate::engine::EngineContext;
 use crate::utils::*;

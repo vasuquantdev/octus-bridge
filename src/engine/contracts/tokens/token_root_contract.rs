@@ -1,6 +1,6 @@
 use nekoton_abi::*;
 
-use super::TON_ABI_VERSION;
+use super::super::TON_ABI_VERSION;
 
 /// External responsible function
 pub fn wallet_of() -> &'static ton_abi::Function {

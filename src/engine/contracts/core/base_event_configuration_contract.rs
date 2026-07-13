@@ -1,6 +1,6 @@
 use nekoton_abi::*;
 
-use super::TON_ABI_VERSION;
+use super::super::TON_ABI_VERSION;
 
 pub fn get_type() -> &'static ton_abi::Function {
     crate::once!(ton_abi::Function, || {

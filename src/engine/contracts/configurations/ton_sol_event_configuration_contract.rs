@@ -1,6 +1,6 @@
 use nekoton_abi::*;
 
-use super::{models::*, TON_ABI_VERSION};
+use super::super::{models::*, TON_ABI_VERSION};
 
 /// External function
 pub fn get_details() -> &'static ton_abi::Function {
@@ -9,7 +9,7 @@ pub fn get_details() -> &'static ton_abi::Function {
             .abi_version(TON_ABI_VERSION)
             .time_header()
             .expire_header()
-            .outputs(SolTonEventConfigurationDetails::param_type())
+            .outputs(TonSolEventConfigurationDetails::param_type())
             .build()
     })
 }
